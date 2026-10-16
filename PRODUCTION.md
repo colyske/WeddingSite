@@ -1,14 +1,18 @@
 # Production setup and readiness
 
-**Do not describe or use this repository as production-ready.** It contains a static browser demo plus a backend foundation. No provider credentials were inspected or configured, the SQL migration has not been run against a real Supabase project, no frontend authentication/API integration exists, and nothing was deployed or publicly published. Payments and irreversible financial actions remain disabled.
+**Do not describe or use this repository as production-ready.** It contains a static browser demo plus a backend foundation. The dedicated WeddingSite Supabase project has both migrations applied, including the verified Colin-only Owner safeguards. PostgreSQL-compatible migration and Owner-behavior tests passed locally, and remote migration/grant status was checked. Remote schema lint could not connect because the CLI temporary database role needs `SUPABASE_DB_PASSWORD`; no password is configured or was exposed. The Owner account itself is not bootstrapped because no confirmed Colin Supabase Auth account exists yet. A Vercel Preview is protected by Vercel authentication; only the Supabase URL, public API key and payments-disabled flag are configured for Preview. There is no user-facing login or frontend/API integration, no Production environment configuration and no production release. Real payments and irreversible financial actions remain disabled.
 
 ## What is present
 
-- Supabase SQL for platform roles, workspace memberships, an undeletable/non-demotable Owner record, wedding settings, fundraising, contributions, budgets, proposed expenses, payout requests, reconciliation records, audit events, provider policies, and a scheduled reminder queue.
-- RLS and server-side RPC guards for workspace access, Client/Admin controls, protected Owner role changes, confirmed finance actions, payout balance limits, and verified payment webhook updates.
+- Supabase SQL for platform roles, workspace memberships, Colin Mundia's protected Owner identity, wedding settings, fundraising, contributions, budgets, proposed expenses, payout requests, reconciliation records, audit events, provider policies, and a scheduled reminder queue.
+- RLS and server-side RPC guards for workspace access, Client/Admin controls, verified-email and immutable-ID Owner bootstrap, protected Owner role changes, audit concealment from other roles, confirmed finance actions, payout balance limits, and verified payment webhook updates.
 - Vercel serverless endpoints: `GET /api/auth/me`, `GET /api/finance?weddingId=…` (private report; add `&format=csv` for CSV), `POST /api/finance/actions`, `GET /api/ledger?weddingId=…&page=0&limit=10`, `GET /api/payments/options?weddingId=…&market=…&currency=…`, `POST /api/payments/checkout`, `POST /api/webhooks/stripe`, `POST /api/webhooks/paystack`, and the daily `/api/cron/queue-reminders`.
 - Stripe Checkout and Paystack hosted-checkout adapters. Options fail closed unless provider keys match the selected test/live mode, server-side provider health succeeds, the global switch is explicitly enabled, and the wedding is published and configured for the selected market/currency. Checkout also checks origin, Turnstile, fundraiser, amount limits and explicit ledger-visibility consent. Signed/idempotent webhooks alone record a contribution as paid. The Stripe webhook endpoint is `/api/webhooks/stripe`; Paystack is `/api/webhooks/paystack`.
 - GitHub Actions CI runs `npm run check` and `npm test`. It does not deploy. `vercel.json` configures security headers and an idempotent reminder-queue cron. The cron only queues work: no email or message is sent.
+- Current Vercel Preview (authentication-protected): [platform](https://weddingsite-9jq2jlmv0-colyske.vercel.app/) · [guest site](https://weddingsite-9jq2jlmv0-colyske.vercel.app/client-site.html). The Vercel project is linked to `colyske/WeddingSite`, with `main` as the production branch; a direct preview deployment was created from the feature worktree.
+- The dedicated Supabase project **WeddingSite** (`lvvtgxspwvmdhqyoyqyy`) is linked to this worktree. Migrations `202610160001` and `202610160002` are present in remote history. The unrelated `CareerBoost-AI` project (`zmirbpcrlrgrfdsfkdbb`) was not linked or changed.
+- The verified Colin account count and protected Owner profile count are currently both zero. No invitation or account was created. Owner bootstrap can run only after Colin creates and confirms an Auth account.
+- Vercel Preview currently has only `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `WEDDINGSITE_LIVE_PAYMENTS_ENABLED` configured; no service-role, Turnstile, payment-provider or Production variables are present. Values were not retrieved or printed. Payment APIs remain fail-closed.
 
 ## Known incomplete work / blockers
 
@@ -19,7 +23,7 @@
 5. **Finance operations are partly recordkeeping.** Expense submission records proposals; payout submission only creates a request and cannot transfer funds. Reconciliation evidence is recorded for review; no external statement matching, dispute/refund handling, expense approval/settlement workflow, or payout execution exists.
 6. **No notification delivery.** Cron queues due task reminders, but email/SMS/WhatsApp is not configured or sent. No WhatsApp-group bot is included.
 7. **No live AI integration.** Writing ideas and browser heuristics are templates/demos and must not be used as moderation or privacy guarantees.
-8. **SQL parser/database validation is pending.** Apply only to a disposable Supabase development project first; review migration behavior, RLS, grants, function ownership and upgrade/rollback strategy before any production data.
+8. **Production integration and authorization remain incomplete.** Both migrations executed successfully in a PostgreSQL-compatible PGlite test database; Owner bootstrap/immutability/RLS scenarios passed; and the dedicated WeddingSite remote migration history and grants were checked. Remote schema lint remains blocked until an operator supplies the database password through a secure local environment or runs an equivalent review in the Supabase Dashboard. Do not use the prototype with real wedding or payment data until a full security review, auth integration, rollback plan and production launch approval are complete.
 
 ## Required provider projects and dashboard values
 
@@ -27,15 +31,18 @@ Create the accounts/projects in the chosen provider dashboards. Enter secret val
 
 ### Supabase
 
-Create a Supabase project with Auth enabled, and apply `supabase/migrations/202610160001_finance_and_access.sql` in a development project using the Supabase SQL editor or the approved Supabase CLI workflow. The migration creates an auth-user profile as `client`; it does not create a protected Owner automatically. After verifying the intended first Owner's Supabase Auth user ID, an authorized project operator must bootstrap that account in the SQL editor, for example:
+The dedicated WeddingSite Supabase project already exists; do not use or link the unrelated CareerBoost project. Both migrations are applied there. The second migration binds the sole immutable Owner identity to Colin Mundia's confirmed Auth email (`colyske@gmail.com`) and verified user ID; it does not create an account, send an invite, or bootstrap a user automatically. The remote project currently has no confirmed Colin account and no Owner profile. Colin must first create an account using the normal Supabase Auth flow and complete email verification. Then, an authorized operator can run this in **WeddingSite → SQL Editor**:
 
 ```sql
-update public.profiles
-set platform_role = 'owner'
-where id = '<verified-auth-user-uuid>';
+select public.bootstrap_protected_owner(id)
+from auth.users
+where lower(email) = 'colyske@gmail.com'
+  and email_confirmed_at is not null;
 ```
 
-Confirm exactly one Owner exists before proceeding. The migration prevents routine Owner demotion/deletion and routine Owner transfer; recovery/transfer requires a separately reviewed break-glass process. Do not seed real guest or payment data in the prototype.
+The function independently verifies that the supplied ID belongs to the confirmed account; calling it before signup returns no rows. It is not executable by `anon`, `authenticated`, or ordinary app users. Verify the result in the privileged SQL Editor (`select count(*) from public.profiles where platform_role = 'owner';`). There must be exactly one row. No other account can bootstrap, promote itself, replace that ID, demote/delete the profile, or inspect Owner profile/audit metadata through the ordinary role APIs. Routine ownership transfer is disabled. Recovery is a separately reviewed, privileged break-glass procedure and must preserve the same verified identity requirement. Do not invite or provision the account on Colin's behalf.
+
+The Supabase CLI migration push and Management API query succeeded without exposing a database password. A CLI `db lint` connection uses a temporary database role and currently fails password authentication. If that CLI lint is required, the project operator must provide `SUPABASE_DB_PASSWORD` directly to the local CLI process using a secure local secret store, or review the schema from the Supabase Dashboard. This is a local operator credential, not a Vercel runtime variable; do not commit it or put it in chat.
 
 Copy these from **Supabase → Project Settings → API** into the corresponding Vercel environment only:
 
@@ -49,7 +56,7 @@ Enable and test the chosen Supabase Auth sign-in method, email verification, red
 
 ### Vercel project configuration
 
-Import the repository into Vercel only after the owner approves the target account/team and private preview setup. Use the repository root; no framework build command is required. Add the following variables in **Vercel → Project → Settings → Environment Variables**, selecting the correct Development/Preview/Production scopes:
+The `weddingsite` Vercel project already exists in the `colyske` account and is linked to `colyske/WeddingSite`, with `main` as its production branch. The hosted Preview is protected by Vercel authentication. Use the repository root; no framework build command is required. The Preview currently has `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `WEDDINGSITE_LIVE_PAYMENTS_ENABLED=false`; no Production variables, server-role key, Turnstile secret, or payment-provider credentials are configured. Configure any future variables in **Vercel → Project `weddingsite` → Settings → Environment Variables**, selecting Development/Preview/Production scopes carefully:
 
 | Name | Required for | Guidance |
 | --- | --- | --- |
@@ -89,11 +96,11 @@ Wedding-selected currency is the primary display unit; USD is its bracketed equi
 
 ## GitHub and deployment controls
 
-The repository's `.github/workflows/ci.yml` uses GitHub-hosted runners to run only syntax checks and unit tests. There is no GitHub deploy workflow, Vercel token, Supabase credential, automatic publication, or production environment secret in this repository. If adding automatic deployment later, the owner must approve repository permissions, branch/environment protection and required reviews, then store a narrowly scoped Vercel deployment token in GitHub Actions secrets. Do not use repository secrets for application service keys if Vercel can hold them directly.
+The repository's `.github/workflows/ci.yml` uses GitHub-hosted runners to run only syntax checks and unit tests. It does not deploy. Vercel is linked to the GitHub repository. The protected Preview was created from the feature branch; a redeployment of the latest source is still required after pushing these Owner safeguards. Do not add service secrets to GitHub Actions when Vercel can hold them directly. Production remains unconfigured and must not be promoted without explicit release approval.
 
 ## Safe rollout checklist
 
-1. Review and run the migration in a disposable development Supabase project; verify RLS with anon, Client, Admin, SuperAdmin, and Owner test users, and confirm sensitive fields/fees stay private.
+1. For future schema changes, rehearse in a disposable Supabase project; the current ordered migrations are applied only to the dedicated WeddingSite project. Verify RLS with anon, Client, Admin, SuperAdmin, and the verified Owner test identity, and confirm sensitive fields/fees stay private.
 2. Implement sign-in, session refresh, workspace APIs/UI, durable RSVP/capacity, client-owned data changes, privacy-safe AI moderation with human review, and real fee-gated publishing.
 3. Complete finance approvals, refunds/disputes, statement reconciliation, audit retention/export, payout authorization and execution controls. Re-test concurrent balances and idempotent webhooks.
 4. Wire a guest checkout UI that requests server-verified options and displays only currently configured providers. Add currency exponent support, legal receipts, privacy consent, anti-abuse, accessibility and failure recovery. Verify in provider test mode; never use a local demo pledge as a payment signal.

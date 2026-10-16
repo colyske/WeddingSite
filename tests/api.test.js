@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { csvCell } from "../server/supabase.js";
 import {
   checkProviderHealth, isSecurePublicOrigin, normalizePaystackPayment, normalizeStripePayment,
@@ -8,6 +9,10 @@ import {
 } from "../server/payment-adapters.js";
 import paymentOptionsHandler from "../api/payments/options.js";
 import checkoutHandler from "../api/payments/checkout.js";
+
+const ownerMigration = readFileSync(new URL("../supabase/migrations/202610160002_protected_owner_identity.sql", import.meta.url), "utf8");
+const platformMarkup = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const platformScript = readFileSync(new URL("../platform.js", import.meta.url), "utf8");
 
 function responseRecorder() {
   return {
@@ -33,6 +38,24 @@ test("payment origins require HTTPS except for localhost testing", () => {
   assert.equal(isSecurePublicOrigin("http://localhost:4173"), true);
   assert.equal(isSecurePublicOrigin("http://weddingsite.example"), false);
   assert.equal(isSecurePublicOrigin("https://weddingsite.example/path"), false);
+});
+
+test("protected Owner bootstrap binds only Colin's confirmed auth identity", () => {
+  assert.match(ownerMigration, /lower\(u\.email\) = 'colyske@gmail\.com'/);
+  assert.match(ownerMigration, /u\.email_confirmed_at is not null/);
+  assert.match(ownerMigration, /old\.owner_user_id is not null\s+and new\.owner_user_id is distinct from old\.owner_user_id/);
+  assert.match(ownerMigration, /before insert or update or delete on public\.profiles/);
+  assert.match(ownerMigration, /revoke all on function public\.bootstrap_protected_owner\(uuid\) from public, anon, authenticated/);
+  assert.match(ownerMigration, /grant execute on function public\.bootstrap_protected_owner\(uuid\) to service_role/);
+  assert.match(ownerMigration, /source <> 'protected_owner_bootstrap'/);
+});
+
+test("non-owner role preview does not render Owner identity or controls", () => {
+  assert.doesNotMatch(platformMarkup, /value="Owner"|OWNER · PROTECTED|Miriam Njeri/i);
+  assert.doesNotMatch(platformScript, /"Owner"|OWNER · PROTECTED|Miriam Njeri/i);
+  assert.match(platformMarkup, /option value="Client"/);
+  assert.match(platformMarkup, /option value="Admin"/);
+  assert.match(platformMarkup, /option value="SuperAdmin"/);
 });
 
 test("provider health checks fail closed without a configured key", async () => {

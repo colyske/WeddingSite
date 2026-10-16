@@ -637,14 +637,15 @@ end;
 $$;
 
 create or replace view public.public_contribution_ledger
-with (security_invoker = true)
+with (security_barrier = true)
 as
 select id, wedding_id, stream_name,
        case when visibility = 'name' then display_name else 'Anonymous guest' end as display_name,
        visibility, pledged_amount_minor, paid_amount_minor, currency,
        payment_status, created_at
 from public.contributions
-where public_consent_at is not null and visibility in ('name', 'anonymous');
+where public_consent_at is not null and visibility in ('name', 'anonymous')
+  and public.is_published_wedding(wedding_id);
 
 create or replace view public.finance_summary
 with (security_invoker = true)
@@ -764,7 +765,8 @@ using (public.can_access_wedding(wedding_id));
 drop policy if exists contribution_workspace_read on public.contributions;
 create policy contribution_workspace_read on public.contributions for select to authenticated using (public.can_access_wedding(wedding_id));
 drop policy if exists contribution_public_consent_read on public.contributions;
-create policy contribution_public_consent_read on public.contributions for select to anon using (public_consent_at is not null and visibility in ('name', 'anonymous'));
+create policy contribution_public_consent_read on public.contributions for select to anon
+using (public_consent_at is not null and visibility in ('name', 'anonymous') and public.is_published_wedding(wedding_id));
 drop policy if exists expense_workspace_read on public.expenses;
 create policy expense_workspace_read on public.expenses for select to authenticated using (public.can_access_wedding(wedding_id));
 drop policy if exists payout_workspace_read on public.payout_records;
@@ -784,8 +786,6 @@ drop policy if exists outbox_workspace_read on public.notification_outbox;
 create policy outbox_workspace_read on public.notification_outbox for select to authenticated using (public.can_access_wedding(wedding_id));
 
 revoke all on all tables in schema public from anon, authenticated;
-grant select (id, wedding_id, stream_name, display_name, visibility, pledged_amount_minor, paid_amount_minor, currency, payment_status, created_at, public_consent_at)
-  on public.contributions to anon;
 grant select (id, wedding_id, name, purpose, goal_minor, currency) on public.fundraising_streams to anon;
 grant select on public.profiles, public.weddings, public.wedding_memberships, public.platform_policies,
   public.fundraising_streams, public.payment_provider_configs, public.contributions, public.expenses, public.payout_records, public.budget_lines,

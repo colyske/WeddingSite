@@ -4,7 +4,7 @@ const tenants = {
   nala: { label: "Nala & Brian", couple: "Nala Wambui & Brian Kamau", date: "2027-08-14", location: "Naivasha, Kenya", domain: "nala-brian.weddingsite.demo", status: "SETUP IN PROGRESS", preview: false }
 };
 let currentTenant = "amara";
-let currentRole = "Owner";
+let currentRole = "Client";
 let toastTimer;
 let newTenantCounter = 0;
 const feeConfigKey = "weddingsite-demo-fee-config";
@@ -61,7 +61,6 @@ let tasks = [
   { title: "Reconcile received deposits", owner: "Finance · Peter", due: "Verify independently" }
 ];
 let members = [
-  { name: "Miriam Njeri", email: "miriam@example.demo", role: "Owner", initials: "MN", owner: true },
   { name: "Amara Njeri", email: "amara@example.demo", role: "Client", initials: "AN" },
   { name: "Kito Mwangi", email: "kito@example.demo", role: "Client", initials: "KM" },
   { name: "Wanjiku M.", email: "wanjiku@example.demo", role: "Admin", initials: "WM" },
@@ -69,7 +68,7 @@ let members = [
   { name: "Noah Otieno", email: "noah@example.demo", role: "SuperAdmin", initials: "NO" }
 ];
 let activity = [
-  { title: "Workspace opened", detail: "Miriam Njeri · Owner · demo activity", time: "Just now" },
+  { title: "Workspace opened", detail: "Client · demo activity", time: "Just now" },
   { title: "Minutes recorded", detail: "Planning committee · 06 October", time: "06 Oct" },
   { title: "Client site draft created", detail: "Initial invitation preview · sample content", time: "01 Oct" },
   { title: "Workspace members invited", detail: "Committee and platform roles · sample records", time: "28 Sep" }
@@ -111,7 +110,7 @@ function notify(message) {
 function escapeText(value) {
   return String(value).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 }
-function canPublish() { return currentRole === "Client" || currentRole === "Owner"; }
+function canPublish() { return currentRole === "Client"; }
 function isPublicationFeePaid(tenant = currentTenant) { return feeConfig.publicationFee === 0 || publicationPayments[tenant] === feeConfig.publicationFee; }
 function formatUsd(amount) { return window.WeddingSiteFX.formatPrimaryUsd(amount, window.WeddingSiteFX.currency(), feeConfig.locale); }
 function getWeddingSettings(tenant) {
@@ -167,7 +166,7 @@ function renderWeddingSettings() {
   renderPrivateFundraisingBreakdown();
   document.querySelector(".client-finance").hidden = currentRole === "SuperAdmin";
   form.querySelectorAll("input,select,textarea,button").forEach(control => {
-    control.disabled = !["Client", "Owner"].includes(currentRole);
+    control.disabled = currentRole !== "Client";
   });
 }
 function hasSensitiveSiteContent(value) {
@@ -228,17 +227,14 @@ function renderFinancePage() {
   const requestedPayouts = financeSamplePayouts.filter(item => item.status.startsWith("Requested")).reduce((total, item) => total + item.amountUsd, 0);
   const sentPayouts = financeSamplePayouts.filter(item => item.status.startsWith("Sent")).reduce((total, item) => total + item.amountUsd, 0);
   const isSuperAdmin = currentRole === "SuperAdmin";
-  const isOwner = currentRole === "Owner";
   document.querySelector("#wedding-finance-metrics").hidden = isSuperAdmin;
   document.querySelector("#wedding-finance-details").hidden = isSuperAdmin;
-  document.querySelector("#platform-finance-metrics").hidden = !isSuperAdmin && !isOwner;
+  document.querySelector("#platform-finance-metrics").hidden = !isSuperAdmin;
   document.querySelector("#finance-role-scope").textContent = isSuperAdmin
     ? "Platform-wide aggregate view · SuperAdmin · no wedding-level guest finance"
-    : isOwner
-      ? "Protected Owner view · platform aggregates and private client workspace accounting"
-      : currentRole === "Admin"
-        ? "Assigned Admin view · private fee details, expense proposals and reconciliation"
-        : "Client view · private fee details, own budget controls and payout requests";
+    : currentRole === "Admin"
+      ? "Assigned Admin view · private fee details, expense proposals and reconciliation"
+      : "Client view · private fee details, own budget controls and payout requests";
   if (!isSuperAdmin) {
     document.querySelector("#finance-pledged").textContent = formatUsd(pledged);
     document.querySelector("#finance-gross").textContent = formatUsd(grossPaid);
@@ -322,10 +318,10 @@ function renderFinancePage() {
     const small = document.createElement("small"); small.textContent = detail;
     body.append(heading, small); item.append(dot, body); alerts.append(item);
   });
-  document.querySelector("#finance-payout-request").hidden = !["Client", "Owner"].includes(currentRole);
-  document.querySelector("#finance-budget-form").querySelectorAll("input,button").forEach(control => { control.disabled = !["Client", "Owner"].includes(currentRole); });
-  document.querySelector("#finance-expense-form").querySelectorAll("input,button").forEach(control => { control.disabled = !["Client", "Admin", "Owner"].includes(currentRole); });
-  document.querySelector("#finance-reconcile-form").querySelectorAll("input,button").forEach(control => { control.disabled = !["Client", "Admin", "Owner"].includes(currentRole); });
+  document.querySelector("#finance-payout-request").hidden = currentRole !== "Client";
+  document.querySelector("#finance-budget-form").querySelectorAll("input,button").forEach(control => { control.disabled = currentRole !== "Client"; });
+  document.querySelector("#finance-expense-form").querySelectorAll("input,button").forEach(control => { control.disabled = !["Client", "Admin"].includes(currentRole); });
+  document.querySelector("#finance-reconcile-form").querySelectorAll("input,button").forEach(control => { control.disabled = !["Client", "Admin"].includes(currentRole); });
 }
 function publishSafeDraftsAfterPayment(tenant) {
   const drafts = queue.filter(item => item.tenant === tenant && item.state === "pending" && item.aiStatus === "safe" && item.siteConfig);
@@ -342,22 +338,18 @@ function publishSafeDraftsAfterPayment(tenant) {
   }
   renderQueue();
 }
-function canManagePeople() { return ["Owner", "SuperAdmin", "Admin", "Client"].includes(currentRole); }
-function canEditContent() { return ["Owner", "Client", "Admin"].includes(currentRole); }
-function currentActorName() {
-  return currentRole === "Owner" ? "Miriam Njeri" : currentRole === "Client" ? "Amara Njeri" : currentRole === "Admin" ? "Wanjiku M." : "Noah Otieno";
-}
+function canManagePeople() { return ["SuperAdmin", "Admin", "Client"].includes(currentRole); }
+function canEditContent() { return ["Client", "Admin"].includes(currentRole); }
+function currentActorName() { return currentRole === "Client" ? "Amara Njeri" : currentRole === "Admin" ? "Wanjiku M." : "Noah Otieno"; }
 function canManageMember(member) {
-  if (member.owner || member.name === currentActorName()) return false;
-  if (currentRole === "Owner") return true;
+  if (member.name === currentActorName()) return false;
   if (currentRole === "SuperAdmin") return member.role !== "SuperAdmin";
   if (currentRole === "Admin") return member.role === "Client";
   if (currentRole === "Client") return member.role === "Client" || member.role === "Admin";
   return false;
 }
 function assignableRoles(member) {
-  if (member.owner || member.name === currentActorName()) return [member.role];
-  if (currentRole === "Owner") return ["Client", "Admin", "SuperAdmin"];
+  if (member.name === currentActorName()) return [member.role];
   if (currentRole === "SuperAdmin") return member.role === "SuperAdmin" ? ["SuperAdmin"] : ["Client", "Admin"];
   if (currentRole === "Client") return ["Client", "Admin"];
   if (currentRole === "Admin") return member.role === "Client" ? ["Client"] : [member.role];
@@ -421,7 +413,7 @@ function renderQueue() {
     deny.addEventListener("click", () => { item.state = "returned"; logActivity("Draft returned for edits", `${item.title} · ${currentRole}`); renderQueue(); notify("Returned to the committee. No guest-facing site was changed."); });
     const approve = document.createElement("button"); approve.type = "button"; approve.className = "approve-publish"; approve.textContent = "Approve for site";
     approve.disabled = !canPublish();
-    approve.title = approve.disabled ? "Only the Client (or acting Owner) can approve publication" : "Approve sample draft";
+    approve.title = approve.disabled ? "Only the Client can approve publication" : "Approve sample draft";
     approve.addEventListener("click", () => {
       if (!canPublish()) { notify("Client approval is required before a guest-facing update can be published."); return; }
       if (!isPublicationFeePaid(item.tenant)) { notify("Pay the one-time publication fee before publishing this wedding site."); switchPage("website"); return; }
@@ -494,8 +486,8 @@ function renderMinutes() {
 function renderMembers() {
   const container = document.querySelector("#member-list");
   container.replaceChildren();
-  members.filter(member => member.tenant === currentTenant || member.owner).forEach(member => {
-    const row = document.createElement("div"); row.className = `member-row${member.owner ? " owner-member" : ""}`;
+  members.filter(member => member.tenant === currentTenant).forEach(member => {
+    const row = document.createElement("div"); row.className = "member-row";
     const avatar = document.createElement("span"); avatar.className = "member-avatar"; avatar.textContent = member.initials;
     const name = document.createElement("span"); name.className = "member-name";
     const fullName = document.createElement("b"); fullName.textContent = member.name;
@@ -508,27 +500,24 @@ function renderMembers() {
     });
     select.disabled = !canManageMember(member) || assignableRoles(member).length < 2;
     select.addEventListener("change", () => {
-      if (!canManageMember(member) || select.value === "Owner" || !assignableRoles(member).includes(select.value)) {
-        select.value = member.role; notify("That role change is not allowed. The Owner role is protected."); return;
+      if (!canManageMember(member) || !assignableRoles(member).includes(select.value)) {
+        select.value = member.role; notify("That role change is not allowed."); return;
       }
       member.role = select.value;
           logActivity("Workspace role changed", `${member.name} · ${member.role}`);
       renderMembers(); notify("Role updated in this browser-only demo.");
     });
     role.append(select);
-    const action = member.owner ? document.createElement("span") : document.createElement("button");
-    if (member.owner) { action.className = "protected-label"; action.textContent = "OWNER · PROTECTED"; }
-    else {
-      action.className = "member-remove"; action.type = "button"; action.textContent = "Remove";
-      action.disabled = !canManageMember(member);
-      action.title = action.disabled ? "Your role cannot remove this member" : "Remove sample member";
-      action.addEventListener("click", () => {
-        if (!canManageMember(member)) { notify("You do not have permission to remove this person."); return; }
-        members = members.filter(candidate => candidate !== member);
-        logActivity("Member removed", `${member.name} · demo membership`);
-        renderMembers(); notify("Member removed in this local demo only.");
-      });
-    }
+    const action = document.createElement("button");
+    action.className = "member-remove"; action.type = "button"; action.textContent = "Remove";
+    action.disabled = !canManageMember(member);
+    action.title = action.disabled ? "Your role cannot remove this member" : "Remove sample member";
+    action.addEventListener("click", () => {
+      if (!canManageMember(member)) { notify("You do not have permission to remove this person."); return; }
+      members = members.filter(candidate => candidate !== member);
+      logActivity("Member removed", `${member.name} · demo membership`);
+      renderMembers(); notify("Member removed in this local demo only.");
+    });
     row.append(avatar, name, role, action); container.append(row);
   });
 }
@@ -565,10 +554,14 @@ function renderTenant() {
   renderFinancePage();
 }
 function setRole(role, showNotice = true) {
+  if (!["Client", "Admin", "SuperAdmin"].includes(role)) {
+    notify("That permission preview is unavailable.");
+    return;
+  }
   currentRole = role;
   if (role !== "SuperAdmin" && document.querySelector("#page-platform-settings").classList.contains("active")) switchPage("overview");
   document.querySelector("#role-switcher").value = role;
-  document.querySelector(".current-role-label").textContent = role === "Owner" ? "Owner · protected" : `${role} · permission preview`;
+  document.querySelector(".current-role-label").textContent = `${role} · permission preview`;
   document.querySelector("#site-form").querySelectorAll("input,textarea,button").forEach(control => { control.disabled = !canEditContent(); });
   document.querySelectorAll(".design-option,.section-toggles input").forEach(control => { control.disabled = !canEditContent(); });
   document.querySelectorAll("[data-ai-action],#accept-ai-suggestion").forEach(control => { control.disabled = !canEditContent(); });
@@ -578,13 +571,12 @@ function setRole(role, showNotice = true) {
   renderQueue();
   renderTenant();
   const descriptions = {
-    Owner: "Owner preview: platform-wide control. Owner is protected from deletion or demotion; member-role management is enabled.",
     Client: "Client preview: owns this wedding tenant and alone gives final approval for guest-facing site publication.",
     Admin: "Admin preview: can coordinate assigned tenant work and prepare drafts; cannot approve publication or change platform roles.",
-    SuperAdmin: "SuperAdmin preview: can manage platform accounts and support tenants; cannot publish client content or change the protected Owner."
+    SuperAdmin: "SuperAdmin preview: can manage platform accounts and support tenants; cannot publish client content or access private client wedding data."
   };
-  document.querySelector(".profile-button .avatar").textContent = role === "Owner" ? "MN" : role === "Client" ? "AK" : role === "Admin" ? "WM" : "NO";
-  document.querySelector(".profile-button b").textContent = role === "Owner" ? "Miriam Njeri" : role === "Client" ? "Amara Njeri" : role === "Admin" ? "Wanjiku M." : "Noah Otieno";
+  document.querySelector(".profile-button .avatar").textContent = role === "Client" ? "AK" : role === "Admin" ? "WM" : "NO";
+  document.querySelector(".profile-button b").textContent = role === "Client" ? "Amara Njeri" : role === "Admin" ? "Wanjiku M." : "Noah Otieno";
   if (showNotice) notify(descriptions[role]);
 }
 function switchPage(page) {
@@ -658,9 +650,9 @@ document.addEventListener("click", event => {
     showDialog("Invite a committee member", "This demo adds a sample member to this browser session only; it sends no invitation.", [
       { name: "name", label: "Name", placeholder: "Committee member", required: true, maxLength: 80 },
       { name: "email", label: "Email", type: "email", placeholder: "name@example.com", required: true, maxLength: 120 },
-      { name: "role", label: "Workspace role", required: true, options: currentRole === "Owner" ? ["Client", "Admin", "SuperAdmin"] : currentRole === "SuperAdmin" ? ["Client", "Admin"] : currentRole === "Admin" ? ["Client"] : ["Client", "Admin"] }
+      { name: "role", label: "Workspace role", required: true, options: currentRole === "SuperAdmin" ? ["Client", "Admin"] : currentRole === "Admin" ? ["Client"] : ["Client", "Admin"] }
     ], values => {
-      if (/owner|superadmin/i.test(values.role)) { notify("Owner and SuperAdmin assignments cannot be made with the invite form."); return; }
+      if (!["Client", "Admin"].includes(values.role) || (currentRole === "Admin" && values.role !== "Client")) { notify("That workspace role cannot be assigned from the invitation form."); return; }
       members.push({ name: values.name, email: values.email, role: values.role, tenant: currentTenant, initials: values.name.split(/\s+/).slice(0, 2).map(part => part[0].toUpperCase()).join("") });
       renderMembers(); logActivity("Committee invitation drafted", `${values.name} · no email sent`);
       notify("Sample member added. No invitation email was sent.");
@@ -689,7 +681,7 @@ document.querySelector("#wedding-settings-form").addEventListener("change", even
 });
 document.querySelector("#wedding-settings-form").addEventListener("submit", event => {
   event.preventDefault();
-  if (!["Client", "Owner"].includes(currentRole)) { notify("Only the Client (or acting Owner) can set wedding currency, guest capacity, upgrades and fundraising streams."); return; }
+  if (currentRole !== "Client") { notify("Only the Client can set wedding currency, guest capacity, upgrades and fundraising streams."); return; }
   const form = event.currentTarget;
   const values = new FormData(form);
   const currency = String(values.get("currency"));
@@ -798,7 +790,7 @@ function addFinanceAudit(action, record) {
 }
 document.querySelector("#finance-expense-form").addEventListener("submit", event => {
   event.preventDefault();
-  if (!["Client", "Admin", "Owner"].includes(currentRole)) { notify("Only the Client, assigned Admin or Owner can add a proposed expense."); return; }
+  if (!["Client", "Admin"].includes(currentRole)) { notify("Only the Client or assigned Admin can add a proposed expense."); return; }
   const values = new FormData(event.currentTarget);
   const amount = Number(values.get("amount"));
   const amountUsd = window.WeddingSiteFX.convertToUsd(amount, weddingSettings.currency);
@@ -819,7 +811,7 @@ document.querySelector("#finance-expense-form").addEventListener("submit", event
 });
 document.querySelector("#finance-reconcile-form").addEventListener("submit", event => {
   event.preventDefault();
-  if (!["Client", "Admin", "Owner"].includes(currentRole)) { notify("Your current role cannot submit reconciliation evidence."); return; }
+  if (!["Client", "Admin"].includes(currentRole)) { notify("Your current role cannot submit reconciliation evidence."); return; }
   const values = new FormData(event.currentTarget);
   const expected = Number(values.get("expected"));
   const reported = Number(values.get("reported"));
@@ -842,7 +834,7 @@ document.querySelector("#finance-reconcile-form").addEventListener("submit", eve
 });
 document.querySelector("#finance-budget-form").addEventListener("submit", event => {
   event.preventDefault();
-  if (!["Client", "Owner"].includes(currentRole)) { notify("Only the Client or acting Owner can change wedding budget estimates."); return; }
+  if (currentRole !== "Client") { notify("Only the Client can change wedding budget estimates."); return; }
   const values = new FormData(event.currentTarget);
   const planned = Number(values.get("planned"));
   const actual = Number(values.get("actual"));
@@ -861,7 +853,7 @@ document.querySelector("#finance-budget-form").addEventListener("submit", event 
   notify("Budget estimate updated in this browser demo; actual is not verified proof of payment.");
 });
 document.querySelector("#finance-payout-request").addEventListener("click", () => {
-  if (!["Client", "Owner"].includes(currentRole)) { notify("Only the Client or protected Owner may request a payout record."); return; }
+  if (currentRole !== "Client") { notify("Only the Client may request a payout record."); return; }
   showDialog("Request a payout record?", "This creates an unsubmitted demo request only. It will not send money, reveal account details, or mark a payout as sent. A real payout would require a separately authorized provider action and explicit confirmation.", [
     { name: "amount", label: `Requested amount (${weddingSettings.currency})`, type: "number", required: true, placeholder: "0.00" },
     { name: "note", label: "Private note (no bank details)", maxLength: 120, placeholder: "Optional reason for the request" }
@@ -904,7 +896,7 @@ document.querySelector("#finance-export").addEventListener("click", () => {
   notify("Illustrative finance CSV exported. It contains no guest names, account details or provider credentials.");
 });
 document.querySelector("#pay-publication-fee").addEventListener("click", () => {
-  if (!["Client", "Owner"].includes(currentRole) || isPublicationFeePaid()) return;
+  if (currentRole !== "Client" || isPublicationFeePaid()) return;
   showDialog("Simulate publication-fee payment?", `The one-time fee is ${formatUsd(feeConfig.publicationFee)}. USD is the canonical price; any shown conversion is indicative. This records a local demo payment only; no payment is collected. After confirmation, safe wedding details may auto-publish under the demo safety policy.`, [], () => {
     try {
       publicationPayments[currentTenant] = feeConfig.publicationFee;
@@ -939,7 +931,7 @@ document.querySelector("#site-form").addEventListener("submit", event => {
   tenants[tenant].domain = `${couple.split("&")[0].trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}.weddingsite.demo`;
   const siteConfig = { couple, location, date, story };
   const sensitive = hasSensitiveSiteContent(`${couple} ${location} ${story}`);
-  const isClientOwned = currentRole === "Client" || currentRole === "Owner";
+  const isClientOwned = currentRole === "Client";
   const safeSiteInfo = isClientOwned && !sensitive;
   const item = {
     id: Date.now(), type: "SITE DETAILS", title: sensitive ? "Wedding-site edit held for human review" : "Updated wedding details",
@@ -1025,7 +1017,7 @@ document.querySelectorAll(".section-toggles input").forEach(toggle => toggle.add
 
 document.querySelector("#minutes-form").addEventListener("submit", event => {
   event.preventDefault();
-  if (!["Owner", "Client", "Admin"].includes(currentRole)) { notify("This role is read-only for committee records."); return; }
+  if (!["Client", "Admin"].includes(currentRole)) { notify("This role is read-only for committee records."); return; }
   const values = Object.fromEntries(new FormData(event.currentTarget));
   const record = {
     date: new Date(`${values.date}T12:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase(),
