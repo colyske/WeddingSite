@@ -9,7 +9,7 @@ The browser UI is an interactive demo. A separate server-side foundation is also
 
 ## Preview
 
-**Hosted preview:** [WeddingSite on Vercel](https://weddingsite-9jq2jlmv0-colyske.vercel.app/) (platform) · [guest-site sample](https://weddingsite-9jq2jlmv0-colyske.vercel.app/client-site.html). This preview is protected by Vercel authentication; sign in to the WeddingSite Vercel team to open it. It is a sample demo, not a live wedding service.
+**Hosted preview:** [WeddingSite on Vercel](https://weddingsite-git-colyske-wedlink-wedding-platform-colyske.vercel.app/) (platform) · [guest-site sample](https://weddingsite-git-colyske-wedlink-wedding-platform-colyske.vercel.app/client-site.html). This preview is protected by Vercel authentication; sign in to the WeddingSite Vercel team to open it. It is a sample demo, not a live wedding service.
 
 Open `index.html` directly or serve the repository directory using Node.js:
 
