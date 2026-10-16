@@ -1,0 +1,13 @@
+{
+  "name": "weddingsite",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check platform.js && node --check app.js && node --check fx.js && node --check server/supabase.js && node --check server/payment-adapters.js && node --check api/auth/me.js && node --check api/ledger.js && node --check api/finance.js && node --check api/finance/actions.js && node --check api/cron/queue-reminders.js && node --check api/payments/options.js && node --check api/payments/checkout.js && node --check api/webhooks/stripe.js && node --check api/webhooks/paystack.js"
+  }
+}
