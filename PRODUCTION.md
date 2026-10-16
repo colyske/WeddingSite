@@ -56,7 +56,7 @@ Enable and test the chosen Supabase Auth sign-in method, email verification, red
 
 ### Vercel project configuration
 
-The `weddingsite` Vercel project already exists in the `colyske` account and is linked to `colyske/WeddingSite`, with `main` as its production branch. The hosted Preview is protected by Vercel authentication. Use the repository root; no framework build command is required. The Preview currently has `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `WEDDINGSITE_LIVE_PAYMENTS_ENABLED=false`; no Production variables, server-role key, Turnstile secret, or payment-provider credentials are configured. Configure any future variables in **Vercel → Project `weddingsite` → Settings → Environment Variables**, selecting Development/Preview/Production scopes carefully:
+The `weddingsite` Vercel project already exists in the `colyske` account and is linked to `colyske/WeddingSite`, with `main` as its production branch. The latest feature-branch Preview was redeployed after the Owner safeguards and is Ready; Vercel authentication still protects it. Use the repository root; no framework build command is required. The Preview currently has `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `WEDDINGSITE_LIVE_PAYMENTS_ENABLED=false`; no Production variables, server-role key, Turnstile secret, or payment-provider credentials are configured. Configure any future variables in **Vercel → Project `weddingsite` → Settings → Environment Variables**, selecting Development/Preview/Production scopes carefully:
 
 | Name | Required for | Guidance |
 | --- | --- | --- |
@@ -96,7 +96,7 @@ Wedding-selected currency is the primary display unit; USD is its bracketed equi
 
 ## GitHub and deployment controls
 
-The repository's `.github/workflows/ci.yml` uses GitHub-hosted runners to run only syntax checks and unit tests. It does not deploy. Vercel is linked to the GitHub repository. The protected Preview was created from the feature branch; a redeployment of the latest source is still required after pushing these Owner safeguards. Do not add service secrets to GitHub Actions when Vercel can hold them directly. Production remains unconfigured and must not be promoted without explicit release approval.
+The repository's `.github/workflows/ci.yml` uses GitHub-hosted runners to run only syntax checks and unit tests. It does not deploy. Vercel is linked to the GitHub repository and automatically builds feature-branch Previews. The current protected Preview is Ready. Do not add service secrets to GitHub Actions when Vercel can hold them directly. Production remains unconfigured and must not be promoted without explicit release approval.
 
 ## Safe rollout checklist
 
