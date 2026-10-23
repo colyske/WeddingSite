@@ -22,9 +22,10 @@ export function supabaseConfig({ service = false } = {}) {
 
 export async function supabaseRequest(path, { service = false, token, method = "GET", body, prefer } = {}) {
   const { url, apiKey } = supabaseConfig({ service });
+  const authToken = token || apiKey;
   const headers = {
     apikey: apiKey,
-    Authorization: `Bearer ${token || apiKey}`,
+    Authorization: `Bearer ${authToken}`,
     Accept: "application/json"
   };
   if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -50,7 +51,7 @@ export async function supabaseRequest(path, { service = false, token, method = "
 
 export function bearerToken(req) {
   const value = req.headers.authorization || "";
-  const match = value.match(/^Bearer ([^\s]+)$/i);
+  const match = value.match(/^Bearer\s+(.+)$/i);
   return match?.[1] || null;
 }
 

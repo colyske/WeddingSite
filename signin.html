@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#203a31">
+  <title>WeddingSite — Sign in</title>
+  <link rel="stylesheet" href="app-shell.css">
+</head>
+<body class="center">
+  <main class="card narrow">
+    <a class="brand" href="/">WeddingSite</a>
+    <h1 id="title">Sign in</h1>
+    <p id="notice" class="notice" role="status" hidden></p>
+
+    <form id="password-form" hidden>
+      <p>Choose a password of at least 12 characters. You will use it to sign in from now on.</p>
+      <label for="new-password">New password</label>
+      <input id="new-password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+      <button type="submit">Save password</button>
+    </form>
+
+    <form id="signin-form">
+      <label for="email">Email address</label>
+      <input id="email" type="email" autocomplete="email" required>
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password">
+      <button type="submit">Sign in</button>
+      <div class="row">
+        <button type="button" class="link" id="magic">Email me a sign-in link</button>
+        <button type="button" class="link" id="recover">Forgot password?</button>
+      </div>
+    </form>
+    <p class="fine">Accounts are created by invitation. Your session is kept in this browser tab only.</p>
+  </main>
+  <script src="auth-client.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const notice = (text, bad) => { $("notice").hidden = !text; $("notice").textContent = text || ""; $("notice").className = "notice" + (bad ? " bad" : ""); };
+    const post = (action, body, token) => fetch("/api/auth?action=" + action, {
+      method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) }, body: JSON.stringify(body)
+    });
+
+    // Magic, invite and recovery links return tokens in the URL fragment; capture them, then clear the URL.
+    (() => {
+      const hash = new URLSearchParams(location.hash.slice(1));
+      if (hash.get("error_description")) notice(hash.get("error_description").replace(/\+/g, " ") + " Request a new link below.", true);
+      const token = hash.get("access_token");
+      if (!token) return;
+      history.replaceState(null, "", location.pathname);
+      WS.save({ accessToken: token, refreshToken: hash.get("refresh_token") || "" });
+      const type = hash.get("type");
+      if (type === "recovery" || type === "invite") {
+        $("title").textContent = type === "invite" ? "Welcome — set your password" : "Reset your password";
+        $("signin-form").hidden = true; $("password-form").hidden = false;
+      } else {
+        notice("Signed in. Taking you to your workspace…");
+        setTimeout(() => location.replace("/dashboard.html"), 600);
+      }
+    })();
+
+    $("password-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      const res = await post("set-password", { password: $("new-password").value }, WS.token());
+      const data = await res.json();
+      if (!res.ok) return notice(data.error || "Could not save the password.", true);
+      notice("Password saved. Taking you to your workspace…");
+      setTimeout(() => location.replace("/dashboard.html"), 700);
+    });
+
+    $("signin-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      notice("");
+      if (!$("password").value) return notice("Enter your password, or use “Email me a sign-in link”.", true);
+      const res = await post("sign-in", { email: $("email").value, password: $("password").value });
+      const data = await res.json();
+      if (!res.ok) return notice(data.error || "Sign-in failed.", true);
+      WS.save(data);
+      location.replace("/dashboard.html");
+    });
+
+    async function emailLink(mode) {
+      if (!$("email").value) return notice("Enter your email address first.", true);
+      const res = await post("email-link", { email: $("email").value, mode });
+      notice((await res.json()).message || "Request received.", !res.ok);
+    }
+    $("magic").addEventListener("click", () => emailLink("magic"));
+    $("recover").addEventListener("click", () => emailLink("recovery"));
+  </script>
+</body>
+</html>

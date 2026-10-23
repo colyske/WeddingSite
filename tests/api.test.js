@@ -11,7 +11,7 @@ import paymentOptionsHandler from "../api/payments/options.js";
 import checkoutHandler from "../api/payments/checkout.js";
 
 const ownerMigration = readFileSync(new URL("../supabase/migrations/202610160002_protected_owner_identity.sql", import.meta.url), "utf8");
-const platformMarkup = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+const platformMarkup = readFileSync(new URL("../demo.html", import.meta.url), "utf8");
 const platformScript = readFileSync(new URL("../platform.js", import.meta.url), "utf8");
 
 function responseRecorder() {

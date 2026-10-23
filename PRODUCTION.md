@@ -1,6 +1,6 @@
 # Production setup and readiness
 
-**Do not describe or use this repository as production-ready.** It contains a static browser demo plus a backend foundation. The dedicated WeddingSite Supabase project has both migrations applied, including the verified Colin-only Owner safeguards. PostgreSQL-compatible migration and Owner-behavior tests passed locally, and remote migration/grant status was checked. The Owner account itself is not bootstrapped because no confirmed Colin Supabase Auth account exists yet. A Vercel Preview is protected by Vercel authentication. The only current Production environment variable is `SUPABASE_DB_PASSWORD`; the app does not use it. Production application variables and frontend authentication/API integration are not configured, and no production release has been promoted. Real payments and irreversible financial actions remain disabled.
+**Do not describe or use this repository as production-ready.** It contains a static browser demo plus a backend foundation. The dedicated WeddingSite Supabase project has both migrations applied, including the verified Colin-only Owner safeguards. The confirmed `colyske@gmail.com` Auth account is now assigned the protected Owner role. The app still has no user-facing sign-in or Auth callback flow, so this database role cannot yet be used through the website. The Vercel Preview is protected by Vercel authentication. Real payments and irreversible financial actions remain disabled.
 
 ## What is present
 
@@ -11,8 +11,8 @@
 - GitHub Actions CI runs `npm run check` and `npm test`. It does not deploy. `vercel.json` configures security headers and an idempotent reminder-queue cron. The cron only queues work: no email or message is sent.
 - Current Vercel Preview (authentication-protected): [platform](https://weddingsite-git-colyske-wedlink-wedding-platform-colyske.vercel.app/) · [guest site](https://weddingsite-git-colyske-wedlink-wedding-platform-colyske.vercel.app/client-site.html). The Vercel project is linked to `colyske/WeddingSite`, with `main` as the production branch; the feature-branch alias follows its latest Preview deployment.
 - The dedicated Supabase project **WeddingSite** (`lvvtgxspwvmdhqyoyqyy`) is linked to this worktree. Migrations `202610160001` and `202610160002` are present in remote history. The unrelated `CareerBoost-AI` project (`zmirbpcrlrgrfdsfkdbb`) was not linked or changed.
-- The verified Colin account count and protected Owner profile count are currently both zero. No invitation or account was created. Owner bootstrap can run only after Colin creates and confirms an Auth account.
-- Vercel Preview has `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `WEDDINGSITE_LIVE_PAYMENTS_ENABLED=false`, plus `SUPABASE_DB_PASSWORD` in Preview, Development and Production scopes. No service-role, Turnstile or payment-provider variables are present. Values were not retrieved or printed. Payment APIs remain fail-closed.
+- A remote count/query confirms Colin's Auth email is verified and his profile has `platform_role = 'owner'`; no additional invitation or bootstrap is needed.
+- The original invite link was generated with a localhost redirect and must not be reused. The current Supabase Auth `site_url` is the protected Vercel feature-branch Preview; allowed redirects include that Preview and the local loopback development server. The Preview itself requires Vercel authentication, so a public, app-owned callback URL and real sign-in flow are still required before issuing future invitations.
 
 ## Known incomplete work / blockers
 
@@ -31,16 +31,25 @@ Create the accounts/projects in the chosen provider dashboards. Enter secret val
 
 ### Supabase
 
-The dedicated WeddingSite Supabase project already exists; do not use or link the unrelated CareerBoost project. Both migrations are applied there. The second migration binds the sole immutable Owner identity to Colin Mundia's confirmed Auth email (`colyske@gmail.com`) and verified user ID; it does not create an account, send an invite, or bootstrap a user automatically. The remote project currently has no confirmed Colin account and no Owner profile. Colin must first create an account using the normal Supabase Auth flow and complete email verification. Then, an authorized operator can run this in **WeddingSite → SQL Editor**:
+The dedicated WeddingSite Supabase project already exists; do not use or link the unrelated CareerBoost project. Both migrations are applied there. The second migration binds the sole immutable Owner identity to Colin Mundia's confirmed Auth email (`colyske@gmail.com`) and verified user ID. The remote project currently has one confirmed Colin account and one Owner profile. The one-time bootstrap has already been completed; do not invite or bootstrap him again.
+
+The Auth redirect settings were corrected after the original invitation was generated. The repository's `supabase/config.toml` now reflects the live Site URL and redirect allow-list instead of the old `localhost:3000` setting. The old link's localhost redirect cannot be fixed by upgrading the Supabase plan, and the link should not be reused. The current Site URL points at the Vercel feature-branch Preview, which is access-protected; do not issue future account invitations until a public, approved sign-in/callback URL is deployed and added to **Authentication → URL Configuration → Redirect URLs**. The old invitation URL exposed an access token and refresh token. Its access token is expired, and a remote check found no active Auth sessions for Colin. Do not paste or reuse the link or tokens.
+
+Do not run `supabase config push` just to change redirect URLs: `supabase config diff` currently shows unrelated Auth, MFA, database-pooler, and storage settings that differ between the local file and the live project. Review those differences separately before any config push.
 
 ```sql
-select public.bootstrap_protected_owner(id)
-from auth.users
-where lower(email) = 'colyske@gmail.com'
-  and email_confirmed_at is not null;
+select
+  count(*) as owner_profiles,
+  count(*) filter (
+    where lower(u.email) = 'colyske@gmail.com'
+      and u.email_confirmed_at is not null
+  ) as confirmed_colin_owner_profiles
+from public.profiles p
+left join auth.users u on u.id = p.id
+where p.platform_role = 'owner';
 ```
 
-The function independently verifies that the supplied ID belongs to the confirmed account; calling it before signup returns no rows. It is not executable by `anon`, `authenticated`, or ordinary app users. Verify the result in the privileged SQL Editor (`select count(*) from public.profiles where platform_role = 'owner';`). There must be exactly one row. No other account can bootstrap, promote itself, replace that ID, demote/delete the profile, or inspect Owner profile/audit metadata through the ordinary role APIs. Routine ownership transfer is disabled. Recovery is a separately reviewed, privileged break-glass procedure and must preserve the same verified identity requirement. Do not invite or provision the account on Colin's behalf.
+Expected result: `owner_profiles = 1` and `confirmed_colin_owner_profiles = 1`. The one-time bootstrap function is restricted to `service_role`; it independently verifies the confirmed account. No other account can bootstrap, promote itself, replace that ID, demote/delete the profile, or inspect Owner profile/audit metadata through the ordinary role APIs. Routine ownership transfer is disabled. Recovery is a separately reviewed, privileged break-glass procedure and must preserve the same verified identity requirement. Do not invite or provision the account on Colin's behalf.
 
 The application code does not read `SUPABASE_DB_PASSWORD`; the server endpoints read `SUPABASE_URL` and the public `SUPABASE_ANON_KEY` and/or server-only `SUPABASE_SERVICE_ROLE_KEY`. The database password is only useful to privileged database tooling such as Supabase CLI lint or direct database administration. Vercel does not automatically pass its configured value to a CLI running on a developer's computer. The CLI lint has not yet succeeded; use the Supabase Dashboard review or run the CLI with the value supplied through a secure local environment/secret store. Since the app does not need this password at runtime, remove it from Vercel Development/Preview/Production unless a separately reviewed Vercel server task has a specific need. Never commit or paste it into chat.
 
