@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WeddingSite Form Test</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
+    .test { border: 1px solid #ddd; padding: 1rem; margin: 1rem 0; border-radius: 8px; }
+    .pass { background: #efe; border-color: #0a0; }
+    .fail { background: #fee; border-color: #a00; }
+    code { background: #f0f0f0; padding: 0.2rem 0.4rem; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>WeddingSite Form Submission Test</h1>
+  <p>This page helps diagnose form submission issues.</p>
+
+  <div id="tests"></div>
+
+  <script>
+    const results = [];
+
+    function test(name, condition, details = "") {
+      const result = { name, pass: !!condition, details };
+      results.push(result);
+      
+      const el = document.createElement("div");
+      el.className = `test ${result.pass ? "pass" : "fail"}`;
+      el.innerHTML = `
+        <strong>${result.pass ? "✅" : "❌"} ${name}</strong>
+        ${details ? `<p>${details}</p>` : ""}
+      `;
+      document.getElementById("tests").appendChild(el);
+    }
+
+    // Test browser compatibility
+    test("HTMLFormElement.checkValidity exists", typeof HTMLFormElement.prototype.checkValidity === "function",
+      "Needed for form validation");
+    
+    test("SubmitEvent available", typeof SubmitEvent !== "undefined",
+      "Modern form submission event API");
+    
+    test("FormData API available", typeof FormData !== "undefined",
+      "For form data handling");
+
+    // Test DOM elements
+    const dummyForm = document.createElement("form");
+    test("Form.reset() works", typeof dummyForm.reset === "function",
+      "Required for form data persistence");
+    
+    const dummyInput = document.createElement("input");
+    test("Input.value works", "value" in dummyInput && typeof dummyInput.value === "string",
+      "Required for saving/restoring form data");
+
+    // Test common issues
+    test("Event preventDefault() works", (() => {
+      const evt = new Event("test", { cancelable: true });
+      evt.preventDefault();
+      return evt.defaultPrevented;
+    })(), "Required to prevent form default submission");
+
+    test("async/await supported", (() => {
+      try {
+        eval("(async () => {})()");
+        return true;
+      } catch {
+        return false;
+      }
+    })(), "Required for API calls in form handler");
+
+    // Summary
+    const passed = results.filter(r => r.pass).length;
+    const total = results.length;
+    
+    const summary = document.createElement("div");
+    summary.style.cssText = "margin-top: 2rem; padding: 1rem; background: #f9f9f9; border-radius: 8px;";
+    summary.innerHTML = `
+      <h2>Summary: ${passed}/${total} tests passed</h2>
+      ${passed === total ? 
+        `<p style="color: green;">✅ Your browser should support form submission correctly.</p>` :
+        `<p style="color: red;">⚠️ Some features may not work. Update your browser.</p>`
+      }
+    `;
+    document.getElementById("tests").appendChild(summary);
+  </script>
+</body>
+</html>
