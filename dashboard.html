@@ -19,18 +19,19 @@
 
     <!-- Create new wedding -->
     <div id="create-section" class="card">
-      <h2>Plan a new wedding</h2>
+      <h2>✨ Plan a new wedding</h2>
+      <p style="color: #7a8580; margin: 0 0 2rem;">Start your wedding journey with us</p>
       <form id="create-form">
-        <label for="couple-names">Couple names</label>
+        <label for="couple-names">👰 Couple names</label>
         <input id="couple-names" type="text" maxlength="120" placeholder="e.g. Sarah & John" required>
 
-        <label for="wedding-date">Date (optional)</label>
+        <label for="wedding-date">📅 Wedding date (optional)</label>
         <input id="wedding-date" type="date">
 
-        <label for="location">Location</label>
-        <input id="location" type="text" maxlength="120" placeholder="City, venue or coordinates">
+        <label for="location">📍 Location</label>
+        <input id="location" type="text" maxlength="120" placeholder="City, venue, or coordinates">
 
-        <label for="currency">Primary currency</label>
+        <label for="currency">💵 Primary currency</label>
         <select id="currency">
           <option value="USD">USD - US Dollar</option>
           <option value="KES">KES - Kenyan Shilling</option>
@@ -41,41 +42,45 @@
           <option value="ZAR">ZAR - South African Rand</option>
         </select>
 
-        <label for="max-capacity">Maximum guest capacity</label>
+        <label for="max-capacity">👥 Maximum guest capacity</label>
         <input id="max-capacity" type="number" min="1" value="150">
 
-        <label>Wedding colours (up to 4)</label>
+        <label>🎨 Wedding colour palette (up to 4 colours)</label>
         <div class="swatches" id="palette-preview">
-          <span style="background: #244b3a;" title="Forest Green"></span>
-          <span style="background: #a9b5a2;" title="Eucalyptus Sage"></span>
-          <span style="background: #be9b52;" title="Royal Gold"></span>
-          <span style="background: #eee8d9;" title="Ivory"></span>
+          <span id="swatch-1" style="background: #244b3a;" title="Forest Green"></span>
+          <span id="swatch-2" style="background: #a9b5a2;" title="Eucalyptus Sage"></span>
+          <span id="swatch-3" style="background: #be9b52;" title="Royal Gold"></span>
+          <span id="swatch-4" style="background: #eee8d9;" title="Ivory"></span>
         </div>
-        <button type="button" class="link" id="edit-palette">Edit colours</button>
+        <button type="button" class="link" id="edit-palette">✎ Edit colours</button>
 
         <div id="palette-editor" hidden>
-          <div class="grid">
-            <div>
+          <div class="color-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin: 1.5rem 0;">
+            <div class="color-input">
               <label for="color-1">Colour 1</label>
               <input id="color-1" type="color" value="#244b3a">
+              <small style="color: #7a8580;">Forest Green</small>
             </div>
-            <div>
+            <div class="color-input">
               <label for="color-2">Colour 2</label>
               <input id="color-2" type="color" value="#a9b5a2">
+              <small style="color: #7a8580;">Eucalyptus Sage</small>
             </div>
-            <div>
+            <div class="color-input">
               <label for="color-3">Colour 3</label>
               <input id="color-3" type="color" value="#be9b52">
+              <small style="color: #7a8580;">Royal Gold</small>
             </div>
-            <div>
+            <div class="color-input">
               <label for="color-4">Colour 4</label>
               <input id="color-4" type="color" value="#eee8d9">
+              <small style="color: #7a8580;">Ivory</small>
             </div>
           </div>
-          <button type="button" id="save-palette">Save colours</button>
+          <button type="button" id="save-palette">✓ Save colours</button>
         </div>
 
-        <button type="submit">Create wedding</button>
+        <button type="submit">✨ Create wedding</button>
       </form>
     </div>
 
@@ -91,10 +96,17 @@
   <script>
     const $ = id => document.getElementById(id);
     const notice = (text, bad) => { $("notice").hidden = !text; $("notice").textContent = text || ""; $("notice").className = "notice" + (bad ? " bad" : ""); };
+    
+    // Palette state management
+    let currentPalette = ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"];
+    
     const togglePalette = () => { $("palette-editor").hidden = !$("palette-editor").hidden; };
+    
     const updatePalettePreview = () => {
-      const colors = [$("color-1").value, $("color-2").value, $("color-3").value, $("color-4").value];
-      $("palette-preview").innerHTML = colors.map(c => `<span style="background: ${WS.esc(c)};"></span>`).join("");
+      currentPalette = [$("color-1").value, $("color-2").value, $("color-3").value, $("color-4").value];
+      for (let i = 0; i < 4; i++) {
+        $(`swatch-${i+1}`).style.background = currentPalette[i];
+      }
     };
 
     // Ensure session
@@ -106,34 +118,66 @@
       location.replace("/signin.html");
     });
 
-    // Palette editor
-    $("edit-palette").addEventListener("click", togglePalette);
-    $("color-1").addEventListener("input", updatePalettePreview);
-    $("color-2").addEventListener("input", updatePalettePreview);
-    $("color-3").addEventListener("input", updatePalettePreview);
-    $("color-4").addEventListener("input", updatePalettePreview);
-    $("save-palette").addEventListener("click", e => { e.preventDefault(); togglePalette(); });
+    // Palette editor - Initialize listeners
+    $("edit-palette").addEventListener("click", (e) => {
+      e.preventDefault();
+      togglePalette();
+    });
+    
+    // Color input listeners
+    for (let i = 1; i <= 4; i++) {
+      $(`color-${i}`).addEventListener("input", updatePalettePreview);
+    }
+    
+    // Save palette button
+    $("save-palette").addEventListener("click", (e) => { 
+      e.preventDefault(); 
+      updatePalettePreview(); // Ensure palette is updated
+      togglePalette(); 
+    });
 
-    // Create wedding
-    $("create-form").addEventListener("submit", async e => {
+    // Create wedding - FIX: Get palette before submitting form
+    $("create-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       notice("");
-      const palette = [$("color-1").value, $("color-2").value, $("color-3").value, $("color-4").value];
+      
+      // Get current palette (from color inputs or swatches)
+      const palette = [
+        $("color-1").value || currentPalette[0],
+        $("color-2").value || currentPalette[1],
+        $("color-3").value || currentPalette[2],
+        $("color-4").value || currentPalette[3]
+      ];
+      
+      // Get form values
+      const coupleNames = $("couple-names").value;
+      const weddingDate = $("wedding-date").value || null;
+      const location = $("location").value;
+      const currency = $("currency").value;
+      const maxCapacity = Number($("max-capacity").value);
+      
+      // Validate
+      if (!coupleNames.trim()) return notice("Please enter the couple's names.", true);
+      if (!location.trim()) return notice("Please enter a location.", true);
+      
+      // Make the request
       const res = await WS.api("/api/weddings?action=create", {
         method: "POST",
         body: JSON.stringify({
-          coupleNames: $("couple-names").value,
-          weddingDate: $("wedding-date").value || null,
-          location: $("location").value,
-          currency: $("currency").value,
-          maxCapacity: Number($("max-capacity").value),
+          coupleNames,
+          weddingDate,
+          location,
+          currency,
+          maxCapacity,
           palette
         })
       });
+      
       const data = await res.json();
       if (!res.ok) return notice(data.error || "Could not create wedding.", true);
-      notice(`Wedding created! Redirecting to edit page…`);
-      setTimeout(() => location.href = `/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}`, 600);
+      
+      notice(`🎉 Wedding created! Redirecting…`);
+      setTimeout(() => location.href = `/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}`, 800);
     });
 
     // Load weddings
@@ -151,21 +195,21 @@
       $("weddings-grid").innerHTML = weddings.map(w => `
         <div class="card">
           <div class="top" style="margin-bottom: .5rem;">
-            <span class="tag ${w.published_at ? "live" : ""}">${w.published_at ? "Published" : "Draft"}</span>
+            <span class="tag ${w.published_at ? "live" : ""}">${w.published_at ? "✓ Published" : "📋 Draft"}</span>
             <span class="fine">${new Date(w.created_at).toLocaleDateString()}</span>
           </div>
           <h3>${WS.esc(w.couple_names)}</h3>
-          <p class="fine">
-            ${w.wedding_date ? new Date(w.wedding_date).toLocaleDateString() : "(No date set)"}
-            ${w.public_location ? " • " + WS.esc(w.public_location) : ""}
+          <p class="fine" style="margin: 0.5rem 0;">
+            ${w.wedding_date ? '📅 ' + new Date(w.wedding_date).toLocaleDateString() : "(No date set)"}
+            ${w.public_location ? " • 📍 " + WS.esc(w.public_location) : ""}
           </p>
-          <p class="fine">Max ${w.max_guest_capacity} guests • ${w.currency}</p>
+          <p class="fine" style="margin: 0.5rem 0;">👥 Max ${w.max_guest_capacity} guests • ${w.currency}</p>
           <div class="swatches">
             ${(w.palette || []).map(c => `<span style="background: ${WS.esc(c)};"></span>`).join("")}
           </div>
-          <div class="row" style="margin-top: 1rem;">
-            <a class="btn" href="/wedding.html?id=${encodeURIComponent(w.id)}&slug=${encodeURIComponent(w.slug)}">Edit</a>
-            ${w.published_at ? `<a class="btn" href="/guest.html?slug=${encodeURIComponent(w.slug)}" target="_blank">View guest site</a>` : ""}
+          <div class="row" style="margin-top: 1.5rem;">
+            <a class="btn" href="/wedding.html?id=${encodeURIComponent(w.id)}&slug=${encodeURIComponent(w.slug)}">✎ Edit</a>
+            ${w.published_at ? `<a class="btn" href="/guest.html?slug=${encodeURIComponent(w.slug)}" target="_blank">👁 View</a>` : ""}
           </div>
         </div>
       `).join("");
