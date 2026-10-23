@@ -248,6 +248,16 @@
       e.preventDefault();
       notice("");
       
+      const form = $("create-form");
+      // Save form data before API call in case we need to restore it on error
+      const savedData = {
+        coupleNames: $("couple-names").value,
+        weddingDate: $("wedding-date").value,
+        location: $("location").value,
+        currency: $("currency").value,
+        maxCapacity: $("max-capacity").value
+      };
+      
       try {
         // Get current palette (from color inputs or swatches)
         const palette = [
@@ -258,20 +268,32 @@
         ];
         
         // Get form values
-        const coupleNames = $("couple-names").value;
-        const weddingDate = $("wedding-date").value || null;
-        const location = $("location").value;
-        const currency = $("currency").value;
-        const maxCapacity = Number($("max-capacity").value);
+        const coupleNames = savedData.coupleNames;
+        const weddingDate = savedData.weddingDate || null;
+        const location = savedData.location;
+        const currency = savedData.currency;
+        const maxCapacity = Number(savedData.maxCapacity);
         const venues = getVenueData();
         
         // Validate
-        if (!coupleNames.trim()) return notice("Please enter the couple's names.", true);
-        if (!location.trim()) return notice("Please enter a location.", true);
-        if (maxCapacity < 1) return notice("Maximum guest capacity must be at least 1.", true);
+        if (!coupleNames.trim()) {
+          notice("Please enter the couple's names.", true);
+          return;
+        }
+        if (!location.trim()) {
+          notice("Please enter a location.", true);
+          return;
+        }
+        if (maxCapacity < 1) {
+          notice("Maximum guest capacity must be at least 1.", true);
+          return;
+        }
         
         // Log for debugging
         console.log("Creating wedding:", { coupleNames, weddingDate, location, currency, maxCapacity, venues, palette });
+        
+        // Show "processing" state
+        notice("Creating your wedding...");
         
         // Make the request
         const res = await WS.api("/api/weddings?action=create", {
@@ -290,16 +312,29 @@
         const data = await res.json();
         if (!res.ok) {
           console.error("API error:", data);
-          return notice(data.error || `Error: ${res.status} ${res.statusText}`, true);
+          // Restore form data on error
+          $("couple-names").value = savedData.coupleNames;
+          $("wedding-date").value = savedData.weddingDate;
+          $("location").value = savedData.location;
+          $("currency").value = savedData.currency;
+          $("max-capacity").value = savedData.maxCapacity;
+          notice(data.error || `Error: ${res.status} ${res.statusText}`, true);
+          return;
         }
         
         notice(`🎉 Wedding created! Redirecting…`);
-        // Reset form after successful creation
-        $("create-form").reset();
-        // Refresh page after delay
+        // Reset form after successful creation only
+        form.reset();
+        // Refresh page after delay to show the new wedding
         setTimeout(() => location.href = `/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}`, 800);
       } catch (err) {
         console.error("Form submission error:", err);
+        // Restore form data on error
+        $("couple-names").value = savedData.coupleNames;
+        $("wedding-date").value = savedData.weddingDate;
+        $("location").value = savedData.location;
+        $("currency").value = savedData.currency;
+        $("max-capacity").value = savedData.maxCapacity;
         notice(`Error: ${err.message}`, true);
       }
     });
