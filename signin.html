@@ -68,9 +68,9 @@
           return;
         }
 
-        // Store token in sessionStorage and redirect
+        // Store token in sessionStorage and redirect to dashboard
         sessionStorage.setItem("access-token", data.accessToken);
-        window.location.href = data.profile?.role === "owner" ? "/dashboard.html" : "/platform.html";
+        window.location.href = "/dashboard.html";
       } catch (error) {
         errorEl.textContent = "Network error. Try again.";
         console.error("Sign-in error:", error);

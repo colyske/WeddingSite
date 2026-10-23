@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WeddingSite Dashboard</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 2rem; background: #f5f5f5; }
+    .container { max-width: 900px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
+    h1 { margin: 0; color: #244b3a; }
+    button { background: #244b3a; color: white; padding: 0.75rem 1.5rem; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #1a3a2e; }
+    .weddings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 2rem; margin: 2rem 0; }
+    .wedding-card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .wedding-card h3 { margin-top: 0; color: #244b3a; }
+    .wedding-card p { margin: 0.5rem 0; font-size: 0.9rem; color: #666; }
+    .wedding-status { display: inline-block; padding: 0.25rem 0.75rem; background: #e8f5e9; color: #2e7d32; border-radius: 20px; font-size: 0.8rem; margin-top: 1rem; }
+    .wedding-status.published { background: #fff3e0; color: #e65100; }
+    .new-wedding-form { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+    .form-group { margin-bottom: 1rem; }
+    label { display: block; font-weight: 600; margin-bottom: 0.5rem; }
+    input, select { width: 100%; padding: 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 1rem; }
+    input:focus, select:focus { outline: none; border-color: #244b3a; box-shadow: 0 0 0 3px rgba(36, 75, 58, 0.1); }
+    .error { color: #d32f2f; margin-top: 0.5rem; font-size: 0.9rem; }
+    .loading { display: none; color: #666; font-size: 0.9rem; margin-top: 1rem; }
+    .loading.show { display: block; }
+    .success { color: #2e7d32; background: #e8f5e9; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>WeddingSite Dashboard</h1>
+      <button onclick="signOut()">Sign Out</button>
+    </header>
+
+    <div id="user-info" style="display:none; background: white; padding: 1rem; border-radius: 4px; margin-bottom: 2rem;">
+      <strong id="user-email"></strong> · <span id="user-role"></span>
+    </div>
+
+    <div id="auth-required" style="display:none; background: #fff3cd; padding: 1.5rem; border-radius: 4px; margin-bottom: 2rem;">
+      <p>Please <a href="signin.html">sign in</a> to access your weddings.</p>
+    </div>
+
+    <div id="authenticated" style="display:none;">
+      <section class="new-wedding-form">
+        <h2>Create New Wedding</h2>
+        <form id="create-form" onsubmit="createWedding(event)">
+          <div class="form-group">
+            <label for="couple-names">Couple Names</label>
+            <input type="text" id="couple-names" required placeholder="e.g., Amara & Kito" />
+          </div>
+          <div class="form-group">
+            <label for="wedding-date">Wedding Date</label>
+            <input type="date" id="wedding-date" />
+          </div>
+          <div class="form-group">
+            <label for="location">Location</label>
+            <input type="text" id="location" placeholder="e.g., Nairobi, Kenya" />
+          </div>
+          <div class="form-group">
+            <label for="currency">Currency</label>
+            <select id="currency">
+              <option value="USD">USD (US Dollar)</option>
+              <option value="EUR">EUR (Euro)</option>
+              <option value="GBP">GBP (British Pound)</option>
+              <option value="KES">KES (Kenyan Shilling)</option>
+              <option value="CAD">CAD (Canadian Dollar)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="max-capacity">Max Guest Capacity</label>
+            <input type="number" id="max-capacity" value="150" min="1" />
+          </div>
+          <button type="submit">Create Wedding</button>
+          <div id="create-error" class="error"></div>
+          <div id="create-loading" class="loading">Creating wedding...</div>
+        </form>
+      </section>
+
+      <h2>Your Weddings</h2>
+      <div class="weddings-grid" id="weddings-grid">
+        <p style="grid-column: 1/-1; text-align: center; color: #999;">Loading weddings...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function loadUser() {
+      const token = sessionStorage.getItem("access-token");
+      const userInfo = document.getElementById("user-info");
+      const authRequired = document.getElementById("auth-required");
+      const authenticated = document.getElementById("authenticated");
+
+      if (!token) {
+        authRequired.style.display = "block";
+        authenticated.style.display = "none";
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/auth?action=me", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+
+        if (!res.ok) {
+          sessionStorage.removeItem("access-token");
+          authRequired.style.display = "block";
+          authenticated.style.display = "none";
+          return;
+        }
+
+        const data = await res.json();
+        document.getElementById("user-email").textContent = data.user.email;
+        document.getElementById("user-role").textContent = `Role: ${data.profile.role || "guest"}`;
+        userInfo.style.display = "block";
+        authenticated.style.display = "block";
+
+        loadWeddings();
+      } catch (error) {
+        console.error("load user failed", error);
+        authRequired.style.display = "block";
+        authenticated.style.display = "none";
+      }
+    }
+
+    async function loadWeddings() {
+      const token = sessionStorage.getItem("access-token");
+      if (!token) return;
+
+      try {
+        const res = await fetch("/api/weddings", {
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+
+        if (!res.ok) throw new Error("Failed to fetch weddings");
+        const data = await res.json();
+
+        const grid = document.getElementById("weddings-grid");
+        if (!data.weddings || data.weddings.length === 0) {
+          grid.innerHTML = "<p style='grid-column: 1/-1; text-align: center; color: #999;'>No weddings yet. Create one above!</p>";
+          return;
+        }
+
+        grid.innerHTML = data.weddings.map(w => `
+          <div class="wedding-card">
+            <h3>${w.couple_names}</h3>
+            <p><strong>${w.wedding_date ? new Date(w.wedding_date).toLocaleDateString() : "Date TBD"}</strong></p>
+            <p>Currency: ${w.currency}</p>
+            <span class="wedding-status ${w.published_at ? "published" : ""}">
+              ${w.published_at ? "Published" : "Draft"}
+            </span>
+            <div style="margin-top: 1rem;">
+              <a href="wedding-details.html?id=${w.id}" style="color: #244b3a; text-decoration: none;">View & Edit →</a>
+            </div>
+          </div>
+        `).join("");
+      } catch (error) {
+        console.error("load weddings failed", error);
+        const grid = document.getElementById("weddings-grid");
+        grid.innerHTML = "<p style='grid-column: 1/-1; color: #d32f2f;'>Error loading weddings.</p>";
+      }
+    }
+
+    async function createWedding(event) {
+      event.preventDefault();
+      const token = sessionStorage.getItem("access-token");
+      if (!token) return;
+
+      const form = document.getElementById("create-form");
+      const errorEl = document.getElementById("create-error");
+      const loadingEl = document.getElementById("create-loading");
+      errorEl.textContent = "";
+      loadingEl.classList.add("show");
+
+      try {
+        const res = await fetch("/api/weddings", {
+          method: "POST",
+          headers: { 
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            coupleNames: document.getElementById("couple-names").value,
+            weddingDate: document.getElementById("wedding-date").value || null,
+            location: document.getElementById("location").value,
+            currency: document.getElementById("currency").value,
+            maxCapacity: parseInt(document.getElementById("max-capacity").value) || 150
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          errorEl.textContent = data.error || "Failed to create wedding.";
+          return;
+        }
+
+        form.reset();
+        loadingEl.classList.remove("show");
+        loadWeddings();
+      } catch (error) {
+        console.error("create wedding failed", error);
+        errorEl.textContent = "Network error. Try again.";
+      } finally {
+        loadingEl.classList.remove("show");
+      }
+    }
+
+    async function signOut() {
+      const token = sessionStorage.getItem("access-token");
+      if (token) {
+        try {
+          await fetch("/api/auth?action=sign-out", { method: "POST", headers: { "Authorization": `Bearer ${token}` } });
+        } catch {}
+      }
+      sessionStorage.removeItem("access-token");
+      window.location.href = "/signin.html";
+    }
+
+    loadUser();
+  </script>
+</body>
+</html>
