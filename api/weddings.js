@@ -6,6 +6,13 @@ const COLOR = /^#[0-9a-f]{6}$/i;
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
 const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,public_location,currency,max_guest_capacity,palette,published_at,created_at";
 
+// Load venues and payout info for a wedding
+const loadWeddingDetails = async (weddingId, opts) => {
+  const venues = await supabaseRequest(`/rest/v1/venues?wedding_id=eq.${weddingId}&select=id,name,event_time,map_link,description,is_main,sort_order&order=sort_order.asc`, opts).catch(() => []);
+  const payout = await supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${weddingId}`, opts).catch(() => null);
+  return { venues: venues || [], payout };
+};
+
 // Authenticated Client workspace API. All reads/writes run as the signed-in user so RLS applies.
 export default async function handler(req, res) {
   const session = await requireAuth(req, res);
@@ -28,7 +35,8 @@ export default async function handler(req, res) {
       const rows = await supabaseRequest(
         `/rest/v1/weddings?id=eq.${req.query.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=${FIELDS}`, opts);
       if (!rows?.length) return sendJson(res, 404, { error: "Wedding not found." });
-      return sendJson(res, 200, { wedding: rows[0] });
+      const details = await loadWeddingDetails(rows[0].id, opts);
+      return sendJson(res, 200, { wedding: { ...rows[0], ...details } });
     }
 
     if (action === "create") {
@@ -79,7 +87,38 @@ export default async function handler(req, res) {
       const rows = await supabaseRequest(`/rest/v1/weddings?id=eq.${body.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=${FIELDS}`,
         { ...opts, method: "PATCH", body: patch, prefer: "return=representation" });
       if (!rows?.length) return sendJson(res, 404, { error: "Wedding not found." });
-      return sendJson(res, 200, { wedding: rows[0] });
+      
+      // Update venues if provided
+      if (Array.isArray(body.venues)) {
+        try {
+          const existing = (await supabaseRequest(`/rest/v1/venues?wedding_id=eq.${body.weddingId}&select=id`, opts) || []).map(v => v.id);
+          const incoming = body.venues.filter(v => v && v.id).map(v => v.id);
+          const toDelete = existing.filter(id => !incoming.includes(id));
+          for (const id of toDelete) {
+            await supabaseRequest(`/rest/v1/venues?id=eq.${id}`, { ...opts, method: "DELETE" }).catch(() => null);
+          }
+          for (let i = 0; i < body.venues.length; i++) {
+            const v = body.venues[i];
+            if (!v.name || !v.name.trim()) continue;
+            const venue = {
+              name: v.name.trim().slice(0, 100),
+              event_time: v.eventTime || null,
+              map_link: v.mapLink || null,
+              description: v.description || null,
+              is_main: v.isMain || false,
+              sort_order: i
+            };
+            if (v.id && existing.includes(v.id)) {
+              await supabaseRequest(`/rest/v1/venues?id=eq.${v.id}`, { ...opts, method: "PATCH", body: venue }).catch(() => null);
+            } else if (!v.id) {
+              await supabaseRequest("/rest/v1/venues", { ...opts, method: "POST", body: { wedding_id: body.weddingId, ...venue } }).catch(() => null);
+            }
+          }
+        } catch (e) { console.warn("Venue update failed:", e.message); }
+      }
+      
+      const details = await loadWeddingDetails(rows[0].id, opts);
+      return sendJson(res, 200, { wedding: { ...rows[0], ...details } });
     }
 
     if (action === "publish") {
@@ -88,9 +127,52 @@ export default async function handler(req, res) {
       try {
         await supabaseRequest("/rest/v1/rpc/publish_wedding_with_fee", { ...opts, method: "POST", body: { p_wedding_id: body.weddingId, p_confirmed: true } });
       } catch (error) {
-        return sendJson(res, 409, { error: error.message });
+        const msg = error.message || "";
+        let userMessage = msg;
+        if (msg.includes("publication fee")) {
+          userMessage = "Publication fee must be paid or waived. Contact platform support to waive for testing.";
+        } else if (msg.includes("web address")) {
+          userMessage = "Set a public web address (slug) before publishing.";
+        } else if (msg.includes("confirmation")) {
+          userMessage = "Publication requires explicit confirmation.";
+        }
+        return sendJson(res, 409, { error: userMessage });
       }
-      return sendJson(res, 200, { published: true });
+      const details = await loadWeddingDetails(body.weddingId, opts);
+      const rows = await supabaseRequest(
+        `/rest/v1/weddings?id=eq.${body.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=${FIELDS}`, opts);
+      return sendJson(res, 200, { published: true, wedding: rows?.[0] ? { ...rows[0], ...details } : null });
+    }
+
+    if (action === "payout") {
+      if (!methodOnly(req, res, ["GET", "POST"])) return;
+      if (!UUID.test(String(req.query.weddingId || body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+      
+      const weddingId = body.weddingId || req.query.weddingId;
+      // Verify ownership
+      const owned = await supabaseRequest(
+        `/rest/v1/weddings?id=eq.${weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=id`, opts);
+      if (!owned?.length) return sendJson(res, 404, { error: "Wedding not found." });
+      
+      if (req.method === "GET") {
+        const payout = await supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${weddingId}&select=method,display_mask,verified`, opts).catch(() => null);
+        return sendJson(res, 200, { payout: payout || { method: null, display_mask: "", verified: false } });
+      }
+      
+      if (req.method === "POST") {
+        const { method, detailsEncrypted, displayMask } = body;
+        if (!["mpesa", "bank_transfer", "stripe", "paystack", "other"].includes(method)) {
+          return sendJson(res, 400, { error: "Choose a valid payout method." });
+        }
+        const payload = { method, details_encrypted: detailsEncrypted, display_mask: displayMask || "" };
+        await supabaseRequest("/rest/v1/payout_preferences", {
+          ...opts, method: "UPSERT", body: { wedding_id: weddingId, ...payload }
+        }).catch(e => {
+          console.warn("Payout upsert failed:", e.message);
+          throw e;
+        });
+        return sendJson(res, 200, { payout: payload });
+      }
     }
 
     if (action === "rsvps") {

@@ -121,10 +121,15 @@
   <script>
 (async () => {
     const $ = id => document.getElementById(id);
-    const notice = (text, bad) => { $("notice").hidden = !text; $("notice").textContent = text || ""; $("notice").className = "notice" + (bad ? " bad" : ""); };
+    const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const notice = (text, bad) => { 
+      const el = $("notice");
+      el.hidden = !text; 
+      el.textContent = text || ""; 
+      el.className = "notice" + (bad ? " bad" : ""); 
+    };
     const params = new URLSearchParams(location.search);
     const weddingId = params.get("id");
-    const weddingSlug = params.get("slug");
 
     if (!WS.token()) return location.replace("/signin.html");
     if (!weddingId) return notice("Wedding ID missing.", true);
@@ -134,60 +139,79 @@
 
     // Load wedding
     async function loadWedding() {
-      const res = await WS.api(`/api/weddings?action=get&weddingId=${encodeURIComponent(weddingId)}`);
-      const data = await res.json();
-      if (!res.ok) return notice(data.error || "Could not load wedding.", true);
+      try {
+        const res = await WS.api(`/api/weddings?action=get&weddingId=${encodeURIComponent(weddingId)}`);
+        const data = await res.json();
+        if (!res.ok) return notice(data.error || "Could not load wedding.", true);
 
-      const w = data.wedding;
-      $("title").textContent = `${WS.esc(w.couple_names)} — Wedding`;
-      $("couple-names").value = w.couple_names || "";
-      $("welcome-story").value = w.welcome_story || "";
-      $("wedding-date").value = w.wedding_date ? w.wedding_date.split("T")[0] : "";
-      $("location").value = w.public_location || "";
-      $("currency").value = w.currency || "USD";
-      $("max-capacity").value = w.max_guest_capacity || 150;
-      $("palette-preview").innerHTML = (w.palette || []).map(c => `<span style="background: ${WS.esc(c)};"></span>`).join("");
+        const w = data.wedding;
+        document.title = `${esc(w.couple_names)} — Wedding`;
+        $("title").textContent = document.title;
+        $("couple-names").value = w.couple_names || "";
+        $("welcome-story").value = w.welcome_story || "";
+        $("wedding-date").value = w.wedding_date ? w.wedding_date.split("T")[0] : "";
+        $("location").value = w.public_location || "";
+        $("currency").value = w.currency || "USD";
+        $("max-capacity").value = w.max_guest_capacity || 150;
+        $("palette-preview").innerHTML = (w.palette || []).map(c => `<span style="background: ${esc(c)};"></span>`).join("");
 
-      $("edit-section").hidden = false;
+        $("edit-section").hidden = false;
 
-      if (w.published_at) {
-        $("published-section").hidden = false;
-        $("guest-site-url").textContent = `Guest site: ${location.origin}/guest.html?slug=${encodeURIComponent(w.slug)}`;
-        $("view-guest-site").href = `/guest.html?slug=${encodeURIComponent(w.slug)}`;
-        $("rsvps-section").hidden = false;
-        $("bids-section").hidden = false;
-        loadRsvps();
-        loadBids();
-      } else {
-        $("publish-btn").disabled = false;
+        if (w.published_at) {
+          $("published-section").hidden = false;
+          const guestUrl = `${location.origin}/guest.html?slug=${encodeURIComponent(w.slug)}`;
+          $("guest-site-url").textContent = `Guest site: ${guestUrl}`;
+          $("view-guest-site").href = guestUrl;
+          $("rsvps-section").hidden = false;
+          $("bids-section").hidden = false;
+          $("publish-btn").hidden = true;
+          loadRsvps();
+          loadBids();
+        } else {
+          $("publish-btn").hidden = false;
+        }
+      } catch (err) {
+        console.error("Load failed:", err);
+        notice("Could not load wedding: " + (err.message || "network error"), true);
       }
     }
 
     // Save changes
     $("edit-form").addEventListener("submit", async e => {
       e.preventDefault();
+      if ($("edit-form").dataset.submitting) return;
+      $("edit-form").dataset.submitting = "true";
       notice("");
-      const res = await WS.api("/api/weddings?action=update", {
-        method: "POST",
-        body: JSON.stringify({
-          weddingId,
-          coupleNames: $("couple-names").value,
-          welcomeStory: $("welcome-story").value,
-          weddingDate: $("wedding-date").value || null,
-          location: $("location").value,
-          currency: $("currency").value,
-          maxCapacity: Number($("max-capacity").value)
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) return notice(data.error || "Could not save wedding.", true);
-      notice("Changes saved.");
+      try {
+        const res = await WS.api("/api/weddings?action=update", {
+          method: "POST",
+          body: JSON.stringify({
+            weddingId,
+            coupleNames: $("couple-names").value,
+            welcomeStory: $("welcome-story").value,
+            weddingDate: $("wedding-date").value || null,
+            location: $("location").value,
+            currency: $("currency").value,
+            maxCapacity: Number($("max-capacity").value)
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) return notice(data.error || "Could not save wedding.", true);
+        notice("Changes saved.");
+      } catch (err) {
+        console.error("Save failed:", err);
+        notice("Could not save wedding: " + (err.message || "network error"), true);
+      } finally {
+        delete $("edit-form").dataset.submitting;
+      }
     });
 
     // Publish
     $("publish-btn").addEventListener("click", () => {
       $("edit-section").hidden = true;
       $("publish-section").hidden = false;
+      $("publish-message").hidden = true;
+      $("publish-message").textContent = "";
     });
 
     $("cancel-publish").addEventListener("click", () => {
@@ -196,60 +220,85 @@
     });
 
     $("confirm-publish").addEventListener("click", async () => {
-      const res = await WS.api("/api/weddings?action=publish", {
-        method: "POST",
-        body: JSON.stringify({ weddingId })
-      });
-      const data = await res.json();
-      if (!res.ok) return $("publish-message").textContent = data.error || "Could not publish.";
-      
-      $("publish-section").hidden = true;
-      $("published-section").hidden = false;
-      $("rsvps-section").hidden = false;
-      $("bids-section").hidden = false;
-      $("publish-message").hidden = true;
+      if ($("confirm-publish").dataset.submitting) return;
+      $("confirm-publish").dataset.submitting = "true";
+      try {
+        const res = await WS.api("/api/weddings?action=publish", {
+          method: "POST",
+          body: JSON.stringify({ weddingId })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          $("publish-message").textContent = data.error || "Could not publish. Please check required fields and try again.";
+          $("publish-message").hidden = false;
+          return;
+        }
+        
+        $("publish-section").hidden = true;
+        $("published-section").hidden = false;
+        $("rsvps-section").hidden = false;
+        $("bids-section").hidden = false;
+        $("publish-btn").hidden = true;
+        notice("Wedding published successfully!");
+        loadRsvps();
+        loadBids();
+      } catch (err) {
+        console.error("Publish failed:", err);
+        $("publish-message").textContent = "Network error: " + (err.message || "could not publish");
+        $("publish-message").hidden = false;
+      } finally {
+        delete $("confirm-publish").dataset.submitting;
+      }
     });
 
     // Load RSVPs
     async function loadRsvps() {
-      const res = await WS.api(`/api/weddings?action=rsvps&weddingId=${encodeURIComponent(weddingId)}`);
-      const data = await res.json();
-      if (!res.ok) return;
-      
-      const rsvps = data.rsvps || [];
-      if (rsvps.length === 0) return;
-      
-      $("rsvps-body").innerHTML = rsvps.map(r => `
-        <tr>
-          <td>${WS.esc(r.guest_name)}</td>
-          <td>${WS.esc(r.guest_email)}</td>
-          <td>${r.attending ? "✓ Yes" : "✗ No"}</td>
-          <td>${WS.esc(r.dietary_notes || "—")}</td>
-          <td>${new Date(r.created_at).toLocaleDateString()}</td>
-        </tr>
-      `).join("");
-      $("no-rsvps").hidden = true;
+      try {
+        const res = await WS.api(`/api/weddings?action=rsvps&weddingId=${encodeURIComponent(weddingId)}`);
+        const data = await res.json();
+        if (!res.ok) return;
+        
+        const rsvps = data.rsvps || [];
+        if (rsvps.length === 0) return;
+        
+        $("rsvps-body").innerHTML = rsvps.map(r => `
+          <tr>
+            <td>${esc(r.guest_name)}</td>
+            <td>${esc(r.guest_email)}</td>
+            <td>${r.attending ? "✓ Yes" : "✗ No"}</td>
+            <td>${esc(r.dietary_notes || "—")}</td>
+            <td>${new Date(r.created_at).toLocaleDateString()}</td>
+          </tr>
+        `).join("");
+        $("no-rsvps").hidden = true;
+      } catch (err) {
+        console.error("Load RSVPs failed:", err);
+      }
     }
 
     // Load bids
     async function loadBids() {
-      const res = await WS.api(`/api/weddings?action=bids&weddingId=${encodeURIComponent(weddingId)}`);
-      const data = await res.json();
-      if (!res.ok) return;
-      
-      const bids = data.bids || [];
-      if (bids.length === 0) return;
-      
-      $("bids-body").innerHTML = bids.map(b => `
-        <tr>
-          <td>${WS.esc(b.song_title)}</td>
-          <td>${WS.esc(b.artist || "—")}</td>
-          <td>${WS.money(b.bid_amount_minor, b.wedding_currency)}</td>
-          <td>${WS.esc(b.guest_name || "Anonymous")}</td>
-          <td>${new Date(b.created_at).toLocaleDateString()}</td>
-        </tr>
-      `).join("");
-      $("no-bids").hidden = true;
+      try {
+        const res = await WS.api(`/api/weddings?action=bids&weddingId=${encodeURIComponent(weddingId)}`);
+        const data = await res.json();
+        if (!res.ok) return;
+        
+        const bids = data.bids || [];
+        if (bids.length === 0) return;
+        
+        $("bids-body").innerHTML = bids.map(b => `
+          <tr>
+            <td>${esc(b.song_title)}</td>
+            <td>${esc(b.artist || "—")}</td>
+            <td>${WS.money(b.bid_amount_minor, b.wedding_currency)}</td>
+            <td>${esc(b.guest_name || "Anonymous")}</td>
+            <td>${new Date(b.created_at).toLocaleDateString()}</td>
+          </tr>
+        `).join("");
+        $("no-bids").hidden = true;
+      } catch (err) {
+        console.error("Load bids failed:", err);
+      }
     }
 
     loadWedding();
