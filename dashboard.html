@@ -29,7 +29,7 @@
         <input id="wedding-date" type="date">
 
         <label for="location">📍 Location</label>
-        <input id="location" type="text" maxlength="120" placeholder="City, venue, or coordinates">
+        <input id="location" type="text" maxlength="120" placeholder="City, venue, or coordinates" required>
 
         <label for="currency">💵 Primary currency</label>
         <select id="currency">
@@ -296,29 +296,42 @@
         notice("Creating your wedding...");
         
         // Make the request
-        const res = await WS.api("/api/weddings?action=create", {
-          method: "POST",
-          body: JSON.stringify({
-            coupleNames,
-            weddingDate,
-            location,
-            currency,
-            maxCapacity,
-            palette,
-            venues
-          })
-        });
-        
-        const data = await res.json();
-        if (!res.ok) {
-          console.error("API error:", data);
+        let res, data;
+        try {
+          res = await WS.api("/api/weddings?action=create", {
+            method: "POST",
+            body: JSON.stringify({
+              coupleNames,
+              weddingDate,
+              location,
+              currency,
+              maxCapacity,
+              palette,
+              venues
+            })
+          });
+          
+          data = await res.json();
+          if (!res.ok) {
+            console.error("API error:", res.status, data);
+            // Restore form data on error
+            $("couple-names").value = savedData.coupleNames;
+            $("wedding-date").value = savedData.weddingDate;
+            $("location").value = savedData.location;
+            $("currency").value = savedData.currency;
+            $("max-capacity").value = savedData.maxCapacity;
+            notice(data.error || `Error: ${res.status} ${res.statusText}`, true);
+            return;
+          }
+        } catch (apiErr) {
+          console.error("API call failed:", apiErr);
           // Restore form data on error
           $("couple-names").value = savedData.coupleNames;
           $("wedding-date").value = savedData.weddingDate;
           $("location").value = savedData.location;
           $("currency").value = savedData.currency;
           $("max-capacity").value = savedData.maxCapacity;
-          notice(data.error || `Error: ${res.status} ${res.statusText}`, true);
+          notice(`Network error: ${apiErr.message}`, true);
           return;
         }
         
