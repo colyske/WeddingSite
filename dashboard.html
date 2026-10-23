@@ -83,6 +83,12 @@
         <label>📍 Venues (optional)</label>
         <div id="venues-container" style="display: flex; flex-direction: column; gap: 1rem;">
           <div class="venue-item" style="padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9;">
+            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center;">
+              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0;">
+                <input type="radio" class="venue-main" name="main-venue" value="0" checked style="cursor: pointer;">
+                <span style="font-weight: 500;">Main Venue</span>
+              </label>
+            </div>
             <input type="text" class="venue-name" placeholder="e.g. Church Service" maxlength="100" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
             <input type="time" class="venue-time" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
             <input type="url" class="venue-map" placeholder="Map link (Google Maps, Apple Maps, etc.)" maxlength="500" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
@@ -130,30 +136,43 @@
       location.replace("/signin.html");
     });
 
-    // Palette editor - Initialize listeners
-    $("edit-palette").addEventListener("click", (e) => {
-      e.preventDefault();
-      togglePalette();
-    });
-    
-    // Color input listeners
-    for (let i = 1; i <= 4; i++) {
-      $(`color-${i}`).addEventListener("input", updatePalettePreview);
-    }
-    
-    // Save palette button
-    $("save-palette").addEventListener("click", (e) => { 
-      e.preventDefault(); 
-      updatePalettePreview(); // Ensure palette is updated
-      togglePalette(); 
-    });
+    // Palette editor - Initialize listeners (after DOM is ready)
+    setTimeout(() => {
+      const editBtn = $("edit-palette");
+      if (editBtn) {
+        editBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          togglePalette();
+        });
+      }
+      
+      // Color input listeners
+      for (let i = 1; i <= 4; i++) {
+        const colorInput = $(`color-${i}`);
+        if (colorInput) {
+          colorInput.addEventListener("input", updatePalettePreview);
+        }
+      }
+      
+      // Save palette button
+      const savePaletteBtn = $("save-palette");
+      if (savePaletteBtn) {
+        savePaletteBtn.addEventListener("click", (e) => { 
+          e.preventDefault(); 
+          updatePalettePreview(); // Ensure palette is updated
+          togglePalette(); 
+        });
+      }
+    }, 0);
 
     // Venues management
     let venueCount = 1;
     
     const getVenueData = () => {
       const venues = [];
-      document.querySelectorAll(".venue-item").forEach((item) => {
+      const mainVenueValue = document.querySelector('input[name="main-venue"]:checked')?.value;
+      
+      document.querySelectorAll(".venue-item").forEach((item, idx) => {
         const name = item.querySelector(".venue-name")?.value || "";
         const time = item.querySelector(".venue-time")?.value || "";
         const map = item.querySelector(".venue-map")?.value || "";
@@ -161,7 +180,13 @@
         
         // Only add if at least one field is filled
         if (name.trim() || time || map.trim() || description.trim()) {
-          venues.push({ name: name.trim(), time, map: map.trim(), description: description.trim() });
+          venues.push({
+            name: name.trim(),
+            time,
+            map: map.trim(),
+            description: description.trim(),
+            isMain: String(idx) === mainVenueValue
+          });
         }
       });
       return venues;
@@ -174,6 +199,12 @@
       venueItem.className = "venue-item";
       venueItem.style.cssText = "padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9;";
       venueItem.innerHTML = `
+        <div style="display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center;">
+          <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0;">
+            <input type="radio" class="venue-main" name="main-venue" value="${venueCount - 1}" style="cursor: pointer;">
+            <span style="font-weight: 500;">Main Venue</span>
+          </label>
+        </div>
         <input type="text" class="venue-name" placeholder="e.g. Reception Hall" maxlength="100" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
         <input type="time" class="venue-time" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
         <input type="url" class="venue-map" placeholder="Map link (Google Maps, Apple Maps, etc.)" maxlength="500" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
@@ -184,9 +215,18 @@
       venueItem.querySelector(".remove-venue").addEventListener("click", (e) => {
         e.preventDefault();
         venueItem.remove();
+        // Update radio button values after removal
+        updateVenueRadioValues();
       });
       
       container.appendChild(venueItem);
+    };
+    
+    const updateVenueRadioValues = () => {
+      document.querySelectorAll(".venue-item").forEach((item, idx) => {
+        const radio = item.querySelector('input[name="main-venue"]');
+        if (radio) radio.value = String(idx);
+      });
     };
     
     $("add-venue").addEventListener("click", (e) => {
@@ -199,53 +239,69 @@
       btn.addEventListener("click", (e) => {
         e.preventDefault();
         btn.closest(".venue-item").remove();
+        updateVenueRadioValues();
       });
     });
 
-    // Create wedding - FIX: Get palette before submitting form
+    // Create wedding - with detailed error handling
     $("create-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       notice("");
       
-      // Get current palette (from color inputs or swatches)
-      const palette = [
-        $("color-1").value || currentPalette[0],
-        $("color-2").value || currentPalette[1],
-        $("color-3").value || currentPalette[2],
-        $("color-4").value || currentPalette[3]
-      ];
-      
-      // Get form values
-      const coupleNames = $("couple-names").value;
-      const weddingDate = $("wedding-date").value || null;
-      const location = $("location").value;
-      const currency = $("currency").value;
-      const maxCapacity = Number($("max-capacity").value);
-      const venues = getVenueData();
-      
-      // Validate
-      if (!coupleNames.trim()) return notice("Please enter the couple's names.", true);
-      if (!location.trim()) return notice("Please enter a location.", true);
-      
-      // Make the request
-      const res = await WS.api("/api/weddings?action=create", {
-        method: "POST",
-        body: JSON.stringify({
-          coupleNames,
-          weddingDate,
-          location,
-          currency,
-          maxCapacity,
-          palette,
-          venues
-        })
-      });
-      
-      const data = await res.json();
-      if (!res.ok) return notice(data.error || "Could not create wedding.", true);
-      
-      notice(`🎉 Wedding created! Redirecting…`);
-      setTimeout(() => location.href = `/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}`, 800);
+      try {
+        // Get current palette (from color inputs or swatches)
+        const palette = [
+          $("color-1").value || currentPalette[0],
+          $("color-2").value || currentPalette[1],
+          $("color-3").value || currentPalette[2],
+          $("color-4").value || currentPalette[3]
+        ];
+        
+        // Get form values
+        const coupleNames = $("couple-names").value;
+        const weddingDate = $("wedding-date").value || null;
+        const location = $("location").value;
+        const currency = $("currency").value;
+        const maxCapacity = Number($("max-capacity").value);
+        const venues = getVenueData();
+        
+        // Validate
+        if (!coupleNames.trim()) return notice("Please enter the couple's names.", true);
+        if (!location.trim()) return notice("Please enter a location.", true);
+        if (maxCapacity < 1) return notice("Maximum guest capacity must be at least 1.", true);
+        
+        // Log for debugging
+        console.log("Creating wedding:", { coupleNames, weddingDate, location, currency, maxCapacity, venues, palette });
+        
+        // Make the request
+        const res = await WS.api("/api/weddings?action=create", {
+          method: "POST",
+          body: JSON.stringify({
+            coupleNames,
+            weddingDate,
+            location,
+            currency,
+            maxCapacity,
+            palette,
+            venues
+          })
+        });
+        
+        const data = await res.json();
+        if (!res.ok) {
+          console.error("API error:", data);
+          return notice(data.error || `Error: ${res.status} ${res.statusText}`, true);
+        }
+        
+        notice(`🎉 Wedding created! Redirecting…`);
+        // Reset form after successful creation
+        $("create-form").reset();
+        // Refresh page after delay
+        setTimeout(() => location.href = `/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}`, 800);
+      } catch (err) {
+        console.error("Form submission error:", err);
+        notice(`Error: ${err.message}`, true);
+      }
     });
 
     // Load weddings
