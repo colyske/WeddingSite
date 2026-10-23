@@ -80,6 +80,18 @@
           <button type="button" id="save-palette">✓ Save colours</button>
         </div>
 
+        <label>📍 Venues (optional)</label>
+        <div id="venues-container" style="display: flex; flex-direction: column; gap: 1rem;">
+          <div class="venue-item" style="padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9;">
+            <input type="text" class="venue-name" placeholder="e.g. Church Service" maxlength="100" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
+            <input type="time" class="venue-time" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
+            <input type="url" class="venue-map" placeholder="Map link (Google Maps, Apple Maps, etc.)" maxlength="500" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
+            <textarea class="venue-description" placeholder="Description (e.g., Church address, parking info)" maxlength="500" style="display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; resize: vertical; min-height: 60px;"></textarea>
+            <button type="button" class="remove-venue" style="margin-top: 0.75rem; padding: 0.5rem 1rem; background: #d9534f; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">✕ Remove venue</button>
+          </div>
+        </div>
+        <button type="button" id="add-venue" style="margin-top: 0.75rem; padding: 0.75rem 1.5rem; background: #5cb85c; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 500;">+ Add another venue</button>
+
         <button type="submit">✨ Create wedding</button>
       </form>
     </div>
@@ -136,6 +148,60 @@
       togglePalette(); 
     });
 
+    // Venues management
+    let venueCount = 1;
+    
+    const getVenueData = () => {
+      const venues = [];
+      document.querySelectorAll(".venue-item").forEach((item) => {
+        const name = item.querySelector(".venue-name")?.value || "";
+        const time = item.querySelector(".venue-time")?.value || "";
+        const map = item.querySelector(".venue-map")?.value || "";
+        const description = item.querySelector(".venue-description")?.value || "";
+        
+        // Only add if at least one field is filled
+        if (name.trim() || time || map.trim() || description.trim()) {
+          venues.push({ name: name.trim(), time, map: map.trim(), description: description.trim() });
+        }
+      });
+      return venues;
+    };
+    
+    const addVenueRow = () => {
+      venueCount++;
+      const container = $("venues-container");
+      const venueItem = document.createElement("div");
+      venueItem.className = "venue-item";
+      venueItem.style.cssText = "padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9;";
+      venueItem.innerHTML = `
+        <input type="text" class="venue-name" placeholder="e.g. Reception Hall" maxlength="100" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
+        <input type="time" class="venue-time" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
+        <input type="url" class="venue-map" placeholder="Map link (Google Maps, Apple Maps, etc.)" maxlength="500" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
+        <textarea class="venue-description" placeholder="Description (e.g., venue address, parking info)" maxlength="500" style="display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; resize: vertical; min-height: 60px;"></textarea>
+        <button type="button" class="remove-venue" style="margin-top: 0.75rem; padding: 0.5rem 1rem; background: #d9534f; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">✕ Remove venue</button>
+      `;
+      
+      venueItem.querySelector(".remove-venue").addEventListener("click", (e) => {
+        e.preventDefault();
+        venueItem.remove();
+      });
+      
+      container.appendChild(venueItem);
+    };
+    
+    $("add-venue").addEventListener("click", (e) => {
+      e.preventDefault();
+      addVenueRow();
+    });
+    
+    // Remove venue listeners (for initial venue)
+    document.querySelectorAll(".remove-venue").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        btn.closest(".venue-item").remove();
+      });
+    });
+
     // Create wedding - FIX: Get palette before submitting form
     $("create-form").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -155,6 +221,7 @@
       const location = $("location").value;
       const currency = $("currency").value;
       const maxCapacity = Number($("max-capacity").value);
+      const venues = getVenueData();
       
       // Validate
       if (!coupleNames.trim()) return notice("Please enter the couple's names.", true);
@@ -169,7 +236,8 @@
           location,
           currency,
           maxCapacity,
-          palette
+          palette,
+          venues
         })
       });
       
