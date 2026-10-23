@@ -18,9 +18,8 @@ for (const page of pages) {
     while ((m = re.exec(html))) {
       if (/type\s*=\s*["'](?!module|text\/javascript)/i.test(m[1])) continue;
       if (/type\s*=\s*["']module/i.test(m[1])) continue;
-      // Wrapped in an async function so top-level await/return in page scripts still parse.
       assert.doesNotThrow(
-        () => new vm.Script(`(async function(){\n${m[2]}\n})`, { filename: `${page}#${n}` }),
+        () => new vm.Script(m[2], { filename: `${page}#${n}` }),
         `${page} inline script #${n} has a syntax error`
       );
       n++;
@@ -28,12 +27,9 @@ for (const page of pages) {
   });
 }
 
-test("dashboard create form is intercepted and guarded against double submit", () => {
+test("dashboard has no inline script and the form cannot submit natively", () => {
   const html = readFileSync(join(root, "dashboard.html"), "utf8");
-  assert.match(html, /getElementById\("create-form"\)|\$\("create-form"\)\.addEventListener\("submit"/);
-  assert.match(html, /e\.preventDefault\(\)/);
-  assert.match(html, /if \(btn\.disabled\) return;/);
-  assert.equal(html.includes("form.reset()"), true);
-  const resetIdx = html.indexOf("form.reset()");
-  assert.ok(html.slice(resetIdx - 200, resetIdx).includes("Wedding created"), "reset only after success");
+  assert.match(html, /<script src="dashboard\.js"><\/script>/);
+  assert.match(html, /<form id="create-form"[^>]*novalidate[^>]*onsubmit="return false"/);
+  assert.doesNotMatch(html, /<script>(?!\s*<\/script>)/);
 });

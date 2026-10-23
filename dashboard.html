@@ -6,30 +6,44 @@
   <meta name="theme-color" content="#203a31">
   <title>WeddingSite — Workspace</title>
   <link rel="stylesheet" href="app-shell.css">
+  <style>
+    .color-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin: 1.5rem 0; }
+    .color-grid small { color: #7a8580; }
+    .venue-item { padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9; margin-bottom: 1rem; }
+    .venue-item input[type="text"], .venue-item input[type="time"], .venue-item input[type="url"], .venue-item textarea {
+      display: block; width: 100%; margin-bottom: .75rem; padding: .75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;
+    }
+    .venue-item textarea { resize: vertical; min-height: 60px; }
+    .venue-main-label { display: flex; align-items: center; gap: .5rem; cursor: pointer; margin: 0 0 1rem; font-weight: 500; }
+    .remove-venue { padding: .5rem 1rem; background: #d9534f; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: .9rem; }
+    #add-venue { padding: .75rem 1.5rem; background: #5cb85c; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 500; margin-bottom: 1rem; }
+    #created { border: 2px solid #5cb85c; border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 1.5rem; background: #f3faf3; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+  </style>
 </head>
 <body>
   <div class="wrap">
     <div class="top">
       <a class="brand" href="/">WeddingSite</a>
-      <button type="button" class="link" id="sign-out">Sign out</button>
+      <button type="button" class="link" id="sign-out" data-action="sign-out">Sign out</button>
     </div>
 
     <h1>My Weddings</h1>
-    <p id="notice" class="notice" role="status" hidden></p>
+    <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
+    <div id="created" role="status" hidden></div>
 
-    <!-- Create new wedding -->
     <div id="create-section" class="card">
       <h2>✨ Plan a new wedding</h2>
       <p style="color: #7a8580; margin: 0 0 2rem;">Start your wedding journey with us</p>
-      <form id="create-form">
+      <form id="create-form" novalidate onsubmit="return false">
         <label for="couple-names">👰 Couple names</label>
-        <input id="couple-names" type="text" maxlength="120" placeholder="e.g. Sarah & John" required>
+        <input id="couple-names" type="text" maxlength="120" placeholder="e.g. Sarah &amp; John" autocomplete="off">
 
         <label for="wedding-date">📅 Wedding date (optional)</label>
         <input id="wedding-date" type="date">
 
         <label for="location">📍 Location</label>
-        <input id="location" type="text" maxlength="120" placeholder="City, venue, or coordinates" required>
+        <input id="location" type="text" maxlength="120" placeholder="City, venue, or coordinates" autocomplete="off">
 
         <label for="currency">💵 Primary currency</label>
         <select id="currency">
@@ -43,66 +57,36 @@
         </select>
 
         <label for="max-capacity">👥 Maximum guest capacity</label>
-        <input id="max-capacity" type="number" min="1" value="150">
+        <input id="max-capacity" type="number" min="1" step="1" value="150">
 
-        <label>🎨 Wedding colour palette (up to 4 colours)</label>
+        <label>🎨 Wedding colour palette (4 colours)</label>
         <div class="swatches" id="palette-preview">
-          <span id="swatch-1" style="background: #244b3a;" title="Forest Green"></span>
-          <span id="swatch-2" style="background: #a9b5a2;" title="Eucalyptus Sage"></span>
-          <span id="swatch-3" style="background: #be9b52;" title="Royal Gold"></span>
-          <span id="swatch-4" style="background: #eee8d9;" title="Ivory"></span>
+          <span id="swatch-1" style="background: #244b3a;" title="Colour 1"></span>
+          <span id="swatch-2" style="background: #a9b5a2;" title="Colour 2"></span>
+          <span id="swatch-3" style="background: #be9b52;" title="Colour 3"></span>
+          <span id="swatch-4" style="background: #eee8d9;" title="Colour 4"></span>
         </div>
-        <button type="button" class="link" id="edit-palette">✎ Edit colours</button>
+        <button type="button" class="link" id="edit-palette" data-action="toggle-palette" aria-expanded="false">✎ Edit colours</button>
 
         <div id="palette-editor" hidden>
-          <div class="color-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin: 1.5rem 0;">
-            <div class="color-input">
-              <label for="color-1">Colour 1</label>
-              <input id="color-1" type="color" value="#244b3a">
-              <small style="color: #7a8580;">Forest Green</small>
-            </div>
-            <div class="color-input">
-              <label for="color-2">Colour 2</label>
-              <input id="color-2" type="color" value="#a9b5a2">
-              <small style="color: #7a8580;">Eucalyptus Sage</small>
-            </div>
-            <div class="color-input">
-              <label for="color-3">Colour 3</label>
-              <input id="color-3" type="color" value="#be9b52">
-              <small style="color: #7a8580;">Royal Gold</small>
-            </div>
-            <div class="color-input">
-              <label for="color-4">Colour 4</label>
-              <input id="color-4" type="color" value="#eee8d9">
-              <small style="color: #7a8580;">Ivory</small>
-            </div>
+          <div class="color-grid">
+            <div><label for="color-1">Colour 1</label><input id="color-1" type="color" value="#244b3a" data-color-index="0"><small>Forest Green</small></div>
+            <div><label for="color-2">Colour 2</label><input id="color-2" type="color" value="#a9b5a2" data-color-index="1"><small>Eucalyptus Sage</small></div>
+            <div><label for="color-3">Colour 3</label><input id="color-3" type="color" value="#be9b52" data-color-index="2"><small>Royal Gold</small></div>
+            <div><label for="color-4">Colour 4</label><input id="color-4" type="color" value="#eee8d9" data-color-index="3"><small>Ivory</small></div>
           </div>
-          <button type="button" id="save-palette">✓ Save colours</button>
+          <button type="button" id="save-palette" data-action="save-palette">✓ Save colours</button>
+          <button type="button" class="link" id="reset-palette" data-action="reset-palette">Reset to defaults</button>
         </div>
 
-        <label>📍 Venues (optional)</label>
-        <div id="venues-container" style="display: flex; flex-direction: column; gap: 1rem;">
-          <div class="venue-item" style="padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9;">
-            <div style="display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center;">
-              <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0;">
-                <input type="radio" class="venue-main" name="main-venue" value="0" checked style="cursor: pointer;">
-                <span style="font-weight: 500;">Main Venue</span>
-              </label>
-            </div>
-            <input type="text" class="venue-name" placeholder="e.g. Church Service" maxlength="100" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
-            <input type="time" class="venue-time" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
-            <input type="url" class="venue-map" placeholder="Map link (Google Maps, Apple Maps, etc.)" maxlength="500" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
-            <textarea class="venue-description" placeholder="Description (e.g., Church address, parking info)" maxlength="500" style="display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; resize: vertical; min-height: 60px;"></textarea>
-            <button type="button" class="remove-venue" style="margin-top: 0.75rem; padding: 0.5rem 1rem; background: #d9534f; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">✕ Remove venue</button>
-          </div>
-        </div>
-        <button type="button" id="add-venue" style="margin-top: 0.75rem; padding: 0.75rem 1.5rem; background: #5cb85c; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 500;">+ Add another venue</button>
+        <label>📍 Venues (optional) — choose one as the main venue</label>
+        <div id="venues-container"></div>
+        <button type="button" id="add-venue" data-action="add-venue">+ Add another venue</button>
 
-        <button type="submit">✨ Create wedding</button>
+        <button type="submit" id="create-submit">✨ Create wedding</button>
       </form>
     </div>
 
-    <!-- Weddings list -->
     <div id="weddings-container" hidden>
       <h2>Your weddings</h2>
       <div class="grid" id="weddings-grid"></div>
@@ -111,306 +95,6 @@
   </div>
 
   <script src="auth-client.js"></script>
-  <script>
-    const $ = id => document.getElementById(id);
-    const notice = (text, bad) => { $("notice").hidden = !text; $("notice").textContent = text || ""; $("notice").className = "notice" + (bad ? " bad" : ""); };
-    
-    // Palette state management
-    let currentPalette = ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"];
-    
-    const togglePalette = () => { $("palette-editor").hidden = !$("palette-editor").hidden; };
-    
-    const updatePalettePreview = () => {
-      currentPalette = [$("color-1").value, $("color-2").value, $("color-3").value, $("color-4").value];
-      for (let i = 0; i < 4; i++) {
-        $(`swatch-${i+1}`).style.background = currentPalette[i];
-      }
-    };
-
-    // Ensure session
-    if (!WS.token()) return location.replace("/signin.html");
-
-    // Sign out
-    $("sign-out").addEventListener("click", () => {
-      WS.clear();
-      location.replace("/signin.html");
-    });
-
-    // Palette editor - Initialize listeners (after DOM is ready)
-    setTimeout(() => {
-      const editBtn = $("edit-palette");
-      if (editBtn) {
-        editBtn.addEventListener("click", (e) => {
-          e.preventDefault();
-          togglePalette();
-        });
-      }
-      
-      // Color input listeners
-      for (let i = 1; i <= 4; i++) {
-        const colorInput = $(`color-${i}`);
-        if (colorInput) {
-          colorInput.addEventListener("input", updatePalettePreview);
-        }
-      }
-      
-      // Save palette button
-      const savePaletteBtn = $("save-palette");
-      if (savePaletteBtn) {
-        savePaletteBtn.addEventListener("click", (e) => { 
-          e.preventDefault(); 
-          updatePalettePreview(); // Ensure palette is updated
-          togglePalette(); 
-        });
-      }
-    }, 0);
-
-    // Venues management
-    let venueCount = 1;
-    
-    const getVenueData = () => {
-      const venues = [];
-      const mainVenueValue = document.querySelector('input[name="main-venue"]:checked')?.value;
-      
-      document.querySelectorAll(".venue-item").forEach((item, idx) => {
-        const name = item.querySelector(".venue-name")?.value || "";
-        const time = item.querySelector(".venue-time")?.value || "";
-        const map = item.querySelector(".venue-map")?.value || "";
-        const description = item.querySelector(".venue-description")?.value || "";
-        
-        // Only add if at least one field is filled
-        if (name.trim() || time || map.trim() || description.trim()) {
-          venues.push({
-            name: name.trim(),
-            time,
-            map: map.trim(),
-            description: description.trim(),
-            isMain: String(idx) === mainVenueValue
-          });
-        }
-      });
-      return venues;
-    };
-    
-    const addVenueRow = () => {
-      venueCount++;
-      const container = $("venues-container");
-      const venueItem = document.createElement("div");
-      venueItem.className = "venue-item";
-      venueItem.style.cssText = "padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9;";
-      venueItem.innerHTML = `
-        <div style="display: flex; gap: 1rem; margin-bottom: 1rem; align-items: center;">
-          <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0;">
-            <input type="radio" class="venue-main" name="main-venue" value="${venueCount - 1}" style="cursor: pointer;">
-            <span style="font-weight: 500;">Main Venue</span>
-          </label>
-        </div>
-        <input type="text" class="venue-name" placeholder="e.g. Reception Hall" maxlength="100" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
-        <input type="time" class="venue-time" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
-        <input type="url" class="venue-map" placeholder="Map link (Google Maps, Apple Maps, etc.)" maxlength="500" style="margin-bottom: 0.75rem; display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit;">
-        <textarea class="venue-description" placeholder="Description (e.g., venue address, parking info)" maxlength="500" style="display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; resize: vertical; min-height: 60px;"></textarea>
-        <button type="button" class="remove-venue" style="margin-top: 0.75rem; padding: 0.5rem 1rem; background: #d9534f; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">✕ Remove venue</button>
-      `;
-      
-      venueItem.querySelector(".remove-venue").addEventListener("click", (e) => {
-        e.preventDefault();
-        venueItem.remove();
-        // Update radio button values after removal
-        updateVenueRadioValues();
-      });
-      
-      container.appendChild(venueItem);
-    };
-    
-    const updateVenueRadioValues = () => {
-      document.querySelectorAll(".venue-item").forEach((item, idx) => {
-        const radio = item.querySelector('input[name="main-venue"]');
-        if (radio) radio.value = String(idx);
-      });
-    };
-    
-    $("add-venue").addEventListener("click", (e) => {
-      e.preventDefault();
-      addVenueRow();
-    });
-    
-    // Remove venue listeners (for initial venue)
-    document.querySelectorAll(".remove-venue").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        btn.closest(".venue-item").remove();
-        updateVenueRadioValues();
-      });
-    });
-
-    // Create wedding - with detailed error handling
-    $("create-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      
-      // Prevent multiple submissions
-      const btn = e.target.querySelector("button[type='submit']");
-      if (btn.disabled) return;
-      btn.disabled = true;
-      
-      notice("");
-      
-      const form = $("create-form");
-      // Save form data before API call in case we need to restore it on error
-      const savedData = {
-        coupleNames: $("couple-names").value,
-        weddingDate: $("wedding-date").value,
-        location: $("location").value,
-        currency: $("currency").value,
-        maxCapacity: $("max-capacity").value
-      };
-      
-      try {
-        // Check if session is still valid
-        if (!WS.token()) {
-          notice("Your session has expired. Please sign in again.", true);
-          btn.disabled = false;
-          return location.replace("/signin.html");
-        }
-        
-        // Get current palette (from color inputs or swatches)
-        const palette = [
-          $("color-1").value || currentPalette[0],
-          $("color-2").value || currentPalette[1],
-          $("color-3").value || currentPalette[2],
-          $("color-4").value || currentPalette[3]
-        ];
-        
-        // Get form values
-        const coupleNames = savedData.coupleNames;
-        const weddingDate = savedData.weddingDate || null;
-        const location = savedData.location;
-        const currency = savedData.currency;
-        const maxCapacity = Number(savedData.maxCapacity);
-        const venues = getVenueData();
-        
-        // Validate
-        if (!coupleNames.trim()) {
-          notice("Please enter the couple's names.", true);
-          btn.disabled = false;
-          return;
-        }
-        if (!location.trim()) {
-          notice("Please enter a location.", true);
-          btn.disabled = false;
-          return;
-        }
-        if (maxCapacity < 1) {
-          notice("Maximum guest capacity must be at least 1.", true);
-          btn.disabled = false;
-          return;
-        }
-        
-        // Log for debugging
-        console.log("Creating wedding:", { coupleNames, weddingDate, location, currency, maxCapacity, venues, palette });
-        
-        // Show "processing" state
-        notice("✨ Creating your wedding...");
-        btn.textContent = "⏳ Creating...";
-        
-        // Make the request
-        let res, data;
-        try {
-          res = await WS.api("/api/weddings?action=create", {
-            method: "POST",
-            body: JSON.stringify({
-              coupleNames,
-              weddingDate,
-              location,
-              currency,
-              maxCapacity,
-              palette,
-              venues
-            })
-          });
-          
-          data = await res.json();
-          if (!res.ok) {
-            console.error("API error:", res.status, data);
-            // Restore form data on error
-            $("couple-names").value = savedData.coupleNames;
-            $("wedding-date").value = savedData.weddingDate;
-            $("location").value = savedData.location;
-            $("currency").value = savedData.currency;
-            $("max-capacity").value = savedData.maxCapacity;
-            notice(data.error || `Error: ${res.status} ${res.statusText}`, true);
-            btn.disabled = false;
-            btn.textContent = "✨ Create wedding";
-            return;
-          }
-        } catch (apiErr) {
-          console.error("API call failed:", apiErr);
-          // Restore form data on error
-          $("couple-names").value = savedData.coupleNames;
-          $("wedding-date").value = savedData.weddingDate;
-          $("location").value = savedData.location;
-          $("currency").value = savedData.currency;
-          $("max-capacity").value = savedData.maxCapacity;
-          notice(`Network error: ${apiErr.message}. Please check your connection and try again.`, true);
-          btn.disabled = false;
-          btn.textContent = "✨ Create wedding";
-          return;
-        }
-        
-        notice(`🎉 Wedding created! Redirecting…`);
-        // Reset form after successful creation only
-        form.reset();
-        // Refresh page after delay to show the new wedding
-        setTimeout(() => location.href = `/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}`, 800);
-      } catch (err) {
-        console.error("Form submission error:", err);
-        // Restore form data on error
-        $("couple-names").value = savedData.coupleNames;
-        $("wedding-date").value = savedData.weddingDate;
-        $("location").value = savedData.location;
-        $("currency").value = savedData.currency;
-        $("max-capacity").value = savedData.maxCapacity;
-        notice(`Unexpected error: ${err.message}`, true);
-        btn.disabled = false;
-        btn.textContent = "✨ Create wedding";
-      }
-    });
-
-    // Load weddings
-    async function loadWeddings() {
-      const res = await WS.api("/api/weddings?action=list");
-      const data = await res.json();
-      if (!res.ok) return notice(data.error || "Could not load weddings.", true);
-      
-      const weddings = data.weddings || [];
-      $("empty").hidden = weddings.length > 0;
-      $("weddings-container").hidden = weddings.length === 0;
-
-      if (weddings.length === 0) return;
-
-      $("weddings-grid").innerHTML = weddings.map(w => `
-        <div class="card">
-          <div class="top" style="margin-bottom: .5rem;">
-            <span class="tag ${w.published_at ? "live" : ""}">${w.published_at ? "✓ Published" : "📋 Draft"}</span>
-            <span class="fine">${new Date(w.created_at).toLocaleDateString()}</span>
-          </div>
-          <h3>${WS.esc(w.couple_names)}</h3>
-          <p class="fine" style="margin: 0.5rem 0;">
-            ${w.wedding_date ? '📅 ' + new Date(w.wedding_date).toLocaleDateString() : "(No date set)"}
-            ${w.public_location ? " • 📍 " + WS.esc(w.public_location) : ""}
-          </p>
-          <p class="fine" style="margin: 0.5rem 0;">👥 Max ${w.max_guest_capacity} guests • ${w.currency}</p>
-          <div class="swatches">
-            ${(w.palette || []).map(c => `<span style="background: ${WS.esc(c)};"></span>`).join("")}
-          </div>
-          <div class="row" style="margin-top: 1.5rem;">
-            <a class="btn" href="/wedding.html?id=${encodeURIComponent(w.id)}&slug=${encodeURIComponent(w.slug)}">✎ Edit</a>
-            ${w.published_at ? `<a class="btn" href="/guest.html?slug=${encodeURIComponent(w.slug)}" target="_blank">👁 View</a>` : ""}
-          </div>
-        </div>
-      `).join("");
-    }
-
-    loadWeddings();
-  </script>
+  <script src="dashboard.js"></script>
 </body>
 </html>
