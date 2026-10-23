@@ -106,6 +106,7 @@
 
   <script src="auth-client.js"></script>
   <script>
+(async () => {
     const $ = id => document.getElementById(id);
     const notice = (text, bad) => { $("notice").hidden = !text; $("notice").textContent = text || ""; $("notice").className = "notice" + (bad ? " bad" : ""); };
     const params = new URLSearchParams(location.search);
@@ -227,6 +228,7 @@
     }
 
     loadWedding();
+})();
   </script>
 </body>
 </html>
