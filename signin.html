@@ -56,7 +56,7 @@
       errorEl.textContent = "";
 
       try {
-        const res = await fetch("/api/auth/sign-in", {
+        const res = await fetch("/api/auth?action=sign-in", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, password })
@@ -70,7 +70,7 @@
 
         // Store token in sessionStorage and redirect
         sessionStorage.setItem("access-token", data.accessToken);
-        window.location.href = data.profile?.platform_role === "owner" ? "/dashboard.html" : "/platform.html";
+        window.location.href = data.profile?.role === "owner" ? "/dashboard.html" : "/platform.html";
       } catch (error) {
         errorEl.textContent = "Network error. Try again.";
         console.error("Sign-in error:", error);
