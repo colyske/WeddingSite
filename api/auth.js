@@ -1,132 +1,97 @@
-// /api/auth?action=sign-in|sign-out|me, /api/auth/callback
-import { methodOnly, sendJson, supabaseRequest } from "../../server/supabase.js";
-import { requireAuth } from "../../server/auth-middleware.js";
+import { methodOnly, sendJson, supabaseConfig, supabaseRequest } from "../server/supabase.js";
+import { requireAuth } from "../server/auth-middleware.js";
+
+const GENERIC_LINK_MESSAGE = "If that email belongs to a WeddingSite account, a sign-in link is on its way.";
+const isEmail = value => typeof value === "string" && value.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
+
+function siteOrigin(req) {
+  const configured = process.env.WEDDINGSITE_PUBLIC_ORIGIN;
+  if (configured && /^https:\/\//.test(configured)) return configured.replace(/\/+$/, "");
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  return `https://${host}`;
+}
+
+async function authCall(path, { method = "POST", body, token } = {}) {
+  const { url, apiKey } = supabaseConfig();
+  const response = await fetch(`${url}/auth/v1${path}`, {
+    method,
+    headers: { apikey: apiKey, "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: "no-store"
+  });
+  let data = null;
+  try { data = await response.json(); } catch { data = null; }
+  return { ok: response.ok, status: response.status, data };
+}
+
+async function roleFor(userId, token) {
+  try {
+    const rows = await supabaseRequest(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=platform_role`, { token });
+    return rows?.[0]?.platform_role || null;
+  } catch {
+    return null;
+  }
+}
 
 export default async function handler(req, res) {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const isCallback = url.pathname === "/api/auth/callback";
-  const action = url.searchParams.get("action");
+  const action = String(req.query?.action || "");
+  const body = req.body && typeof req.body === "object" ? req.body : {};
 
-  if (isCallback) {
-    // GET /api/auth/callback - Supabase Auth callback
-    const code = url.searchParams.get("code");
-    const type = url.searchParams.get("type");
-    const error = url.searchParams.get("error");
-
-    if (error) {
-      return res.redirect(302, `/?auth_error=${encodeURIComponent(error)}`);
-    }
-
-    if (!code) {
-      return res.redirect(302, "/signin.html?error=missing_code");
-    }
-
-    try {
-      const tokenRes = await fetch(
-        `${process.env.SUPABASE_URL?.replace(/\/+$/, "")}/auth/v1/verify`,
-        {
-          method: "POST",
-          headers: { "apikey": process.env.SUPABASE_ANON_KEY, "Content-Type": "application/json" },
-          body: JSON.stringify({ type: type || "recovery", token: code })
-        }
-      );
-
-      const tokenData = await tokenRes.json();
-      if (!tokenRes.ok || !tokenData.access_token) {
-        return res.redirect(302, "/signin.html?error=auth_failed");
+  try {
+    if (action === "sign-in") {
+      if (!methodOnly(req, res, "POST")) return;
+      if (!isEmail(body.email) || typeof body.password !== "string" || !body.password) {
+        return sendJson(res, 400, { error: "Enter your email and password." });
       }
-
-      // Set httpOnly cookie with token
-      res.setHeader("Set-Cookie", [
-        `access-token=${tokenData.access_token}; HttpOnly; Secure; SameSite=Lax; Max-Age=3600; Path=/`,
-        `refresh-token=${tokenData.refresh_token || ""}; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000; Path=/`
-      ]);
-
-      // Redirect to dashboard or RSVP based on user's role
-      const defaultRedirect = tokenData.user?.email?.includes("@") ? "/platform.html" : "/index.html";
-      return res.redirect(302, defaultRedirect);
-    } catch (error) {
-      console.error("callback error", error.message);
-      return res.redirect(302, "/signin.html?error=server_error");
-    }
-  }
-
-  // POST /api/auth?action=sign-in
-  if (action === "sign-in" && req.method === "POST") {
-    const body = req.body && typeof req.body === "object" ? req.body : {};
-    const { email, password } = body;
-
-    if (!email || !password) {
-      return sendJson(res, 400, { error: "Email and password are required." });
+      const result = await authCall("/token?grant_type=password", { body: { email: body.email.trim().toLowerCase(), password: body.password } });
+      if (!result.ok || !result.data?.access_token) return sendJson(res, 401, { error: "Email or password is incorrect." });
+      const { access_token: accessToken, refresh_token: refreshToken, user } = result.data;
+      return sendJson(res, 200, { accessToken, refreshToken, user: { id: user.id, email: user.email }, role: await roleFor(user.id, accessToken) });
     }
 
-    try {
-      const tokenRes = await fetch(
-        `${process.env.SUPABASE_URL?.replace(/\/+$/, "")}/auth/v1/token?grant_type=password`,
-        {
-          method: "POST",
-          headers: { "apikey": process.env.SUPABASE_ANON_KEY, "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password })
-        }
-      );
-
-      const tokenData = await tokenRes.json();
-      if (!tokenRes.ok || !tokenData.access_token) {
-        return sendJson(res, 401, { error: tokenData.error_description || "Invalid credentials." });
+    if (action === "email-link") {
+      if (!methodOnly(req, res, "POST")) return;
+      if (!isEmail(body.email)) return sendJson(res, 400, { error: "Enter a valid email address." });
+      const email = body.email.trim().toLowerCase();
+      const redirectTo = `${siteOrigin(req)}/signin.html`;
+      if (body.mode === "recovery") {
+        await authCall(`/recover?redirect_to=${encodeURIComponent(redirectTo)}`, { body: { email } });
+      } else {
+        await authCall(`/otp?redirect_to=${encodeURIComponent(redirectTo)}`, { body: { email, create_user: false } });
       }
-
-      // Fetch user profile and role
-      let profile = null;
-      try {
-        const profiles = await supabaseRequest(
-          `/rest/v1/profiles?id=eq.${encodeURIComponent(tokenData.user.id)}&select=id,platform_role`,
-          { token: tokenData.access_token }
-        );
-        profile = profiles?.[0];
-      } catch {}
-
-      return sendJson(res, 200, {
-        accessToken: tokenData.access_token,
-        refreshToken: tokenData.refresh_token,
-        user: { id: tokenData.user.id, email: tokenData.user.email },
-        profile: { role: profile?.platform_role || "guest" }
-      });
-    } catch (error) {
-      console.error("sign-in error", error.message);
-      return sendJson(res, 500, { error: "Sign-in failed." });
+      return sendJson(res, 200, { message: GENERIC_LINK_MESSAGE });
     }
-  }
 
-  // POST /api/auth?action=sign-out
-  if (action === "sign-out" && req.method === "POST") {
-    res.setHeader("Set-Cookie", [
-      "access-token=; HttpOnly; Max-Age=0; Path=/",
-      "refresh-token=; HttpOnly; Max-Age=0; Path=/"
-    ]);
-    return sendJson(res, 200, { signedOut: true });
-  }
-
-  // GET /api/auth?action=me
-  if (action === "me" && req.method === "GET") {
-    const session = await requireAuth(req, res);
-    if (!session) return;
-
-    try {
-      const profiles = await supabaseRequest(
-        `/rest/v1/profiles?id=eq.${encodeURIComponent(session.user.id)}&select=id,platform_role`,
-        { token: session.token }
-      );
-      const profile = profiles?.[0];
-
-      return sendJson(res, 200, {
-        user: { id: session.user.id, email: session.user.email },
-        profile: { role: profile?.platform_role || "guest" }
-      });
-    } catch (error) {
-      console.error("me error", error.message);
-      return sendJson(res, 500, { error: "Could not fetch profile." });
+    if (action === "refresh") {
+      if (!methodOnly(req, res, "POST")) return;
+      if (typeof body.refreshToken !== "string" || !body.refreshToken) return sendJson(res, 400, { error: "refreshToken is required." });
+      const result = await authCall("/token?grant_type=refresh_token", { body: { refresh_token: body.refreshToken } });
+      if (!result.ok || !result.data?.access_token) return sendJson(res, 401, { error: "Session expired. Sign in again." });
+      return sendJson(res, 200, { accessToken: result.data.access_token, refreshToken: result.data.refresh_token });
     }
-  }
 
-  return sendJson(res, 404, { error: "Auth endpoint not found." });
+    if (action === "set-password") {
+      if (!methodOnly(req, res, "POST")) return;
+      const session = await requireAuth(req, res);
+      if (!session) return;
+      if (typeof body.password !== "string" || body.password.length < 12 || body.password.length > 128) {
+        return sendJson(res, 400, { error: "Use a password of 12 to 128 characters." });
+      }
+      const result = await authCall("/user", { method: "PUT", token: session.token, body: { password: body.password } });
+      if (!result.ok) return sendJson(res, 400, { error: result.data?.msg || result.data?.message || "Could not set the password. Request a new link and try again." });
+      return sendJson(res, 200, { passwordSet: true });
+    }
+
+    if (action === "me") {
+      if (!methodOnly(req, res, "GET")) return;
+      const session = await requireAuth(req, res);
+      if (!session) return;
+      return sendJson(res, 200, { user: { id: session.user.id, email: session.user.email }, role: await roleFor(session.user.id, session.token) });
+    }
+
+    return sendJson(res, 404, { error: "Unknown auth action." });
+  } catch (error) {
+    console.error("auth endpoint failed", error.message);
+    return sendJson(res, 503, { error: "Authentication is temporarily unavailable." });
+  }
 }
