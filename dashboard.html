@@ -246,6 +246,12 @@
     // Create wedding - with detailed error handling
     $("create-form").addEventListener("submit", async (e) => {
       e.preventDefault();
+      
+      // Prevent multiple submissions
+      const btn = e.target.querySelector("button[type='submit']");
+      if (btn.disabled) return;
+      btn.disabled = true;
+      
       notice("");
       
       const form = $("create-form");
@@ -259,6 +265,13 @@
       };
       
       try {
+        // Check if session is still valid
+        if (!WS.token()) {
+          notice("Your session has expired. Please sign in again.", true);
+          btn.disabled = false;
+          return location.replace("/signin.html");
+        }
+        
         // Get current palette (from color inputs or swatches)
         const palette = [
           $("color-1").value || currentPalette[0],
@@ -278,14 +291,17 @@
         // Validate
         if (!coupleNames.trim()) {
           notice("Please enter the couple's names.", true);
+          btn.disabled = false;
           return;
         }
         if (!location.trim()) {
           notice("Please enter a location.", true);
+          btn.disabled = false;
           return;
         }
         if (maxCapacity < 1) {
           notice("Maximum guest capacity must be at least 1.", true);
+          btn.disabled = false;
           return;
         }
         
@@ -293,7 +309,8 @@
         console.log("Creating wedding:", { coupleNames, weddingDate, location, currency, maxCapacity, venues, palette });
         
         // Show "processing" state
-        notice("Creating your wedding...");
+        notice("✨ Creating your wedding...");
+        btn.textContent = "⏳ Creating...";
         
         // Make the request
         let res, data;
@@ -321,6 +338,8 @@
             $("currency").value = savedData.currency;
             $("max-capacity").value = savedData.maxCapacity;
             notice(data.error || `Error: ${res.status} ${res.statusText}`, true);
+            btn.disabled = false;
+            btn.textContent = "✨ Create wedding";
             return;
           }
         } catch (apiErr) {
@@ -331,7 +350,9 @@
           $("location").value = savedData.location;
           $("currency").value = savedData.currency;
           $("max-capacity").value = savedData.maxCapacity;
-          notice(`Network error: ${apiErr.message}`, true);
+          notice(`Network error: ${apiErr.message}. Please check your connection and try again.`, true);
+          btn.disabled = false;
+          btn.textContent = "✨ Create wedding";
           return;
         }
         
@@ -348,6 +369,11 @@
         $("location").value = savedData.location;
         $("currency").value = savedData.currency;
         $("max-capacity").value = savedData.maxCapacity;
+        notice(`Unexpected error: ${err.message}`, true);
+        btn.disabled = false;
+        btn.textContent = "✨ Create wedding";
+      }
+    });
         notice(`Error: ${err.message}`, true);
       }
     });
