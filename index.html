@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#203a31">
+  <meta name="description" content="WeddingSite: Plan your wedding with coordinated RSVPs, DJ song bidding, guest contributions, and more.">
+  <title>WeddingSite — Wedding Planning Simplified</title>
+  <link rel="stylesheet" href="app-shell.css">
+  <style>
+    .hero { background: linear-gradient(135deg, #f6f1e4 0%, #eee8d9 100%); }
+    .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
+    .feature-card { padding: 1.5rem; background: #fff; border-radius: 8px; border-left: 4px solid #be9b52; }
+    .feature-card h3 { margin-top: 0; color: #203a31; }
+    .cta-section { text-align: center; margin: 3rem 0; padding: 2rem; background: #203a31; color: #fff; border-radius: 8px; }
+    .cta-section h2 { color: #be9b52; }
+    .cta-btn { background: #be9b52; color: #203a31; text-decoration: none; padding: 1rem 2rem; border-radius: 8px; display: inline-block; font-weight: 600; margin-top: 1rem; }
+    .cta-btn:hover { background: #d9b670; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- Header -->
+    <div class="top" style="margin-bottom: 2rem;">
+      <a class="brand" href="/">WeddingSite</a>
+      <a class="btn" href="/signin.html">Sign in</a>
+    </div>
+
+    <!-- Hero -->
+    <div class="hero" style="text-align: center; padding: 3rem 1rem; margin: -1.5rem -1.5rem 2rem; border-radius: 8px;">
+      <h1 style="margin-top: 0;">Plan Your Perfect Wedding</h1>
+      <p style="font-size: 1.1rem; color: #5b665f; max-width: 600px; margin: 1rem auto;">
+        Coordinate RSVPs, collect DJ song requests with bidding, manage guest contributions, and bring your wedding vision to life—all in one place.
+      </p>
+      <a class="cta-btn" href="/signin.html">Get started</a>
+    </div>
+
+    <!-- Features -->
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h3>✓ Smart RSVP</h3>
+        <p class="fine">Guests confirm attendance, share dietary preferences, and you get instant headcount and details.</p>
+      </div>
+
+      <div class="feature-card">
+        <h3>🎵 DJ Song Bidding</h3>
+        <p class="fine">Let guests request and bid on their favorite songs. See the leaderboard of top requests in real-time.</p>
+      </div>
+
+      <div class="feature-card">
+        <h3>💳 Guest Contributions</h3>
+        <p class="fine">Collect funds for DJ services, decorations, catering, and more directly from guests with full transparency.</p>
+      </div>
+
+      <div class="feature-card">
+        <h3>🎨 Customizable</h3>
+        <p class="fine">Set your wedding colors, capacity, currency, and welcome message. Each wedding gets its own branded site.</p>
+      </div>
+
+      <div class="feature-card">
+        <h3>📊 Admin Dashboard</h3>
+        <p class="fine">View all RSVPs, song requests, contributions, and guest details in one organized workspace.</p>
+      </div>
+
+      <div class="feature-card">
+        <h3>🌍 Multi-currency</h3>
+        <p class="fine">Collect in USD, KES, EUR, GBP, NGN, UGX, ZAR or other currencies. Guests see amounts in their currency.</p>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta-section">
+      <h2>Ready to plan your wedding?</h2>
+      <p>Create a free account and set up your wedding site in minutes.</p>
+      <a class="cta-btn" href="/signin.html">Sign in or create account</a>
+    </div>
+
+    <!-- Footer -->
+    <div style="text-align: center; padding-top: 2rem; border-top: 1px solid #e3dcc7; margin-top: 3rem;">
+      <p class="fine">WeddingSite is in beta. We're actively building. Send feedback to hello@weddingsite.test</p>
+    </div>
+  </div>
+
+  <script src="auth-client.js"></script>
+</body>
+</html>

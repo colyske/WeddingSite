@@ -16,34 +16,59 @@ export default async function handler(req, res) {
       if (!/^[a-z0-9-]{3,80}$/.test(slug)) return sendJson(res, 404, { error: "Wedding not found." });
       const rows = await rpc("get_public_wedding", { p_slug: slug });
       if (!rows?.length) return sendJson(res, 404, { error: "This wedding site is not published." });
-      const wedding = rows[0];
-      const [bids, ledger] = await Promise.all([
-        rpc("get_dj_leaderboard", { p_wedding_id: wedding.id }),
-        rpc("get_published_contributions_page", { p_wedding_id: wedding.id, p_offset: 0, p_limit: 10 })
-      ]);
-      return sendJson(res, 200, { wedding, bids: bids || [], ledger: ledger || [] });
+      return sendJson(res, 200, { wedding: rows[0] });
     }
 
-    if (action === "bids") {
+    if (action === "leaderboard") {
       if (!methodOnly(req, res, "GET")) return;
       if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
-      return sendJson(res, 200, { bids: await rpc("get_dj_leaderboard", { p_wedding_id: req.query.weddingId }) || [] });
+      const bids = await rpc("get_dj_leaderboard", { p_wedding_id: req.query.weddingId });
+      return sendJson(res, 200, { bids: bids || [] });
+    }
+
+    if (action === "ledger") {
+      if (!methodOnly(req, res, "GET")) return;
+      if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+      const ledger = await rpc("get_published_contributions_page", { p_wedding_id: req.query.weddingId, p_offset: 0, p_limit: 50 });
+      return sendJson(res, 200, { ledger: ledger || [] });
     }
 
     if (action === "rsvp" || action === "bid") {
       if (!methodOnly(req, res, "POST")) return;
       const body = req.body && typeof req.body === "object" ? req.body : {};
       if (!UUID.test(String(body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
-      const [row] = action === "rsvp"
-        ? await rpc("submit_rsvp", {
-            p_wedding_id: body.weddingId, p_guest_email: text(body.email, 254), p_guest_name: text(body.name, 100),
-            p_attending: body.attending === true, p_dietary_requested: body.dietaryRequested === true,
-            p_dietary_notes: text(body.dietaryNotes, 240), p_plus_one_count: Number.isInteger(body.plusOnes) ? body.plusOnes : 0 })
-        : await rpc("place_dj_bid", {
-            p_wedding_id: body.weddingId, p_song_title: text(body.songTitle, 160), p_artist_name: text(body.artist, 100),
-            p_bid_amount_minor: Number.isSafeInteger(body.amountMinor) ? body.amountMinor : 0, p_bidder_name: text(body.bidderName, 100) });
-      const ok = ["confirmed", "declined", "placed"].includes(row?.status);
-      return sendJson(res, ok ? 200 : row?.status === "full" ? 409 : 400, { status: row?.status || "invalid", message: row?.message || "Could not complete the request." });
+      
+      if (action === "rsvp") {
+        try {
+          await rpc("submit_rsvp", {
+            p_wedding_id: body.weddingId,
+            p_guest_email: text(body.guestEmail, 254),
+            p_guest_name: text(body.guestName, 100),
+            p_attending: body.attending === true,
+            p_dietary_requested: body.guestEmail ? true : false,
+            p_dietary_notes: text(body.dietaryNotes, 240),
+            p_plus_one_count: 0
+          });
+          return sendJson(res, 200, { message: "RSVP received." });
+        } catch (error) {
+          return sendJson(res, error.message.includes("capacity") ? 409 : 400, { error: error.message || "RSVP failed." });
+        }
+      }
+
+      if (action === "bid") {
+        try {
+          await rpc("place_dj_bid", {
+            p_wedding_id: body.weddingId,
+            p_song_title: text(body.songTitle, 160),
+            p_artist_name: text(body.artist, 100),
+            p_bid_amount_minor: Math.round(Number(body.bidAmount || 0) * 100),
+            p_bidder_name: ""
+          });
+          return sendJson(res, 200, { message: "Bid placed." });
+        } catch (error) {
+          return sendJson(res, 400, { error: error.message || "Bid failed." });
+        }
+      }
     }
 
     return sendJson(res, 404, { error: "Unknown action." });

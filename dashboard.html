@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#203a31">
+  <title>WeddingSite — Workspace</title>
+  <link rel="stylesheet" href="app-shell.css">
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <a class="brand" href="/">WeddingSite</a>
+      <button type="button" class="link" id="sign-out">Sign out</button>
+    </div>
+
+    <h1>My Weddings</h1>
+    <p id="notice" class="notice" role="status" hidden></p>
+
+    <!-- Create new wedding -->
+    <div id="create-section" class="card">
+      <h2>Plan a new wedding</h2>
+      <form id="create-form">
+        <label for="couple-names">Couple names</label>
+        <input id="couple-names" type="text" maxlength="120" placeholder="e.g. Sarah & John" required>
+
+        <label for="wedding-date">Date (optional)</label>
+        <input id="wedding-date" type="date">
+
+        <label for="location">Location</label>
+        <input id="location" type="text" maxlength="120" placeholder="City, venue or coordinates">
+
+        <label for="currency">Primary currency</label>
+        <select id="currency">
+          <option value="USD">USD - US Dollar</option>
+          <option value="KES">KES - Kenyan Shilling</option>
+          <option value="EUR">EUR - Euro</option>
+          <option value="GBP">GBP - British Pound</option>
+          <option value="NGN">NGN - Nigerian Naira</option>
+          <option value="UGX">UGX - Ugandan Shilling</option>
+          <option value="ZAR">ZAR - South African Rand</option>
+        </select>
+
+        <label for="max-capacity">Maximum guest capacity</label>
+        <input id="max-capacity" type="number" min="1" value="150">
+
+        <label>Wedding colours (up to 4)</label>
+        <div class="swatches" id="palette-preview">
+          <span style="background: #244b3a;" title="Forest Green"></span>
+          <span style="background: #a9b5a2;" title="Eucalyptus Sage"></span>
+          <span style="background: #be9b52;" title="Royal Gold"></span>
+          <span style="background: #eee8d9;" title="Ivory"></span>
+        </div>
+        <button type="button" class="link" id="edit-palette">Edit colours</button>
+
+        <div id="palette-editor" hidden>
+          <div class="grid">
+            <div>
+              <label for="color-1">Colour 1</label>
+              <input id="color-1" type="color" value="#244b3a">
+            </div>
+            <div>
+              <label for="color-2">Colour 2</label>
+              <input id="color-2" type="color" value="#a9b5a2">
+            </div>
+            <div>
+              <label for="color-3">Colour 3</label>
+              <input id="color-3" type="color" value="#be9b52">
+            </div>
+            <div>
+              <label for="color-4">Colour 4</label>
+              <input id="color-4" type="color" value="#eee8d9">
+            </div>
+          </div>
+          <button type="button" id="save-palette">Save colours</button>
+        </div>
+
+        <button type="submit">Create wedding</button>
+      </form>
+    </div>
+
+    <!-- Weddings list -->
+    <div id="weddings-container" hidden>
+      <h2>Your weddings</h2>
+      <div class="grid" id="weddings-grid"></div>
+    </div>
+    <p id="empty" class="fine">Loading your weddings…</p>
+  </div>
+
+  <script src="auth-client.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const notice = (text, bad) => { $("notice").hidden = !text; $("notice").textContent = text || ""; $("notice").className = "notice" + (bad ? " bad" : ""); };
+    const togglePalette = () => { $("palette-editor").hidden = !$("palette-editor").hidden; };
+    const updatePalettePreview = () => {
+      const colors = [$("color-1").value, $("color-2").value, $("color-3").value, $("color-4").value];
+      $("palette-preview").innerHTML = colors.map(c => `<span style="background: ${WS.esc(c)};"></span>`).join("");
+    };
+
+    // Ensure session
+    if (!WS.token()) return location.replace("/signin.html");
+
+    // Sign out
+    $("sign-out").addEventListener("click", () => {
+      WS.clear();
+      location.replace("/signin.html");
+    });
+
+    // Palette editor
+    $("edit-palette").addEventListener("click", togglePalette);
+    $("color-1").addEventListener("input", updatePalettePreview);
+    $("color-2").addEventListener("input", updatePalettePreview);
+    $("color-3").addEventListener("input", updatePalettePreview);
+    $("color-4").addEventListener("input", updatePalettePreview);
+    $("save-palette").addEventListener("click", e => { e.preventDefault(); togglePalette(); });
+
+    // Create wedding
+    $("create-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      notice("");
+      const palette = [$("color-1").value, $("color-2").value, $("color-3").value, $("color-4").value];
+      const res = await WS.api("/api/weddings?action=create", {
+        method: "POST",
+        body: JSON.stringify({
+          coupleNames: $("couple-names").value,
+          weddingDate: $("wedding-date").value || null,
+          location: $("location").value,
+          currency: $("currency").value,
+          maxCapacity: Number($("max-capacity").value),
+          palette
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) return notice(data.error || "Could not create wedding.", true);
+      notice(`Wedding created! Redirecting to edit page…`);
+      setTimeout(() => location.href = `/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}`, 600);
+    });
+
+    // Load weddings
+    async function loadWeddings() {
+      const res = await WS.api("/api/weddings?action=list");
+      const data = await res.json();
+      if (!res.ok) return notice(data.error || "Could not load weddings.", true);
+      
+      const weddings = data.weddings || [];
+      $("empty").hidden = weddings.length > 0;
+      $("weddings-container").hidden = weddings.length === 0;
+
+      if (weddings.length === 0) return;
+
+      $("weddings-grid").innerHTML = weddings.map(w => `
+        <div class="card">
+          <div class="top" style="margin-bottom: .5rem;">
+            <span class="tag ${w.published_at ? "live" : ""}">${w.published_at ? "Published" : "Draft"}</span>
+            <span class="fine">${new Date(w.created_at).toLocaleDateString()}</span>
+          </div>
+          <h3>${WS.esc(w.couple_names)}</h3>
+          <p class="fine">
+            ${w.wedding_date ? new Date(w.wedding_date).toLocaleDateString() : "(No date set)"}
+            ${w.public_location ? " • " + WS.esc(w.public_location) : ""}
+          </p>
+          <p class="fine">Max ${w.max_guest_capacity} guests • ${w.currency}</p>
+          <div class="swatches">
+            ${(w.palette || []).map(c => `<span style="background: ${WS.esc(c)};"></span>`).join("")}
+          </div>
+          <div class="row" style="margin-top: 1rem;">
+            <a class="btn" href="/wedding.html?id=${encodeURIComponent(w.id)}&slug=${encodeURIComponent(w.slug)}">Edit</a>
+            ${w.published_at ? `<a class="btn" href="/guest.html?slug=${encodeURIComponent(w.slug)}" target="_blank">View guest site</a>` : ""}
+          </div>
+        </div>
+      `).join("");
+    }
+
+    loadWeddings();
+  </script>
+</body>
+</html>

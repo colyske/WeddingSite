@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#203a31">
+  <title>WeddingSite — Wedding Editor</title>
+  <link rel="stylesheet" href="app-shell.css">
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <a class="brand" href="/">WeddingSite</a>
+      <div>
+        <button type="button" class="link" id="back">← Back to My Weddings</button>
+        <button type="button" class="link" id="sign-out">Sign out</button>
+      </div>
+    </div>
+
+    <h1 id="title">Wedding</h1>
+    <p id="notice" class="notice" role="status" hidden></p>
+
+    <!-- Wedding details form -->
+    <div id="edit-section" class="card" hidden>
+      <form id="edit-form">
+        <label for="couple-names">Couple names</label>
+        <input id="couple-names" type="text" maxlength="120" required>
+
+        <label for="welcome-story">Welcome message</label>
+        <textarea id="welcome-story" maxlength="500" rows="4" placeholder="A brief message for your guests…"></textarea>
+
+        <label for="wedding-date">Date</label>
+        <input id="wedding-date" type="date">
+
+        <label for="location">Location</label>
+        <input id="location" type="text" maxlength="120">
+
+        <label for="currency">Currency</label>
+        <select id="currency">
+          <option value="USD">USD - US Dollar</option>
+          <option value="KES">KES - Kenyan Shilling</option>
+          <option value="EUR">EUR - Euro</option>
+          <option value="GBP">GBP - British Pound</option>
+          <option value="NGN">NGN - Nigerian Naira</option>
+          <option value="UGX">UGX - Ugandan Shilling</option>
+          <option value="ZAR">ZAR - South African Rand</option>
+        </select>
+
+        <label for="max-capacity">Maximum guests</label>
+        <input id="max-capacity" type="number" min="1">
+
+        <label>Wedding colours</label>
+        <div class="swatches" id="palette-preview"></div>
+
+        <div class="row">
+          <button type="submit">Save changes</button>
+          <button type="button" id="publish-btn" class="ghost">Publish wedding site</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Publish section -->
+    <div id="publish-section" class="card" hidden>
+      <h2>Publish your wedding site</h2>
+      <p>Once published, your guests can RSVP, bid on DJ songs, and see the details.</p>
+      <p id="publish-message" class="notice" hidden></p>
+      <div class="row">
+        <button type="button" id="confirm-publish" class="ghost">Confirm: publish now</button>
+        <button type="button" id="cancel-publish" class="link">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Published section -->
+    <div id="published-section" class="card" hidden>
+      <h2>Published</h2>
+      <p id="guest-site-url" class="fine"></p>
+      <p id="guest-qr-code" class="fine">Guests can scan QR code or click the link to RSVP.</p>
+      <div class="row">
+        <a id="view-guest-site" class="btn" target="_blank">View guest site</a>
+      </div>
+    </div>
+
+    <!-- RSVPs section -->
+    <div id="rsvps-section" class="card" hidden>
+      <h2>Guest RSVPs</h2>
+      <table id="rsvps-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th>Dietary needs</th>
+            <th>Submitted</th>
+          </tr>
+        </thead>
+        <tbody id="rsvps-body"></tbody>
+      </table>
+      <p id="no-rsvps" class="fine">No guest RSVPs yet.</p>
+    </div>
+
+    <!-- DJ Bids section -->
+    <div id="bids-section" class="card" hidden>
+      <h2>DJ Song Bids</h2>
+      <table id="bids-table">
+        <thead>
+          <tr>
+            <th>Song</th>
+            <th>Artist</th>
+            <th>Bid amount</th>
+            <th>Guest</th>
+            <th>Submitted</th>
+          </tr>
+        </thead>
+        <tbody id="bids-body"></tbody>
+      </table>
+      <p id="no-bids" class="fine">No DJ song bids yet.</p>
+    </div>
+  </div>
+
+  <script src="auth-client.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const notice = (text, bad) => { $("notice").hidden = !text; $("notice").textContent = text || ""; $("notice").className = "notice" + (bad ? " bad" : ""); };
+    const params = new URLSearchParams(location.search);
+    const weddingId = params.get("id");
+    const weddingSlug = params.get("slug");
+
+    if (!WS.token()) return location.replace("/signin.html");
+    if (!weddingId) return notice("Wedding ID missing.", true);
+
+    $("back").addEventListener("click", () => location.href = "/dashboard.html");
+    $("sign-out").addEventListener("click", () => { WS.clear(); location.replace("/signin.html"); });
+
+    // Load wedding
+    async function loadWedding() {
+      const res = await WS.api(`/api/weddings?action=get&weddingId=${encodeURIComponent(weddingId)}`);
+      const data = await res.json();
+      if (!res.ok) return notice(data.error || "Could not load wedding.", true);
+
+      const w = data.wedding;
+      $("title").textContent = `${WS.esc(w.couple_names)} — Wedding`;
+      $("couple-names").value = w.couple_names || "";
+      $("welcome-story").value = w.welcome_story || "";
+      $("wedding-date").value = w.wedding_date ? w.wedding_date.split("T")[0] : "";
+      $("location").value = w.public_location || "";
+      $("currency").value = w.currency || "USD";
+      $("max-capacity").value = w.max_guest_capacity || 150;
+      $("palette-preview").innerHTML = (w.palette || []).map(c => `<span style="background: ${WS.esc(c)};"></span>`).join("");
+
+      $("edit-section").hidden = false;
+
+      if (w.published_at) {
+        $("published-section").hidden = false;
+        $("guest-site-url").textContent = `Guest site: ${location.origin}/guest.html?slug=${encodeURIComponent(w.slug)}`;
+        $("view-guest-site").href = `/guest.html?slug=${encodeURIComponent(w.slug)}`;
+        $("rsvps-section").hidden = false;
+        $("bids-section").hidden = false;
+        loadRsvps();
+        loadBids();
+      } else {
+        $("publish-btn").disabled = false;
+      }
+    }
+
+    // Save changes
+    $("edit-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      notice("");
+      const res = await WS.api("/api/weddings?action=update", {
+        method: "POST",
+        body: JSON.stringify({
+          weddingId,
+          coupleNames: $("couple-names").value,
+          welcomeStory: $("welcome-story").value,
+          weddingDate: $("wedding-date").value || null,
+          location: $("location").value,
+          currency: $("currency").value,
+          maxCapacity: Number($("max-capacity").value)
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) return notice(data.error || "Could not save wedding.", true);
+      notice("Changes saved.");
+    });
+
+    // Publish
+    $("publish-btn").addEventListener("click", () => {
+      $("edit-section").hidden = true;
+      $("publish-section").hidden = false;
+    });
+
+    $("cancel-publish").addEventListener("click", () => {
+      $("publish-section").hidden = true;
+      $("edit-section").hidden = false;
+    });
+
+    $("confirm-publish").addEventListener("click", async () => {
+      const res = await WS.api("/api/weddings?action=publish", {
+        method: "POST",
+        body: JSON.stringify({ weddingId })
+      });
+      const data = await res.json();
+      if (!res.ok) return $("publish-message").textContent = data.error || "Could not publish.";
+      
+      $("publish-section").hidden = true;
+      $("published-section").hidden = false;
+      $("rsvps-section").hidden = false;
+      $("bids-section").hidden = false;
+      $("publish-message").hidden = true;
+    });
+
+    // Load RSVPs
+    async function loadRsvps() {
+      const res = await WS.api(`/api/weddings?action=rsvps&weddingId=${encodeURIComponent(weddingId)}`);
+      const data = await res.json();
+      if (!res.ok) return;
+      
+      const rsvps = data.rsvps || [];
+      if (rsvps.length === 0) return;
+      
+      $("rsvps-body").innerHTML = rsvps.map(r => `
+        <tr>
+          <td>${WS.esc(r.guest_name)}</td>
+          <td>${WS.esc(r.guest_email)}</td>
+          <td>${r.attending ? "✓ Yes" : "✗ No"}</td>
+          <td>${WS.esc(r.dietary_notes || "—")}</td>
+          <td>${new Date(r.created_at).toLocaleDateString()}</td>
+        </tr>
+      `).join("");
+      $("no-rsvps").hidden = true;
+    }
+
+    // Load bids
+    async function loadBids() {
+      const res = await WS.api(`/api/weddings?action=bids&weddingId=${encodeURIComponent(weddingId)}`);
+      const data = await res.json();
+      if (!res.ok) return;
+      
+      const bids = data.bids || [];
+      if (bids.length === 0) return;
+      
+      $("bids-body").innerHTML = bids.map(b => `
+        <tr>
+          <td>${WS.esc(b.song_title)}</td>
+          <td>${WS.esc(b.artist || "—")}</td>
+          <td>${WS.money(b.bid_amount_minor, b.wedding_currency)}</td>
+          <td>${WS.esc(b.guest_name || "Anonymous")}</td>
+          <td>${new Date(b.created_at).toLocaleDateString()}</td>
+        </tr>
+      `).join("");
+      $("no-bids").hidden = true;
+    }
+
+    loadWedding();
+  </script>
+</body>
+</html>

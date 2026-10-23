@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#203a31">
+  <title>WeddingSite — RSVP</title>
+  <link rel="stylesheet" href="app-shell.css">
+</head>
+<body>
+  <div class="wrap">
+    <a class="brand" href="/" style="display: block; margin-bottom: 2rem;">WeddingSite</a>
+
+    <h1 id="couple-names">Wedding</h1>
+    <p id="notice" class="notice" role="status" hidden></p>
+
+    <!-- Wedding details -->
+    <div id="wedding-details" class="card" hidden>
+      <p id="wedding-date" class="fine"></p>
+      <p id="wedding-location" class="fine"></p>
+      <div class="swatches" id="palette-preview"></div>
+
+      <p id="welcome-story" style="margin: 1.5rem 0 0; font-style: italic;"></p>
+    </div>
+
+    <!-- RSVP form -->
+    <div id="rsvp-section" class="card" hidden>
+      <h2>RSVP</h2>
+      <form id="rsvp-form">
+        <label for="guest-name">Your name</label>
+        <input id="guest-name" type="text" maxlength="100" required>
+
+        <label for="guest-email">Email</label>
+        <input id="guest-email" type="email" required>
+
+        <label>Will you attend?</label>
+        <select id="attending">
+          <option value="">Choose…</option>
+          <option value="yes">Yes, I'll be there!</option>
+          <option value="no">No, unfortunately not</option>
+        </select>
+
+        <label for="dietary-notes">Dietary preferences (optional)</label>
+        <textarea id="dietary-notes" maxlength="200" rows="2" placeholder="e.g. vegetarian, nut allergy, no pork…"></textarea>
+
+        <button type="submit">Submit RSVP</button>
+      </form>
+    </div>
+
+    <!-- DJ song bids -->
+    <div id="bids-section" class="card" hidden>
+      <h2>DJ Song Requests</h2>
+      <p class="fine">Have a song that should be on the dance floor? Make a bid and help us build the perfect playlist.</p>
+
+      <form id="bid-form">
+        <label for="song-title">Song title *</label>
+        <input id="song-title" type="text" maxlength="100" required>
+
+        <label for="artist">Artist *</label>
+        <input id="artist" type="text" maxlength="100" required>
+
+        <label for="bid-amount">Bid amount (in <span id="currency-display">USD</span>) *</label>
+        <input id="bid-amount" type="number" step="0.01" min="0" placeholder="0.00" required>
+
+        <p class="fine">Your bid helps fund DJ services. Non-bidding guests can still request songs (coming soon).</p>
+
+        <button type="submit">Place bid</button>
+      </form>
+    </div>
+
+    <!-- DJ leaderboard -->
+    <div id="leaderboard-section" class="card" hidden>
+      <h2>DJ Song Leaderboard</h2>
+      <table id="leaderboard-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Song</th>
+            <th>Artist</th>
+            <th>Total bids</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboard-body"></tbody>
+      </table>
+      <p id="no-bids" class="fine">No bids yet. Be the first!</p>
+    </div>
+
+    <!-- Contribution ledger -->
+    <div id="ledger-section" class="card" hidden>
+      <h2>Contribution Ledger</h2>
+      <p class="fine">Supporting guest contributions to various services (DJ, decorations, catering, etc.)</p>
+      <table id="ledger-table">
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th>Amount</th>
+            <th>Contributor</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody id="ledger-body"></tbody>
+      </table>
+      <p id="no-ledger" class="fine">No contributions yet.</p>
+    </div>
+  </div>
+
+  <script src="auth-client.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const notice = (text, bad) => { $("notice").hidden = !text; $("notice").textContent = text || ""; $("notice").className = "notice" + (bad ? " bad" : ""); };
+    const params = new URLSearchParams(location.search);
+    const weddingSlug = params.get("slug");
+
+    let weddingId, weddingCurrency = "USD";
+
+    if (!weddingSlug) return notice("No wedding specified.", true);
+
+    // Load wedding public details
+    async function loadWedding() {
+      const res = await fetch(`/api/guest?action=site&slug=${encodeURIComponent(weddingSlug)}`);
+      const data = await res.json();
+      if (!res.ok) return notice(data.error || "Wedding not found.", true);
+
+      const w = data.wedding;
+      weddingId = w.id;
+      weddingCurrency = w.currency || "USD";
+      $("couple-names").textContent = WS.esc(w.couple_names || "Wedding");
+      $("title").textContent = `${WS.esc(w.couple_names)} — RSVP`;
+      
+      if (w.welcome_story) $("welcome-story").textContent = WS.esc(w.welcome_story);
+      if (w.wedding_date) $("wedding-date").textContent = `📅 ${new Date(w.wedding_date).toLocaleDateString()}`;
+      if (w.public_location) $("wedding-location").textContent = `📍 ${WS.esc(w.public_location)}`;
+      $("palette-preview").innerHTML = (w.palette || []).map(c => `<span style="background: ${WS.esc(c)};"></span>`).join("");
+      $("currency-display").textContent = weddingCurrency;
+
+      $("wedding-details").hidden = false;
+      $("rsvp-section").hidden = false;
+      $("bids-section").hidden = false;
+      $("leaderboard-section").hidden = false;
+      $("ledger-section").hidden = false;
+
+      loadLeaderboard();
+      loadLedger();
+    }
+
+    // Submit RSVP
+    $("rsvp-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      notice("");
+      const attending = $("attending").value === "yes";
+      const res = await fetch(`/api/guest?action=rsvp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          weddingId,
+          guestName: $("guest-name").value,
+          guestEmail: $("guest-email").value,
+          attending,
+          dietaryNotes: $("dietary-notes").value
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) return notice(data.error || "Could not submit RSVP.", true);
+      notice("RSVP submitted! Thank you.");
+      $("rsvp-form").reset();
+    });
+
+    // Place DJ bid
+    $("bid-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      notice("");
+      const res = await fetch(`/api/guest?action=bid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          weddingId,
+          songTitle: $("song-title").value,
+          artist: $("artist").value,
+          bidAmount: Math.round(Number($("bid-amount").value) * 100)
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) return notice(data.error || "Could not place bid.", true);
+      notice("Bid placed! Song added to leaderboard.");
+      $("bid-form").reset();
+      loadLeaderboard();
+    });
+
+    // Load DJ leaderboard
+    async function loadLeaderboard() {
+      const res = await fetch(`/api/guest?action=leaderboard&weddingId=${encodeURIComponent(weddingId)}`);
+      const data = await res.json();
+      if (!res.ok) return;
+      
+      const bids = data.bids || [];
+      if (bids.length === 0) return;
+      
+      $("leaderboard-body").innerHTML = bids.map((b, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${WS.esc(b.song_title)}</td>
+          <td>${WS.esc(b.artist || "—")}</td>
+          <td>${WS.money(b.total_bid_minor, weddingCurrency)}</td>
+        </tr>
+      `).join("");
+      $("no-bids").hidden = true;
+    }
+
+    // Load ledger (contribution records)
+    async function loadLedger() {
+      const res = await fetch(`/api/guest?action=ledger&weddingId=${encodeURIComponent(weddingId)}`);
+      const data = await res.json();
+      if (!res.ok) return;
+      
+      const ledger = data.ledger || [];
+      if (ledger.length === 0) return;
+      
+      $("ledger-body").innerHTML = ledger.map(row => `
+        <tr>
+          <td>${WS.esc(row.service || "Contribution")}</td>
+          <td>${WS.money(row.amount_minor, weddingCurrency)}</td>
+          <td>${WS.esc(row.contributor || "Anonymous")}</td>
+          <td>${new Date(row.created_at).toLocaleDateString()}</td>
+        </tr>
+      `).join("");
+      $("no-ledger").hidden = true;
+    }
+
+    loadWedding();
+  </script>
+</body>
+</html>

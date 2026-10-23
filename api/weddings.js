@@ -22,6 +22,15 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { weddings: rows || [] });
     }
 
+    if (action === "get") {
+      if (!methodOnly(req, res, "GET")) return;
+      if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+      const rows = await supabaseRequest(
+        `/rest/v1/weddings?id=eq.${req.query.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=${FIELDS}`, opts);
+      if (!rows?.length) return sendJson(res, 404, { error: "Wedding not found." });
+      return sendJson(res, 200, { wedding: rows[0] });
+    }
+
     if (action === "create") {
       if (!methodOnly(req, res, "POST")) return;
       const names = String(body.coupleNames || "").trim();
@@ -76,9 +85,8 @@ export default async function handler(req, res) {
     if (action === "publish") {
       if (!methodOnly(req, res, "POST")) return;
       if (!UUID.test(String(body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
-      if (body.confirmed !== true) return sendJson(res, 400, { error: "Publishing needs your explicit confirmation." });
       try {
-        await supabaseRequest("/rest/v1/rpc/publish_wedding_with_fee", { ...opts, method: "POST", body: { p_wedding_id: body.weddingId, p_confirmed: true } });
+        await supabaseRequest("/rest/v1/rpc/publish_wedding_with_fee", { ...opts, method: "POST", body: { p_wedding_id: body.weddingId } });
       } catch (error) {
         return sendJson(res, 409, { error: error.message });
       }
@@ -89,8 +97,16 @@ export default async function handler(req, res) {
       if (!methodOnly(req, res, "GET")) return;
       if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
       const rows = await supabaseRequest(
-        `/rest/v1/guest_rsvps?wedding_id=eq.${req.query.weddingId}&select=guest_name,attendance_status,plus_one_count,dietary_accommodation_requested,rsvped_at&order=rsvped_at.desc&limit=200`, opts);
+        `/rest/v1/guest_rsvps?wedding_id=eq.${req.query.weddingId}&select=id,guest_name,guest_email,attending,dietary_notes,created_at&order=created_at.desc&limit=200`, opts);
       return sendJson(res, 200, { rsvps: rows || [] });
+    }
+
+    if (action === "bids") {
+      if (!methodOnly(req, res, "GET")) return;
+      if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+      const rows = await supabaseRequest(
+        `/rest/v1/dj_song_bids?wedding_id=eq.${req.query.weddingId}&select=id,song_title,artist,bid_amount_minor,guest_name,created_at&order=created_at.desc&limit=200`, opts);
+      return sendJson(res, 200, { bids: rows || [] });
     }
 
     return sendJson(res, 404, { error: "Unknown action." });
