@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#203a31">
   <title>WeddingSite — Wedding</title>
   <link rel="stylesheet" href="app-shell.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     /* Sticky navbar with glassmorphism */
     nav.sticky-nav {
@@ -357,6 +358,19 @@
       </table>
       <p id="no-ledger" class="fine">No contributions yet.</p>
     </section>
+
+    <!-- Digital e-card pass -->
+    <section id="ecard" class="card" hidden>
+      <h2>Your Digital E-Card Pass</h2>
+      <p class="fine">Screenshot this pass or show it at the entrance to check in.</p>
+      <div id="ecard-display" style="text-align: center; padding: 2rem 1rem; background: linear-gradient(135deg, #f8f9f7 0%, #f3faf3 100%); border-radius: 8px; border: 2px solid var(--sage);">
+        <p style="margin: 0 0 1rem; color: var(--green); font-size: 0.9rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;">Digital E-Card Pass</p>
+        <p style="margin: 0 0 1.5rem; font-size: 1.2rem; font-weight: 600; color: var(--green);" id="ecard-guest-name"></p>
+        <div id="qrcode" style="display: inline-block; padding: 1rem; background: #fff; border-radius: 8px;"></div>
+        <p style="margin: 1rem 0 0; font-size: 0.85rem; color: #7a8580;">Scan to verify attendance</p>
+        <p id="ecard-date" style="margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--gold); font-weight: 600;"></p>
+      </div>
+    </section>
   </div>
 
   <audio id="background-music" loop style="display: none;"></audio>
@@ -531,6 +545,34 @@ END:VCALENDAR`;
       const data = await res.json();
       if (!res.ok) return notice(data.error || "Could not submit RSVP.", true);
       notice("RSVP received! Thank you for confirming.");
+      
+      // Generate e-card pass
+      const guestName = $("guest-name").value;
+      const passData = `${wedding.id}:${guestName}:${Date.now()}`;
+      
+      $("ecard-guest-name").textContent = guestName;
+      if (wedding.wedding_date) {
+        const wDate = new Date(wedding.wedding_date);
+        $("ecard-date").textContent = wDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+      }
+      
+      // Clear previous QR code
+      $("qrcode").innerHTML = "";
+      
+      // Generate new QR code
+      try {
+        new QRCode($("qrcode"), {
+          text: passData,
+          width: 200,
+          height: 200,
+          colorDark: "#244b3a",
+          colorLight: "#ffffff"
+        });
+      } catch (err) {
+        console.warn("Could not generate QR code:", err);
+      }
+      
+      $("ecard").hidden = false;
       $("rsvp-form").reset();
     } catch (err) {
       console.error("RSVP failed:", err);
