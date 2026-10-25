@@ -1,7 +1,8 @@
 // Session kept in sessionStorage (cleared when the tab closes). Tokens are never logged.
 window.WS = {
-  save(s) { sessionStorage.setItem("ws-session", JSON.stringify({ a: s.accessToken, r: s.refreshToken || "" })); },
+  save(s) { sessionStorage.setItem("ws-session", JSON.stringify({ a: s.accessToken, r: s.refreshToken || "", role: s.role || null })); },
   token() { try { return JSON.parse(sessionStorage.getItem("ws-session"))?.a || ""; } catch { return ""; } },
+  role() { try { return JSON.parse(sessionStorage.getItem("ws-session"))?.role || null; } catch { return null; } },
   clear() { sessionStorage.removeItem("ws-session"); },
   async api(path, options = {}) {
     const send = () => fetch(path, { ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}), Authorization: "Bearer " + WS.token() } });

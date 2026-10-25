@@ -37,9 +37,22 @@
   <div class="wrap">
     <div class="top">
       <a class="brand" href="/">WeddingSite</a>
-      <div>
+      <div style="display: flex; gap: 1rem; align-items: center;">
         <button type="button" class="link" id="back">← Back to My Weddings</button>
-        <button type="button" class="link" id="sign-out">Sign out</button>
+        <div style="position: relative;">
+          <button type="button" class="link" id="account-menu-btn" title="Account menu">👤 Account ▼</button>
+          <div id="account-menu" style="display: none; position: absolute; right: 0; top: 100%; background: white; border: 1px solid #ddd; border-radius: 4px; min-width: 200px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); z-index: 100;">
+            <div style="padding: 0.75rem 1rem;">
+              <div class="fine" style="margin-bottom: 0.5rem;" id="role-display"></div>
+              <button type="button" class="link" id="change-password" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer;">Change password</button>
+              <a href="/admin.html" class="link" style="display: none;" id="admin-dashboard" title="Admin Dashboard">Admin Dashboard</a>
+              <a href="#" class="link" style="display: none;" id="owner-profile" title="Owner Profile">Owner Profile</a>
+              <hr style="margin: 0.5rem 0; border: none; border-top: 1px solid #ddd;">
+              <button type="button" class="link" id="account-sign-out" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer;">Sign out</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="link" id="sign-out" style="position: absolute; width: 1px; height: 1px; padding: 0; border: 0; overflow: hidden;">Sign out</button>
       </div>
     </div>
 
@@ -335,7 +348,46 @@
     if (!weddingId) return notice("Wedding ID missing.", true);
 
     $("back").addEventListener("click", () => location.href = "/dashboard.html");
-    $("sign-out").addEventListener("click", () => { WS.clear(); location.replace("/signin.html"); });
+    
+    const handleSignOut = () => { WS.clear(); location.replace("/signin.html"); };
+    $("sign-out").addEventListener("click", handleSignOut);
+    $("account-sign-out").addEventListener("click", handleSignOut);
+
+    // Account menu
+    $("account-menu-btn").addEventListener("click", (e) => {
+      const menu = $("account-menu");
+      menu.style.display = menu.style.display === "none" ? "block" : "none";
+      e.stopPropagation();
+    });
+
+    document.addEventListener("click", () => {
+      $("account-menu").style.display = "none";
+    });
+
+    $("change-password").addEventListener("click", async (e) => {
+      e.preventDefault();
+      alert("Password change feature coming soon. Contact support to reset your password.");
+    });
+
+    // Set up role-based navigation
+    const roleWedding = WS.role();
+    if (roleWedding) {
+      $("role-display").textContent = `Role: ${roleWedding.charAt(0).toUpperCase() + roleWedding.slice(1)}`;
+      
+      if (roleWedding === "admin" || roleWedding === "superadmin" || roleWedding === "owner") {
+        $("admin-dashboard").style.display = "block";
+      }
+      
+      if (roleWedding === "owner") {
+        $("owner-profile").style.display = "block";
+        $("owner-profile").textContent = "Owner Profile (You)";
+        $("owner-profile").href = "#";
+        $("owner-profile").addEventListener("click", (e) => {
+          e.preventDefault();
+          alert("Owner profile coming soon");
+        });
+      }
+    }
 
     // AI Story suggestions
     $("ai-story-btn").addEventListener("click", async e => {
@@ -1145,6 +1197,42 @@
         $("request-withdrawal-btn").disabled = false;
       }
     });
+
+    // Account menu
+    $("account-menu-btn").addEventListener("click", (e) => {
+      const menu = $("account-menu");
+      menu.style.display = menu.style.display === "none" ? "block" : "none";
+      e.stopPropagation();
+    });
+
+    document.addEventListener("click", () => {
+      $("account-menu").style.display = "none";
+    });
+
+    $("change-password").addEventListener("click", async (e) => {
+      e.preventDefault();
+      alert("Password change feature coming soon. Contact support to reset your password.");
+    });
+
+    // Set up role-based navigation
+    const role = window.WS.role();
+    if (role) {
+      $("role-display").textContent = `Role: ${role.charAt(0).toUpperCase() + role.slice(1)}`;
+      
+      if (role === "admin" || role === "superadmin" || role === "owner") {
+        $("admin-dashboard").style.display = "block";
+      }
+      
+      if (role === "owner") {
+        $("owner-profile").style.display = "block";
+        $("owner-profile").textContent = "Owner Profile (You)";
+        $("owner-profile").href = "#";
+        $("owner-profile").addEventListener("click", (e) => {
+          e.preventDefault();
+          alert("Owner profile coming soon");
+        });
+      }
+    }
 
     loadWedding();
 })();

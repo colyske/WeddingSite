@@ -294,6 +294,54 @@
 
   $("create-form").addEventListener("submit", (e) => { e.preventDefault(); submitCreate(); });
 
+  // Account menu
+  $("account-menu-btn").addEventListener("click", (e) => {
+    const menu = $("account-menu");
+    menu.style.display = menu.style.display === "none" ? "block" : "none";
+    e.stopPropagation();
+  });
+
+  document.addEventListener("click", () => {
+    $("account-menu").style.display = "none";
+  });
+
+  const handleSignOut = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    window.WS.clear();
+    location.replace("/signin.html");
+  };
+
+  $("sign-out").addEventListener("click", handleSignOut);
+  $("account-sign-out").addEventListener("click", handleSignOut);
+
+  $("change-password").addEventListener("click", async (e) => {
+    e.preventDefault();
+    // For now, show a placeholder message
+    alert("Password change feature coming soon. Contact support to reset your password.");
+  });
+
+  // Set up role-based navigation
+  const role = window.WS.role();
+  if (role) {
+    $("role-display").textContent = `Role: ${role.charAt(0).toUpperCase() + role.slice(1)}`;
+    
+    // Show admin dashboard if user is admin or superadmin or owner
+    if (role === "admin" || role === "superadmin" || role === "owner") {
+      $("admin-dashboard").style.display = "block";
+    }
+    
+    // Show owner profile only if user is owner (never show owner to other roles)
+    if (role === "owner") {
+      $("owner-profile").style.display = "block";
+      $("owner-profile").textContent = "Owner Profile (You)";
+      $("owner-profile").href = "#"; // TODO: create owner profile page
+      $("owner-profile").addEventListener("click", (e) => {
+        e.preventDefault();
+        alert("Owner profile coming soon");
+      });
+    }
+  }
+
   // Error boundaries: surface anything unexpected instead of failing silently.
   window.addEventListener("error", (e) => { console.error(e.error || e.message); setNotice("Something went wrong on this page. Your entries are kept; please try again.", "bad"); });
   window.addEventListener("unhandledrejection", (e) => { console.error(e.reason); setNotice("Something went wrong. Your entries are kept; please try again.", "bad"); });
