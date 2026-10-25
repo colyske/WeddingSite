@@ -10,7 +10,8 @@ const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,public_location,
 const loadWeddingDetails = async (weddingId, opts) => {
   const venues = await supabaseRequest(`/rest/v1/venues?wedding_id=eq.${weddingId}&select=id,name,event_time,map_link,description,is_main,sort_order&order=sort_order.asc`, opts).catch(() => []);
   const payout = await supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${weddingId}`, opts).catch(() => null);
-  return { venues: venues || [], payout };
+  const registry = await supabaseRequest(`/rest/v1/registry_items?wedding_id=eq.${weddingId}&select=id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts).catch(() => []);
+  return { venues: venues || [], payout, registry: registry || [] };
 };
 
 // Authenticated Client workspace API. All reads/writes run as the signed-in user so RLS applies.
@@ -118,6 +119,35 @@ export default async function handler(req, res) {
             }
           }
         } catch (e) { console.warn("Venue update failed:", e.message); }
+      }
+
+      // Update registry items if provided
+      if (Array.isArray(body.registry)) {
+        try {
+          const existing = (await supabaseRequest(`/rest/v1/registry_items?wedding_id=eq.${body.weddingId}&select=id`, opts) || []).map(r => r.id);
+          const incoming = body.registry.filter(r => r && r.id).map(r => r.id);
+          const toDelete = existing.filter(id => !incoming.includes(id));
+          for (const id of toDelete) {
+            await supabaseRequest(`/rest/v1/registry_items?id=eq.${id}`, { ...opts, method: "DELETE" }).catch(() => null);
+          }
+          for (let i = 0; i < body.registry.length; i++) {
+            const r = body.registry[i];
+            if (!r.name || !r.targetAmount) continue;
+            const item = {
+              name: r.name.trim().slice(0, 100),
+              description: r.description || null,
+              category: r.category || null,
+              target_amount_minor: Math.round(r.targetAmount * 100),
+              notes: r.notes || null,
+              sort_order: i
+            };
+            if (r.id && existing.includes(r.id)) {
+              await supabaseRequest(`/rest/v1/registry_items?id=eq.${r.id}`, { ...opts, method: "PATCH", body: item }).catch(() => null);
+            } else if (!r.id) {
+              await supabaseRequest("/rest/v1/registry_items", { ...opts, method: "POST", body: { wedding_id: body.weddingId, ...item } }).catch(() => null);
+            }
+          }
+        } catch (e) { console.warn("Registry update failed:", e.message); }
       }
       
       const details = await loadWeddingDetails(rows[0].id, opts);

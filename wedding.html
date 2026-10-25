@@ -15,6 +15,15 @@
     .venue-main-label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0 0 1rem; font-weight: 500; }
     .remove-venue { padding: 0.5rem 1rem; background: #d9534f; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
     #add-venue-btn { font-size: 1rem; }
+    
+    .registry-item { padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9; margin-bottom: 1rem; }
+    .registry-item input[type="text"], .registry-item input[type="number"], .registry-item textarea {
+      display: block; width: 100%; margin-bottom: 0.75rem; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; box-sizing: border-box;
+    }
+    .registry-item textarea { resize: vertical; min-height: 50px; }
+    .registry-item > div { margin-bottom: 0.5rem; }
+    .registry-item label { display: block; margin: 0.5rem 0 0.25rem; font-size: 0.9rem; font-weight: 500; }
+    .remove-registry { padding: 0.5rem 1rem; background: #d9534f; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
   </style>
 </head>
 <body>
@@ -93,6 +102,11 @@
           <label for="attire-notes">Attire notes & dress code</label>
           <textarea id="attire-notes" maxlength="300" rows="3" placeholder="E.g. Forest Green, Eucalyptus Sage, Royal Gold, Ivory palette. Formal African elegance encouraged."></textarea>
         </div>
+
+        <label>Registry & Crowdfunding Milestones
+          <button type="button" class="link" id="add-registry-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add item</button>
+        </label>
+        <div id="registry-list" style="margin-bottom: 1.5rem;"></div>
 
         <div class="row">
           <button type="submit">Save changes</button>
@@ -336,6 +350,50 @@
       $("attire-editor").style.display = "none";
     });
 
+    // Registry management
+    let registryCount = 0;
+    function addRegistryEditor() {
+      const id = `registry-${registryCount++}`;
+      const html = `
+        <div class="registry-item" data-registry-id="${id}">
+          <input type="hidden" class="registry-id" value="">
+          <div>
+            <label>Item name</label>
+            <input type="text" class="registry-name" placeholder="e.g. Honeymoon Flight, Photography, Catering" maxlength="100">
+          </div>
+          <div>
+            <label>Category</label>
+            <input type="text" class="registry-category" placeholder="e.g. Travel, Media, Services" maxlength="50">
+          </div>
+          <div>
+            <label>Target amount (${$("currency").value || "USD"})</label>
+            <input type="number" class="registry-target" min="1" step="0.01" placeholder="e.g. 5000">
+          </div>
+          <div>
+            <label>Description</label>
+            <textarea class="registry-desc" placeholder="Why this item, what it will be used for" maxlength="240"></textarea>
+          </div>
+          <div>
+            <label>Notes for contributors</label>
+            <textarea class="registry-notes" placeholder="e.g. Help us fund our dream honeymoon" maxlength="240"></textarea>
+          </div>
+          <button type="button" class="remove-registry" data-registry-id="${id}">Remove</button>
+        </div>
+      `;
+      $("registry-list").insertAdjacentHTML("beforeend", html);
+      
+      const item = $("registry-list").querySelector(`[data-registry-id="${id}"]`);
+      item.querySelector(".remove-registry").addEventListener("click", e => {
+        e.preventDefault();
+        item.remove();
+      });
+    }
+
+    $("add-registry-btn").addEventListener("click", e => {
+      e.preventDefault();
+      addRegistryEditor();
+    });
+
     // Load wedding
     async function loadWedding() {
       try {
@@ -389,6 +447,48 @@
           venueCount = w.venues.length;
         }
 
+        // Load registry items
+        if (w.registry && Array.isArray(w.registry)) {
+          $("registry-list").innerHTML = "";
+          w.registry.forEach((reg, idx) => {
+            const id = `registry-${idx}`;
+            const html = `
+              <div class="registry-item" data-registry-id="${id}">
+                <input type="hidden" class="registry-id" value="${esc(reg.id || "")}">
+                <div>
+                  <label>Item name</label>
+                  <input type="text" class="registry-name" value="${esc(reg.name || "")}" placeholder="e.g. Honeymoon Flight" maxlength="100">
+                </div>
+                <div>
+                  <label>Category</label>
+                  <input type="text" class="registry-category" value="${esc(reg.category || "")}" placeholder="e.g. Travel" maxlength="50">
+                </div>
+                <div>
+                  <label>Target amount (${w.currency || "USD"})</label>
+                  <input type="number" class="registry-target" value="${(reg.target_amount_minor || 0) / 100}" min="1" step="0.01" placeholder="e.g. 5000">
+                </div>
+                <div>
+                  <label>Description</label>
+                  <textarea class="registry-desc" placeholder="Why this item" maxlength="240">${esc(reg.description || "")}</textarea>
+                </div>
+                <div>
+                  <label>Notes for contributors</label>
+                  <textarea class="registry-notes" placeholder="Help us fund" maxlength="240">${esc(reg.notes || "")}</textarea>
+                </div>
+                <button type="button" class="remove-registry" data-registry-id="${id}">Remove</button>
+              </div>
+            `;
+            $("registry-list").insertAdjacentHTML("beforeend", html);
+            
+            const item = $("registry-list").querySelector(`[data-registry-id="${id}"]`);
+            item.querySelector(".remove-registry").addEventListener("click", e => {
+              e.preventDefault();
+              item.remove();
+            });
+          });
+          registryCount = w.registry.length;
+        }
+
         $("edit-section").hidden = false;
 
         if (w.published_at) {
@@ -437,6 +537,23 @@
         const paletteSpans = $("palette-preview").querySelectorAll("span");
         const palette = Array.from(paletteSpans).map(s => s.style.background).filter(Boolean);
 
+        // Collect registry items
+        const registry = [];
+        $("registry-list").querySelectorAll(".registry-item").forEach(item => {
+          const name = item.querySelector(".registry-name").value.trim();
+          const target = parseFloat(item.querySelector(".registry-target").value || 0);
+          if (name && target > 0) {
+            registry.push({
+              id: item.querySelector(".registry-id").value || null,
+              name: name,
+              category: item.querySelector(".registry-category").value || null,
+              targetAmount: target,
+              description: item.querySelector(".registry-desc").value || null,
+              notes: item.querySelector(".registry-notes").value || null
+            });
+          }
+        });
+
         const res = await WS.api("/api/weddings?action=update", {
           method: "POST",
           body: JSON.stringify({
@@ -449,7 +566,8 @@
             maxCapacity: Number($("max-capacity").value),
             venues: venues,
             palette: palette,
-            attireNotes: $("attire-notes").value
+            attireNotes: $("attire-notes").value,
+            registry: registry
           })
         });
         const data = await res.json();
