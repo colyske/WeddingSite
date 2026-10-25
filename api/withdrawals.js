@@ -21,6 +21,8 @@ export default async function handler(req, res) {
   try {
     if (action === "balance") {
       // Get current payout balance (net contributions for this wedding)
+      // Only include contributions where payment_received_at is at least 3 days ago
+      // (Paystack takes 2-3 business days to process)
       const wedding = await supabaseRequest(
         `/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&select=id,owner_id,currency`,
         { token: session.token }
@@ -34,8 +36,12 @@ export default async function handler(req, res) {
         return sendJson(res, 403, { error: "Not authorized to access this wedding." });
       }
 
+      // Get contributions that are confirmed paid (3+ days received)
+      const now = new Date();
+      const threeBusinessDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000); // 5 calendar days = ~3 business days
+      
       const contributions = await supabaseRequest(
-        `/rest/v1/contributions?wedding_id=eq.${encodeURIComponent(weddingId)}&payment_status=eq.paid&select=net_paid_minor`,
+        `/rest/v1/contributions?wedding_id=eq.${encodeURIComponent(weddingId)}&payment_status=eq.paid&payment_received_at=lt.${encodeURIComponent(threeBusinessDaysAgo.toISOString())}&select=net_paid_minor`,
         { token: session.token }
       );
 
@@ -43,7 +49,8 @@ export default async function handler(req, res) {
 
       return sendJson(res, 200, {
         balance_minor: balance,
-        currency: wedding[0].currency || "USD"
+        currency: wedding[0].currency || "USD",
+        info: "Balance includes only contributions received 3+ days ago (Paystack processing time)"
       });
     }
 
@@ -72,9 +79,12 @@ export default async function handler(req, res) {
         return sendJson(res, 403, { error: "Not authorized." });
       }
 
-      // Check balance
+      // Check balance (only include 3+ days received)
+      const now = new Date();
+      const threeBusinessDaysAgo = new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000);
+      
       const contributions = await supabaseRequest(
-        `/rest/v1/contributions?wedding_id=eq.${encodeURIComponent(weddingId)}&payment_status=eq.paid&select=net_paid_minor`,
+        `/rest/v1/contributions?wedding_id=eq.${encodeURIComponent(weddingId)}&payment_status=eq.paid&payment_received_at=lt.${encodeURIComponent(threeBusinessDaysAgo.toISOString())}&select=net_paid_minor`,
         { token: session.token }
       );
 
