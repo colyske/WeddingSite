@@ -45,19 +45,20 @@ export default async function handler(req, res) {
     if (action === "create") {
       if (!methodOnly(req, res, "POST")) return;
       const names = String(body.coupleNames || "").trim();
+      const location = String(body.location || "").trim();
       const palette = Array.isArray(body.palette) && body.palette.length ? body.palette : ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"];
       const capacity = Number(body.maxCapacity ?? 150);
       const currency = String(body.currency || "USD").toUpperCase();
-      if (names.length < 1 || names.length > 120 || !/^[A-Z]{3}$/.test(currency) ||
+      if (names.length < 1 || names.length > 120 || location.length < 1 || location.length > 120 || !/^[A-Z]{3}$/.test(currency) ||
           !Number.isInteger(capacity) || capacity < 1 || palette.length > 4 || !palette.every(c => COLOR.test(c))) {
-        return sendJson(res, 400, { error: "Check the couple names, currency, guest capacity and up to four hex colors." });
+        return sendJson(res, 400, { error: "Check the couple names, location, currency, guest capacity and up to four hex colors." });
       }
       const base = toSlug(names) || "wedding";
       for (const suffix of ["", `-${Math.random().toString(36).slice(2, 6)}`, `-${Math.random().toString(36).slice(2, 8)}`]) {
         try {
           const id = await supabaseRequest("/rest/v1/rpc/create_wedding", { ...opts, method: "POST", body: {
             p_slug: `${base}${suffix}`.slice(0, 80).padEnd(3, "x"), p_couple_names: names,
-            p_wedding_date: body.weddingDate || null, p_location: String(body.location || "").slice(0, 120),
+            p_wedding_date: body.weddingDate || null, p_location: location.slice(0, 120),
             p_currency: currency, p_capacity: capacity, p_palette: palette } });
           return sendJson(res, 201, { weddingId: id, slug: `${base}${suffix}` });
         } catch (error) {

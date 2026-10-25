@@ -127,16 +127,40 @@
   function validate() {
     const f = state.fields;
     const errors = [];
+    const errorFields = [];
     
-    if (!f.names.trim()) errors.push("✓ Couple names (required)");
-    else $("couple-names").removeAttribute("aria-invalid");
+    if (!f.names.trim()) {
+      errors.push("✓ Couple names (required)");
+      $("couple-names").setAttribute("aria-invalid", "true");
+      errorFields.push($("couple-names"));
+    } else {
+      $("couple-names").removeAttribute("aria-invalid");
+    }
     
-    if (!f.currency || !/^[A-Z]{3}$/.test(f.currency)) errors.push("✓ Currency (required)");
-    else $("currency").removeAttribute("aria-invalid");
+    if (!f.location.trim()) {
+      errors.push("✓ Location (required)");
+      $("location").setAttribute("aria-invalid", "true");
+      errorFields.push($("location"));
+    } else {
+      $("location").removeAttribute("aria-invalid");
+    }
+    
+    if (!f.currency || !/^[A-Z]{3}$/.test(f.currency)) {
+      errors.push("✓ Currency (required)");
+      $("currency").setAttribute("aria-invalid", "true");
+      errorFields.push($("currency"));
+    } else {
+      $("currency").removeAttribute("aria-invalid");
+    }
     
     const cap = Number(f.capacity);
-    if (!f.capacity.trim() || !Number.isInteger(cap) || cap < 1) errors.push("✓ Guest capacity (required, must be 1 or more)");
-    else $("max-capacity").removeAttribute("aria-invalid");
+    if (!f.capacity.trim() || !Number.isInteger(cap) || cap < 1) {
+      errors.push("✓ Guest capacity (required, must be 1 or more)");
+      $("max-capacity").setAttribute("aria-invalid", "true");
+      errorFields.push($("max-capacity"));
+    } else {
+      $("max-capacity").removeAttribute("aria-invalid");
+    }
     
     if (!state.palette.every((c) => HEX.test(c))) errors.push("Each colour must be valid");
     
@@ -145,7 +169,7 @@
     }
     
     if (errors.length) {
-      const firstErrorField = document.querySelector("[aria-invalid='true']") || $("couple-names");
+      const firstErrorField = errorFields[0] || $("couple-names");
       firstErrorField?.focus?.();
       return "Please fix these required fields: " + errors.join(", ");
     }
