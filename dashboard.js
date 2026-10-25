@@ -225,9 +225,13 @@
       state.paletteOpen = false;
       state.venues = [newVenue()];
       state.mainVenueId = state.venues[0].id;
-      setNotice("");
+      setNotice(`✨ ${payload.coupleNames} created successfully! Redirecting...`, "good");
       renderAll();
-      loadWeddings();
+      
+      // Auto-navigate to the newly created wedding after a brief delay
+      setTimeout(() => {
+        location.href = `/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}`;
+      }, 1000);
     } catch (err) {
       console.error("Create wedding error:", err);
       setNotice(`Could not reach the server (${err.message}). Your details are kept; please check your connection and try again.`, "bad");

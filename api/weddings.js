@@ -409,7 +409,31 @@ export default async function handler(req, res) {
 
     return sendJson(res, 404, { error: "Unknown action." });
   } catch (error) {
-    console.error("weddings endpoint failed", error.message);
-    return sendJson(res, error.status && error.status < 500 ? error.status : 503, { error: "The request could not be completed." });
+    // Log full error for debugging but never expose secrets
+    const errorMsg = error.message || error.toString();
+    console.error("weddings endpoint error:", {
+      action,
+      statusCode: error.status,
+      message: errorMsg,
+      code: error.code
+    });
+
+    // Provide specific error messages instead of generic ones
+    let userMessage = "The request could not be completed.";
+    if (errorMsg.includes("relation does not exist")) {
+      userMessage = "Database table not found. Platform is not fully initialized. Contact admin.";
+    } else if (errorMsg.includes("permission denied") || errorMsg.includes("RLS")) {
+      userMessage = "You don't have permission to access this resource.";
+    } else if (errorMsg.includes("connection refused") || errorMsg.includes("timeout")) {
+      userMessage = "Database service is temporarily unavailable. Please try again.";
+    } else if (errorMsg.includes("invalid token") || errorMsg.includes("unauthorized")) {
+      userMessage = "Your session has expired. Please sign in again.";
+    } else if (error.status === 404) {
+      userMessage = error.message || "Resource not found.";
+    } else if (error.status && error.status >= 400 && error.status < 500) {
+      userMessage = error.message || "Invalid request.";
+    }
+
+    return sendJson(res, error.status && error.status < 500 ? error.status : 503, { error: userMessage });
   }
 }

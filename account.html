@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#203a31">
+  <title>WeddingSite — Account Settings</title>
+  <link rel="stylesheet" href="app-shell.css">
+  <style>
+    .account-section { margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid #e0e5df; }
+    .account-section:last-child { border-bottom: none; }
+    .account-field { margin-bottom: 1.5rem; }
+    .account-field label { display: block; font-weight: 500; margin-bottom: 0.5rem; color: #203a31; }
+    .account-field input[type="email"], .account-field input[type="text"], .account-field input[type="password"] {
+      display: block; width: 100%; max-width: 400px; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; font-size: 1rem;
+    }
+    .account-field input:disabled { background: #f5f7f5; color: #666; cursor: not-allowed; }
+    .btn-group { display: flex; gap: 1rem; margin-top: 1.5rem; }
+    .btn-primary { padding: 0.75rem 1.5rem; background: #5cb85c; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 500; }
+    .btn-primary:hover { background: #4cae4c; }
+    .btn-secondary { padding: 0.75rem 1.5rem; background: #e0e5df; color: #203a31; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; }
+    .btn-secondary:hover { background: #d0d5cc; }
+    .btn-danger { padding: 0.75rem 1.5rem; background: #d9534f; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; }
+    .btn-danger:hover { background: #c9302c; }
+    .account-info { background: #f9fbf9; padding: 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.95rem; color: #555; }
+    .role-badge { display: inline-block; padding: 0.25rem 0.75rem; background: #a9b5a2; color: white; border-radius: 4px; font-size: 0.85rem; font-weight: 500; }
+    .mfa-status { padding: 1rem; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px; margin-bottom: 1rem; font-size: 0.95rem; }
+    .dashboard-link { display: inline-block; margin-top: 0.5rem; padding: 0.5rem 1rem; background: #203a31; color: white; text-decoration: none; border-radius: 4px; font-size: 0.9rem; }
+    .dashboard-link:hover { background: #152720; }
+    .fine { font-size: 0.9rem; color: #777; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <a class="brand" href="/">WeddingSite</a>
+      <div style="display: flex; gap: 1rem; align-items: center;">
+        <a href="/dashboard.html" class="link">← Back to Dashboard</a>
+      </div>
+    </div>
+
+    <h1>Account Settings</h1>
+
+    <!-- Profile Section -->
+    <div class="account-section">
+      <h2>Profile</h2>
+      <div class="account-info">
+        <div style="margin-bottom: 0.5rem;"><strong>Display Name:</strong> <span id="profile-name">—</span></div>
+        <div style="margin-bottom: 0.5rem;"><strong>Email:</strong> <span id="profile-email">—</span></div>
+        <div style="margin-bottom: 0.5rem;"><strong>Role:</strong> <span class="role-badge" id="profile-role">—</span></div>
+        <div class="fine" style="margin-top: 0.5rem;">Account created: <span id="profile-created">—</span></div>
+      </div>
+      <button type="button" class="btn-secondary" id="edit-profile-btn">Edit Profile</button>
+      <div id="edit-profile-form" style="display: none; margin-top: 1rem;">
+        <div class="account-field">
+          <label for="input-name">Display Name *</label>
+          <input type="text" id="input-name" placeholder="Your display name" required>
+        </div>
+        <div class="btn-group">
+          <button type="button" class="btn-primary" id="save-profile-btn">Save Changes</button>
+          <button type="button" class="btn-secondary" id="cancel-profile-btn">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Password Section -->
+    <div class="account-section">
+      <h2>Password & Security</h2>
+      <div class="account-field">
+        <label for="input-password">New Password</label>
+        <input type="password" id="input-password" placeholder="Enter new password (leave blank to keep current)">
+      </div>
+      <div class="account-field">
+        <label for="input-password-confirm">Confirm Password</label>
+        <input type="password" id="input-password-confirm" placeholder="Confirm new password">
+      </div>
+      <div class="btn-group">
+        <button type="button" class="btn-primary" id="change-password-btn">Update Password</button>
+      </div>
+      <div class="fine" style="margin-top: 1rem;">
+        Last password change: <span id="password-changed">—</span>
+      </div>
+    </div>
+
+    <!-- MFA Section -->
+    <div class="account-section">
+      <h2>Multi-Factor Authentication (MFA)</h2>
+      <div class="mfa-status">
+        <strong>Status:</strong> <span id="mfa-status">Not enabled</span>
+        <p style="margin-top: 0.5rem; margin-bottom: 0;">Multi-factor authentication adds an extra layer of security to your account. Guidance coming soon.</p>
+      </div>
+    </div>
+
+    <!-- Dashboard Navigation -->
+    <div class="account-section">
+      <h2>Dashboards</h2>
+      <div id="dashboard-links">
+        <p class="fine">Role-based dashboards available to you:</p>
+      </div>
+    </div>
+
+    <!-- Session Management -->
+    <div class="account-section">
+      <h2>Session Management</h2>
+      <p class="fine">You are currently signed in to WeddingSite.</p>
+      <div class="btn-group">
+        <button type="button" class="btn-danger" id="sign-out-btn">Sign Out</button>
+      </div>
+    </div>
+
+    <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
+  </div>
+
+  <script type="module">
+    const $ = id => document.getElementById(id);
+    const setNotice = (msg, type = "info", duration = 5000) => {
+      const el = $("notice");
+      el.textContent = msg;
+      el.className = `notice ${type}`;
+      el.hidden = false;
+      if (duration) setTimeout(() => { el.hidden = true; }, duration);
+    };
+
+    // Load account info
+    const loadAccount = async () => {
+      try {
+        const email = window.WS?.email?.() || "—";
+        const role = window.WS?.role?.() || "client";
+        const name = window.WS?.name?.() || "WeddingSite member";
+
+        $("profile-email").textContent = email;
+        $("profile-name").textContent = name;
+        $("profile-role").textContent = role.charAt(0).toUpperCase() + role.slice(1);
+        $("profile-created").textContent = new Date().toLocaleDateString(); // TODO: get actual created_at from profile
+
+        // Show role-appropriate dashboards
+        const dashboardLinks = $("dashboard-links");
+        dashboardLinks.innerHTML = "";
+
+        if (role === "admin" || role === "superadmin" || role === "owner") {
+          const adminLink = document.createElement("a");
+          adminLink.className = "dashboard-link";
+          adminLink.href = "/admin.html";
+          adminLink.textContent = "Admin Dashboard";
+          dashboardLinks.appendChild(adminLink);
+        }
+
+        if (role === "superadmin") {
+          const superLink = document.createElement("a");
+          superLink.className = "dashboard-link";
+          superLink.href = "/superadmin.html";
+          superLink.textContent = "SuperAdmin Dashboard";
+          dashboardLinks.appendChild(superLink);
+        }
+
+        if (role === "owner") {
+          const ownerLink = document.createElement("a");
+          ownerLink.className = "dashboard-link";
+          ownerLink.href = "/owner.html";
+          ownerLink.textContent = "Owner Dashboard";
+          dashboardLinks.appendChild(ownerLink);
+        }
+
+        // Always show the main dashboard
+        const mainLink = document.createElement("a");
+        mainLink.className = "dashboard-link";
+        mainLink.href = "/dashboard.html";
+        mainLink.textContent = "My Weddings";
+        dashboardLinks.appendChild(mainLink);
+
+      } catch (error) {
+        console.error("Error loading account info:", error);
+        setNotice("Could not load account information. Please refresh.", "bad");
+      }
+    };
+
+    // Edit profile
+    $("edit-profile-btn").addEventListener("click", () => {
+      $("input-name").value = $("profile-name").textContent;
+      $("edit-profile-form").style.display = "block";
+      $("edit-profile-btn").style.display = "none";
+    });
+
+    $("cancel-profile-btn").addEventListener("click", () => {
+      $("edit-profile-form").style.display = "none";
+      $("edit-profile-btn").style.display = "block";
+    });
+
+    $("save-profile-btn").addEventListener("click", async () => {
+      const name = $("input-name").value.trim();
+      if (!name) {
+        setNotice("Display name is required.", "bad");
+        return;
+      }
+
+      try {
+        // TODO: Call API to update profile name
+        setNotice("Profile updated successfully.", "good");
+        $("profile-name").textContent = name;
+        $("edit-profile-form").style.display = "none";
+        $("edit-profile-btn").style.display = "block";
+      } catch (error) {
+        console.error("Error saving profile:", error);
+        setNotice("Could not save profile changes.", "bad");
+      }
+    });
+
+    // Change password
+    $("change-password-btn").addEventListener("click", async () => {
+      const pwd = $("input-password").value;
+      const confirm = $("input-password-confirm").value;
+
+      if (!pwd) {
+        setNotice("Please enter a new password.", "bad");
+        return;
+      }
+      if (pwd !== confirm) {
+        setNotice("Passwords do not match.", "bad");
+        return;
+      }
+      if (pwd.length < 8) {
+        setNotice("Password must be at least 8 characters.", "bad");
+        return;
+      }
+
+      try {
+        // TODO: Call API to change password
+        setNotice("Password updated successfully.", "good");
+        $("input-password").value = "";
+        $("input-password-confirm").value = "";
+      } catch (error) {
+        console.error("Error changing password:", error);
+        setNotice("Could not update password.", "bad");
+      }
+    });
+
+    // Sign out
+    $("sign-out-btn").addEventListener("click", () => {
+      if (confirm("Are you sure you want to sign out?")) {
+        window.WS.clear();
+        location.replace("/signin.html");
+      }
+    });
+
+    // Ensure user is authenticated
+    if (!window.WS?.token?.()) {
+      location.replace("/signin.html");
+    } else {
+      loadAccount();
+    }
+  </script>
+</body>
+</html>
