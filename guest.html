@@ -377,7 +377,7 @@
   // Load wedding data
   async function loadWedding() {
     try {
-      const res = await fetch(`/api/guest?slug=${encodeURIComponent(slug)}`);
+      const res = await fetch(`/api/guest?action=site&slug=${encodeURIComponent(slug)}`);
       const data = await res.json();
       if (!res.ok) return notice(data.error || "Could not load wedding.", true);
 
@@ -555,7 +555,7 @@ END:VCALENDAR`;
   // Load DJ bids/leaderboard
   async function loadBids() {
     try {
-      const res = await fetch(`/api/guest?action=bids&slug=${encodeURIComponent(slug)}`);
+      const res = await fetch(`/api/guest?action=leaderboard&slug=${encodeURIComponent(slug)}`);
       const data = await res.json();
       if (!res.ok) return;
 
