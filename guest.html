@@ -301,9 +301,25 @@
           <option value="no">No, unfortunately not</option>
         </select>
 
-        <label for="dietary-notes">Dietary preferences (optional)</label>
-        <textarea id="dietary-notes" maxlength="200" rows="2" placeholder="e.g. vegetarian, nut allergy, no pork…"></textarea>
+        <label for="plus-ones">Plus-ones (if allowed)</label>
+        <input id="plus-ones" type="number" min="0" value="0" max="5" style="width: 60px;">
 
+        <label for="dietary-preference">Dietary preference</label>
+        <select id="dietary-preference">
+          <option value="">None / No restriction</option>
+          <option value="vegetarian">Vegetarian</option>
+          <option value="vegan">Vegan</option>
+          <option value="gluten-free">Gluten-free</option>
+          <option value="kosher">Kosher</option>
+          <option value="halal">Halal</option>
+          <option value="nut-free">Nut-free</option>
+          <option value="other">Other (see notes)</option>
+        </select>
+
+        <label for="dietary-notes">Dietary notes (optional)</label>
+        <textarea id="dietary-notes" maxlength="200" rows="2" placeholder="e.g. specific allergies, cooking preferences…"></textarea>
+
+        <p class="fine" id="rsvp-capacity-warning" hidden style="color: var(--gold);"></p>
         <p class="fine"><em>We'd love to accommodate your preferences!</em></p>
 
         <button type="submit">Submit RSVP</button>
@@ -542,7 +558,30 @@ END:VCALENDAR`;
   // RSVP submit
   $("rsvp-form").addEventListener("submit", async e => {
     e.preventDefault();
-    if ($("rsvp-form").data-submitting) return;
+    if ($("rsvp-form").dataset.submitting) return;
+    
+    const attending = $("attending").value === "yes";
+    const plusOnes = parseInt($("plus-ones").value || 0, 10);
+    const totalGuests = attending ? (1 + plusOnes) : 1;
+    
+    // Check capacity
+    if (attending && wedding.max_guest_capacity) {
+      try {
+        const capRes = await fetch(`/api/guest?action=rsvp-count&slug=${encodeURIComponent(slug)}`);
+        const capData = await capRes.json();
+        const currentRsvps = capData.count || 0;
+        if (currentRsvps + totalGuests > wedding.max_guest_capacity) {
+          $("rsvp-capacity-warning").hidden = false;
+          $("rsvp-capacity-warning").textContent = `We've reached our guest limit. Current RSVPs: ${currentRsvps} / ${wedding.max_guest_capacity}`;
+          notice("We've reached our guest limit. Please contact the couple directly.", true);
+          delete $("rsvp-form").dataset.submitting;
+          return;
+        }
+      } catch (err) {
+        console.warn("Could not check capacity:", err);
+      }
+    }
+    
     $("rsvp-form").dataset.submitting = "true";
     notice("");
 
@@ -554,8 +593,10 @@ END:VCALENDAR`;
           weddingSlug: slug,
           guestName: $("guest-name").value,
           guestEmail: $("guest-email").value,
-          attending: $("attending").value === "yes",
-          dietaryNotes: $("dietary-notes").value
+          attending: attending,
+          dietaryPreference: $("dietary-preference").value,
+          dietaryNotes: $("dietary-notes").value,
+          plusOnes: plusOnes
         })
       });
       const data = await res.json();

@@ -79,7 +79,7 @@ export default async function handler(req, res) {
             p_attending: body.attending === true,
             p_dietary_requested: body.guestEmail ? true : false,
             p_dietary_notes: text(body.dietaryNotes, 240),
-            p_plus_one_count: 0
+            p_plus_one_count: Math.max(0, parseInt(body.plusOnes || 0))
           });
           return sendJson(res, 200, { message: "RSVP received." });
         } catch (error) {
@@ -101,6 +101,18 @@ export default async function handler(req, res) {
           return sendJson(res, 400, { error: error.message || "Bid failed." });
         }
       }
+    }
+
+    if (action === "rsvp-count") {
+      if (!methodOnly(req, res, "GET")) return;
+      const slug = String(req.query.slug || "").toLowerCase();
+      if (!/^[a-z0-9-]{3,80}$/.test(slug)) return sendJson(res, 404, { error: "Wedding not found." });
+      
+      const weddingId = await resolveWeddingId(slug, rpc);
+      if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
+      
+      const count = await rpc("get_rsvp_count", { p_wedding_id: weddingId });
+      return sendJson(res, 200, { count: count?.[0]?.count || 0 });
     }
 
     return sendJson(res, 404, { error: "Unknown action." });
