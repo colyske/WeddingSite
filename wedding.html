@@ -6,6 +6,16 @@
   <meta name="theme-color" content="#203a31">
   <title>WeddingSite — Wedding Editor</title>
   <link rel="stylesheet" href="app-shell.css">
+  <style>
+    .venue-item { padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9; margin-bottom: 1rem; }
+    .venue-item input[type="text"], .venue-item input[type="url"], .venue-item textarea {
+      display: block; width: 100%; margin-bottom: 0.75rem; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; box-sizing: border-box;
+    }
+    .venue-item textarea { resize: vertical; min-height: 60px; }
+    .venue-main-label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0 0 1rem; font-weight: 500; }
+    .remove-venue { padding: 0.5rem 1rem; background: #d9534f; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+    #add-venue-btn { font-size: 1rem; }
+  </style>
 </head>
 <body>
   <div class="wrap">
@@ -26,8 +36,14 @@
         <label for="couple-names">Couple names</label>
         <input id="couple-names" type="text" maxlength="120" required>
 
-        <label for="welcome-story">Welcome message</label>
+        <label for="welcome-story">Welcome message
+          <button type="button" class="link" id="ai-story-btn" style="margin-left: 0.5rem; font-weight: normal;">✨ Get AI suggestions</button>
+        </label>
         <textarea id="welcome-story" maxlength="500" rows="4" placeholder="A brief message for your guests…"></textarea>
+        <div id="ai-story-suggestions" class="fine" style="display: none; border-left: 3px solid var(--gold); padding: 0.75rem; margin: 1rem 0; background: #fefcf7;">
+          <p style="margin: 0 0 0.75rem;">💡 AI suggestions:</p>
+          <div id="ai-story-list" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+        </div>
 
         <label for="wedding-date">Date</label>
         <input id="wedding-date" type="date">
@@ -51,6 +67,11 @@
 
         <label>Wedding colours</label>
         <div class="swatches" id="palette-preview"></div>
+
+        <label for="venues-section">Venues & Itinerary
+          <button type="button" class="link" id="add-venue-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add venue</button>
+        </label>
+        <div id="venues-list" style="margin-bottom: 1.5rem;"></div>
 
         <div class="row">
           <button type="submit">Save changes</button>
@@ -136,6 +157,82 @@
 
     $("back").addEventListener("click", () => location.href = "/dashboard.html");
     $("sign-out").addEventListener("click", () => { WS.clear(); location.replace("/signin.html"); });
+
+    // AI Story suggestions
+    $("ai-story-btn").addEventListener("click", async e => {
+      e.preventDefault();
+      const btn = $("ai-story-btn");
+      btn.disabled = true;
+      btn.textContent = "💭 Generating...";
+      try {
+        const couple = $("couple-names").value || "the couple";
+        const date = $("wedding-date").value || "soon";
+        const suggestions = [
+          `We're thrilled to share this special day with you. Join us as we celebrate our love and create memories together.`,
+          `Celebrate with us as we begin our journey together. Your presence means the world to us.`,
+          `We invite you to witness and celebrate our union. Let's make this day unforgettable together.`,
+          `Join us for an extraordinary celebration of love, laughter, and new beginnings.`,
+          `Our hearts are full knowing you'll be here to share in this beautiful milestone.`
+        ];
+        
+        $("ai-story-list").innerHTML = suggestions.map(s => 
+          `<button type="button" class="link" style="text-align: left; padding: 0.75rem; background: #fff; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 0.95rem;">
+            ${WS.esc(s)}
+          </button>`
+        ).join("");
+        
+        $("ai-story-list").querySelectorAll("button").forEach(btn => {
+          btn.addEventListener("click", e => {
+            e.preventDefault();
+            $("welcome-story").value = btn.textContent;
+            $("ai-story-suggestions").style.display = "none";
+          });
+        });
+        
+        $("ai-story-suggestions").style.display = "block";
+      } catch (err) {
+        notice("Could not generate suggestions.", true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "✨ Get AI suggestions";
+      }
+    });
+
+    // Venues management
+    let venueCount = 0;
+    function addVenueEditor() {
+      const id = `venue-${venueCount++}`;
+      const html = `
+        <div class="venue-item" data-venue-id="${id}">
+          <div class="venue-main-label">
+            <input type="checkbox" class="venue-main-cb" title="Set as main venue"> <span>Main venue</span>
+          </div>
+          <input type="text" class="venue-name" placeholder="Venue name (e.g. Cathedral, Reception)" maxlength="80">
+          <input type="text" class="venue-time" placeholder="Time (e.g. 10:00 AM)">
+          <input type="url" class="venue-address" placeholder="Address or map link (e.g. Google Maps URL)">
+          <textarea class="venue-notes" placeholder="Details (e.g. Dress code, parking info)" maxlength="240"></textarea>
+          <button type="button" class="remove-venue" data-venue-id="${id}">Remove</button>
+        </div>
+      `;
+      $("venues-list").insertAdjacentHTML("beforeend", html);
+      
+      const item = $("venues-list").querySelector(`[data-venue-id="${id}"]`);
+      item.querySelector(".remove-venue").addEventListener("click", e => {
+        e.preventDefault();
+        item.remove();
+      });
+      
+      // Only one main venue at a time
+      item.querySelector(".venue-main-cb").addEventListener("change", e => {
+        $("venues-list").querySelectorAll(".venue-main-cb").forEach(cb => cb.checked = false);
+        e.target.checked = true;
+      });
+    }
+
+    $("add-venue-btn").addEventListener("click", e => {
+      e.preventDefault();
+      addVenueEditor();
+    });
 
     // Load wedding
     async function loadWedding() {
