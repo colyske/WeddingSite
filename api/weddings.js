@@ -4,7 +4,7 @@ import { requireAuth } from "../server/auth-middleware.js";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,public_location,currency,max_guest_capacity,palette,published_at,created_at";
+const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,public_location,currency,max_guest_capacity,palette,attire_notes,published_at,created_at";
 
 // Load venues and payout info for a wedding
 const loadWeddingDetails = async (weddingId, opts) => {
@@ -82,6 +82,9 @@ export default async function handler(req, res) {
           return sendJson(res, 400, { error: "Choose one to four hex colors." });
         }
         patch.palette = body.palette;
+      }
+      if (body.attireNotes !== undefined) {
+        patch.attire_notes = String(body.attireNotes).slice(0, 300);
       }
       if (!Object.keys(patch).length || patch.couple_names === "") return sendJson(res, 400, { error: "Nothing valid to update." });
       const rows = await supabaseRequest(`/rest/v1/weddings?id=eq.${body.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=${FIELDS}`,

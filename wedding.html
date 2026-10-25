@@ -73,6 +73,27 @@
         </label>
         <div id="venues-list" style="margin-bottom: 1.5rem;"></div>
 
+        <label>Attire Lookbook
+          <button type="button" class="link" id="edit-colors-btn" style="margin-left: 0.5rem; font-weight: normal;">🎨 Edit colours</button>
+        </label>
+        <div id="attire-editor" style="display: none; border: 2px dashed #d0d5cc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: #fafbf9;">
+          <p style="margin: 0 0 1rem; font-weight: 500;">Add up to 4 colours for your wedding palette. Click on the colour box to edit.</p>
+          <div id="color-inputs" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="color" class="palette-color" value="#244b3a" style="width: 60px; height: 60px; border: none; border-radius: 4px; cursor: pointer;">
+              <input type="text" class="palette-color-hex" placeholder="Hex code" maxlength="7" value="#244b3a" style="width: 100px; padding: 0.5rem; border: 1px solid #d0d5cc; border-radius: 4px;">
+            </div>
+          </div>
+          <button type="button" id="add-color-btn" class="link" style="margin-right: 1rem;">+ Add colour</button>
+          <button type="button" id="apply-colors-btn">Apply palette</button>
+          <button type="button" id="cancel-colors-btn" class="link">Cancel</button>
+        </div>
+
+        <div id="attire-description">
+          <label for="attire-notes">Attire notes & dress code</label>
+          <textarea id="attire-notes" maxlength="300" rows="3" placeholder="E.g. Forest Green, Eucalyptus Sage, Royal Gold, Ivory palette. Formal African elegance encouraged."></textarea>
+        </div>
+
         <div class="row">
           <button type="submit">Save changes</button>
           <button type="button" id="publish-btn" class="ghost">Publish wedding site</button>
@@ -234,6 +255,87 @@
       addVenueEditor();
     });
 
+    // Color palette editor
+    let colorEditorOpen = false;
+    
+    $("edit-colors-btn").addEventListener("click", e => {
+      e.preventDefault();
+      colorEditorOpen = !colorEditorOpen;
+      $("attire-editor").style.display = colorEditorOpen ? "block" : "none";
+      if (colorEditorOpen) {
+        renderColorInputs();
+      }
+    });
+
+    function renderColorInputs() {
+      const container = $("color-inputs");
+      const inputs = container.querySelectorAll(".palette-color");
+      if (inputs.length === 0) {
+        // Initialize with current palette or defaults
+        const palette = $("palette-preview").innerHTML 
+          ? Array.from($("palette-preview").querySelectorAll("span")).map(s => s.style.background || "#244b3a")
+          : ["#244b3a"];
+        container.innerHTML = "";
+        palette.slice(0, 4).forEach((color, idx) => {
+          addColorInput(color);
+        });
+      }
+    }
+
+    function addColorInput(color = "#244b3a") {
+      const container = $("color-inputs");
+      if (container.querySelectorAll(".palette-color").length >= 4) return;
+      
+      const div = document.createElement("div");
+      div.style.cssText = "display: flex; align-items: center; gap: 0.5rem;";
+      div.innerHTML = `
+        <input type="color" class="palette-color" value="${color}" style="width: 60px; height: 60px; border: none; border-radius: 4px; cursor: pointer;">
+        <input type="text" class="palette-color-hex" placeholder="Hex code" maxlength="7" value="${color}" style="width: 100px; padding: 0.5rem; border: 1px solid #d0d5cc; border-radius: 4px;">
+        <button type="button" class="remove-color-btn link" style="padding: 0; margin: 0;">✕</button>
+      `;
+      
+      const colorInput = div.querySelector(".palette-color");
+      const hexInput = div.querySelector(".palette-color-hex");
+      const removeBtn = div.querySelector(".remove-color-btn");
+      
+      colorInput.addEventListener("change", () => {
+        hexInput.value = colorInput.value;
+      });
+      hexInput.addEventListener("change", () => {
+        const hex = hexInput.value.trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+          colorInput.value = hex;
+        }
+      });
+      removeBtn.addEventListener("click", e => {
+        e.preventDefault();
+        if ($("color-inputs").querySelectorAll(".palette-color").length > 1) {
+          div.remove();
+        }
+      });
+      
+      container.appendChild(div);
+    }
+
+    $("add-color-btn").addEventListener("click", e => {
+      e.preventDefault();
+      addColorInput();
+    });
+
+    $("apply-colors-btn").addEventListener("click", e => {
+      e.preventDefault();
+      const colors = Array.from($("color-inputs").querySelectorAll(".palette-color")).map(c => c.value);
+      $("palette-preview").innerHTML = colors.map(c => `<span style="background: ${c};"></span>`).join("");
+      colorEditorOpen = false;
+      $("attire-editor").style.display = "none";
+    });
+
+    $("cancel-colors-btn").addEventListener("click", e => {
+      e.preventDefault();
+      colorEditorOpen = false;
+      $("attire-editor").style.display = "none";
+    });
+
     // Load wedding
     async function loadWedding() {
       try {
@@ -251,6 +353,7 @@
         $("currency").value = w.currency || "USD";
         $("max-capacity").value = w.max_guest_capacity || 150;
         $("palette-preview").innerHTML = (w.palette || []).map(c => `<span style="background: ${esc(c)};"></span>`).join("");
+        $("attire-notes").value = w.attire_notes || "";
 
         // Load venues
         if (w.venues && Array.isArray(w.venues)) {
@@ -330,6 +433,10 @@
           }
         });
 
+        // Collect palette colors
+        const paletteSpans = $("palette-preview").querySelectorAll("span");
+        const palette = Array.from(paletteSpans).map(s => s.style.background).filter(Boolean);
+
         const res = await WS.api("/api/weddings?action=update", {
           method: "POST",
           body: JSON.stringify({
@@ -340,7 +447,9 @@
             location: $("location").value,
             currency: $("currency").value,
             maxCapacity: Number($("max-capacity").value),
-            venues: venues
+            venues: venues,
+            palette: palette,
+            attireNotes: $("attire-notes").value
           })
         });
         const data = await res.json();

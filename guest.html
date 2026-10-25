@@ -277,6 +277,13 @@
       <div id="venues-display" style="display: flex; flex-direction: column; gap: 1.5rem;"></div>
     </section>
 
+    <!-- Attire & Dress Code -->
+    <section id="attire" class="card" hidden>
+      <h2>Attire & Dress Code</h2>
+      <div class="swatches" id="attire-palette-preview"></div>
+      <p id="attire-notes-display" class="fine" style="margin-top: 1rem;"></p>
+    </section>
+
     <!-- RSVP form -->
     <section id="rsvp" class="card" hidden>
       <h2>Will You Join Us?</h2>
@@ -445,6 +452,15 @@
             ${v.description ? `<p style="margin: 0; font-size: 0.95rem; color: #5a5f5a;">${esc(v.description)}</p>` : ""}
           </div>
         `).join("");
+      }
+
+      // Attire & Dress Code
+      if ((wedding.palette && wedding.palette.length) || wedding.attire_notes?.trim()) {
+        $("attire").hidden = false;
+        $("attire-palette-preview").innerHTML = (wedding.palette || []).map(c => `<span style="background: ${esc(c)};"></span>`).join("");
+        if (wedding.attire_notes?.trim()) {
+          $("attire-notes-display").textContent = esc(wedding.attire_notes);
+        }
       }
 
       // RSVP & Bids
