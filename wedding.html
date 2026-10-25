@@ -1067,13 +1067,17 @@
         }
         
         $("publish-section").hidden = true;
+        $("edit-section").hidden = false;
         $("published-section").hidden = false;
         $("rsvps-section").hidden = false;
         $("bids-section").hidden = false;
+        $("seating-section").hidden = false;
+        $("withdrawals-section").hidden = false;
         $("publish-btn").hidden = true;
         notice("Wedding published successfully!");
         loadRsvps();
         loadBids();
+        loadWithdrawals();
       } catch (err) {
         console.error("Publish failed:", err);
         $("publish-message").textContent = "Network error: " + (err.message || "could not publish");
