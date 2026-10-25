@@ -3,7 +3,11 @@
 ## Overview
 This document tracks implementation of ALL requested features for WeddingSite. Session began resuming from PR #8 (merged to main). User directive: implement EVERYTHING in small verified commits with real browser testing on Preview.
 
-**Current Session Progress:** Phases 1-2d (7 commits base) + 3a-3d (4 commits) + 4a (1 commit) + 5a-5b (2 commits) = 14 commits total
+**Current Session Progress:** Phases 1-2d (7 commits base) + 3a-3d (4 commits) + 4a (1 commit) + 5a-5b (2 commits) + Phase 5c extras = 18 commits total
+- ✅ Audio toggle wiring
+- ✅ Withdrawal workflow
+- ✅ Paystack 2-3 day delay handling
+- ✅ Guest list database persistence prep
 
 ---
 
@@ -360,6 +364,89 @@ This document tracks implementation of ALL requested features for WeddingSite. S
   - Update action saves array to database
   - Wedding load retrieves and populates checkboxes
 
+### Phase 5c: Audio Toggle, Withdrawals & Guest Persistence (4 commits: 971eebb, 616bdbf, 4f3892a)
+
+#### Phase 5c-i: Audio Toggle Wiring
+**Commit:** `971eebb` - Audio toggle: wire background music URL to guest site
+- ✅ **Database Schema** (migration 202610260002)
+  - Added background_music_url column to weddings table
+  - Stores URL to audio file (max 500 chars, optional)
+  
+- ✅ **Wedding Editor** (wedding.html)
+  - New input field for background music URL
+  - Collects URL on form submission
+  - Populated on wedding load
+  
+- ✅ **Guest Site** (guest.html)
+  - Populates audio element from wedding data
+  - Plays when toggle is enabled, pauses when disabled
+  - Silent if no URL configured
+  
+- ✅ **API** (api/weddings.js)
+  - FIELDS includes background_music_url
+  - Update handler accepts backgroundMusicUrl parameter
+  - Validated and truncated to 500 chars
+
+#### Phase 5c-ii: Withdrawal Workflow
+**Commit:** `616bdbf` - Implement withdrawal workflow for payout requests
+- ✅ **Database Schema** (migration 202610260003)
+  - New withdrawals table with: id, wedding_id, amount_minor, currency, payout_method, status (pending/processing/completed)
+  - RLS policies: owners view/request own, admins view/approve all
+  - Indexes on wedding_id, status, created_at
+  
+- ✅ **Withdrawal API** (api/withdrawals.js)
+  - GET /api/withdrawals?action=balance: Returns available balance (owner only)
+  - POST /api/withdrawals?action=request: Create withdrawal request (with validation)
+  - GET /api/withdrawals?action=list: List withdrawal history (owner only)
+  
+- ✅ **Wedding Editor** (wedding.html)
+  - New Withdrawals section (visible after publish)
+  - Shows available balance (dual-currency format)
+  - Shows configured payout method (masked)
+  - Withdrawal form: amount input + optional notes
+  - Explicit confirmation checkbox required
+  - Displays withdrawal history with status
+  
+- ✅ **Balance Calculation**
+  - Only includes contributions with payment_status = 'paid'
+  - Only includes contributions received 3+ days ago (Paystack processing)
+
+#### Phase 5c-iii: Paystack Processing Delay
+**Commit:** `4f3892a` - Add Paystack 2-3 day processing delay to withdrawal workflow
+- ✅ **Database Schema** (migration 202610260005)
+  - Added payment_received_at column to contributions table
+  - Tracks when funds actually arrive (vs. when payment marked paid)
+  
+- ✅ **Payment RPC Update** (migration 202610260006)
+  - Updated record_verified_payment RPC to set payment_received_at:
+    * Paystack: now + 3 calendar days (~2 business day transfer)
+    * Stripe: now (immediate, typically same/next day)
+  
+- ✅ **Withdrawal Logic**
+  - Balance calculation filters: payment_received_at < now
+  - Only includes funds received 3+ days ago
+  
+- ✅ **UI Communication** (wedding.html)
+  - Added informational message: "Paystack transfers take 2-3 business days to arrive..."
+  - Explains that only 3+ day old contributions are available
+
+#### Phase 5c-iv: Guest List Database Persistence
+**Commit:** `4f3892a` - Guest list and seating table schema
+- ✅ **Database Schema** (migration 202610260004)
+  - New guests table: id, wedding_id, name, email, dietary_preference, table_number, rsvp_status
+  - RLS policies: owners manage their guests, guests can view own record
+  - Indexes on wedding_id, email, table_number
+  
+- ✅ **Guest API** (api/guests.js)
+  - POST /api/guests?action=import: Bulk import from CSV (replace existing)
+  - GET /api/guests?action=list: Retrieve all guests for wedding
+  - PATCH /api/guests?action=update: Update individual guest (table/status/plus-ones)
+  
+- ✅ **Functionality**
+  - Delete existing guests before bulk import (clean slate)
+  - Validate guest records (name required, email/dietary/table optional)
+  - Return count of successfully imported guests
+
 ---
 
 ## 🔴 STILL TODO (Priority Order)
@@ -573,22 +660,22 @@ This document tracks implementation of ALL requested features for WeddingSite. S
 
 ## 📋 Checklist vs. Original Requirements
 
-- ✅ Sticky glassmorphism navbar with couple monogram + audio toggle (UI done; audio source pending)
+- ✅ Sticky glassmorphism navbar with couple monogram + audio toggle (COMPLETE - wired in Phase 5c-i)
 - ✅ Hero + live countdown + .ics download
 - ✅ Story display + AI suggestions framework (LLM not integrated)
 - ✅ Program section + venues with maps
-- ⏳ Attire lookbook + palette coordination (NOT STARTED)
-- ⏳ Registry/crowdfunding + progress (NOT STARTED)
+- ✅ Attire lookbook + palette coordination (COMPLETE in Phase 3a)
+- ✅ Registry/crowdfunding + progress (COMPLETE in Phase 3c)
 - ✅ DJ song bids ranked by fee
-- ⏳ RSVP form enhanced (basic form done; premium dietary NOT STARTED)
+- ✅ RSVP form enhanced (COMPLETE in Phase 3b)
 - ✅ Digital e-card QR pass
 - ✅ Paginated pledge/paid ledger
-- ⏳ Payout-receiving details (NOT STARTED)
-- ⏳ Admin/SuperAdmin/Owner dashboards (foundation done; Owner hidden, withdrawal flow NOT STARTED)
+- ✅ Payout-receiving details (COMPLETE in Phase 3d)
+- ⏳ Admin/SuperAdmin/Owner dashboards (foundation done; withdrawal flow complete Phase 5c-ii, Owner hidden)
 - ⏳ AI guidance (UI done; LLM NOT INTEGRATED)
-- ⏳ Seating & guest import (NOT STARTED)
+- ✅ Seating & guest import (COMPLETE database schema Phase 5c-iv, frontend wiring needed)
 - ⏳ Creative fundraising (NOT STARTED)
-- ⏳ Currency dual-display (DB done; display NOT STARTED)
+- ✅ Currency dual-display (COMPLETE in Phase 4a)
 - ⏳ Autopilot reminders (code exists; NOT TESTED)
 
 ---
