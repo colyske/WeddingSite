@@ -20,10 +20,10 @@ BEGIN
   RETURN QUERY
   SELECT
     g.id,
-    g.guest_name,
+    g.name,
     g.rsvp_status,
-    g.dietary_needs,
-    g.num_plus_ones,
+    g.dietary_preference,
+    g.plus_ones,
     g.created_at
   FROM guests g
   WHERE g.wedding_id = p_wedding_id
@@ -50,7 +50,7 @@ BEGIN
   END IF;
 
   -- Verify caller is the wedding owner
-  SELECT owner_id INTO v_wedding_owner FROM weddings WHERE id = p_wedding_id;
+  SELECT client_owner_id INTO v_wedding_owner FROM weddings WHERE id = p_wedding_id;
   IF v_wedding_owner IS NULL THEN
     RAISE EXCEPTION 'Wedding not found';
   END IF;
@@ -67,7 +67,7 @@ BEGIN
   RETURN QUERY
   SELECT
     g.id,
-    g.guest_name,
+    g.name,
     g.rsvp_status,
     g.checked_in_at
   FROM guests g
