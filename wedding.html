@@ -60,6 +60,9 @@
         <label for="location">Location</label>
         <input id="location" type="text" maxlength="120">
 
+        <label for="background-music-url">Background music URL (optional)</label>
+        <input id="background-music-url" type="url" maxlength="500" placeholder="Link to your wedding ceremony or cocktail music (MP3, WAV, OGG)">
+
         <label for="currency">Currency</label>
         <select id="currency">
           <option value="USD">USD - US Dollar</option>
@@ -549,6 +552,7 @@
         $("welcome-story").value = w.welcome_story || "";
         $("wedding-date").value = w.wedding_date ? w.wedding_date.split("T")[0] : "";
         $("location").value = w.public_location || "";
+        $("background-music-url").value = w.background_music_url || "";
         $("currency").value = w.currency || "USD";
         $("max-capacity").value = w.max_guest_capacity || 150;
         $("palette-preview").innerHTML = (w.palette || []).map(c => `<span style="background: ${esc(c)};"></span>`).join("");
@@ -764,7 +768,8 @@
             attireNotes: $("attire-notes").value,
             registry: registry,
             payoutDetails: payoutDetails,
-            enabledPaymentMethods: enabledPaymentMethods
+            enabledPaymentMethods: enabledPaymentMethods,
+            backgroundMusicUrl: $("background-music-url").value
           })
         });
         const data = await res.json();

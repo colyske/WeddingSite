@@ -444,6 +444,14 @@
       const palette = wedding.palette || ["#244b3a"];
       $("monogram").style.background = palette[0];
 
+      // Set background music if available
+      if (wedding.background_music_url) {
+        $("background-music").src = wedding.background_music_url;
+        if (audioEnabled) {
+          $("background-music").play().catch(() => null);
+        }
+      }
+
       // Hero
       $("couple-names").textContent = esc(wedding.couple_names || "Wedding");
 
