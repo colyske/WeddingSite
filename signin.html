@@ -31,7 +31,22 @@
         <button type="button" class="link" id="recover">Forgot password?</button>
       </div>
     </form>
-    <p class="fine">Accounts are created by invitation. Your session is kept in this browser tab only.</p>
+
+    <form id="register-form" hidden>
+      <label for="reg-email">Email address</label>
+      <input id="reg-email" type="email" autocomplete="email" required>
+      <label for="reg-password">Password (12+ characters)</label>
+      <input id="reg-password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+      <label for="reg-confirm">Confirm password</label>
+      <input id="reg-confirm" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+      <button type="submit">Create account</button>
+    </form>
+
+    <div id="form-toggle" style="text-align: center; margin-top: 1rem;">
+      <p class="fine" id="toggle-text">Don't have an account? <button type="button" class="link" id="show-register">Create one</button></p>
+    </div>
+
+    <p class="fine">Your session is kept in this browser tab only.</p>
   </main>
   <script src="auth-client.js"></script>
   <script>
@@ -78,6 +93,44 @@
       WS.save(data);
       location.replace("/dashboard.html");
     });
+
+    $("register-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      notice("");
+      if (!$("reg-password").value) return notice("Enter a password.", true);
+      if ($("reg-password").value !== $("reg-confirm").value) return notice("Passwords do not match.", true);
+      const res = await post("register", { email: $("reg-email").value, password: $("reg-password").value, confirmPassword: $("reg-confirm").value });
+      const data = await res.json();
+      if (!res.ok) return notice(data.error || "Registration failed.", true);
+      notice(data.message || "Account created. Check your email to verify and then sign in.", false);
+      setTimeout(() => {
+        $("register-form").hidden = true;
+        $("signin-form").hidden = false;
+        $("title").textContent = "Sign in";
+        $("toggle-text").innerHTML = 'Don\'t have an account? <button type="button" class="link" id="show-register">Create one</button>';
+        $("show-register").addEventListener("click", toggleForms);
+        $("email").focus();
+      }, 1000);
+    });
+
+    function toggleForms() {
+      const isSignIn = !$("signin-form").hidden;
+      $("signin-form").hidden = !isSignIn;
+      $("register-form").hidden = isSignIn;
+      $("title").textContent = isSignIn ? "Create account" : "Sign in";
+      $("toggle-text").innerHTML = isSignIn 
+        ? 'Already have an account? <button type="button" class="link" id="show-signin">Sign in</button>'
+        : 'Don\'t have an account? <button type="button" class="link" id="show-register">Create one</button>';
+      if (isSignIn) {
+        $("show-signin").addEventListener("click", toggleForms);
+        $("reg-email").focus();
+      } else {
+        $("show-register").addEventListener("click", toggleForms);
+        $("email").focus();
+      }
+    }
+
+    $("show-register").addEventListener("click", toggleForms);
 
     async function emailLink(mode) {
       if (!$("email").value) return notice("Enter your email address first.", true);

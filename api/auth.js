@@ -82,6 +82,42 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { passwordSet: true });
     }
 
+    if (action === "register") {
+      if (!methodOnly(req, res, "POST")) return;
+      if (!isEmail(body.email)) return sendJson(res, 400, { error: "Enter a valid email address." });
+      if (typeof body.password !== "string" || body.password.length < 12 || body.password.length > 128) {
+        return sendJson(res, 400, { error: "Use a password of 12 to 128 characters." });
+      }
+      if (body.password !== body.confirmPassword) {
+        return sendJson(res, 400, { error: "Passwords do not match." });
+      }
+      const email = body.email.trim().toLowerCase();
+      const result = await authCall("/signup", {
+        body: { email, password: body.password, data: { registration_ip: req.ip || req.headers["x-forwarded-for"] || "unknown" } }
+      });
+      if (!result.ok) {
+        if (result.data?.msg?.includes("already registered")) {
+          return sendJson(res, 409, { error: "That email is already registered. Try signing in or use forgot password." });
+        }
+        return sendJson(res, 400, { error: result.data?.msg || "Could not create account. Please try again." });
+      }
+      // Account created, but Supabase will send verification email automatically if email confirmation is enabled
+      // Create profile with default Client role
+      try {
+        const userId = result.data?.user?.id;
+        if (userId) {
+          await supabaseRequest("/rest/v1/profiles", {
+            method: "POST",
+            token: result.data?.session?.access_token || "",
+            body: { id: userId, platform_role: "Client" }
+          }).catch(err => console.warn("Could not create profile:", err));
+        }
+      } catch (e) {
+        console.warn("Profile creation error:", e);
+      }
+      return sendJson(res, 201, { message: "Account created. Check your email to verify your address and sign in." });
+    }
+
     if (action === "me") {
       if (!methodOnly(req, res, "GET")) return;
       const session = await requireAuth(req, res);
