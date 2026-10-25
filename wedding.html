@@ -223,6 +223,54 @@
       <div id="guest-list-display" style="display: flex; flex-direction: column; gap: 1rem;"></div>
       <p id="no-guest-list" class="fine">No guest list imported yet.</p>
     </div>
+
+    <!-- Withdrawals / Payouts -->
+    <div id="withdrawals-section" class="card" hidden>
+      <h2>💰 Payouts & Withdrawals</h2>
+      <p class="fine">View your current payout balance and request withdrawals</p>
+      
+      <div id="payout-balance" style="padding: 1.5rem; background: #f3faf3; border-radius: 8px; margin-bottom: 1.5rem;">
+        <p class="fine" style="margin: 0 0 0.5rem;">Available balance:</p>
+        <p style="margin: 0; font-size: 1.5rem; font-weight: bold; color: #244b3a;">
+          <span id="balance-display">$0.00</span>
+        </p>
+      </div>
+
+      <div id="payout-method-display" style="padding: 1rem; background: #fafbf9; border: 1px solid #d0d5cc; border-radius: 6px; margin-bottom: 1.5rem;">
+        <p class="fine" style="margin: 0 0 0.5rem;">Payout method:</p>
+        <p id="method-display" style="margin: 0; font-weight: 500;">Not configured</p>
+      </div>
+
+      <div id="withdrawal-form" style="margin-bottom: 1.5rem;">
+        <label for="withdrawal-amount">Amount to withdraw (in your currency)</label>
+        <input id="withdrawal-amount" type="number" min="0.01" step="0.01" placeholder="0.00" style="width: 100%; margin-bottom: 1rem;">
+        
+        <label for="withdrawal-notes">Notes (optional)</label>
+        <textarea id="withdrawal-notes" maxlength="200" placeholder="Any special instructions…" style="width: 100%; margin-bottom: 1rem; min-height: 60px; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; box-sizing: border-box;"></textarea>
+
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-bottom: 1rem;">
+          <input id="confirm-withdrawal" type="checkbox">
+          <span>I confirm this withdrawal request and understand the funds will be transferred to my configured payout account</span>
+        </label>
+
+        <button type="button" id="request-withdrawal-btn" class="btn">Request Withdrawal</button>
+      </div>
+
+      <div id="withdrawals-history" style="margin-top: 2rem;">
+        <h3>Previous withdrawal requests</h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+          <thead style="background: #f8f9f7; border-bottom: 2px solid #d0d5cc;">
+            <tr>
+              <th style="padding: 0.75rem; text-align: left;">Amount</th>
+              <th style="padding: 0.75rem; text-align: left;">Status</th>
+              <th style="padding: 0.75rem; text-align: left;">Requested</th>
+            </tr>
+          </thead>
+          <tbody id="withdrawals-body"></tbody>
+        </table>
+        <p id="no-withdrawals" class="fine">No withdrawal requests yet.</p>
+      </div>
+    </div>
   </div>
 
   <script src="auth-client.js"></script>
@@ -679,9 +727,11 @@
           $("rsvps-section").hidden = false;
           $("bids-section").hidden = false;
           $("seating-section").hidden = false;
+          $("withdrawals-section").hidden = false;
           $("publish-btn").hidden = true;
           loadRsvps();
           loadBids();
+          loadWithdrawals();
         } else {
           $("publish-btn").hidden = false;
         }
@@ -877,6 +927,71 @@
         console.error("Load bids failed:", err);
       }
     }
+
+    // Load withdrawals
+    async function loadWithdrawals() {
+      try {
+        // Load balance
+        const balRes = await WS.api(`/api/withdrawals?action=balance&weddingId=${encodeURIComponent(weddingId)}`);
+        const balData = await balRes.json();
+        if (balRes.ok) {
+          const balance = (balData.balance_minor || 0) / 100;
+          $("balance-display").textContent = WS.money(balData.balance_minor || 0, balData.currency);
+        }
+
+        // Load history
+        const histRes = await WS.api(`/api/withdrawals?action=list&weddingId=${encodeURIComponent(weddingId)}`);
+        const histData = await histRes.json();
+        if (histRes.ok) {
+          const withdrawals = histData.withdrawals || [];
+          if (withdrawals.length === 0) return;
+          $("withdrawals-body").innerHTML = withdrawals.map(w => `
+            <tr style="border-bottom: 1px solid #ddd;">
+              <td style="padding: 0.75rem;">${WS.money(w.amount_minor, w.currency)}</td>
+              <td style="padding: 0.75rem;"><span class="tag ${w.status === 'completed' ? 'live' : w.status === 'pending' ? '' : 'warn'}">${w.status}</span></td>
+              <td style="padding: 0.75rem; font-size: 0.9rem;">${new Date(w.requested_at).toLocaleDateString()}</td>
+            </tr>
+          `).join("");
+          $("no-withdrawals").hidden = true;
+        }
+      } catch (err) {
+        console.error("Load withdrawals failed:", err);
+      }
+    }
+
+    // Request withdrawal
+    $("request-withdrawal-btn").addEventListener("click", async e => {
+      e.preventDefault();
+      if (!$("confirm-withdrawal").checked) {
+        return notice("Please confirm the withdrawal request", true);
+      }
+      const amount = parseFloat($("withdrawal-amount").value) || 0;
+      if (amount <= 0) {
+        return notice("Enter a valid amount", true);
+      }
+      const amountMinor = Math.round(amount * 100);
+      const notes = $("withdrawal-notes").value.trim();
+      
+      try {
+        $("request-withdrawal-btn").disabled = true;
+        const res = await WS.api(`/api/withdrawals?action=request&weddingId=${encodeURIComponent(weddingId)}`, {
+          method: "POST",
+          body: JSON.stringify({ amount_minor: amountMinor, notes: notes })
+        });
+        const data = await res.json();
+        if (!res.ok) return notice(data.error || "Could not request withdrawal", true);
+        notice("Withdrawal request submitted. Our team will process it soon.");
+        $("withdrawal-amount").value = "";
+        $("withdrawal-notes").value = "";
+        $("confirm-withdrawal").checked = false;
+        loadWithdrawals();
+      } catch (err) {
+        console.error("Withdrawal request failed:", err);
+        notice("Withdrawal request failed: " + (err.message || "network error"), true);
+      } finally {
+        $("request-withdrawal-btn").disabled = false;
+      }
+    });
 
     loadWedding();
 })();
