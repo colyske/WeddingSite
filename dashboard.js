@@ -126,14 +126,52 @@
 
   function validate() {
     const f = state.fields;
-    if (!f.names.trim()) return "Please enter the couple's names.";
-    if (!f.location.trim()) return "Please enter a location.";
+    const errors = [];
+    const errorFields = [];
+    
+    if (!f.names.trim()) {
+      errors.push("✓ Couple names (required)");
+      $("couple-names").setAttribute("aria-invalid", "true");
+      errorFields.push($("couple-names"));
+    } else {
+      $("couple-names").removeAttribute("aria-invalid");
+    }
+    
+    if (!f.location.trim()) {
+      errors.push("✓ Location (required)");
+      $("location").setAttribute("aria-invalid", "true");
+      errorFields.push($("location"));
+    } else {
+      $("location").removeAttribute("aria-invalid");
+    }
+    
+    if (!f.currency || !/^[A-Z]{3}$/.test(f.currency)) {
+      errors.push("✓ Currency (required)");
+      $("currency").setAttribute("aria-invalid", "true");
+      errorFields.push($("currency"));
+    } else {
+      $("currency").removeAttribute("aria-invalid");
+    }
+    
     const cap = Number(f.capacity);
-    if (!f.capacity.trim() || !Number.isInteger(cap) || cap < 1) return "Maximum guest capacity must be a whole number of at least 1.";
-    if (!/^[A-Z]{3}$/.test(f.currency)) return "Please choose a currency.";
-    if (!state.palette.every((c) => HEX.test(c))) return "Each of the four colours must be a valid colour.";
+    if (!f.capacity.trim() || !Number.isInteger(cap) || cap < 1) {
+      errors.push("✓ Guest capacity (required, must be 1 or more)");
+      $("max-capacity").setAttribute("aria-invalid", "true");
+      errorFields.push($("max-capacity"));
+    } else {
+      $("max-capacity").removeAttribute("aria-invalid");
+    }
+    
+    if (!state.palette.every((c) => HEX.test(c))) errors.push("Each colour must be valid");
+    
     for (const v of state.venues) {
-      if (v.map.trim() && !/^https?:\/\//i.test(v.map.trim())) return "Venue map links must start with http:// or https://.";
+      if (v.map.trim() && !/^https?:\/\//i.test(v.map.trim())) errors.push("Venue map links must start with http:// or https://");
+    }
+    
+    if (errors.length) {
+      const firstErrorField = errorFields[0] || $("couple-names");
+      firstErrorField?.focus?.();
+      return "Please fix these required fields: " + errors.join(", ");
     }
     return "";
   }
@@ -187,9 +225,13 @@
       state.paletteOpen = false;
       state.venues = [newVenue()];
       state.mainVenueId = state.venues[0].id;
-      setNotice("");
+      setNotice(`✨ ${payload.coupleNames} created successfully! Redirecting...`, "good");
       renderAll();
-      loadWeddings();
+      
+      // Auto-navigate to the newly created wedding after a brief delay
+      setTimeout(() => {
+        location.href = `/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}`;
+      }, 1000);
     } catch (err) {
       console.error("Create wedding error:", err);
       setNotice(`Could not reach the server (${err.message}). Your details are kept; please check your connection and try again.`, "bad");
@@ -255,6 +297,54 @@
   });
 
   $("create-form").addEventListener("submit", (e) => { e.preventDefault(); submitCreate(); });
+
+  // Account menu
+  $("account-menu-btn").addEventListener("click", (e) => {
+    const menu = $("account-menu");
+    menu.style.display = menu.style.display === "none" ? "block" : "none";
+    e.stopPropagation();
+  });
+
+  document.addEventListener("click", () => {
+    $("account-menu").style.display = "none";
+  });
+
+  const handleSignOut = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    window.WS.clear();
+    location.replace("/signin.html");
+  };
+
+  $("sign-out").addEventListener("click", handleSignOut);
+  $("account-sign-out").addEventListener("click", handleSignOut);
+
+  $("change-password").addEventListener("click", async (e) => {
+    e.preventDefault();
+    // For now, show a placeholder message
+    alert("Password change feature coming soon. Contact support to reset your password.");
+  });
+
+  // Set up role-based navigation
+  const role = window.WS.role();
+  if (role) {
+    $("role-display").textContent = `Role: ${role.charAt(0).toUpperCase() + role.slice(1)}`;
+    
+    // Show admin dashboard if user is admin or superadmin or owner
+    if (role === "admin" || role === "superadmin" || role === "owner") {
+      $("admin-dashboard").style.display = "block";
+    }
+    
+    // Show owner profile only if user is owner (never show owner to other roles)
+    if (role === "owner") {
+      $("owner-profile").style.display = "block";
+      $("owner-profile").textContent = "Owner Profile (You)";
+      $("owner-profile").href = "#"; // TODO: create owner profile page
+      $("owner-profile").addEventListener("click", (e) => {
+        e.preventDefault();
+        alert("Owner profile coming soon");
+      });
+    }
+  }
 
   // Error boundaries: surface anything unexpected instead of failing silently.
   window.addEventListener("error", (e) => { console.error(e.error || e.message); setNotice("Something went wrong on this page. Your entries are kept; please try again.", "bad"); });

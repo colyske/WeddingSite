@@ -6,14 +6,54 @@
   <meta name="theme-color" content="#203a31">
   <title>WeddingSite — Wedding Editor</title>
   <link rel="stylesheet" href="app-shell.css">
+  <style>
+    .venue-item { padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9; margin-bottom: 1rem; }
+    .venue-item input[type="text"], .venue-item input[type="url"], .venue-item textarea {
+      display: block; width: 100%; margin-bottom: 0.75rem; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; box-sizing: border-box;
+    }
+    .venue-item textarea { resize: vertical; min-height: 60px; }
+    .venue-main-label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin: 0 0 1rem; font-weight: 500; }
+    .remove-venue { padding: 0.5rem 1rem; background: #d9534f; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+    #add-venue-btn { font-size: 1rem; }
+    
+    .registry-item { padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9; margin-bottom: 1rem; }
+    .registry-item input[type="text"], .registry-item input[type="number"], .registry-item textarea {
+      display: block; width: 100%; margin-bottom: 0.75rem; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; box-sizing: border-box;
+    }
+    .registry-item textarea { resize: vertical; min-height: 50px; }
+    .registry-item > div { margin-bottom: 0.5rem; }
+    .registry-item label { display: block; margin: 0.5rem 0 0.25rem; font-size: 0.9rem; font-weight: 500; }
+    .remove-registry { padding: 0.5rem 1rem; background: #d9534f; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+
+    .tier-item { padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9; margin-bottom: 1rem; }
+    .tier-item input[type="text"], .tier-item input[type="number"], .tier-item textarea {
+      display: block; width: 100%; margin-bottom: 0.75rem; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; box-sizing: border-box;
+    }
+    .tier-item textarea { resize: vertical; min-height: 50px; }
+    .remove-tier { padding: 0.5rem 1rem; background: #d9534f; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+  </style>
 </head>
 <body>
   <div class="wrap">
     <div class="top">
       <a class="brand" href="/">WeddingSite</a>
-      <div>
+      <div style="display: flex; gap: 1rem; align-items: center;">
         <button type="button" class="link" id="back">← Back to My Weddings</button>
-        <button type="button" class="link" id="sign-out">Sign out</button>
+        <div style="position: relative;">
+          <button type="button" class="link" id="account-menu-btn" title="Account menu">👤 Account ▼</button>
+          <div id="account-menu" style="display: none; position: absolute; right: 0; top: 100%; background: white; border: 1px solid #ddd; border-radius: 4px; min-width: 200px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); z-index: 100;">
+            <div style="padding: 0.75rem 1rem;">
+              <div class="fine" style="margin-bottom: 0.5rem;" id="role-display"></div>
+              <a href="/account.html" class="link" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer; text-decoration: none; color: #0066cc;">Account Settings</a>
+              <button type="button" class="link" id="change-password" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer;">Change password</button>
+              <a href="/admin.html" class="link" style="display: none;" id="admin-dashboard" title="Admin Dashboard">Admin Dashboard</a>
+              <a href="#" class="link" style="display: none;" id="owner-profile" title="Owner Profile">Owner Profile</a>
+              <hr style="margin: 0.5rem 0; border: none; border-top: 1px solid #ddd;">
+              <button type="button" class="link" id="account-sign-out" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer;">Sign out</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="link" id="sign-out" style="position: absolute; width: 1px; height: 1px; padding: 0; border: 0; overflow: hidden;">Sign out</button>
       </div>
     </div>
 
@@ -23,20 +63,33 @@
     <!-- Wedding details form -->
     <div id="edit-section" class="card" hidden>
       <form id="edit-form">
-        <label for="couple-names">Couple names</label>
-        <input id="couple-names" type="text" maxlength="120" required>
+        <label for="couple-names">Couple names <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <input id="couple-names" type="text" maxlength="120" required aria-required="true">
 
-        <label for="welcome-story">Welcome message</label>
+        <label for="wedding-slug">Wedding URL <span class="fine" style="font-weight: normal; color: #7a8580;">weddingsite.com/<strong id="slug-preview"></strong></span></label>
+        <input id="wedding-slug" type="text" maxlength="80" placeholder="e.g. sarah-and-john" pattern="[a-z0-9-]+" title="Use only lowercase letters, numbers, and hyphens">
+        <p class="fine" id="slug-error" style="color: #d9534f; display: none; margin-top: 0.5rem;"></p>
+
+        <label for="welcome-story">Welcome message
+          <button type="button" class="link" id="ai-story-btn" style="margin-left: 0.5rem; font-weight: normal;">✨ Get AI suggestions</button>
+        </label>
         <textarea id="welcome-story" maxlength="500" rows="4" placeholder="A brief message for your guests…"></textarea>
+        <div id="ai-story-suggestions" class="fine" style="display: none; border-left: 3px solid var(--gold); padding: 0.75rem; margin: 1rem 0; background: #fefcf7;">
+          <p style="margin: 0 0 0.75rem;">💡 AI suggestions:</p>
+          <div id="ai-story-list" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+        </div>
 
         <label for="wedding-date">Date</label>
         <input id="wedding-date" type="date">
 
-        <label for="location">Location</label>
-        <input id="location" type="text" maxlength="120">
+        <label for="location">Location <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <input id="location" type="text" maxlength="120" required aria-required="true">
 
-        <label for="currency">Currency</label>
-        <select id="currency">
+        <label for="background-music-url">Background music URL (optional)</label>
+        <input id="background-music-url" type="url" maxlength="500" placeholder="Link to your wedding ceremony or cocktail music (MP3, WAV, OGG)">
+
+        <label for="currency">Currency <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <select id="currency" required aria-required="true">
           <option value="USD">USD - US Dollar</option>
           <option value="KES">KES - Kenyan Shilling</option>
           <option value="EUR">EUR - Euro</option>
@@ -46,16 +99,114 @@
           <option value="ZAR">ZAR - South African Rand</option>
         </select>
 
-        <label for="max-capacity">Maximum guests</label>
-        <input id="max-capacity" type="number" min="1">
+        <label for="max-capacity">Maximum guests <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <input id="max-capacity" type="number" min="1" required aria-required="true">
 
         <label>Wedding colours</label>
         <div class="swatches" id="palette-preview"></div>
 
-        <div class="row">
-          <button type="submit">Save changes</button>
-          <button type="button" id="publish-btn" class="ghost">Publish wedding site</button>
+        <label for="venues-section">Venues & Itinerary
+          <button type="button" class="link" id="add-venue-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add venue</button>
+        </label>
+        <div id="venues-list" style="margin-bottom: 1.5rem;"></div>
+
+        <label>Attire Lookbook
+          <button type="button" class="link" id="edit-colors-btn" style="margin-left: 0.5rem; font-weight: normal;">🎨 Edit colours</button>
+        </label>
+        <div id="attire-editor" style="display: none; border: 2px dashed #d0d5cc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: #fafbf9;">
+          <p style="margin: 0 0 1rem; font-weight: 500;">Add up to 4 colours for your wedding palette. Click on the colour box to edit.</p>
+          <div id="color-inputs" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <input type="color" class="palette-color" value="#244b3a" style="width: 60px; height: 60px; border: none; border-radius: 4px; cursor: pointer;">
+              <input type="text" class="palette-color-hex" placeholder="Hex code" maxlength="7" value="#244b3a" style="width: 100px; padding: 0.5rem; border: 1px solid #d0d5cc; border-radius: 4px;">
+            </div>
+          </div>
+          <button type="button" id="add-color-btn" class="link" style="margin-right: 1rem;">+ Add colour</button>
+          <button type="button" id="apply-colors-btn">Apply palette</button>
+          <button type="button" id="cancel-colors-btn" class="link">Cancel</button>
         </div>
+
+        <div id="attire-description">
+          <label for="attire-notes">Attire notes & dress code</label>
+          <textarea id="attire-notes" maxlength="300" rows="3" placeholder="E.g. Forest Green, Eucalyptus Sage, Royal Gold, Ivory palette. Formal African elegance encouraged."></textarea>
+        </div>
+
+        <label>Registry & Crowdfunding Milestones
+          <button type="button" class="link" id="add-registry-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add item</button>
+        </label>
+        <div id="registry-list" style="margin-bottom: 1.5rem;"></div>
+
+        <label style="display: block; margin-bottom: 0.5rem;">Payment methods guests can use</label>
+        <div style="margin-bottom: 1.5rem; padding: 1rem; background: #f8f9f7; border: 1px solid #d0d5cc; border-radius: 8px;">
+          <p style="margin: 0 0 1rem; font-size: 0.9rem; color: #5a5f5a;">Select which payment options you want to enable for contributions and pledges.</p>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <label style="font-weight: normal; margin: 0;"><input type="checkbox" id="payment-mpesa" class="payment-method-checkbox" value="mpesa"> M-Pesa Mobile Money</label>
+            <label style="font-weight: normal; margin: 0;"><input type="checkbox" id="payment-stripe" class="payment-method-checkbox" value="stripe"> Stripe (Credit/Debit Card)</label>
+            <label style="font-weight: normal; margin: 0;"><input type="checkbox" id="payment-paystack" class="payment-method-checkbox" value="paystack"> Paystack (Card, Mobile Money, Bank Transfer)</label>
+            <label style="font-weight: normal; margin: 0;"><input type="checkbox" id="payment-manual" class="payment-method-checkbox" value="manual"> Manual Bank Transfer</label>
+          </div>
+          <p style="margin: 1rem 0 0; font-size: 0.85rem; color: #5a5f5a; font-style: italic;">Note: Configured payment providers shown to guests; all require credentials to be added by you.</p>
+        </div>
+
+        <label for="payout-method">How would you like to receive funds?</label>
+        <select id="payout-method">
+          <option value="">Choose payment method…</option>
+          <option value="mpesa">M-Pesa (Mobile Money)</option>
+          <option value="bank_transfer">Bank Transfer</option>
+          <option value="stripe">Stripe Payout Account</option>
+          <option value="paystack">Paystack Transfer</option>
+          <option value="other">Other (please specify)</option>
+        </select>
+
+        <div id="payout-details-section" style="display: none; border: 2px dashed #d0d5cc; border-radius: 8px; padding: 1rem; margin: 1rem 0 1.5rem; background: #fafbf9;">
+          <p style="margin: 0 0 1rem; font-size: 0.9rem; color: #5a5f5a;"><strong>📋 Account Details</strong> (stored securely, never shown to guests)</p>
+          <div id="payout-account-fields"></div>
+          <div style="margin-top: 1rem;">
+            <label for="payout-confirm-verify">
+              <input type="checkbox" id="payout-confirm-verify">
+              I confirm this is the correct account for receiving funds
+            </label>
+          </div>
+        </div>
+
+          <hr style="margin: 2rem 0; border: none; border-top: 2px solid #d0d5cc;">
+
+          <h3>Fundraising & Sponsorships</h3>
+          <p class="fine">Create tiered giving levels, offer VIP seating, and showcase corporate sponsors.</p>
+
+          <label>Sponsorship Tiers
+            <button type="button" class="link" id="add-tier-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add tier</button>
+          </label>
+          <div id="tiers-list" style="margin-bottom: 1.5rem;"></div>
+
+          <label>VIP Seating Offer</label>
+          <div id="vip-offer" style="padding: 1rem; background: #fafbf9; border: 1px solid #d0d5cc; border-radius: 6px; margin-bottom: 1.5rem;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div>
+                <label style="font-size: 0.9rem;">VIP Seating Title</label>
+                <input type="text" id="vip-title" maxlength="80" placeholder="e.g. VIP Table Sponsorship" value="VIP Seating">
+              </div>
+              <div>
+                <label style="font-size: 0.9rem;">Price per seat (in your currency)</label>
+                <input type="number" id="vip-price" min="0" step="0.01" placeholder="0.00" value="0">
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div>
+                <label style="font-size: 0.9rem;">Total VIP seats available</label>
+                <input type="number" id="vip-seats" min="1" max="500" placeholder="20" value="20">
+              </div>
+              <div>
+                <label style="font-size: 0.9rem;">Description (optional)</label>
+                <input type="text" id="vip-description" maxlength="240" placeholder="e.g. Front row, reserved table, premium catering">
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <button type="submit">Save changes</button>
+            <button type="button" id="publish-btn" class="ghost">Publish wedding site</button>
+          </div>
       </form>
     </div>
 
@@ -115,6 +266,73 @@
       </table>
       <p id="no-bids" class="fine">No DJ song bids yet.</p>
     </div>
+
+    <!-- Guest List & Seating -->
+    <div id="seating-section" class="card" hidden>
+      <h2>Guest List & Seating</h2>
+      <p class="fine">Import guest list and manage seating arrangements.</p>
+      
+      <div style="margin-bottom: 2rem; padding: 1rem; background: #f8f9f7; border: 2px dashed var(--sage); border-radius: 8px; text-align: center;">
+        <p class="fine" style="margin: 0 0 1rem;">Import CSV with guest names, emails, dietary preferences, and table assignments</p>
+        <input type="file" id="guest-list-upload" accept=".csv" style="display: none;">
+        <button type="button" id="upload-btn" class="btn" style="margin: 0;">Upload Guest List (CSV)</button>
+        <p class="fine" style="margin: 0.5rem 0 0;">Format: name, email, dietary, table</p>
+      </div>
+
+      <div id="guest-list-display" style="display: flex; flex-direction: column; gap: 1rem;"></div>
+      <p id="no-guest-list" class="fine">No guest list imported yet.</p>
+    </div>
+
+    <!-- Withdrawals / Payouts -->
+    <div id="withdrawals-section" class="card" hidden>
+      <h2>💰 Payouts & Withdrawals</h2>
+      <p class="fine">View your current payout balance and request withdrawals</p>
+      
+      <div id="payout-balance" style="padding: 1.5rem; background: #f3faf3; border-radius: 8px; margin-bottom: 1.5rem;">
+        <p class="fine" style="margin: 0 0 0.5rem;">Available balance:</p>
+        <p style="margin: 0; font-size: 1.5rem; font-weight: bold; color: #244b3a;">
+          <span id="balance-display">$0.00</span>
+        </p>
+        <p class="fine" style="margin: 0.75rem 0 0; color: #666;">
+          💡 <strong>Note:</strong> Paystack settles at least 2 days after a guest pays, so those funds become withdrawable from the 3rd day. Card and other funds are available sooner.
+        </p>
+      </div>
+
+      <div id="payout-method-display" style="padding: 1rem; background: #fafbf9; border: 1px solid #d0d5cc; border-radius: 6px; margin-bottom: 1.5rem;">
+        <p class="fine" style="margin: 0 0 0.5rem;">Payout method:</p>
+        <p id="method-display" style="margin: 0; font-weight: 500;">Not configured</p>
+      </div>
+
+      <div id="withdrawal-form" style="margin-bottom: 1.5rem;">
+        <label for="withdrawal-amount">Amount to withdraw (in your currency)</label>
+        <input id="withdrawal-amount" type="number" min="0.01" step="0.01" placeholder="0.00" style="width: 100%; margin-bottom: 1rem;">
+        
+        <label for="withdrawal-notes">Notes (optional)</label>
+        <textarea id="withdrawal-notes" maxlength="200" placeholder="Any special instructions…" style="width: 100%; margin-bottom: 1rem; min-height: 60px; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; box-sizing: border-box;"></textarea>
+
+        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-bottom: 1rem;">
+          <input id="confirm-withdrawal" type="checkbox">
+          <span>I confirm this withdrawal request and understand the funds will be transferred to my configured payout account</span>
+        </label>
+
+        <button type="button" id="request-withdrawal-btn" class="btn">Request Withdrawal</button>
+      </div>
+
+      <div id="withdrawals-history" style="margin-top: 2rem;">
+        <h3>Previous withdrawal requests</h3>
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+          <thead style="background: #f8f9f7; border-bottom: 2px solid #d0d5cc;">
+            <tr>
+              <th style="padding: 0.75rem; text-align: left;">Amount</th>
+              <th style="padding: 0.75rem; text-align: left;">Status</th>
+              <th style="padding: 0.75rem; text-align: left;">Requested</th>
+            </tr>
+          </thead>
+          <tbody id="withdrawals-body"></tbody>
+        </table>
+        <p id="no-withdrawals" class="fine">No withdrawal requests yet.</p>
+      </div>
+    </div>
   </div>
 
   <script src="auth-client.js"></script>
@@ -135,7 +353,377 @@
     if (!weddingId) return notice("Wedding ID missing.", true);
 
     $("back").addEventListener("click", () => location.href = "/dashboard.html");
-    $("sign-out").addEventListener("click", () => { WS.clear(); location.replace("/signin.html"); });
+    
+    const handleSignOut = () => { WS.clear(); location.replace("/signin.html"); };
+    $("sign-out").addEventListener("click", handleSignOut);
+    $("account-sign-out").addEventListener("click", handleSignOut);
+
+    // Account menu
+    $("account-menu-btn").addEventListener("click", (e) => {
+      const menu = $("account-menu");
+      menu.style.display = menu.style.display === "none" ? "block" : "none";
+      e.stopPropagation();
+    });
+
+    document.addEventListener("click", () => {
+      $("account-menu").style.display = "none";
+    });
+
+    $("change-password").addEventListener("click", async (e) => {
+      e.preventDefault();
+      alert("Password change feature coming soon. Contact support to reset your password.");
+    });
+
+    // Set up role-based navigation
+    const roleWedding = WS.role();
+    if (roleWedding) {
+      $("role-display").textContent = `Role: ${roleWedding.charAt(0).toUpperCase() + roleWedding.slice(1)}`;
+      
+      if (roleWedding === "admin" || roleWedding === "superadmin" || roleWedding === "owner") {
+        $("admin-dashboard").style.display = "block";
+      }
+      
+      if (roleWedding === "owner") {
+        $("owner-profile").style.display = "block";
+        $("owner-profile").textContent = "Owner Profile (You)";
+        $("owner-profile").href = "#";
+        $("owner-profile").addEventListener("click", (e) => {
+          e.preventDefault();
+          alert("Owner profile coming soon");
+        });
+      }
+    }
+
+    // AI Story suggestions
+    $("ai-story-btn").addEventListener("click", async e => {
+      e.preventDefault();
+      const btn = $("ai-story-btn");
+      btn.disabled = true;
+      btn.textContent = "💭 Generating...";
+      try {
+        const couple = $("couple-names").value || "the couple";
+        const date = $("wedding-date").value || "soon";
+        const suggestions = [
+          `We're thrilled to share this special day with you. Join us as we celebrate our love and create memories together.`,
+          `Celebrate with us as we begin our journey together. Your presence means the world to us.`,
+          `We invite you to witness and celebrate our union. Let's make this day unforgettable together.`,
+          `Join us for an extraordinary celebration of love, laughter, and new beginnings.`,
+          `Our hearts are full knowing you'll be here to share in this beautiful milestone.`
+        ];
+        
+        $("ai-story-list").innerHTML = suggestions.map(s => 
+          `<button type="button" class="link" style="text-align: left; padding: 0.75rem; background: #fff; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; font-size: 0.95rem;">
+            ${WS.esc(s)}
+          </button>`
+        ).join("");
+        
+        $("ai-story-list").querySelectorAll("button").forEach(btn => {
+          btn.addEventListener("click", e => {
+            e.preventDefault();
+            $("welcome-story").value = btn.textContent;
+            $("ai-story-suggestions").style.display = "none";
+          });
+        });
+        
+        $("ai-story-suggestions").style.display = "block";
+      } catch (err) {
+        notice("Could not generate suggestions.", true);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "✨ Get AI suggestions";
+      }
+    });
+
+    // Venues management
+    let venueCount = 0;
+    function addVenueEditor() {
+      const id = `venue-${venueCount++}`;
+      const html = `
+        <div class="venue-item" data-venue-id="${id}">
+          <div class="venue-main-label">
+            <input type="checkbox" class="venue-main-cb" title="Set as main venue"> <span>Main venue</span>
+          </div>
+          <input type="text" class="venue-name" placeholder="Venue name (e.g. Cathedral, Reception)" maxlength="80">
+          <input type="text" class="venue-time" placeholder="Time (e.g. 10:00 AM)">
+          <input type="url" class="venue-address" placeholder="Address or map link (e.g. Google Maps URL)">
+          <textarea class="venue-notes" placeholder="Details (e.g. Dress code, parking info)" maxlength="240"></textarea>
+          <button type="button" class="remove-venue" data-venue-id="${id}">Remove</button>
+        </div>
+      `;
+      $("venues-list").insertAdjacentHTML("beforeend", html);
+      
+      const item = $("venues-list").querySelector(`[data-venue-id="${id}"]`);
+      item.querySelector(".remove-venue").addEventListener("click", e => {
+        e.preventDefault();
+        item.remove();
+      });
+      
+      // Only one main venue at a time
+      item.querySelector(".venue-main-cb").addEventListener("change", e => {
+        $("venues-list").querySelectorAll(".venue-main-cb").forEach(cb => cb.checked = false);
+        e.target.checked = true;
+      });
+    }
+
+    $("add-venue-btn").addEventListener("click", e => {
+      e.preventDefault();
+      addVenueEditor();
+    });
+
+    // Color palette editor
+    let colorEditorOpen = false;
+    
+    $("edit-colors-btn").addEventListener("click", e => {
+      e.preventDefault();
+      colorEditorOpen = !colorEditorOpen;
+      $("attire-editor").style.display = colorEditorOpen ? "block" : "none";
+      if (colorEditorOpen) {
+        renderColorInputs();
+      }
+    });
+
+    function renderColorInputs() {
+      const container = $("color-inputs");
+      const inputs = container.querySelectorAll(".palette-color");
+      if (inputs.length === 0) {
+        // Initialize with current palette or defaults
+        const palette = $("palette-preview").innerHTML 
+          ? Array.from($("palette-preview").querySelectorAll("span")).map(s => s.style.background || "#244b3a")
+          : ["#244b3a"];
+        container.innerHTML = "";
+        palette.slice(0, 4).forEach((color, idx) => {
+          addColorInput(color);
+        });
+      }
+    }
+
+    function addColorInput(color = "#244b3a") {
+      const container = $("color-inputs");
+      if (container.querySelectorAll(".palette-color").length >= 4) return;
+      
+      const div = document.createElement("div");
+      div.style.cssText = "display: flex; align-items: center; gap: 0.5rem;";
+      div.innerHTML = `
+        <input type="color" class="palette-color" value="${color}" style="width: 60px; height: 60px; border: none; border-radius: 4px; cursor: pointer;">
+        <input type="text" class="palette-color-hex" placeholder="Hex code" maxlength="7" value="${color}" style="width: 100px; padding: 0.5rem; border: 1px solid #d0d5cc; border-radius: 4px;">
+        <button type="button" class="remove-color-btn link" style="padding: 0; margin: 0;">✕</button>
+      `;
+      
+      const colorInput = div.querySelector(".palette-color");
+      const hexInput = div.querySelector(".palette-color-hex");
+      const removeBtn = div.querySelector(".remove-color-btn");
+      
+      colorInput.addEventListener("change", () => {
+        hexInput.value = colorInput.value;
+      });
+      hexInput.addEventListener("change", () => {
+        const hex = hexInput.value.trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+          colorInput.value = hex;
+        }
+      });
+      removeBtn.addEventListener("click", e => {
+        e.preventDefault();
+        if ($("color-inputs").querySelectorAll(".palette-color").length > 1) {
+          div.remove();
+        }
+      });
+      
+      container.appendChild(div);
+    }
+
+    $("add-color-btn").addEventListener("click", e => {
+      e.preventDefault();
+      addColorInput();
+    });
+
+    $("apply-colors-btn").addEventListener("click", e => {
+      e.preventDefault();
+      const colors = Array.from($("color-inputs").querySelectorAll(".palette-color")).map(c => c.value);
+      $("palette-preview").innerHTML = colors.map(c => `<span style="background: ${c};"></span>`).join("");
+      colorEditorOpen = false;
+      $("attire-editor").style.display = "none";
+    });
+
+    $("cancel-colors-btn").addEventListener("click", e => {
+      e.preventDefault();
+      colorEditorOpen = false;
+      $("attire-editor").style.display = "none";
+    });
+
+    // Registry management
+    let registryCount = 0;
+    function addRegistryEditor() {
+      const id = `registry-${registryCount++}`;
+      const html = `
+        <div class="registry-item" data-registry-id="${id}">
+          <input type="hidden" class="registry-id" value="">
+          <div>
+            <label>Item name</label>
+            <input type="text" class="registry-name" placeholder="e.g. Honeymoon Flight, Photography, Catering" maxlength="100">
+          </div>
+          <div>
+            <label>Category</label>
+            <input type="text" class="registry-category" placeholder="e.g. Travel, Media, Services" maxlength="50">
+          </div>
+          <div>
+            <label>Target amount (${$("currency").value || "USD"})</label>
+            <input type="number" class="registry-target" min="1" step="0.01" placeholder="e.g. 5000">
+          </div>
+          <div>
+            <label>Description</label>
+            <textarea class="registry-desc" placeholder="Why this item, what it will be used for" maxlength="240"></textarea>
+          </div>
+          <div>
+            <label>Notes for contributors</label>
+            <textarea class="registry-notes" placeholder="e.g. Help us fund our dream honeymoon" maxlength="240"></textarea>
+          </div>
+          <button type="button" class="remove-registry" data-registry-id="${id}">Remove</button>
+        </div>
+      `;
+      $("registry-list").insertAdjacentHTML("beforeend", html);
+      
+      const item = $("registry-list").querySelector(`[data-registry-id="${id}"]`);
+      item.querySelector(".remove-registry").addEventListener("click", e => {
+        e.preventDefault();
+        item.remove();
+      });
+    }
+
+    $("add-registry-btn").addEventListener("click", e => {
+      e.preventDefault();
+      addRegistryEditor();
+    });
+
+    // Sponsorship tiers management
+    let tierCount = 0;
+    function addTierEditor() {
+      const id = `tier-${tierCount++}`;
+      const html = `
+        <div class="tier-item" data-tier-id="${id}">
+          <input type="hidden" class="tier-id" value="">
+          <div>
+            <label>Tier name</label>
+            <input type="text" class="tier-name" placeholder="e.g. Gold Sponsor, Silver Contributor, Supporter" maxlength="60">
+          </div>
+          <div>
+            <label>Minimum contribution (${$("currency").value || "USD"})</label>
+            <input type="number" class="tier-min-amount" min="1" step="0.01" placeholder="e.g. 1000">
+          </div>
+          <div>
+            <label>Perks / Recognition</label>
+            <textarea class="tier-perks" placeholder="e.g. Listed as Gold Sponsor on guest site, VIP recognition at reception" maxlength="240"></textarea>
+          </div>
+          <button type="button" class="remove-tier" data-tier-id="${id}">Remove tier</button>
+        </div>
+      `;
+      $("tiers-list").insertAdjacentHTML("beforeend", html);
+      
+      const item = $("tiers-list").querySelector(`[data-tier-id="${id}"]`);
+      item.querySelector(".remove-tier").addEventListener("click", e => {
+        e.preventDefault();
+        item.remove();
+      });
+    }
+
+    $("add-tier-btn").addEventListener("click", e => {
+      e.preventDefault();
+      addTierEditor();
+    });
+
+    // Guest list CSV upload
+    $("upload-btn").addEventListener("click", e => {
+      e.preventDefault();
+      $("guest-list-upload").click();
+    });
+
+    $("guest-list-upload").addEventListener("change", async e => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = async event => {
+        try {
+          const csv = event.target.result;
+          const lines = csv.trim().split("\n").slice(1); // Skip header
+          const guests = lines.map(line => {
+            const [name, email, dietary, table] = line.split(",").map(s => s.trim());
+            return { name, email, dietary, table };
+          }).filter(g => g.name);
+          
+          if (guests.length === 0) {
+            notice("No valid guest records found in CSV.", true);
+            return;
+          }
+          
+          // Store guests in memory for this session (would need API endpoint to persist)
+          window.importedGuests = guests;
+          const saved = await WS.api("/api/weddings?action=guests-import&weddingId=" + encodeURIComponent(weddingId), { method: "POST", body: JSON.stringify({ weddingId, guests }) });
+          if (!saved.ok) { notice((await saved.json()).error || "Could not save guest list.", true); return; }
+          
+          // Display imported guests
+          $("no-guest-list").hidden = true;
+          $("guest-list-display").innerHTML = guests.map((g, idx) => `
+            <div style="border-left: 4px solid var(--sage); padding: 1rem; background: #f8f9f7; border-radius: 4px;">
+              <p style="margin: 0 0 0.5rem; font-weight: 600; color: var(--green);">${esc(g.name)}</p>
+              <p style="margin: 0; font-size: 0.9rem; color: #5a5f5a;">📧 ${esc(g.email || "—")}</p>
+              ${g.dietary ? `<p style="margin: 0.25rem 0 0; font-size: 0.9rem; color: var(--gold);">🍽️ ${esc(g.dietary)}</p>` : ""}
+              ${g.table ? `<p style="margin: 0.25rem 0 0; font-size: 0.9rem; color: var(--green);">🪑 Table ${esc(g.table)}</p>` : ""}
+            </div>
+          `).join("");
+          
+          notice(`Imported and saved ${guests.length} guests.`);
+        } catch (err) {
+          console.error("CSV parse error:", err);
+          notice("Could not parse CSV file. Check format: name, email, dietary, table", true);
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = ""; // Reset for next upload
+    });
+
+    // Payout method selection
+    const payoutFieldsConfig = {
+      mpesa: [
+        { label: "M-Pesa Phone Number", placeholder: "+254...", required: true },
+        { label: "Account Name", placeholder: "Name on M-Pesa account", required: true }
+      ],
+      bank_transfer: [
+        { label: "Bank Name", placeholder: "e.g. Kenya Commercial Bank", required: true },
+        { label: "Account Holder Name", placeholder: "Full name", required: true },
+        { label: "Account Number", placeholder: "e.g. 0012345678", required: true },
+        { label: "SWIFT Code / Bank Code", placeholder: "e.g. KCBLKENA", required: false }
+      ],
+      stripe: [
+        { label: "Stripe Account Email", placeholder: "Your Stripe login email", required: true }
+      ],
+      paystack: [
+        { label: "Paystack Account Email", placeholder: "Your Paystack login email", required: true }
+      ],
+      other: [
+        { label: "Description", placeholder: "How should we send your funds?", required: true }
+      ]
+    };
+
+    $("payout-method").addEventListener("change", e => {
+      const method = e.target.value;
+      const section = $("payout-details-section");
+      const fieldsDiv = $("payout-account-fields");
+      
+      if (!method) {
+        section.style.display = "none";
+        return;
+      }
+
+      section.style.display = "block";
+      const fields = payoutFieldsConfig[method] || [];
+      fieldsDiv.innerHTML = fields.map((f, idx) => `
+        <div style="margin-bottom: 1rem;">
+          <label for="payout-field-${idx}" style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem; font-weight: 500;">${f.label}${f.required ? " *" : ""}</label>
+          <input type="text" id="payout-field-${idx}" class="payout-field" placeholder="${f.placeholder}" maxlength="200" data-required="${f.required}" style="display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; box-sizing: border-box;">
+        </div>
+      `).join("");
+    });
 
     // Load wedding
     async function loadWedding() {
@@ -148,12 +736,173 @@
         document.title = `${esc(w.couple_names)} — Wedding`;
         $("title").textContent = document.title;
         $("couple-names").value = w.couple_names || "";
+        $("wedding-slug").value = w.slug || "";
+        $("slug-preview").textContent = w.slug || "wedding";
         $("welcome-story").value = w.welcome_story || "";
         $("wedding-date").value = w.wedding_date ? w.wedding_date.split("T")[0] : "";
         $("location").value = w.public_location || "";
+        $("background-music-url").value = w.background_music_url || "";
         $("currency").value = w.currency || "USD";
         $("max-capacity").value = w.max_guest_capacity || 150;
         $("palette-preview").innerHTML = (w.palette || []).map(c => `<span style="background: ${esc(c)};"></span>`).join("");
+        $("attire-notes").value = w.attire_notes || "";
+
+        // Load venues
+        if (w.venues && Array.isArray(w.venues)) {
+          $("venues-list").innerHTML = "";
+          w.venues.forEach((venue, idx) => {
+            const id = `venue-${idx}`;
+            const html = `
+              <div class="venue-item" data-venue-id="${id}">
+                <div class="venue-main-label">
+                  <input type="checkbox" class="venue-main-cb" title="Set as main venue" ${venue.is_main ? "checked" : ""}> <span>Main venue</span>
+                </div>
+                <input type="text" class="venue-name" value="${esc(venue.name || "")}" placeholder="Venue name" maxlength="80">
+                <input type="text" class="venue-time" value="${esc(venue.event_time || "")}" placeholder="Time">
+                <input type="url" class="venue-address" value="${esc(venue.map_link || "")}" placeholder="Map link">
+                <textarea class="venue-notes" placeholder="Details" maxlength="240">${esc(venue.description || "")}</textarea>
+                <input type="hidden" class="venue-id" value="${esc(venue.id || "")}">
+                <button type="button" class="remove-venue" data-venue-id="${id}">Remove</button>
+              </div>
+            `;
+            $("venues-list").insertAdjacentHTML("beforeend", html);
+            
+            const item = $("venues-list").querySelector(`[data-venue-id="${id}"]`);
+            item.querySelector(".remove-venue").addEventListener("click", e => {
+              e.preventDefault();
+              item.remove();
+            });
+            
+            item.querySelector(".venue-main-cb").addEventListener("change", e => {
+              $("venues-list").querySelectorAll(".venue-main-cb").forEach(cb => cb.checked = false);
+              e.target.checked = true;
+            });
+          });
+          venueCount = w.venues.length;
+        }
+
+        // Load registry items
+        if (w.registry && Array.isArray(w.registry)) {
+          $("registry-list").innerHTML = "";
+          w.registry.forEach((reg, idx) => {
+            const id = `registry-${idx}`;
+            const html = `
+              <div class="registry-item" data-registry-id="${id}">
+                <input type="hidden" class="registry-id" value="${esc(reg.id || "")}">
+                <div>
+                  <label>Item name</label>
+                  <input type="text" class="registry-name" value="${esc(reg.name || "")}" placeholder="e.g. Honeymoon Flight" maxlength="100">
+                </div>
+                <div>
+                  <label>Category</label>
+                  <input type="text" class="registry-category" value="${esc(reg.category || "")}" placeholder="e.g. Travel" maxlength="50">
+                </div>
+                <div>
+                  <label>Target amount (${w.currency || "USD"})</label>
+                  <input type="number" class="registry-target" value="${(reg.target_amount_minor || 0) / 100}" min="1" step="0.01" placeholder="e.g. 5000">
+                </div>
+                <div>
+                  <label>Description</label>
+                  <textarea class="registry-desc" placeholder="Why this item" maxlength="240">${esc(reg.description || "")}</textarea>
+                </div>
+                <div>
+                  <label>Notes for contributors</label>
+                  <textarea class="registry-notes" placeholder="Help us fund" maxlength="240">${esc(reg.notes || "")}</textarea>
+                </div>
+                <button type="button" class="remove-registry" data-registry-id="${id}">Remove</button>
+              </div>
+            `;
+            $("registry-list").insertAdjacentHTML("beforeend", html);
+            
+            const item = $("registry-list").querySelector(`[data-registry-id="${id}"]`);
+            item.querySelector(".remove-registry").addEventListener("click", e => {
+              e.preventDefault();
+              item.remove();
+            });
+          });
+          registryCount = w.registry.length;
+        }
+
+        // Load sponsor tiers
+        if (w.tiers && Array.isArray(w.tiers)) {
+          $("tiers-list").innerHTML = "";
+          w.tiers.forEach((tier, idx) => {
+            const id = `tier-${idx}`;
+            const html = `
+              <div class="tier-item" data-tier-id="${id}">
+                <input type="hidden" class="tier-id" value="${esc(tier.id || "")}">
+                <div>
+                  <label>Tier name</label>
+                  <input type="text" class="tier-name" value="${esc(tier.name || "")}" placeholder="e.g. Gold Sponsor" maxlength="60">
+                </div>
+                <div>
+                  <label>Minimum contribution (${w.currency || "USD"})</label>
+                  <input type="number" class="tier-min-amount" value="${(tier.min_amount_minor || 0) / 100}" min="1" step="0.01" placeholder="e.g. 1000">
+                </div>
+                <div>
+                  <label>Perks / Recognition</label>
+                  <textarea class="tier-perks" placeholder="E.g. Listed as Gold Sponsor" maxlength="240">${esc(tier.perks || "")}</textarea>
+                </div>
+                <button type="button" class="remove-tier" data-tier-id="${id}">Remove tier</button>
+              </div>
+            `;
+            $("tiers-list").insertAdjacentHTML("beforeend", html);
+            
+            const item = $("tiers-list").querySelector(`[data-tier-id="${id}"]`);
+            item.querySelector(".remove-tier").addEventListener("click", e => {
+              e.preventDefault();
+              item.remove();
+            });
+          });
+          tierCount = w.tiers.length;
+        }
+
+        // Load VIP offer
+        if (w.vip) {
+          const v = w.vip;
+          $("vip-title").value = v.title || "VIP Seating";
+          $("vip-price").value = (v.price_minor || 0) / 100;
+          $("vip-seats").value = v.seats_total || 20;
+          $("vip-description").value = v.description || "";
+        } else {
+          $("vip-title").value = "VIP Seating";
+          $("vip-price").value = "0";
+          $("vip-seats").value = "20";
+          $("vip-description").value = "";
+        }
+        if (w.enabled_payment_methods && Array.isArray(w.enabled_payment_methods)) {
+          document.querySelectorAll(".payment-method-checkbox").forEach(cb => {
+            cb.checked = w.enabled_payment_methods.includes(cb.value);
+          });
+        } else {
+          // Set defaults if not specified
+          $("payment-mpesa").checked = true;
+          $("payment-stripe").checked = true;
+          $("payment-paystack").checked = true;
+        }
+
+        // Load payout preferences
+        if (w.payout) {
+          const p = w.payout;
+          $("payout-method").value = p.method || "";
+          if (p.method) {
+            // Trigger change to show fields
+            const event = new Event("change", { bubbles: true });
+            $("payout-method").dispatchEvent(event);
+            
+            // Parse and populate payout fields
+            try {
+              const fields = JSON.parse(p.details_encrypted || "{}");
+              $("payout-account-fields").querySelectorAll(".payout-field").forEach((input, idx) => {
+                input.value = fields[`field_${idx}`] || "";
+              });
+            } catch (e) {
+              console.warn("Could not parse payout details:", e);
+            }
+            
+            $("payout-confirm-verify").checked = p.verified || false;
+          }
+        }
 
         $("edit-section").hidden = false;
 
@@ -164,9 +913,12 @@
           $("view-guest-site").href = guestUrl;
           $("rsvps-section").hidden = false;
           $("bids-section").hidden = false;
+          $("seating-section").hidden = false;
+          $("withdrawals-section").hidden = false;
           $("publish-btn").hidden = true;
           loadRsvps();
           loadBids();
+          loadWithdrawals();
         } else {
           $("publish-btn").hidden = false;
         }
@@ -176,6 +928,34 @@
       }
     }
 
+    // Slug preview and validation
+    $("wedding-slug").addEventListener("input", e => {
+      const slug = e.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+      $("slug-preview").textContent = slug || "wedding";
+      $("slug-error").style.display = "none";
+    });
+
+    $("wedding-slug").addEventListener("blur", async e => {
+      const slug = e.target.value.trim().toLowerCase();
+      if (!slug) {
+        $("slug-error").textContent = "Please enter a website address.";
+        $("slug-error").style.display = "block";
+        return;
+      }
+      if (!/^[a-z0-9-]{3,80}$/.test(slug)) {
+        $("slug-error").textContent = "Use 3-80 lowercase letters, numbers, and hyphens only.";
+        $("slug-error").style.display = "block";
+        return;
+      }
+      const reserved = ["admin", "api", "auth", "dashboard", "signin", "guest", "demo", "form-diagnostics", "index"];
+      if (reserved.includes(slug)) {
+        $("slug-error").textContent = "That address is reserved. Please choose a different one.";
+        $("slug-error").style.display = "block";
+        return;
+      }
+      $("slug-error").style.display = "none";
+    });
+
     // Save changes
     $("edit-form").addEventListener("submit", async e => {
       e.preventDefault();
@@ -183,16 +963,104 @@
       $("edit-form").dataset.submitting = "true";
       notice("");
       try {
+        // Collect venues
+        const venues = [];
+        $("venues-list").querySelectorAll(".venue-item").forEach(item => {
+          const name = item.querySelector(".venue-name").value.trim();
+          if (name) {
+            venues.push({
+              id: item.querySelector(".venue-id").value || null,
+              name: name,
+              eventTime: item.querySelector(".venue-time").value || null,
+              mapLink: item.querySelector(".venue-address").value || null,
+              description: item.querySelector(".venue-notes").value || null,
+              isMain: item.querySelector(".venue-main-cb").checked || false
+            });
+          }
+        });
+
+        // Collect palette colors
+        const paletteSpans = $("palette-preview").querySelectorAll("span");
+        const palette = Array.from(paletteSpans).map(s => s.style.background).filter(Boolean);
+
+        // Collect registry items
+        const registry = [];
+        $("registry-list").querySelectorAll(".registry-item").forEach(item => {
+          const name = item.querySelector(".registry-name").value.trim();
+          const target = parseFloat(item.querySelector(".registry-target").value || 0);
+          if (name && target > 0) {
+            registry.push({
+              id: item.querySelector(".registry-id").value || null,
+              name: name,
+              category: item.querySelector(".registry-category").value || null,
+              targetAmount: target,
+              description: item.querySelector(".registry-desc").value || null,
+              notes: item.querySelector(".registry-notes").value || null
+            });
+          }
+        });
+
+        // Collect sponsorship tiers
+        const tiers = [];
+        $("tiers-list").querySelectorAll(".tier-item").forEach(item => {
+          const name = item.querySelector(".tier-name").value.trim();
+          const minAmount = parseFloat(item.querySelector(".tier-min-amount").value || 0);
+          if (name && minAmount > 0) {
+            tiers.push({
+              id: item.querySelector(".tier-id").value || null,
+              name: name,
+              minAmount: minAmount,
+              perks: item.querySelector(".tier-perks").value || ""
+            });
+          }
+        });
+
+        // Collect VIP offer
+        const vip = {
+          title: $("vip-title").value,
+          price: parseFloat($("vip-price").value || 0),
+          seats: parseInt($("vip-seats").value || 0),
+          description: $("vip-description").value || ""
+        };
+
+        // Collect payout details
+        const payoutMethod = $("payout-method").value;
+        let payoutDetails = null;
+        if (payoutMethod) {
+          const fields = {};
+          $("payout-account-fields").querySelectorAll(".payout-field").forEach((input, idx) => {
+            fields[`field_${idx}`] = input.value.trim();
+          });
+          payoutDetails = {
+            method: payoutMethod,
+            fields: fields,
+            verified: $("payout-confirm-verify").checked
+          };
+        }
+
+        // Collect enabled payment methods
+        const enabledPaymentMethods = Array.from(document.querySelectorAll(".payment-method-checkbox:checked")).map(cb => cb.value);
+
         const res = await WS.api("/api/weddings?action=update", {
           method: "POST",
           body: JSON.stringify({
             weddingId,
             coupleNames: $("couple-names").value,
+            slug: $("wedding-slug").value,
             welcomeStory: $("welcome-story").value,
             weddingDate: $("wedding-date").value || null,
             location: $("location").value,
             currency: $("currency").value,
-            maxCapacity: Number($("max-capacity").value)
+            maxCapacity: Number($("max-capacity").value),
+            venues: venues,
+            palette: palette,
+            attireNotes: $("attire-notes").value,
+            registry: registry,
+            tiers: tiers,
+            vip: vip,
+            payoutDetails: payoutDetails,
+            enabledPaymentMethods: enabledPaymentMethods,
+            backgroundMusicUrl: $("background-music-url").value
           })
         });
         const data = await res.json();
@@ -235,13 +1103,17 @@
         }
         
         $("publish-section").hidden = true;
+        $("edit-section").hidden = false;
         $("published-section").hidden = false;
         $("rsvps-section").hidden = false;
         $("bids-section").hidden = false;
+        $("seating-section").hidden = false;
+        $("withdrawals-section").hidden = false;
         $("publish-btn").hidden = true;
         notice("Wedding published successfully!");
         loadRsvps();
         loadBids();
+        loadWithdrawals();
       } catch (err) {
         console.error("Publish failed:", err);
         $("publish-message").textContent = "Network error: " + (err.message || "could not publish");
@@ -298,6 +1170,107 @@
         $("no-bids").hidden = true;
       } catch (err) {
         console.error("Load bids failed:", err);
+      }
+    }
+
+    // Load withdrawals
+    async function loadWithdrawals() {
+      try {
+        // Load balance
+        const balRes = await WS.api(`/api/weddings?action=balance&weddingId=${encodeURIComponent(weddingId)}`);
+        const balData = await balRes.json();
+        if (balRes.ok) {
+          const balance = (balData.balance_minor || 0) / 100;
+          $("balance-display").textContent = WS.money(balData.balance_minor || 0, balData.currency);
+        }
+
+        // Load history
+        const histRes = await WS.api(`/api/weddings?action=withdrawals&weddingId=${encodeURIComponent(weddingId)}`);
+        const histData = await histRes.json();
+        if (histRes.ok) {
+          const withdrawals = histData.withdrawals || [];
+          if (withdrawals.length === 0) return;
+          $("withdrawals-body").innerHTML = withdrawals.map(w => `
+            <tr style="border-bottom: 1px solid #ddd;">
+              <td style="padding: 0.75rem;">${WS.money(w.amount_minor, w.currency)}</td>
+              <td style="padding: 0.75rem;"><span class="tag ${w.status === 'sent' ? 'live' : w.status === 'requested' ? '' : 'warn'}">${w.status}</span></td>
+              <td style="padding: 0.75rem; font-size: 0.9rem;">${new Date(w.requested_at).toLocaleDateString()}</td>
+            </tr>
+          `).join("");
+          $("no-withdrawals").hidden = true;
+        }
+      } catch (err) {
+        console.error("Load withdrawals failed:", err);
+      }
+    }
+
+    // Request withdrawal
+    $("request-withdrawal-btn").addEventListener("click", async e => {
+      e.preventDefault();
+      if (!$("confirm-withdrawal").checked) {
+        return notice("Please confirm the withdrawal request", true);
+      }
+      const amount = parseFloat($("withdrawal-amount").value) || 0;
+      if (amount <= 0) {
+        return notice("Enter a valid amount", true);
+      }
+      const amountMinor = Math.round(amount * 100);
+      const notes = $("withdrawal-notes").value.trim();
+      
+      try {
+        $("request-withdrawal-btn").disabled = true;
+        const res = await WS.api(`/api/weddings?action=withdraw&weddingId=${encodeURIComponent(weddingId)}`, {
+          method: "POST",
+          body: JSON.stringify({ weddingId, amountMinor, notes, confirmed: true })
+        });
+        const data = await res.json();
+        if (!res.ok) return notice(data.error || "Could not request withdrawal", true);
+        notice("Withdrawal request submitted. Our team will process it soon.");
+        $("withdrawal-amount").value = "";
+        $("withdrawal-notes").value = "";
+        $("confirm-withdrawal").checked = false;
+        loadWithdrawals();
+      } catch (err) {
+        console.error("Withdrawal request failed:", err);
+        notice("Withdrawal request failed: " + (err.message || "network error"), true);
+      } finally {
+        $("request-withdrawal-btn").disabled = false;
+      }
+    });
+
+    // Account menu
+    $("account-menu-btn").addEventListener("click", (e) => {
+      const menu = $("account-menu");
+      menu.style.display = menu.style.display === "none" ? "block" : "none";
+      e.stopPropagation();
+    });
+
+    document.addEventListener("click", () => {
+      $("account-menu").style.display = "none";
+    });
+
+    $("change-password").addEventListener("click", async (e) => {
+      e.preventDefault();
+      alert("Password change feature coming soon. Contact support to reset your password.");
+    });
+
+    // Set up role-based navigation
+    const role = window.WS.role();
+    if (role) {
+      $("role-display").textContent = `Role: ${role.charAt(0).toUpperCase() + role.slice(1)}`;
+      
+      if (role === "admin" || role === "superadmin" || role === "owner") {
+        $("admin-dashboard").style.display = "block";
+      }
+      
+      if (role === "owner") {
+        $("owner-profile").style.display = "block";
+        $("owner-profile").textContent = "Owner Profile (You)";
+        $("owner-profile").href = "#";
+        $("owner-profile").addEventListener("click", (e) => {
+          e.preventDefault();
+          alert("Owner profile coming soon");
+        });
       }
     }
 

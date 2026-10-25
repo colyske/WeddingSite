@@ -82,6 +82,47 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { passwordSet: true });
     }
 
+    if (action === "register") {
+      if (!methodOnly(req, res, "POST")) return;
+      if (!isEmail(body.email)) return sendJson(res, 400, { error: "Enter a valid email address." });
+      if (typeof body.password !== "string" || body.password.length < 12 || body.password.length > 128) {
+        return sendJson(res, 400, { error: "Use a password of 12 to 128 characters." });
+      }
+      if (body.password !== body.confirmPassword) {
+        return sendJson(res, 400, { error: "Passwords do not match." });
+      }
+      const email = body.email.trim().toLowerCase();
+      const result = await authCall("/signup", {
+        body: { email, password: body.password, data: { registration_ip: req.ip || req.headers["x-forwarded-for"] || "unknown" } }
+      });
+      if (!result.ok) {
+        if (result.data?.msg?.includes("already registered")) {
+          return sendJson(res, 409, { error: "That email is already registered. Try signing in or use forgot password." });
+        }
+        return sendJson(res, 400, { error: result.data?.msg || "Could not create account. Please try again." });
+      }
+      // Account created. Supabase auth trigger will auto-create profile via handle_new_user() trigger.
+      // If trigger fails or is not set up, create profile now using service role key.
+      try {
+        const userId = result.data?.user?.id;
+        if (userId && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          const { url } = supabaseConfig();
+          await fetch(`${url}/rest/v1/profiles`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+              "Content-Type": "application/json",
+              Prefer: "resolution=merge-duplicates"
+            },
+            body: JSON.stringify({ id: userId, platform_role: "Client" })
+          }).catch(err => console.warn("Could not create profile (will retry on sign-in):", err.message));
+        }
+      } catch (e) {
+        console.warn("Profile creation error (non-fatal):", e.message);
+      }
+      return sendJson(res, 201, { message: "Account created. Check your email to verify your address and sign in." });
+    }
+
     if (action === "me") {
       if (!methodOnly(req, res, "GET")) return;
       const session = await requireAuth(req, res);

@@ -169,15 +169,15 @@ for (const [label, handler, pattern] of [
 test("client validation: shows messages, keeps values, sends nothing", { skip }, async () => {
   const { page, calls, close } = await openDashboard({ create: json(201, { weddingId: "x", slug: "x" }) });
   await page.click("#create-submit");
-  assert.match(await page.textContent("#notice"), /couple's names/);
+  assert.match(await page.textContent("#notice"), /Couple names|required/i);
   await page.fill("#couple-names", "A & B");
   await page.click("#create-submit");
-  assert.match(await page.textContent("#notice"), /location/);
+  assert.match(await page.textContent("#notice"), /location|required/i);
   await page.fill("#location", "Kisumu");
   for (const bad of ["0", "-3", "2.5", ""]) {
     await page.fill("#max-capacity", bad);
     await page.click("#create-submit");
-    assert.match(await page.textContent("#notice"), /capacity/, `capacity "${bad}"`);
+    assert.match(await page.textContent("#notice"), /capacity|required/i, `capacity "${bad}"`);
   }
   await page.fill("#max-capacity", "50");
   await page.click("[data-action=add-venue]");

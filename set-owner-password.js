@@ -62,6 +62,26 @@ if (!supabaseUrl || !serviceRoleKey) {
     }
 
     console.log(`✅ Password set successfully for ${email}`);
+    
+    // 3. Ensure profile exists with Owner role
+    console.log(`👤 Creating/updating profile with Owner role…`);
+    const serviceRoleUrl = supabaseUrl.replace(/\/+$/, "");
+    const profileRes = await fetch(`${serviceRoleUrl}/rest/v1/profiles`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=merge-duplicates", // Upsert behavior
+      },
+      body: JSON.stringify({ id: user.id, platform_role: "Owner" }),
+    });
+
+    if (!profileRes.ok && profileRes.status !== 409) {
+      console.warn(`⚠️  Could not create profile: ${profileRes.status}`);
+    } else {
+      console.log(`✅ Profile configured with Owner role`);
+    }
+    
     console.log(`\n📝 Next steps:`);
     console.log(`   1. Go to https://weddingsite-six-bice.vercel.app/signin.html`);
     console.log(`   2. Enter email: ${email}`);

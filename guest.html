@@ -4,51 +4,339 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#203a31">
-  <title>WeddingSite — RSVP</title>
+  <title>WeddingSite — Wedding</title>
   <link rel="stylesheet" href="app-shell.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    /* Sticky navbar with glassmorphism */
+    nav.sticky-nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      background: rgba(240, 237, 225, 0.7);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(227, 220, 199, 0.3);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 12px rgba(32, 58, 49, 0.08);
+    }
+
+    nav.sticky-nav .logo-section {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    nav.sticky-nav .monogram {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.2rem;
+      color: white;
+      box-shadow: 0 4px 12px rgba(32, 58, 49, 0.2);
+    }
+
+    nav.sticky-nav .brand {
+      margin: 0;
+    }
+
+    nav.sticky-nav .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    nav.sticky-nav a {
+      text-decoration: none;
+      color: var(--green);
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: color 0.2s;
+      cursor: pointer;
+    }
+
+    nav.sticky-nav a:hover {
+      color: var(--gold);
+    }
+
+    nav.sticky-nav .controls {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    button.audio-toggle {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      padding: 0.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    button.audio-toggle:hover {
+      opacity: 0.7;
+    }
+
+    /* Hero section */
+    .hero {
+      margin-top: 70px;
+      min-height: 60vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      padding: 2rem;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.5) 0%, rgba(169, 181, 162, 0.1) 100%);
+      z-index: 1;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      max-width: 800px;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.5rem, 6vw, 3.5rem);
+      margin-bottom: 0.5rem;
+    }
+
+    .hero .subtitle {
+      font-size: 1.2rem;
+      color: var(--sage);
+      margin-bottom: 2rem;
+      font-style: italic;
+    }
+
+    /* Countdown timer */
+    .countdown {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+      gap: 1rem;
+      margin: 2rem 0;
+      justify-content: center;
+    }
+
+    .countdown-item {
+      background: rgba(255, 255, 255, 0.6);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(190, 155, 82, 0.2);
+      border-radius: 12px;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .countdown-value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--gold);
+      font-family: monospace;
+    }
+
+    .countdown-label {
+      font-size: 0.75rem;
+      color: var(--green);
+      margin-top: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Story section */
+    .story-section {
+      background: rgba(230, 225, 215, 0.4);
+      border-left: 4px solid var(--gold);
+      padding: 2rem;
+      border-radius: 8px;
+      margin: 2rem 0;
+    }
+
+    .story-section h3 {
+      margin-top: 0;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      nav.sticky-nav {
+        padding: 0.75rem 1rem;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      nav.sticky-nav .nav-links {
+        gap: 1rem;
+        font-size: 0.85rem;
+      }
+
+      .hero {
+        margin-top: 150px;
+        min-height: auto;
+        padding: 2rem 1rem;
+      }
+
+      .countdown {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
 </head>
 <body>
-  <div class="wrap">
-    <a class="brand" href="/" style="display: block; margin-bottom: 2rem;">WeddingSite</a>
+  <!-- Sticky navbar with glassmorphism -->
+  <nav class="sticky-nav">
+    <div class="logo-section">
+      <div class="monogram" id="monogram" style="background: var(--gold);"></div>
+      <span class="brand">WeddingSite</span>
+    </div>
+    <ul class="nav-links">
+      <li><a href="#story">Story</a></li>
+      <li><a href="#details">Details</a></li>
+      <li><a href="#rsvp">RSVP</a></li>
+      <li><a href="#bids">DJ Bids</a></li>
+      <li><a href="#ledger">Contributions</a></li>
+      <li><a href="#sponsors">Sponsors</a></li>
+    </ul>
+    <div class="controls">
+      <button class="audio-toggle" id="audio-toggle" title="Toggle background music">🔊</button>
+    </div>
+  </nav>
 
-    <h1 id="couple-names">Wedding</h1>
+  <div class="wrap">
     <p id="notice" class="notice" role="status" hidden></p>
 
+    <!-- Hero with countdown -->
+    <section class="hero">
+      <div class="hero-content">
+        <h1 id="couple-names">Wedding</h1>
+        <p class="subtitle" id="wedding-date-display">Coming soon…</p>
+
+        <!-- Live countdown -->
+        <div class="countdown" id="countdown">
+          <div class="countdown-item">
+            <div class="countdown-value" id="days">0</div>
+            <div class="countdown-label">Days</div>
+          </div>
+          <div class="countdown-item">
+            <div class="countdown-value" id="hours">0</div>
+            <div class="countdown-label">Hours</div>
+          </div>
+          <div class="countdown-item">
+            <div class="countdown-value" id="minutes">0</div>
+            <div class="countdown-label">Minutes</div>
+          </div>
+          <div class="countdown-item">
+            <div class="countdown-value" id="seconds">0</div>
+            <div class="countdown-label">Seconds</div>
+          </div>
+        </div>
+
+        <!-- .ics download button -->
+        <button id="ics-download" class="btn" style="margin: 1rem 0;">Add to Calendar</button>
+      </div>
+    </section>
+
+    <!-- Story section -->
+    <section id="story" class="card" hidden>
+      <h2>Our Story</h2>
+      <div class="story-section" id="welcome-story"></div>
+    </section>
+
     <!-- Wedding details -->
-    <div id="wedding-details" class="card" hidden>
-      <p id="wedding-date" class="fine"></p>
+    <section id="details" class="card" hidden>
+      <h2>Wedding Details</h2>
       <p id="wedding-location" class="fine"></p>
       <div class="swatches" id="palette-preview"></div>
+    </section>
 
-      <p id="welcome-story" style="margin: 1.5rem 0 0; font-style: italic;"></p>
-    </div>
+    <!-- Venues section -->
+    <section id="venues" class="card" hidden>
+      <h2>Venues & Itinerary</h2>
+      <div id="venues-display" style="display: flex; flex-direction: column; gap: 1.5rem;"></div>
+    </section>
+
+    <!-- Attire & Dress Code -->
+    <section id="attire" class="card" hidden>
+      <h2>Attire & Dress Code</h2>
+      <div class="swatches" id="attire-palette-preview"></div>
+      <p id="attire-notes-display" class="fine" style="margin-top: 1rem;"></p>
+    </section>
+
+    <!-- Registry & Crowdfunding -->
+    <section id="registry" class="card" hidden>
+      <h2>Registry & Crowdfunding</h2>
+      <p class="fine">Help us build our future together. Every contribution makes a difference!</p>
+      <div id="registry-list" style="display: flex; flex-direction: column; gap: 2rem;"></div>
+      <p id="no-registry" class="fine">No registry items yet.</p>
+    </section>
 
     <!-- RSVP form -->
-    <div id="rsvp-section" class="card" hidden>
-      <h2>RSVP</h2>
+    <section id="rsvp" class="card" hidden>
+      <h2>Will You Join Us?</h2>
       <form id="rsvp-form">
-        <label for="guest-name">Your name</label>
+        <label for="guest-name">Your name *</label>
         <input id="guest-name" type="text" maxlength="100" required>
 
-        <label for="guest-email">Email</label>
+        <label for="guest-email">Email *</label>
         <input id="guest-email" type="email" required>
 
-        <label>Will you attend?</label>
-        <select id="attending">
+        <label for="attending">Will you attend? *</label>
+        <select id="attending" required>
           <option value="">Choose…</option>
           <option value="yes">Yes, I'll be there!</option>
           <option value="no">No, unfortunately not</option>
         </select>
 
-        <label for="dietary-notes">Dietary preferences (optional)</label>
-        <textarea id="dietary-notes" maxlength="200" rows="2" placeholder="e.g. vegetarian, nut allergy, no pork…"></textarea>
+        <label for="plus-ones">Plus-ones (if allowed)</label>
+        <input id="plus-ones" type="number" min="0" value="0" max="5" style="width: 60px;">
+
+        <label for="dietary-preference">Dietary preference</label>
+        <select id="dietary-preference">
+          <option value="">None / No restriction</option>
+          <option value="vegetarian">Vegetarian</option>
+          <option value="vegan">Vegan</option>
+          <option value="gluten-free">Gluten-free</option>
+          <option value="kosher">Kosher</option>
+          <option value="halal">Halal</option>
+          <option value="nut-free">Nut-free</option>
+          <option value="other">Other (see notes)</option>
+        </select>
+
+        <label for="dietary-notes">Dietary notes (optional)</label>
+        <textarea id="dietary-notes" maxlength="200" rows="2" placeholder="e.g. specific allergies, cooking preferences…"></textarea>
+
+        <p class="fine" id="rsvp-capacity-warning" hidden style="color: var(--gold);"></p>
+        <p class="fine"><em>We'd love to accommodate your preferences!</em></p>
 
         <button type="submit">Submit RSVP</button>
       </form>
-    </div>
+    </section>
 
     <!-- DJ song bids -->
-    <div id="bids-section" class="card" hidden>
+    <section id="bids" class="card" hidden>
       <h2>DJ Song Requests</h2>
       <p class="fine">Have a song that should be on the dance floor? Make a bid and help us build the perfect playlist.</p>
 
@@ -62,172 +350,510 @@
         <label for="bid-amount">Bid amount (in <span id="currency-display">USD</span>) *</label>
         <input id="bid-amount" type="number" step="0.01" min="0" placeholder="0.00" required>
 
-        <p class="fine">Your bid helps fund DJ services. Non-bidding guests can still request songs (coming soon).</p>
+        <p class="fine" id="bid-note">Your bid helps support the DJ and music at our wedding.</p>
 
-        <button type="submit">Place bid</button>
+        <button type="submit">Place Bid</button>
       </form>
-    </div>
 
-    <!-- DJ leaderboard -->
-    <div id="leaderboard-section" class="card" hidden>
-      <h2>DJ Song Leaderboard</h2>
-      <table id="leaderboard-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Song</th>
-            <th>Artist</th>
-            <th>Total bids</th>
-          </tr>
-        </thead>
-        <tbody id="leaderboard-body"></tbody>
-      </table>
-      <p id="no-bids" class="fine">No bids yet. Be the first!</p>
-    </div>
+      <!-- DJ leaderboard -->
+      <div style="margin-top: 2rem;">
+        <h3>Top Song Requests</h3>
+        <table id="leaderboard-table" style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="border-bottom: 2px solid var(--sage);">
+              <th style="text-align: left; padding: 0.75rem; color: var(--green);">#</th>
+              <th style="text-align: left; padding: 0.75rem; color: var(--green);">Song</th>
+              <th style="text-align: left; padding: 0.75rem; color: var(--green);">Artist</th>
+              <th style="text-align: right; padding: 0.75rem; color: var(--green);">Total Bids</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-body"></tbody>
+        </table>
+        <p id="no-bids" class="fine">No bids yet. Be the first to request a song!</p>
+      </div>
+    </section>
 
     <!-- Contribution ledger -->
-    <div id="ledger-section" class="card" hidden>
-      <h2>Contribution Ledger</h2>
-      <p class="fine">Supporting guest contributions to various services (DJ, decorations, catering, etc.)</p>
-      <table id="ledger-table">
+    <section id="ledger" class="card" hidden>
+      <h2>Guest Contributions</h2>
+      <p class="fine">Thank you to all who are supporting our special day!</p>
+      <table id="ledger-table" style="width: 100%; border-collapse: collapse;">
         <thead>
-          <tr>
-            <th>Service</th>
-            <th>Amount</th>
-            <th>Contributor</th>
-            <th>Date</th>
+          <tr style="border-bottom: 2px solid var(--sage);">
+            <th style="text-align: left; padding: 0.75rem; color: var(--green);">Contribution</th>
+            <th style="text-align: right; padding: 0.75rem; color: var(--green);">Amount</th>
+            <th style="text-align: left; padding: 0.75rem; color: var(--green);">From</th>
+            <th style="text-align: left; padding: 0.75rem; color: var(--green);">Date</th>
           </tr>
         </thead>
         <tbody id="ledger-body"></tbody>
       </table>
       <p id="no-ledger" class="fine">No contributions yet.</p>
-    </div>
+    </section>
+
+    <!-- Sponsorship tiers -->
+    <section id="sponsor-tiers" class="card" hidden>
+      <h2>Sponsorship Levels</h2>
+      <p class="fine">Join us in supporting this special celebration at a level that works for you.</p>
+      <div id="tiers-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;"></div>
+    </section>
+
+    <!-- VIP seating -->
+    <section id="vip-section" class="card" hidden>
+      <h2>VIP Seating</h2>
+      <p class="fine">Reserve premium seating and elevate your wedding experience.</p>
+      <div id="vip-display" style="padding: 1.5rem; background: #f8f9f7; border: 2px solid var(--gold); border-radius: 8px;"></div>
+    </section>
+
+    <!-- Corporate sponsors -->
+    <section id="sponsors" class="card" hidden>
+      <h2>Our Sponsors</h2>
+      <p class="fine">We're grateful to these organizations for their generous support.</p>
+      <div id="sponsors-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;"></div>
+    </section>
+
+    <!-- Digital e-card pass -->
+    <section id="ecard" class="card" hidden>
+      <h2>Your Digital E-Card Pass</h2>
+      <p class="fine">Screenshot this pass or show it at the entrance to check in.</p>
+      <div id="ecard-display" style="text-align: center; padding: 2rem 1rem; background: linear-gradient(135deg, #f8f9f7 0%, #f3faf3 100%); border-radius: 8px; border: 2px solid var(--sage);">
+        <p style="margin: 0 0 1rem; color: var(--green); font-size: 0.9rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em;">Digital E-Card Pass</p>
+        <p style="margin: 0 0 1.5rem; font-size: 1.2rem; font-weight: 600; color: var(--green);" id="ecard-guest-name"></p>
+        <div id="qrcode" style="display: inline-block; padding: 1rem; background: #fff; border-radius: 8px;"></div>
+        <p style="margin: 1rem 0 0; font-size: 0.85rem; color: #7a8580;">Scan to verify attendance</p>
+        <p id="ecard-date" style="margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--gold); font-weight: 600;"></p>
+      </div>
+    </section>
   </div>
 
+  <audio id="background-music" loop style="display: none;"></audio>
+
+  <script src="fx.js"></script>
   <script src="auth-client.js"></script>
   <script>
 (async () => {
-    const $ = id => document.getElementById(id);
-    const notice = (text, bad) => { $("notice").hidden = !text; $("notice").textContent = text || ""; $("notice").className = "notice" + (bad ? " bad" : ""); };
-    const params = new URLSearchParams(location.search);
-    const weddingSlug = params.get("slug");
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const notice = (text, bad) => {
+    const el = $("notice");
+    el.hidden = !text;
+    el.textContent = text || "";
+    el.className = "notice" + (bad ? " bad" : "");
+  };
 
-    let weddingId, weddingCurrency = "USD";
+  const params = new URLSearchParams(location.search);
+  const slug = params.get("slug");
+  if (!slug) return notice("Wedding not found.", true);
 
-    if (!weddingSlug) return notice("No wedding specified.", true);
+  let wedding = null;
+  let audioEnabled = false;
 
-    // Load wedding public details
-    async function loadWedding() {
-      const res = await fetch(`/api/guest?action=site&slug=${encodeURIComponent(weddingSlug)}`);
+  // Load wedding data
+  async function loadWedding() {
+    try {
+      const res = await fetch(`/api/guest?action=site&slug=${encodeURIComponent(slug)}`);
       const data = await res.json();
-      if (!res.ok) return notice(data.error || "Wedding not found.", true);
+      if (!res.ok) return notice(data.error || "Could not load wedding.", true);
 
-      const w = data.wedding;
-      weddingId = w.id;
-      weddingCurrency = w.currency || "USD";
-      $("couple-names").textContent = WS.esc(w.couple_names || "Wedding");
-      $("title").textContent = `${WS.esc(w.couple_names)} — RSVP`;
-      
-      if (w.welcome_story) $("welcome-story").textContent = WS.esc(w.welcome_story);
-      if (w.wedding_date) $("wedding-date").textContent = `📅 ${new Date(w.wedding_date).toLocaleDateString()}`;
-      if (w.public_location) $("wedding-location").textContent = `📍 ${WS.esc(w.public_location)}`;
-      $("palette-preview").innerHTML = (w.palette || []).map(c => `<span style="background: ${WS.esc(c)};"></span>`).join("");
-      $("currency-display").textContent = weddingCurrency;
+      wedding = data.wedding;
+      if (!wedding) return notice("Wedding not found.", true);
 
-      $("wedding-details").hidden = false;
-      $("rsvp-section").hidden = false;
-      $("bids-section").hidden = false;
-      $("leaderboard-section").hidden = false;
-      $("ledger-section").hidden = false;
+      document.title = `${esc(wedding.couple_names)} — Wedding`;
 
-      loadLeaderboard();
+      // Couple monogram
+      const names = wedding.couple_names?.split(/[&,]|and/).map(n => n.trim().charAt(0).toUpperCase()).join("").slice(0, 3) || "WS";
+      $("monogram").textContent = names;
+      const palette = wedding.palette || ["#244b3a"];
+      $("monogram").style.background = palette[0];
+
+      // Set background music if available
+      if (wedding.background_music_url) {
+        $("background-music").src = wedding.background_music_url;
+        if (audioEnabled) {
+          $("background-music").play().catch(() => null);
+        }
+      }
+
+      // Hero
+      $("couple-names").textContent = esc(wedding.couple_names || "Wedding");
+
+      if (wedding.wedding_date) {
+        const d = new Date(wedding.wedding_date);
+        const opts = { weekday: "long", year: "numeric", month: "long", day: "numeric" };
+        $("wedding-date-display").textContent = d.toLocaleDateString("en-US", opts);
+      }
+
+      // Story
+      if (wedding.welcome_story?.trim()) {
+        $("story").hidden = false;
+        $("welcome-story").textContent = esc(wedding.welcome_story);
+      }
+
+      // Details
+      if (wedding.public_location?.trim() || wedding.palette?.length) {
+        $("details").hidden = false;
+        $("wedding-location").textContent = esc(wedding.public_location || "Location TBA");
+        $("palette-preview").innerHTML = (wedding.palette || []).map(c => `<span style="background: ${esc(c)};"></span>`).join("");
+      }
+
+      // Venues
+      if (wedding.venues && wedding.venues.length > 0) {
+        $("venues").hidden = false;
+        $("venues-display").innerHTML = wedding.venues.map(v => `
+          <div style="border-left: 4px solid var(--sage); padding: 1rem; background: #f8f9f7; border-radius: 4px;">
+            ${v.event_time ? `<p style="margin: 0 0 0.5rem; color: var(--gold); font-weight: 600;">${esc(v.event_time)}</p>` : ""}
+            <h3 style="margin: 0 0 0.5rem; color: var(--green);">${esc(v.name)}</h3>
+            ${v.map_link ? `<p style="margin: 0 0 0.5rem;"><a href="${esc(v.map_link)}" target="_blank" class="link" style="font-size: 0.95rem;">📍 View on map</a></p>` : ""}
+            ${v.description ? `<p style="margin: 0; font-size: 0.95rem; color: #5a5f5a;">${esc(v.description)}</p>` : ""}
+          </div>
+        `).join("");
+      }
+
+      // Attire & Dress Code
+      if ((wedding.palette && wedding.palette.length) || wedding.attire_notes?.trim()) {
+        $("attire").hidden = false;
+        $("attire-palette-preview").innerHTML = (wedding.palette || []).map(c => `<span style="background: ${esc(c)};"></span>`).join("");
+        if (wedding.attire_notes?.trim()) {
+          $("attire-notes-display").textContent = esc(wedding.attire_notes);
+        }
+      }
+
+      // Registry & Crowdfunding
+      if (wedding.registry && wedding.registry.length > 0) {
+        $("registry").hidden = false;
+        $("no-registry").hidden = true;
+        $("registry-list").innerHTML = wedding.registry.map(item => {
+          const raised = item.amount_raised_minor || 0;
+          const target = item.target_amount_minor || 0;
+          const percentage = target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : 0;
+          return `
+            <div style="border-left: 4px solid var(--sage); padding: 1rem; background: #f8f9f7; border-radius: 4px;">
+              <h3 style="margin: 0 0 0.5rem; color: var(--green);">${esc(item.name)}</h3>
+              ${item.category ? `<p style="margin: 0 0 0.5rem; color: var(--gold); font-size: 0.9rem; font-weight: 600;">${esc(item.category)}</p>` : ""}
+              ${item.description ? `<p style="margin: 0 0 0.75rem; color: #5a5f5a; font-size: 0.95rem;">${esc(item.description)}</p>` : ""}
+              <div style="margin: 0.75rem 0; background: #e3dcc7; height: 8px; border-radius: 4px; overflow: hidden;">
+                <div style="background: var(--gold); height: 100%; width: ${percentage}%; transition: width 0.3s ease;"></div>
+              </div>
+              <p style="margin: 0.5rem 0 0; color: var(--gold); font-weight: 600; font-size: 0.95rem;">
+                ${WS.money(raised, wedding.currency || "USD", true)} of ${WS.money(target, wedding.currency || "USD", true)}
+              </p>
+              ${item.notes ? `<p style="margin: 0.5rem 0 0; font-size: 0.9rem; color: #5a5f5a;">${esc(item.notes)}</p>` : ""}
+            </div>
+          `;
+        }).join("");
+      }
+
+      // RSVP & Bids
+      $("rsvp").hidden = false;
+      $("bids").hidden = false;
+      $("currency-display").textContent = wedding.currency || "USD";
+
+      loadBids();
       loadLedger();
+      loadFundraising();
+      startCountdown();
+    } catch (err) {
+      console.error("Load failed:", err);
+      notice("Network error loading wedding.", true);
     }
+  }
 
-    // Submit RSVP
-    $("rsvp-form").addEventListener("submit", async e => {
-      e.preventDefault();
-      notice("");
-      const attending = $("attending").value === "yes";
-      const res = await fetch(`/api/guest?action=rsvp`, {
+  // Load fundraising data (tiers, VIP, sponsors)
+  async function loadFundraising() {
+    try {
+      const res = await fetch(`/api/guest?action=fundraising&slug=${encodeURIComponent(slug)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Display sponsorship tiers
+      if (data.tiers && data.tiers.length > 0) {
+        $("sponsor-tiers").hidden = false;
+        $("tiers-display").innerHTML = data.tiers.map(tier => `
+          <div style="border: 2px solid var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
+            <h3 style="margin: 0 0 0.5rem; color: var(--gold);">${esc(tier.name)}</h3>
+            <p style="margin: 0 0 1rem; font-size: 1.3rem; font-weight: 700; color: var(--green);">${WS.money(tier.min_amount_minor, wedding.currency || "USD", false)}</p>
+            <p style="margin: 0; font-size: 0.9rem; color: #5a5f5a;">${esc(tier.perks)}</p>
+          </div>
+        `).join("");
+      }
+
+      // Display VIP offer
+      if (data.vip) {
+        const v = data.vip;
+        $("vip-section").hidden = false;
+        const available = (v.seats_total || 0) - (v.seats_sold || 0);
+        $("vip-display").innerHTML = `
+          <h3 style="margin: 0 0 1rem; color: var(--gold);">${esc(v.title)}</h3>
+          <p style="margin: 0 0 0.5rem; font-size: 1.1rem; font-weight: 600; color: var(--green);">
+            ${WS.money(v.price_minor, wedding.currency || "USD", false)}
+          </p>
+          <p style="margin: 0 0 1rem; color: #5a5f5a;">${esc(v.description)}</p>
+          <p style="margin: 0; color: var(--sage); font-weight: 600;">
+            ${available} of ${v.seats_total} seats available
+          </p>
+        `;
+      }
+
+      // Display corporate sponsors
+      if (data.sponsors && data.sponsors.length > 0) {
+        $("sponsors").hidden = false;
+        $("sponsors-display").innerHTML = data.sponsors.map(sponsor => `
+          <div style="border: 1px solid #d0d5cc; border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
+            <h4 style="margin: 0 0 0.5rem; color: var(--green);">${esc(sponsor.company_name)}</h4>
+            <p style="margin: 0 0 1rem; color: var(--gold); font-weight: 600;">${WS.money(sponsor.amount_minor, wedding.currency || "USD", false)}</p>
+            ${sponsor.website ? `<p style="margin: 0 0 0.5rem;"><a href="${esc(sponsor.website)}" target="_blank" class="link" style="font-size: 0.9rem;">Visit website</a></p>` : ""}
+            ${sponsor.contact_phone ? `<p style="margin: 0; font-size: 0.85rem; color: #5a5f5a;">${esc(sponsor.contact_phone)}</p>` : ""}
+          </div>
+        `).join("");
+      }
+    } catch (err) {
+      console.warn("Could not load fundraising data:", err);
+    }
+  }
+
+  // Live countdown
+  function startCountdown() {
+    if (!wedding.wedding_date) return;
+    const weddingDate = new Date(wedding.wedding_date).getTime();
+    const update = () => {
+      const now = Date.now();
+      const diff = weddingDate - now;
+      if (diff < 0) {
+        $("days").textContent = "0";
+        $("hours").textContent = "0";
+        $("minutes").textContent = "0";
+        $("seconds").textContent = "0";
+        return;
+      }
+      const s = Math.floor(diff / 1000) % 60;
+      const m = Math.floor(diff / 60000) % 60;
+      const h = Math.floor(diff / 3600000) % 24;
+      const d = Math.floor(diff / 86400000);
+      $("days").textContent = String(d).padStart(2, "0");
+      $("hours").textContent = String(h).padStart(2, "0");
+      $("minutes").textContent = String(m).padStart(2, "0");
+      $("seconds").textContent = String(s).padStart(2, "0");
+    };
+    update();
+    setInterval(update, 1000);
+  }
+
+  // .ics calendar download
+  $("ics-download").addEventListener("click", () => {
+    if (!wedding.wedding_date) return alert("Wedding date not set.");
+    const d = new Date(wedding.wedding_date);
+    const ical = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//WeddingSite//EN
+CALSCALE:GREGORIAN
+BEGIN:VEVENT
+DTSTART:${d.toISOString().replace(/[-:]/g, "").slice(0, 15)}Z
+SUMMARY:${esc(wedding.couple_names)}'s Wedding
+LOCATION:${esc(wedding.public_location || "")}
+DESCRIPTION:${esc(wedding.welcome_story || "Join us for our wedding!")}
+END:VEVENT
+END:VCALENDAR`;
+    const blob = new Blob([ical], { type: "text/calendar" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${wedding.couple_names}-wedding.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // Audio toggle
+  $("audio-toggle").addEventListener("click", () => {
+    audioEnabled = !audioEnabled;
+    $("audio-toggle").textContent = audioEnabled ? "🔊" : "🔇";
+    if (audioEnabled && $("background-music").src) {
+      $("background-music").play().catch(() => null);
+    } else {
+      $("background-music").pause();
+    }
+  });
+
+  // RSVP submit
+  $("rsvp-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    if ($("rsvp-form").dataset.submitting) return;
+    
+    const attending = $("attending").value === "yes";
+    const plusOnes = parseInt($("plus-ones").value || 0, 10);
+    const totalGuests = attending ? (1 + plusOnes) : 1;
+    
+    // Check capacity
+    if (attending && wedding.max_guest_capacity) {
+      try {
+        const capRes = await fetch(`/api/guest?action=rsvp-count&slug=${encodeURIComponent(slug)}`);
+        const capData = await capRes.json();
+        const currentRsvps = capData.count || 0;
+        if (currentRsvps + totalGuests > wedding.max_guest_capacity) {
+          $("rsvp-capacity-warning").hidden = false;
+          $("rsvp-capacity-warning").textContent = `We've reached our guest limit. Current RSVPs: ${currentRsvps} / ${wedding.max_guest_capacity}`;
+          notice("We've reached our guest limit. Please contact the couple directly.", true);
+          delete $("rsvp-form").dataset.submitting;
+          return;
+        }
+      } catch (err) {
+        console.warn("Could not check capacity:", err);
+      }
+    }
+    
+    $("rsvp-form").dataset.submitting = "true";
+    notice("");
+
+    try {
+      const res = await fetch("/api/guest?action=rsvp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          weddingId,
+          weddingSlug: slug,
           guestName: $("guest-name").value,
           guestEmail: $("guest-email").value,
-          attending,
-          dietaryNotes: $("dietary-notes").value
+          attending: attending,
+          dietaryPreference: $("dietary-preference").value,
+          dietaryNotes: $("dietary-notes").value,
+          plusOnes: plusOnes
         })
       });
       const data = await res.json();
       if (!res.ok) return notice(data.error || "Could not submit RSVP.", true);
-      notice("RSVP submitted! Thank you.");
+      notice("RSVP received! Thank you for confirming.");
+      
+      // Generate e-card pass
+      const guestName = $("guest-name").value;
+      const passData = `${wedding.id}:${guestName}:${Date.now()}`;
+      
+      $("ecard-guest-name").textContent = guestName;
+      if (wedding.wedding_date) {
+        const wDate = new Date(wedding.wedding_date);
+        $("ecard-date").textContent = wDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+      }
+      
+      // Clear previous QR code
+      $("qrcode").innerHTML = "";
+      
+      // Generate new QR code
+      try {
+        new QRCode($("qrcode"), {
+          text: passData,
+          width: 200,
+          height: 200,
+          colorDark: "#244b3a",
+          colorLight: "#ffffff"
+        });
+      } catch (err) {
+        console.warn("Could not generate QR code:", err);
+      }
+      
+      $("ecard").hidden = false;
       $("rsvp-form").reset();
-    });
+    } catch (err) {
+      console.error("RSVP failed:", err);
+      notice("Network error submitting RSVP.", true);
+    } finally {
+      delete $("rsvp-form").dataset.submitting;
+    }
+  });
 
-    // Place DJ bid
-    $("bid-form").addEventListener("submit", async e => {
-      e.preventDefault();
-      notice("");
-      const res = await fetch(`/api/guest?action=bid`, {
+  // DJ bid submit
+  $("bid-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    if ($("bid-form").dataset.submitting) return;
+    $("bid-form").dataset.submitting = "true";
+    notice("");
+
+    try {
+      const res = await fetch("/api/guest?action=bid", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          weddingId,
+          weddingSlug: slug,
           songTitle: $("song-title").value,
           artist: $("artist").value,
-          bidAmount: Math.round(Number($("bid-amount").value) * 100)
+          bidAmount: Number($("bid-amount").value)
         })
       });
       const data = await res.json();
       if (!res.ok) return notice(data.error || "Could not place bid.", true);
-      notice("Bid placed! Song added to leaderboard.");
+      notice("Bid placed! Thanks for supporting the DJ!");
       $("bid-form").reset();
-      loadLeaderboard();
-    });
+      loadBids();
+    } catch (err) {
+      console.error("Bid failed:", err);
+      notice("Network error placing bid.", true);
+    } finally {
+      delete $("bid-form").dataset.submitting;
+    }
+  });
 
-    // Load DJ leaderboard
-    async function loadLeaderboard() {
-      const res = await fetch(`/api/guest?action=leaderboard&weddingId=${encodeURIComponent(weddingId)}`);
+  // Load DJ bids/leaderboard
+  async function loadBids() {
+    try {
+      const res = await fetch(`/api/guest?action=leaderboard&slug=${encodeURIComponent(slug)}`);
       const data = await res.json();
       if (!res.ok) return;
-      
+
       const bids = data.bids || [];
-      if (bids.length === 0) return;
-      
+      if (bids.length === 0) {
+        $("no-bids").hidden = false;
+        return;
+      }
+
+      $("no-bids").hidden = true;
       $("leaderboard-body").innerHTML = bids.map((b, i) => `
-        <tr>
-          <td>${i + 1}</td>
-          <td>${WS.esc(b.song_title)}</td>
-          <td>${WS.esc(b.artist || "—")}</td>
-          <td>${WS.money(b.total_bid_minor, weddingCurrency)}</td>
+        <tr style="border-bottom: 1px solid #e3dcc7;">
+          <td style="padding: 0.75rem; color: var(--gold);">${i + 1}</td>
+          <td style="padding: 0.75rem;">${esc(b.song_title)}</td>
+          <td style="padding: 0.75rem; color: var(--sage);">${esc(b.artist || "—")}</td>
+          <td style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, wedding.currency)}</td>
         </tr>
       `).join("");
-      $("no-bids").hidden = true;
+    } catch (err) {
+      console.error("Load bids failed:", err);
     }
+  }
 
-    // Load ledger (contribution records)
-    async function loadLedger() {
-      const res = await fetch(`/api/guest?action=ledger&weddingId=${encodeURIComponent(weddingId)}`);
+  // Load contribution ledger
+  async function loadLedger() {
+    try {
+      const res = await fetch(`/api/guest?action=ledger&slug=${encodeURIComponent(slug)}`);
       const data = await res.json();
       if (!res.ok) return;
-      
+
       const ledger = data.ledger || [];
-      if (ledger.length === 0) return;
-      
-      $("ledger-body").innerHTML = ledger.map(row => `
-        <tr>
-          <td>${WS.esc(row.service || "Contribution")}</td>
-          <td>${WS.money(row.amount_minor, weddingCurrency)}</td>
-          <td>${WS.esc(row.contributor || "Anonymous")}</td>
-          <td>${new Date(row.created_at).toLocaleDateString()}</td>
+      if (ledger.length === 0) {
+        $("no-ledger").hidden = false;
+        return;
+      }
+
+      $("no-ledger").hidden = true;
+      $("ledger-body").innerHTML = ledger.map(l => `
+        <tr style="border-bottom: 1px solid #e3dcc7;">
+          <td style="padding: 0.75rem;">${esc(l.description || "Contribution")}</td>
+          <td style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(l.amount_minor, wedding.currency)}</td>
+          <td style="padding: 0.75rem;">${esc(l.guest_name || "—")}</td>
+          <td style="padding: 0.75rem; color: var(--sage);">${new Date(l.created_at).toLocaleDateString()}</td>
         </tr>
       `).join("");
-      $("no-ledger").hidden = true;
+      $("ledger").hidden = false;
+    } catch (err) {
+      console.error("Load ledger failed:", err);
     }
+  }
 
-    loadWedding();
+  // Smooth scroll for nav links
+  document.querySelectorAll("nav.sticky-nav a").forEach(link => {
+    link.addEventListener("click", e => {
+      e.preventDefault();
+      const id = link.getAttribute("href").slice(1);
+      const el = $(id);
+      if (el) el.scrollIntoView({ behavior: "smooth" });
+    });
+  });
+
+  loadWedding();
 })();
   </script>
 </body>

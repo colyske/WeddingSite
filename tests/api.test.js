@@ -7,8 +7,7 @@ import {
   checkProviderHealth, isSecurePublicOrigin, normalizePaystackPayment, normalizeStripePayment,
   verifyPaystackSignature, verifyStripeSignature
 } from "../server/payment-adapters.js";
-import paymentOptionsHandler from "../api/payments/options.js";
-import checkoutHandler from "../api/payments/checkout.js";
+import checkoutHandler from "../api/checkout.js";
 
 const ownerMigration = readFileSync(new URL("../supabase/migrations/202610160002_protected_owner_identity.sql", import.meta.url), "utf8");
 const platformMarkup = readFileSync(new URL("../demo.html", import.meta.url), "utf8");
@@ -78,9 +77,9 @@ test("payment availability endpoint advertises no providers while payments are d
   try {
     process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED = "false";
     const res = responseRecorder();
-    await paymentOptionsHandler({
+    await checkoutHandler({
       method: "GET",
-      query: { weddingId: "7c1b33e8-6b41-4f66-9169-54197263db7f", market: "US", currency: "USD" }
+      query: { action: "options", weddingId: "7c1b33e8-6b41-4f66-9169-54197263db7f", market: "US", currency: "USD" }
     }, res);
     assert.equal(res.statusCode, 200);
     assert.deepEqual(JSON.parse(res.body), {
@@ -97,7 +96,7 @@ test("checkout endpoint stays disabled until explicitly enabled", async () => {
   try {
     process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED = "false";
     const res = responseRecorder();
-    await checkoutHandler({ method: "POST", body: {} }, res);
+    await checkoutHandler({ method: "POST", query: { action: "create" }, body: {} }, res);
     assert.equal(res.statusCode, 503);
     assert.equal(JSON.parse(res.body).error, "Live payments are disabled. The guest demo remains pledge-only.");
   } finally {

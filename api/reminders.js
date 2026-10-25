@@ -1,4 +1,4 @@
-import { methodOnly, sendJson, supabaseRequest } from "../../server/supabase.js";
+import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
 
 export default async function handler(req, res) {
   if (!methodOnly(req, res, "GET")) return;

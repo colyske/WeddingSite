@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#203a31">
+  <title>WeddingSite — Your E-Card Pass</title>
+  <link rel="stylesheet" href="app-shell.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    .ecard-container {
+      max-width: 600px;
+      margin: 3rem auto;
+      padding: 2rem;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(32, 58, 49, 0.12);
+    }
+
+    .ecard-header {
+      text-align: center;
+      padding-bottom: 2rem;
+      border-bottom: 2px solid var(--sage);
+    }
+
+    .ecard-header h1 {
+      font-size: 1.8rem;
+      color: var(--green);
+      margin: 0.5rem 0;
+    }
+
+    .ecard-header p {
+      color: #7a8580;
+      margin: 0.5rem 0;
+    }
+
+    .ecard-couple {
+      font-weight: 700;
+      color: var(--green);
+      font-size: 1.2rem;
+    }
+
+    .ecard-date {
+      font-size: 0.95rem;
+      color: var(--sage);
+    }
+
+    .qr-section {
+      text-align: center;
+      padding: 2rem 0;
+    }
+
+    #qr-code {
+      display: inline-block;
+      background: white;
+      padding: 1rem;
+      border-radius: 8px;
+      border: 2px solid var(--gold);
+    }
+
+    .guest-info {
+      background: #f3faf3;
+      padding: 1.5rem;
+      border-radius: 8px;
+      margin: 1.5rem 0;
+    }
+
+    .guest-info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 0;
+      border-bottom: 1px solid rgba(228, 220, 199, 0.5);
+    }
+
+    .guest-info-row:last-child {
+      border-bottom: none;
+    }
+
+    .guest-info-label {
+      color: #7a8580;
+      font-weight: 500;
+    }
+
+    .guest-info-value {
+      font-weight: 600;
+      color: var(--green);
+    }
+
+    .rsvp-status {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .rsvp-status.yes {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .rsvp-status.no {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .rsvp-status.maybe {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .actions {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      margin-top: 2rem;
+      padding-top: 2rem;
+      border-top: 2px solid var(--sage);
+    }
+
+    .actions button {
+      padding: 0.75rem 1.5rem;
+      border: 1px solid var(--green);
+      background: white;
+      color: var(--green);
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .actions button:hover {
+      background: var(--green);
+      color: white;
+    }
+
+    .actions button.primary {
+      background: var(--green);
+      color: white;
+    }
+
+    .actions button.primary:hover {
+      background: #1a3a2e;
+    }
+
+    .print-hint {
+      text-align: center;
+      color: #7a8580;
+      font-size: 0.9rem;
+      margin-top: 1rem;
+    }
+
+    @media print {
+      body { background: white; }
+      .actions { display: none; }
+      .ecard-container { box-shadow: none; max-width: 100%; margin: 0; padding: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <a class="brand" href="/">WeddingSite</a>
+      <button type="button" class="link" id="back">← Back</button>
+    </div>
+
+    <div class="ecard-container">
+      <div class="ecard-header">
+        <h1>✨ Your Wedding Pass</h1>
+        <p class="ecard-couple" id="couple-names">—</p>
+        <p class="ecard-date" id="event-date">—</p>
+      </div>
+
+      <div class="qr-section">
+        <h2 style="color: var(--green); margin-top: 0;">Your Entry Pass</h2>
+        <p style="color: #7a8580; margin-bottom: 1.5rem;">Share this QR code or bring it to the event</p>
+        <div id="qr-code"></div>
+      </div>
+
+      <div class="guest-info" id="guest-info" hidden>
+        <div class="guest-info-row">
+          <span class="guest-info-label">Guest Name</span>
+          <span class="guest-info-value" id="guest-name">—</span>
+        </div>
+        <div class="guest-info-row">
+          <span class="guest-info-label">Attending?</span>
+          <span id="attending-badge" class="rsvp-status"></span>
+        </div>
+        <div class="guest-info-row" id="dietary-row" hidden>
+          <span class="guest-info-label">Dietary Needs</span>
+          <span class="guest-info-value" id="dietary-needs">—</span>
+        </div>
+        <div class="guest-info-row" id="plus-one-row" hidden>
+          <span class="guest-info-label">Plus Ones</span>
+          <span class="guest-info-value" id="plus-ones">—</span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="primary" id="print-btn">🖨️ Print Pass</button>
+        <button type="button" id="share-btn">📤 Share</button>
+        <button type="button" id="edit-rsvp-btn">✎ Edit RSVP</button>
+      </div>
+
+      <p class="print-hint">💡 Keep this page or print it to show at the event entrance</p>
+    </div>
+  </div>
+
+  <script src="auth-client.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    let weddingData = null;
+    let guestData = null;
+
+    // Get wedding slug and guest ID from URL
+    const params = new URLSearchParams(location.search);
+    const slug = params.get("slug") || "";
+    const guestId = params.get("guest_id") || "";
+
+    if (!slug || !guestId) {
+      document.body.innerHTML = '<main class="card narrow"><h1>Invalid link</h1><p>This e-card pass link is not valid. Please ask the couple for a new link.</p></main>';
+    }
+
+    async function loadData() {
+      try {
+        // Load wedding data (public info)
+        const wRes = await fetch(`/api/guest?action=wedding&slug=${encodeURIComponent(slug)}`);
+        weddingData = await wRes.json();
+        if (!wRes.ok) throw new Error(weddingData.error || "Could not load wedding");
+
+        $("couple-names").textContent = esc(weddingData.names);
+        $("event-date").textContent = weddingData.wedding_date 
+          ? new Date(weddingData.wedding_date).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })
+          : "Date TBA";
+
+        // Load guest RSVP data (private, needs verification)
+        const gRes = await fetch(`/api/guest?action=guest-pass&slug=${encodeURIComponent(slug)}&guest_id=${encodeURIComponent(guestId)}`);
+        guestData = await gRes.json();
+        if (!gRes.ok) throw new Error(guestData.error || "Could not load guest data");
+
+        // Display guest info
+        $("guest-info").hidden = false;
+        $("guest-name").textContent = esc(guestData.name);
+
+        const status = (guestData.attending || "").toLowerCase();
+        const statusEl = $("attending-badge");
+        statusEl.textContent = status === "yes" ? "✓ Yes, attending" : status === "no" ? "✗ Not attending" : "❓ Maybe";
+        statusEl.className = `rsvp-status ${status || "maybe"}`;
+
+        if (guestData.dietary_needs) {
+          $("dietary-row").hidden = false;
+          $("dietary-needs").textContent = esc(guestData.dietary_needs);
+        }
+
+        if (guestData.num_plus_ones && parseInt(guestData.num_plus_ones) > 0) {
+          $("plus-one-row").hidden = false;
+          $("plus-ones").textContent = guestData.num_plus_ones;
+        }
+
+        // Generate QR code encoding guest_id + slug + verification timestamp
+        const qrData = JSON.stringify({
+          slug,
+          guest_id: guestData.guest_id,
+          name: guestData.name,
+          attending: status,
+          generated_at: new Date().toISOString()
+        });
+
+        // Clear any existing QR
+        $("qr-code").innerHTML = "";
+
+        // Generate QR code
+        new QRCode($("qr-code"), {
+          text: qrData,
+          width: 300,
+          height: 300,
+          colorDark: "#203a31",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.H
+        });
+
+      } catch (err) {
+        console.error("Load failed:", err);
+        document.body.innerHTML = `<main class="card narrow"><h1>Error</h1><p>${esc(err.message)}</p><a href="/">← Home</a></main>`;
+      }
+    }
+
+    // Back button
+    $("back").addEventListener("click", () => history.back());
+
+    // Print button
+    $("print-btn").addEventListener("click", () => window.print());
+
+    // Share button (Web Share API or fallback)
+    $("share-btn").addEventListener("click", async () => {
+      const shareUrl = `${location.origin}${location.pathname}?slug=${encodeURIComponent(slug)}&guest_id=${encodeURIComponent(guestId)}`;
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: `${weddingData.names} — Wedding Pass`,
+            text: `Here's my pass for ${weddingData.names}'s wedding`,
+            url: shareUrl
+          });
+        } catch (err) {
+          console.log("Share cancelled or failed");
+        }
+      } else {
+        // Fallback: copy to clipboard
+        try {
+          await navigator.clipboard.writeText(shareUrl);
+          alert("Link copied to clipboard!");
+        } catch (err) {
+          alert(`Share this link:\n${shareUrl}`);
+        }
+      }
+    });
+
+    // Edit RSVP button
+    $("edit-rsvp-btn").addEventListener("click", () => {
+      location.href = `guest.html?slug=${encodeURIComponent(slug)}&guest_id=${encodeURIComponent(guestId)}#rsvp`;
+    });
+
+    // Load data on page load
+    loadData();
+  </script>
+</body>
+</html>
