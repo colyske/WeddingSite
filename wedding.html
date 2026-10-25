@@ -192,6 +192,22 @@
       </table>
       <p id="no-bids" class="fine">No DJ song bids yet.</p>
     </div>
+
+    <!-- Guest List & Seating -->
+    <div id="seating-section" class="card" hidden>
+      <h2>Guest List & Seating</h2>
+      <p class="fine">Import guest list and manage seating arrangements.</p>
+      
+      <div style="margin-bottom: 2rem; padding: 1rem; background: #f8f9f7; border: 2px dashed var(--sage); border-radius: 8px; text-align: center;">
+        <p class="fine" style="margin: 0 0 1rem;">Import CSV with guest names, emails, dietary preferences, and table assignments</p>
+        <input type="file" id="guest-list-upload" accept=".csv" style="display: none;">
+        <button type="button" id="upload-btn" class="btn" style="margin: 0;">Upload Guest List (CSV)</button>
+        <p class="fine" style="margin: 0.5rem 0 0;">Format: name, email, dietary, table</p>
+      </div>
+
+      <div id="guest-list-display" style="display: flex; flex-direction: column; gap: 1rem;"></div>
+      <p id="no-guest-list" class="fine">No guest list imported yet.</p>
+    </div>
   </div>
 
   <script src="auth-client.js"></script>
@@ -415,6 +431,55 @@
       addRegistryEditor();
     });
 
+    // Guest list CSV upload
+    $("upload-btn").addEventListener("click", e => {
+      e.preventDefault();
+      $("guest-list-upload").click();
+    });
+
+    $("guest-list-upload").addEventListener("change", async e => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = async event => {
+        try {
+          const csv = event.target.result;
+          const lines = csv.trim().split("\n").slice(1); // Skip header
+          const guests = lines.map(line => {
+            const [name, email, dietary, table] = line.split(",").map(s => s.trim());
+            return { name, email, dietary, table };
+          }).filter(g => g.name);
+          
+          if (guests.length === 0) {
+            notice("No valid guest records found in CSV.", true);
+            return;
+          }
+          
+          // Store guests in memory for this session (would need API endpoint to persist)
+          window.importedGuests = guests;
+          
+          // Display imported guests
+          $("no-guest-list").hidden = true;
+          $("guest-list-display").innerHTML = guests.map((g, idx) => `
+            <div style="border-left: 4px solid var(--sage); padding: 1rem; background: #f8f9f7; border-radius: 4px;">
+              <p style="margin: 0 0 0.5rem; font-weight: 600; color: var(--green);">${esc(g.name)}</p>
+              <p style="margin: 0; font-size: 0.9rem; color: #5a5f5a;">📧 ${esc(g.email || "—")}</p>
+              ${g.dietary ? `<p style="margin: 0.25rem 0 0; font-size: 0.9rem; color: var(--gold);">🍽️ ${esc(g.dietary)}</p>` : ""}
+              ${g.table ? `<p style="margin: 0.25rem 0 0; font-size: 0.9rem; color: var(--green);">🪑 Table ${esc(g.table)}</p>` : ""}
+            </div>
+          `).join("");
+          
+          notice(`Imported ${guests.length} guests. Assign to tables and save.`);
+        } catch (err) {
+          console.error("CSV parse error:", err);
+          notice("Could not parse CSV file. Check format: name, email, dietary, table", true);
+        }
+      };
+      reader.readAsText(file);
+      e.target.value = ""; // Reset for next upload
+    });
+
     // Payout method selection
     const payoutFieldsConfig = {
       mpesa: [
@@ -585,6 +650,7 @@
           $("view-guest-site").href = guestUrl;
           $("rsvps-section").hidden = false;
           $("bids-section").hidden = false;
+          $("seating-section").hidden = false;
           $("publish-btn").hidden = true;
           loadRsvps();
           loadBids();
