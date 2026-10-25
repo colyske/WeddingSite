@@ -108,6 +108,18 @@
         </label>
         <div id="registry-list" style="margin-bottom: 1.5rem;"></div>
 
+        <label style="display: block; margin-bottom: 0.5rem;">Payment methods guests can use</label>
+        <div style="margin-bottom: 1.5rem; padding: 1rem; background: #f8f9f7; border: 1px solid #d0d5cc; border-radius: 8px;">
+          <p style="margin: 0 0 1rem; font-size: 0.9rem; color: #5a5f5a;">Select which payment options you want to enable for contributions and pledges.</p>
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <label style="font-weight: normal; margin: 0;"><input type="checkbox" id="payment-mpesa" class="payment-method-checkbox" value="mpesa"> M-Pesa Mobile Money</label>
+            <label style="font-weight: normal; margin: 0;"><input type="checkbox" id="payment-stripe" class="payment-method-checkbox" value="stripe"> Stripe (Credit/Debit Card)</label>
+            <label style="font-weight: normal; margin: 0;"><input type="checkbox" id="payment-paystack" class="payment-method-checkbox" value="paystack"> Paystack (Card, Mobile Money, Bank Transfer)</label>
+            <label style="font-weight: normal; margin: 0;"><input type="checkbox" id="payment-manual" class="payment-method-checkbox" value="manual"> Manual Bank Transfer</label>
+          </div>
+          <p style="margin: 1rem 0 0; font-size: 0.85rem; color: #5a5f5a; font-style: italic;">Note: Configured payment providers shown to guests; all require credentials to be added by you.</p>
+        </div>
+
         <label for="payout-method">How would you like to receive funds?</label>
         <select id="payout-method">
           <option value="">Choose payment method…</option>
@@ -618,6 +630,18 @@
           registryCount = w.registry.length;
         }
 
+        // Load enabled payment methods
+        if (w.enabled_payment_methods && Array.isArray(w.enabled_payment_methods)) {
+          document.querySelectorAll(".payment-method-checkbox").forEach(cb => {
+            cb.checked = w.enabled_payment_methods.includes(cb.value);
+          });
+        } else {
+          // Set defaults if not specified
+          $("payment-mpesa").checked = true;
+          $("payment-stripe").checked = true;
+          $("payment-paystack").checked = true;
+        }
+
         // Load payout preferences
         if (w.payout) {
           const p = w.payout;
@@ -722,6 +746,9 @@
           };
         }
 
+        // Collect enabled payment methods
+        const enabledPaymentMethods = Array.from(document.querySelectorAll(".payment-method-checkbox:checked")).map(cb => cb.value);
+
         const res = await WS.api("/api/weddings?action=update", {
           method: "POST",
           body: JSON.stringify({
@@ -736,7 +763,8 @@
             palette: palette,
             attireNotes: $("attire-notes").value,
             registry: registry,
-            payoutDetails: payoutDetails
+            payoutDetails: payoutDetails,
+            enabledPaymentMethods: enabledPaymentMethods
           })
         });
         const data = await res.json();
