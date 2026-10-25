@@ -252,6 +252,40 @@
         $("max-capacity").value = w.max_guest_capacity || 150;
         $("palette-preview").innerHTML = (w.palette || []).map(c => `<span style="background: ${esc(c)};"></span>`).join("");
 
+        // Load venues
+        if (w.venues && Array.isArray(w.venues)) {
+          $("venues-list").innerHTML = "";
+          w.venues.forEach((venue, idx) => {
+            const id = `venue-${idx}`;
+            const html = `
+              <div class="venue-item" data-venue-id="${id}">
+                <div class="venue-main-label">
+                  <input type="checkbox" class="venue-main-cb" title="Set as main venue" ${venue.is_main ? "checked" : ""}> <span>Main venue</span>
+                </div>
+                <input type="text" class="venue-name" value="${esc(venue.name || "")}" placeholder="Venue name" maxlength="80">
+                <input type="text" class="venue-time" value="${esc(venue.event_time || "")}" placeholder="Time">
+                <input type="url" class="venue-address" value="${esc(venue.map_link || "")}" placeholder="Map link">
+                <textarea class="venue-notes" placeholder="Details" maxlength="240">${esc(venue.description || "")}</textarea>
+                <input type="hidden" class="venue-id" value="${esc(venue.id || "")}">
+                <button type="button" class="remove-venue" data-venue-id="${id}">Remove</button>
+              </div>
+            `;
+            $("venues-list").insertAdjacentHTML("beforeend", html);
+            
+            const item = $("venues-list").querySelector(`[data-venue-id="${id}"]`);
+            item.querySelector(".remove-venue").addEventListener("click", e => {
+              e.preventDefault();
+              item.remove();
+            });
+            
+            item.querySelector(".venue-main-cb").addEventListener("change", e => {
+              $("venues-list").querySelectorAll(".venue-main-cb").forEach(cb => cb.checked = false);
+              e.target.checked = true;
+            });
+          });
+          venueCount = w.venues.length;
+        }
+
         $("edit-section").hidden = false;
 
         if (w.published_at) {
@@ -280,6 +314,22 @@
       $("edit-form").dataset.submitting = "true";
       notice("");
       try {
+        // Collect venues
+        const venues = [];
+        $("venues-list").querySelectorAll(".venue-item").forEach(item => {
+          const name = item.querySelector(".venue-name").value.trim();
+          if (name) {
+            venues.push({
+              id: item.querySelector(".venue-id").value || null,
+              name: name,
+              eventTime: item.querySelector(".venue-time").value || null,
+              mapLink: item.querySelector(".venue-address").value || null,
+              description: item.querySelector(".venue-notes").value || null,
+              isMain: item.querySelector(".venue-main-cb").checked || false
+            });
+          }
+        });
+
         const res = await WS.api("/api/weddings?action=update", {
           method: "POST",
           body: JSON.stringify({
@@ -289,7 +339,8 @@
             weddingDate: $("wedding-date").value || null,
             location: $("location").value,
             currency: $("currency").value,
-            maxCapacity: Number($("max-capacity").value)
+            maxCapacity: Number($("max-capacity").value),
+            venues: venues
           })
         });
         const data = await res.json();

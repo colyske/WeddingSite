@@ -270,6 +270,12 @@
       <div class="swatches" id="palette-preview"></div>
     </section>
 
+    <!-- Venues section -->
+    <section id="venues" class="card" hidden>
+      <h2>Venues & Itinerary</h2>
+      <div id="venues-display" style="display: flex; flex-direction: column; gap: 1.5rem;"></div>
+    </section>
+
     <!-- RSVP form -->
     <section id="rsvp" class="card" hidden>
       <h2>Will You Join Us?</h2>
@@ -412,6 +418,19 @@
         $("details").hidden = false;
         $("wedding-location").textContent = esc(wedding.public_location || "Location TBA");
         $("palette-preview").innerHTML = (wedding.palette || []).map(c => `<span style="background: ${esc(c)};"></span>`).join("");
+      }
+
+      // Venues
+      if (wedding.venues && wedding.venues.length > 0) {
+        $("venues").hidden = false;
+        $("venues-display").innerHTML = wedding.venues.map(v => `
+          <div style="border-left: 4px solid var(--sage); padding: 1rem; background: #f8f9f7; border-radius: 4px;">
+            ${v.event_time ? `<p style="margin: 0 0 0.5rem; color: var(--gold); font-weight: 600;">${esc(v.event_time)}</p>` : ""}
+            <h3 style="margin: 0 0 0.5rem; color: var(--green);">${esc(v.name)}</h3>
+            ${v.map_link ? `<p style="margin: 0 0 0.5rem;"><a href="${esc(v.map_link)}" target="_blank" class="link" style="font-size: 0.95rem;">📍 View on map</a></p>` : ""}
+            ${v.description ? `<p style="margin: 0; font-size: 0.95rem; color: #5a5f5a;">${esc(v.description)}</p>` : ""}
+          </div>
+        `).join("");
       }
 
       // RSVP & Bids
