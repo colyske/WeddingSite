@@ -7,8 +7,7 @@ import {
   checkProviderHealth, isSecurePublicOrigin, normalizePaystackPayment, normalizeStripePayment,
   verifyPaystackSignature, verifyStripeSignature
 } from "../server/payment-adapters.js";
-import paymentOptionsHandler from "../api/payments/options.js";
-import checkoutHandler from "../api/payments/checkout.js";
+import checkoutHandler from "../api/checkout.js";
 
 const ownerMigration = readFileSync(new URL("../supabase/migrations/202610160002_protected_owner_identity.sql", import.meta.url), "utf8");
 const platformMarkup = readFileSync(new URL("../demo.html", import.meta.url), "utf8");
