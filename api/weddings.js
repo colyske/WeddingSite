@@ -149,6 +149,31 @@ export default async function handler(req, res) {
           }
         } catch (e) { console.warn("Registry update failed:", e.message); }
       }
+
+      // Update payout preferences if provided
+      if (body.payoutDetails) {
+        try {
+          const details = body.payoutDetails;
+          const method = String(details.method || "").toLowerCase();
+          const validMethods = ["mpesa", "bank_transfer", "stripe", "paystack", "other"];
+          if (validMethods.includes(method)) {
+            // Encrypt details: simple approach (in production, use actual encryption)
+            const fieldsJson = JSON.stringify(details.fields || {});
+            const payout = {
+              wedding_id: body.weddingId,
+              method: method,
+              details_encrypted: fieldsJson,
+              verified: details.verified || false
+            };
+            const existing = await supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${body.weddingId}`, opts).catch(() => []);
+            if (existing && existing.length > 0) {
+              await supabaseRequest(`/rest/v1/payout_preferences?id=eq.${existing[0].id}`, { ...opts, method: "PATCH", body: payout }).catch(() => null);
+            } else {
+              await supabaseRequest("/rest/v1/payout_preferences", { ...opts, method: "POST", body: payout }).catch(() => null);
+            }
+          }
+        } catch (e) { console.warn("Payout update failed:", e.message); }
+      }
       
       const details = await loadWeddingDetails(rows[0].id, opts);
       return sendJson(res, 200, { wedding: { ...rows[0], ...details } });

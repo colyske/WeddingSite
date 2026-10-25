@@ -108,6 +108,27 @@
         </label>
         <div id="registry-list" style="margin-bottom: 1.5rem;"></div>
 
+        <label for="payout-method">How would you like to receive funds?</label>
+        <select id="payout-method">
+          <option value="">Choose payment method…</option>
+          <option value="mpesa">M-Pesa (Mobile Money)</option>
+          <option value="bank_transfer">Bank Transfer</option>
+          <option value="stripe">Stripe Payout Account</option>
+          <option value="paystack">Paystack Transfer</option>
+          <option value="other">Other (please specify)</option>
+        </select>
+
+        <div id="payout-details-section" style="display: none; border: 2px dashed #d0d5cc; border-radius: 8px; padding: 1rem; margin: 1rem 0 1.5rem; background: #fafbf9;">
+          <p style="margin: 0 0 1rem; font-size: 0.9rem; color: #5a5f5a;"><strong>📋 Account Details</strong> (stored securely, never shown to guests)</p>
+          <div id="payout-account-fields"></div>
+          <div style="margin-top: 1rem;">
+            <label for="payout-confirm-verify">
+              <input type="checkbox" id="payout-confirm-verify">
+              I confirm this is the correct account for receiving funds
+            </label>
+          </div>
+        </div>
+
         <div class="row">
           <button type="submit">Save changes</button>
           <button type="button" id="publish-btn" class="ghost">Publish wedding site</button>
@@ -394,6 +415,49 @@
       addRegistryEditor();
     });
 
+    // Payout method selection
+    const payoutFieldsConfig = {
+      mpesa: [
+        { label: "M-Pesa Phone Number", placeholder: "+254...", required: true },
+        { label: "Account Name", placeholder: "Name on M-Pesa account", required: true }
+      ],
+      bank_transfer: [
+        { label: "Bank Name", placeholder: "e.g. Kenya Commercial Bank", required: true },
+        { label: "Account Holder Name", placeholder: "Full name", required: true },
+        { label: "Account Number", placeholder: "e.g. 0012345678", required: true },
+        { label: "SWIFT Code / Bank Code", placeholder: "e.g. KCBLKENA", required: false }
+      ],
+      stripe: [
+        { label: "Stripe Account Email", placeholder: "Your Stripe login email", required: true }
+      ],
+      paystack: [
+        { label: "Paystack Account Email", placeholder: "Your Paystack login email", required: true }
+      ],
+      other: [
+        { label: "Description", placeholder: "How should we send your funds?", required: true }
+      ]
+    };
+
+    $("payout-method").addEventListener("change", e => {
+      const method = e.target.value;
+      const section = $("payout-details-section");
+      const fieldsDiv = $("payout-account-fields");
+      
+      if (!method) {
+        section.style.display = "none";
+        return;
+      }
+
+      section.style.display = "block";
+      const fields = payoutFieldsConfig[method] || [];
+      fieldsDiv.innerHTML = fields.map((f, idx) => `
+        <div style="margin-bottom: 1rem;">
+          <label for="payout-field-${idx}" style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem; font-weight: 500;">${f.label}${f.required ? " *" : ""}</label>
+          <input type="text" id="payout-field-${idx}" class="payout-field" placeholder="${f.placeholder}" maxlength="200" data-required="${f.required}" style="display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; box-sizing: border-box;">
+        </div>
+      `).join("");
+    });
+
     // Load wedding
     async function loadWedding() {
       try {
@@ -489,6 +553,29 @@
           registryCount = w.registry.length;
         }
 
+        // Load payout preferences
+        if (w.payout) {
+          const p = w.payout;
+          $("payout-method").value = p.method || "";
+          if (p.method) {
+            // Trigger change to show fields
+            const event = new Event("change", { bubbles: true });
+            $("payout-method").dispatchEvent(event);
+            
+            // Parse and populate payout fields
+            try {
+              const fields = JSON.parse(p.details_encrypted || "{}");
+              $("payout-account-fields").querySelectorAll(".payout-field").forEach((input, idx) => {
+                input.value = fields[`field_${idx}`] || "";
+              });
+            } catch (e) {
+              console.warn("Could not parse payout details:", e);
+            }
+            
+            $("payout-confirm-verify").checked = p.verified || false;
+          }
+        }
+
         $("edit-section").hidden = false;
 
         if (w.published_at) {
@@ -554,6 +641,21 @@
           }
         });
 
+        // Collect payout details
+        const payoutMethod = $("payout-method").value;
+        let payoutDetails = null;
+        if (payoutMethod) {
+          const fields = {};
+          $("payout-account-fields").querySelectorAll(".payout-field").forEach((input, idx) => {
+            fields[`field_${idx}`] = input.value.trim();
+          });
+          payoutDetails = {
+            method: payoutMethod,
+            fields: fields,
+            verified: $("payout-confirm-verify").checked
+          };
+        }
+
         const res = await WS.api("/api/weddings?action=update", {
           method: "POST",
           body: JSON.stringify({
@@ -567,7 +669,8 @@
             venues: venues,
             palette: palette,
             attireNotes: $("attire-notes").value,
-            registry: registry
+            registry: registry,
+            payoutDetails: payoutDetails
           })
         });
         const data = await res.json();
