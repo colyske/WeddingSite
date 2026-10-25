@@ -15,9 +15,29 @@ window.WS = {
     }
     return res;
   },
-  money(minor, currency) {
-    try { return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(minor / 100); }
-    catch { return (minor / 100).toFixed(2) + " " + currency; }
+  money(minor, currency, showUsd = true) {
+    try {
+      const amount = minor / 100;
+      const formatted = new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
+      
+      // If currency is already USD or USD display not requested, return just the formatted amount
+      if (currency === "USD" || !showUsd) return formatted;
+      
+      // Try to convert to USD and show both
+      if (typeof window.WeddingSiteFX !== "undefined" && window.WeddingSiteFX.hasRate) {
+        const usdAmount = window.WeddingSiteFX.convertToUsd(amount, currency);
+        if (usdAmount !== null) {
+          const usdFormatted = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(usdAmount);
+          return `${formatted} (${usdFormatted})`;
+        }
+      }
+      
+      return formatted;
+    } catch { 
+      const amount = (minor / 100).toFixed(2);
+      if (currency === "USD" || !showUsd) return amount + " " + currency;
+      return amount + " " + currency;
+    }
   },
   esc(value) { return String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 };
