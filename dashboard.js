@@ -126,14 +126,28 @@
 
   function validate() {
     const f = state.fields;
-    if (!f.names.trim()) return "Please enter the couple's names.";
-    if (!f.location.trim()) return "Please enter a location.";
+    const errors = [];
+    
+    if (!f.names.trim()) errors.push("✓ Couple names (required)");
+    else $("couple-names").removeAttribute("aria-invalid");
+    
+    if (!f.currency || !/^[A-Z]{3}$/.test(f.currency)) errors.push("✓ Currency (required)");
+    else $("currency").removeAttribute("aria-invalid");
+    
     const cap = Number(f.capacity);
-    if (!f.capacity.trim() || !Number.isInteger(cap) || cap < 1) return "Maximum guest capacity must be a whole number of at least 1.";
-    if (!/^[A-Z]{3}$/.test(f.currency)) return "Please choose a currency.";
-    if (!state.palette.every((c) => HEX.test(c))) return "Each of the four colours must be a valid colour.";
+    if (!f.capacity.trim() || !Number.isInteger(cap) || cap < 1) errors.push("✓ Guest capacity (required, must be 1 or more)");
+    else $("max-capacity").removeAttribute("aria-invalid");
+    
+    if (!state.palette.every((c) => HEX.test(c))) errors.push("Each colour must be valid");
+    
     for (const v of state.venues) {
-      if (v.map.trim() && !/^https?:\/\//i.test(v.map.trim())) return "Venue map links must start with http:// or https://.";
+      if (v.map.trim() && !/^https?:\/\//i.test(v.map.trim())) errors.push("Venue map links must start with http:// or https://");
+    }
+    
+    if (errors.length) {
+      const firstErrorField = document.querySelector("[aria-invalid='true']") || $("couple-names");
+      firstErrorField?.focus?.();
+      return "Please fix these required fields: " + errors.join(", ");
     }
     return "";
   }

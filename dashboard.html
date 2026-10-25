@@ -36,8 +36,8 @@
       <h2>✨ Plan a new wedding</h2>
       <p style="color: #7a8580; margin: 0 0 2rem;">Start your wedding journey with us</p>
       <form id="create-form" novalidate onsubmit="return false">
-        <label for="couple-names">👰 Couple names</label>
-        <input id="couple-names" type="text" maxlength="120" placeholder="e.g. Sarah &amp; John" autocomplete="off">
+        <label for="couple-names">👰 Couple names <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <input id="couple-names" type="text" maxlength="120" placeholder="e.g. Sarah &amp; John" autocomplete="off" required aria-required="true">
 
         <label for="wedding-date">📅 Wedding date (optional)</label>
         <input id="wedding-date" type="date">
@@ -45,8 +45,8 @@
         <label for="location">📍 Location</label>
         <input id="location" type="text" maxlength="120" placeholder="City, venue, or coordinates" autocomplete="off">
 
-        <label for="currency">💵 Primary currency</label>
-        <select id="currency">
+        <label for="currency">💵 Primary currency <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <select id="currency" required aria-required="true">
           <option value="USD">USD - US Dollar</option>
           <option value="KES">KES - Kenyan Shilling</option>
           <option value="EUR">EUR - Euro</option>
@@ -56,8 +56,8 @@
           <option value="ZAR">ZAR - South African Rand</option>
         </select>
 
-        <label for="max-capacity">👥 Maximum guest capacity</label>
-        <input id="max-capacity" type="number" min="1" step="1" value="150">
+        <label for="max-capacity">👥 Maximum guest capacity <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <input id="max-capacity" type="number" min="1" step="1" value="150" required aria-required="true">
 
         <label>🎨 Wedding colour palette (4 colours)</label>
         <div class="swatches" id="palette-preview">

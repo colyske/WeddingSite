@@ -49,8 +49,8 @@
     <!-- Wedding details form -->
     <div id="edit-section" class="card" hidden>
       <form id="edit-form">
-        <label for="couple-names">Couple names</label>
-        <input id="couple-names" type="text" maxlength="120" required>
+        <label for="couple-names">Couple names <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <input id="couple-names" type="text" maxlength="120" required aria-required="true">
 
         <label for="welcome-story">Welcome message
           <button type="button" class="link" id="ai-story-btn" style="margin-left: 0.5rem; font-weight: normal;">✨ Get AI suggestions</button>
@@ -70,8 +70,8 @@
         <label for="background-music-url">Background music URL (optional)</label>
         <input id="background-music-url" type="url" maxlength="500" placeholder="Link to your wedding ceremony or cocktail music (MP3, WAV, OGG)">
 
-        <label for="currency">Currency</label>
-        <select id="currency">
+        <label for="currency">Currency <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <select id="currency" required aria-required="true">
           <option value="USD">USD - US Dollar</option>
           <option value="KES">KES - Kenyan Shilling</option>
           <option value="EUR">EUR - Euro</option>
@@ -81,8 +81,8 @@
           <option value="ZAR">ZAR - South African Rand</option>
         </select>
 
-        <label for="max-capacity">Maximum guests</label>
-        <input id="max-capacity" type="number" min="1">
+        <label for="max-capacity">Maximum guests <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <input id="max-capacity" type="number" min="1" required aria-required="true">
 
         <label>Wedding colours</label>
         <div class="swatches" id="palette-preview"></div>
