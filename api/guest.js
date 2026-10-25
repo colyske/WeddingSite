@@ -115,6 +115,21 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { count: count?.[0]?.count || 0 });
     }
 
+    if (action === "fundraising") {
+      if (!methodOnly(req, res, "GET")) return;
+      const slug = String(req.query.slug || "").toLowerCase();
+      if (!/^[a-z0-9-]{3,80}$/.test(slug)) return sendJson(res, 404, { error: "Wedding not found." });
+      
+      const weddingId = await resolveWeddingId(slug, rpc);
+      if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
+      
+      const tiers = await supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}&select=id,name,min_amount_minor,perks,sort_order&order=sort_order.asc`).catch(() => []);
+      const vip = await supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${weddingId}&select=id,title,description,seats_total,seats_sold,price_minor&limit=1`).catch(() => []);
+      const sponsors = await supabaseRequest(`/rest/v1/sponsors?wedding_id=eq.${weddingId}&select=id,company_name,contact_email,contact_phone,website,amount_minor&status=eq.active&order=amount_minor.desc&limit=100`).catch(() => []);
+      
+      return sendJson(res, 200, { tiers: tiers || [], vip: vip?.[0] || null, sponsors: sponsors || [] });
+    }
+
     return sendJson(res, 404, { error: "Unknown action." });
   } catch (error) {
     console.error("guest endpoint failed", error.message);

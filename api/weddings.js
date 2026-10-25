@@ -11,7 +11,9 @@ const loadWeddingDetails = async (weddingId, opts) => {
   const venues = await supabaseRequest(`/rest/v1/venues?wedding_id=eq.${weddingId}&select=id,name,event_time,map_link,description,is_main,sort_order&order=sort_order.asc`, opts).catch(() => []);
   const payout = await supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${weddingId}`, opts).catch(() => null);
   const registry = await supabaseRequest(`/rest/v1/registry_items?wedding_id=eq.${weddingId}&select=id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts).catch(() => []);
-  return { venues: venues || [], payout, registry: registry || [] };
+  const tiers = await supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}&select=id,name,min_amount_minor,perks,sort_order&order=sort_order.asc`, opts).catch(() => []);
+  const vip = await supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${weddingId}&select=id,title,description,seats_total,seats_sold,price_minor&limit=1`, opts).catch(() => []);
+  return { venues: venues || [], payout, registry: registry || [], tiers: tiers || [], vip: vip?.[0] || null };
 };
 
 // Authenticated Client workspace API. All reads/writes run as the signed-in user so RLS applies.
@@ -159,6 +161,51 @@ export default async function handler(req, res) {
         } catch (e) { console.warn("Registry update failed:", e.message); }
       }
 
+      // Update sponsor tiers if provided
+      if (Array.isArray(body.tiers)) {
+        try {
+          const existing = (await supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${body.weddingId}&select=id`, opts) || []).map(t => t.id);
+          const incoming = body.tiers.filter(t => t && t.id).map(t => t.id);
+          const toDelete = existing.filter(id => !incoming.includes(id));
+          for (const id of toDelete) {
+            await supabaseRequest(`/rest/v1/sponsor_tiers?id=eq.${id}`, { ...opts, method: "DELETE" }).catch(() => null);
+          }
+          for (let i = 0; i < body.tiers.length; i++) {
+            const t = body.tiers[i];
+            if (!t.name || !t.minAmount) continue;
+            const tier = {
+              name: t.name.trim().slice(0, 60),
+              min_amount_minor: Math.round(t.minAmount * 100),
+              perks: String(t.perks || "").slice(0, 240),
+              sort_order: i
+            };
+            if (t.id && existing.includes(t.id)) {
+              await supabaseRequest(`/rest/v1/sponsor_tiers?id=eq.${t.id}`, { ...opts, method: "PATCH", body: tier }).catch(() => null);
+            } else if (!t.id) {
+              await supabaseRequest("/rest/v1/sponsor_tiers", { ...opts, method: "POST", body: { wedding_id: body.weddingId, ...tier } }).catch(() => null);
+            }
+          }
+        } catch (e) { console.warn("Tier update failed:", e.message); }
+      }
+
+      // Update VIP offer if provided
+      if (body.vip) {
+        try {
+          const v = body.vip;
+          const existing = await supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${body.weddingId}&select=id`, opts).catch(() => []);
+          await supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${body.weddingId}`, { ...opts, method: "DELETE", prefer: "return=minimal" }).catch(() => null);
+          if (v.price > 0 && v.seats > 0) {
+            await supabaseRequest("/rest/v1/vip_offers", { ...opts, method: "POST", prefer: "return=minimal", body: {
+              wedding_id: body.weddingId,
+              title: String(v.title || "VIP seating").slice(0, 80),
+              description: String(v.description || "").slice(0, 240),
+              seats_total: Math.min(Math.floor(Number(v.seats)), 500),
+              price_minor: Math.round(Number(v.price) * 100)
+            }}).catch(() => null);
+          }
+        } catch (e) { console.warn("VIP offer update failed:", e.message); }
+      }
+
       // Update payout preferences if provided
       if (body.payoutDetails) {
         try {
@@ -239,6 +286,81 @@ export default async function handler(req, res) {
           throw e;
         });
         return sendJson(res, 200, { payout: payload });
+      }
+    }
+
+    if (["balance", "withdraw", "withdrawals", "guests-import", "guests-list", "fundraising", "fundraising-save"].includes(action)) {
+      const weddingId = String(req.query.weddingId || body.weddingId || "");
+      if (!UUID.test(weddingId)) return sendJson(res, 400, { error: "Invalid wedding." });
+      const owned = await supabaseRequest(
+        `/rest/v1/weddings?id=eq.${weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=id,currency`, opts);
+      if (!owned?.length) return sendJson(res, 404, { error: "Wedding not found." });
+      const currency = owned[0].currency;
+
+      if (action === "balance") {
+        const rows = await supabaseRequest("/rest/v1/rpc/withdrawable_balance", { ...opts, method: "POST", body: { p_wedding_id: weddingId, p_currency: currency } });
+        const r = rows?.[0] || {};
+        return sendJson(res, 200, { currency, available_minor: Number(r.available_minor || 0), settling_minor: Number(r.settling_minor || 0), next_available_at: r.next_available_at || null });
+      }
+      if (action === "withdrawals") {
+        const rows = await supabaseRequest(`/rest/v1/payout_records?wedding_id=eq.${weddingId}&select=id,amount_minor,currency,status,requested_at&order=requested_at.desc&limit=100`, opts);
+        return sendJson(res, 200, { withdrawals: rows || [] });
+      }
+      if (action === "withdraw") {
+        if (!methodOnly(req, res, "POST")) return;
+        const amount = Number(body.amountMinor);
+        if (!Number.isSafeInteger(amount) || amount < 1) return sendJson(res, 400, { error: "Enter a valid amount." });
+        if (body.confirmed !== true) return sendJson(res, 400, { error: "Explicit confirmation is required." });
+        try {
+          const id = await supabaseRequest("/rest/v1/rpc/request_payout", { ...opts, method: "POST", body: {
+            p_wedding_id: weddingId, p_amount_minor: amount, p_currency: currency, p_note: String(body.notes || "").slice(0, 240), p_confirmed: true } });
+          return sendJson(res, 201, { payoutId: id });
+        } catch (error) {
+          return sendJson(res, 409, { error: error.message || "Payout could not be requested." });
+        }
+      }
+      if (action === "guests-list") {
+        const rows = await supabaseRequest(`/rest/v1/guests?wedding_id=eq.${weddingId}&select=id,name,email,dietary_preference,table_number,rsvp_status&order=table_number,name&limit=2000`, opts);
+        return sendJson(res, 200, { guests: rows || [] });
+      }
+      if (action === "guests-import") {
+        if (!methodOnly(req, res, "POST")) return;
+        const guests = (Array.isArray(body.guests) ? body.guests : []).slice(0, 2000).map(g => ({
+          wedding_id: weddingId,
+          name: String(g.name || "").trim().slice(0, 120),
+          email: String(g.email || "").trim().toLowerCase().slice(0, 200) || null,
+          dietary_preference: String(g.dietary || "").trim().slice(0, 50) || null,
+          table_number: String(g.table || "").trim().slice(0, 20) || null
+        })).filter(g => g.name);
+        if (!guests.length) return sendJson(res, 400, { error: "No valid guests found." });
+        await supabaseRequest(`/rest/v1/guests?wedding_id=eq.${weddingId}`, { ...opts, method: "DELETE", prefer: "return=minimal" });
+        await supabaseRequest("/rest/v1/guests", { ...opts, method: "POST", body: guests, prefer: "return=minimal" });
+        return sendJson(res, 201, { imported: guests.length });
+      }
+      if (action === "fundraising") {
+        const [tiers, vip, sponsors] = await Promise.all([
+          supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}&select=id,name,min_amount_minor,perks,sort_order&order=sort_order`, opts),
+          supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${weddingId}&select=id,title,description,seats_total,price_minor&limit=1`, opts),
+          supabaseRequest(`/rest/v1/sponsors?wedding_id=eq.${weddingId}&select=id,company_name,contact_email,contact_phone,website,amount_minor,status,created_at&order=amount_minor.desc&limit=200`, opts)
+        ]);
+        return sendJson(res, 200, { tiers: tiers || [], vip: vip?.[0] || null, sponsors: sponsors || [] });
+      }
+      if (action === "fundraising-save") {
+        if (!methodOnly(req, res, "POST")) return;
+        const tiers = (Array.isArray(body.tiers) ? body.tiers : []).slice(0, 6).map((t, i) => ({
+          wedding_id: weddingId, name: String(t.name || "").trim().slice(0, 60),
+          min_amount_minor: Math.round(Number(t.minAmount) * 100), perks: String(t.perks || "").slice(0, 240), sort_order: i
+        })).filter(t => t.name && Number.isSafeInteger(t.min_amount_minor) && t.min_amount_minor > 0);
+        await supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}`, { ...opts, method: "DELETE", prefer: "return=minimal" });
+        if (tiers.length) await supabaseRequest("/rest/v1/sponsor_tiers", { ...opts, method: "POST", body: tiers, prefer: "return=minimal" });
+        const v = body.vip;
+        await supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${weddingId}`, { ...opts, method: "DELETE", prefer: "return=minimal" });
+        if (v && Number(v.seats) > 0 && Number(v.price) > 0) {
+          await supabaseRequest("/rest/v1/vip_offers", { ...opts, method: "POST", prefer: "return=minimal", body: {
+            wedding_id: weddingId, title: String(v.title || "VIP seating").slice(0, 80), description: String(v.description || "").slice(0, 240),
+            seats_total: Math.min(Math.floor(Number(v.seats)), 500), price_minor: Math.round(Number(v.price) * 100) } });
+        }
+        return sendJson(res, 200, { saved: true });
       }
     }
 

@@ -24,6 +24,13 @@
     .registry-item > div { margin-bottom: 0.5rem; }
     .registry-item label { display: block; margin: 0.5rem 0 0.25rem; font-size: 0.9rem; font-weight: 500; }
     .remove-registry { padding: 0.5rem 1rem; background: #d9534f; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
+
+    .tier-item { padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9; margin-bottom: 1rem; }
+    .tier-item input[type="text"], .tier-item input[type="number"], .tier-item textarea {
+      display: block; width: 100%; margin-bottom: 0.75rem; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; box-sizing: border-box;
+    }
+    .tier-item textarea { resize: vertical; min-height: 50px; }
+    .remove-tier { padding: 0.5rem 1rem; background: #d9534f; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.9rem; }
   </style>
 </head>
 <body>
@@ -144,10 +151,44 @@
           </div>
         </div>
 
-        <div class="row">
-          <button type="submit">Save changes</button>
-          <button type="button" id="publish-btn" class="ghost">Publish wedding site</button>
-        </div>
+          <hr style="margin: 2rem 0; border: none; border-top: 2px solid #d0d5cc;">
+
+          <h3>Fundraising & Sponsorships</h3>
+          <p class="fine">Create tiered giving levels, offer VIP seating, and showcase corporate sponsors.</p>
+
+          <label>Sponsorship Tiers
+            <button type="button" class="link" id="add-tier-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add tier</button>
+          </label>
+          <div id="tiers-list" style="margin-bottom: 1.5rem;"></div>
+
+          <label>VIP Seating Offer</label>
+          <div id="vip-offer" style="padding: 1rem; background: #fafbf9; border: 1px solid #d0d5cc; border-radius: 6px; margin-bottom: 1.5rem;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div>
+                <label style="font-size: 0.9rem;">VIP Seating Title</label>
+                <input type="text" id="vip-title" maxlength="80" placeholder="e.g. VIP Table Sponsorship" value="VIP Seating">
+              </div>
+              <div>
+                <label style="font-size: 0.9rem;">Price per seat (in your currency)</label>
+                <input type="number" id="vip-price" min="0" step="0.01" placeholder="0.00" value="0">
+              </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+              <div>
+                <label style="font-size: 0.9rem;">Total VIP seats available</label>
+                <input type="number" id="vip-seats" min="1" max="500" placeholder="20" value="20">
+              </div>
+              <div>
+                <label style="font-size: 0.9rem;">Description (optional)</label>
+                <input type="text" id="vip-description" maxlength="240" placeholder="e.g. Front row, reserved table, premium catering">
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <button type="submit">Save changes</button>
+            <button type="button" id="publish-btn" class="ghost">Publish wedding site</button>
+          </div>
       </form>
     </div>
 
@@ -235,7 +276,7 @@
           <span id="balance-display">$0.00</span>
         </p>
         <p class="fine" style="margin: 0.75rem 0 0; color: #666;">
-          💡 <strong>Note:</strong> Paystack transfers take 2-3 business days to arrive. Only contributions received 3+ days ago are available for withdrawal.
+          💡 <strong>Note:</strong> Paystack settles at least 2 days after a guest pays, so those funds become withdrawable from the 3rd day. Card and other funds are available sooner.
         </p>
       </div>
 
@@ -497,6 +538,42 @@
       addRegistryEditor();
     });
 
+    // Sponsorship tiers management
+    let tierCount = 0;
+    function addTierEditor() {
+      const id = `tier-${tierCount++}`;
+      const html = `
+        <div class="tier-item" data-tier-id="${id}">
+          <input type="hidden" class="tier-id" value="">
+          <div>
+            <label>Tier name</label>
+            <input type="text" class="tier-name" placeholder="e.g. Gold Sponsor, Silver Contributor, Supporter" maxlength="60">
+          </div>
+          <div>
+            <label>Minimum contribution (${$("currency").value || "USD"})</label>
+            <input type="number" class="tier-min-amount" min="1" step="0.01" placeholder="e.g. 1000">
+          </div>
+          <div>
+            <label>Perks / Recognition</label>
+            <textarea class="tier-perks" placeholder="e.g. Listed as Gold Sponsor on guest site, VIP recognition at reception" maxlength="240"></textarea>
+          </div>
+          <button type="button" class="remove-tier" data-tier-id="${id}">Remove tier</button>
+        </div>
+      `;
+      $("tiers-list").insertAdjacentHTML("beforeend", html);
+      
+      const item = $("tiers-list").querySelector(`[data-tier-id="${id}"]`);
+      item.querySelector(".remove-tier").addEventListener("click", e => {
+        e.preventDefault();
+        item.remove();
+      });
+    }
+
+    $("add-tier-btn").addEventListener("click", e => {
+      e.preventDefault();
+      addTierEditor();
+    });
+
     // Guest list CSV upload
     $("upload-btn").addEventListener("click", e => {
       e.preventDefault();
@@ -524,6 +601,8 @@
           
           // Store guests in memory for this session (would need API endpoint to persist)
           window.importedGuests = guests;
+          const saved = await WS.api("/api/weddings?action=guests-import&weddingId=" + encodeURIComponent(weddingId), { method: "POST", body: JSON.stringify({ weddingId, guests }) });
+          if (!saved.ok) { notice((await saved.json()).error || "Could not save guest list.", true); return; }
           
           // Display imported guests
           $("no-guest-list").hidden = true;
@@ -536,7 +615,7 @@
             </div>
           `).join("");
           
-          notice(`Imported ${guests.length} guests. Assign to tables and save.`);
+          notice(`Imported and saved ${guests.length} guests.`);
         } catch (err) {
           console.error("CSV parse error:", err);
           notice("Could not parse CSV file. Check format: name, email, dietary, table", true);
@@ -685,7 +764,53 @@
           registryCount = w.registry.length;
         }
 
-        // Load enabled payment methods
+        // Load sponsor tiers
+        if (w.tiers && Array.isArray(w.tiers)) {
+          $("tiers-list").innerHTML = "";
+          w.tiers.forEach((tier, idx) => {
+            const id = `tier-${idx}`;
+            const html = `
+              <div class="tier-item" data-tier-id="${id}">
+                <input type="hidden" class="tier-id" value="${esc(tier.id || "")}">
+                <div>
+                  <label>Tier name</label>
+                  <input type="text" class="tier-name" value="${esc(tier.name || "")}" placeholder="e.g. Gold Sponsor" maxlength="60">
+                </div>
+                <div>
+                  <label>Minimum contribution (${w.currency || "USD"})</label>
+                  <input type="number" class="tier-min-amount" value="${(tier.min_amount_minor || 0) / 100}" min="1" step="0.01" placeholder="e.g. 1000">
+                </div>
+                <div>
+                  <label>Perks / Recognition</label>
+                  <textarea class="tier-perks" placeholder="E.g. Listed as Gold Sponsor" maxlength="240">${esc(tier.perks || "")}</textarea>
+                </div>
+                <button type="button" class="remove-tier" data-tier-id="${id}">Remove tier</button>
+              </div>
+            `;
+            $("tiers-list").insertAdjacentHTML("beforeend", html);
+            
+            const item = $("tiers-list").querySelector(`[data-tier-id="${id}"]`);
+            item.querySelector(".remove-tier").addEventListener("click", e => {
+              e.preventDefault();
+              item.remove();
+            });
+          });
+          tierCount = w.tiers.length;
+        }
+
+        // Load VIP offer
+        if (w.vip) {
+          const v = w.vip;
+          $("vip-title").value = v.title || "VIP Seating";
+          $("vip-price").value = (v.price_minor || 0) / 100;
+          $("vip-seats").value = v.seats_total || 20;
+          $("vip-description").value = v.description || "";
+        } else {
+          $("vip-title").value = "VIP Seating";
+          $("vip-price").value = "0";
+          $("vip-seats").value = "20";
+          $("vip-description").value = "";
+        }
         if (w.enabled_payment_methods && Array.isArray(w.enabled_payment_methods)) {
           document.querySelectorAll(".payment-method-checkbox").forEach(cb => {
             cb.checked = w.enabled_payment_methods.includes(cb.value);
@@ -788,6 +913,29 @@
           }
         });
 
+        // Collect sponsorship tiers
+        const tiers = [];
+        $("tiers-list").querySelectorAll(".tier-item").forEach(item => {
+          const name = item.querySelector(".tier-name").value.trim();
+          const minAmount = parseFloat(item.querySelector(".tier-min-amount").value || 0);
+          if (name && minAmount > 0) {
+            tiers.push({
+              id: item.querySelector(".tier-id").value || null,
+              name: name,
+              minAmount: minAmount,
+              perks: item.querySelector(".tier-perks").value || ""
+            });
+          }
+        });
+
+        // Collect VIP offer
+        const vip = {
+          title: $("vip-title").value,
+          price: parseFloat($("vip-price").value || 0),
+          seats: parseInt($("vip-seats").value || 0),
+          description: $("vip-description").value || ""
+        };
+
         // Collect payout details
         const payoutMethod = $("payout-method").value;
         let payoutDetails = null;
@@ -820,6 +968,8 @@
             palette: palette,
             attireNotes: $("attire-notes").value,
             registry: registry,
+            tiers: tiers,
+            vip: vip,
             payoutDetails: payoutDetails,
             enabledPaymentMethods: enabledPaymentMethods,
             backgroundMusicUrl: $("background-music-url").value
@@ -935,7 +1085,7 @@
     async function loadWithdrawals() {
       try {
         // Load balance
-        const balRes = await WS.api(`/api/withdrawals?action=balance&weddingId=${encodeURIComponent(weddingId)}`);
+        const balRes = await WS.api(`/api/weddings?action=balance&weddingId=${encodeURIComponent(weddingId)}`);
         const balData = await balRes.json();
         if (balRes.ok) {
           const balance = (balData.balance_minor || 0) / 100;
@@ -943,7 +1093,7 @@
         }
 
         // Load history
-        const histRes = await WS.api(`/api/withdrawals?action=list&weddingId=${encodeURIComponent(weddingId)}`);
+        const histRes = await WS.api(`/api/weddings?action=withdrawals&weddingId=${encodeURIComponent(weddingId)}`);
         const histData = await histRes.json();
         if (histRes.ok) {
           const withdrawals = histData.withdrawals || [];
@@ -951,7 +1101,7 @@
           $("withdrawals-body").innerHTML = withdrawals.map(w => `
             <tr style="border-bottom: 1px solid #ddd;">
               <td style="padding: 0.75rem;">${WS.money(w.amount_minor, w.currency)}</td>
-              <td style="padding: 0.75rem;"><span class="tag ${w.status === 'completed' ? 'live' : w.status === 'pending' ? '' : 'warn'}">${w.status}</span></td>
+              <td style="padding: 0.75rem;"><span class="tag ${w.status === 'sent' ? 'live' : w.status === 'requested' ? '' : 'warn'}">${w.status}</span></td>
               <td style="padding: 0.75rem; font-size: 0.9rem;">${new Date(w.requested_at).toLocaleDateString()}</td>
             </tr>
           `).join("");
@@ -977,9 +1127,9 @@
       
       try {
         $("request-withdrawal-btn").disabled = true;
-        const res = await WS.api(`/api/withdrawals?action=request&weddingId=${encodeURIComponent(weddingId)}`, {
+        const res = await WS.api(`/api/weddings?action=withdraw&weddingId=${encodeURIComponent(weddingId)}`, {
           method: "POST",
-          body: JSON.stringify({ amount_minor: amountMinor, notes: notes })
+          body: JSON.stringify({ weddingId, amountMinor, notes, confirmed: true })
         });
         const data = await res.json();
         if (!res.ok) return notice(data.error || "Could not request withdrawal", true);

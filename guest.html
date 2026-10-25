@@ -218,6 +218,7 @@
       <li><a href="#rsvp">RSVP</a></li>
       <li><a href="#bids">DJ Bids</a></li>
       <li><a href="#ledger">Contributions</a></li>
+      <li><a href="#sponsors">Sponsors</a></li>
     </ul>
     <div class="controls">
       <button class="audio-toggle" id="audio-toggle" title="Toggle background music">🔊</button>
@@ -390,6 +391,27 @@
       <p id="no-ledger" class="fine">No contributions yet.</p>
     </section>
 
+    <!-- Sponsorship tiers -->
+    <section id="sponsor-tiers" class="card" hidden>
+      <h2>Sponsorship Levels</h2>
+      <p class="fine">Join us in supporting this special celebration at a level that works for you.</p>
+      <div id="tiers-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;"></div>
+    </section>
+
+    <!-- VIP seating -->
+    <section id="vip-section" class="card" hidden>
+      <h2>VIP Seating</h2>
+      <p class="fine">Reserve premium seating and elevate your wedding experience.</p>
+      <div id="vip-display" style="padding: 1.5rem; background: #f8f9f7; border: 2px solid var(--gold); border-radius: 8px;"></div>
+    </section>
+
+    <!-- Corporate sponsors -->
+    <section id="sponsors" class="card" hidden>
+      <h2>Our Sponsors</h2>
+      <p class="fine">We're grateful to these organizations for their generous support.</p>
+      <div id="sponsors-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;"></div>
+    </section>
+
     <!-- Digital e-card pass -->
     <section id="ecard" class="card" hidden>
       <h2>Your Digital E-Card Pass</h2>
@@ -528,10 +550,64 @@
 
       loadBids();
       loadLedger();
+      loadFundraising();
       startCountdown();
     } catch (err) {
       console.error("Load failed:", err);
       notice("Network error loading wedding.", true);
+    }
+  }
+
+  // Load fundraising data (tiers, VIP, sponsors)
+  async function loadFundraising() {
+    try {
+      const res = await fetch(`/api/guest?action=fundraising&slug=${encodeURIComponent(slug)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Display sponsorship tiers
+      if (data.tiers && data.tiers.length > 0) {
+        $("sponsor-tiers").hidden = false;
+        $("tiers-display").innerHTML = data.tiers.map(tier => `
+          <div style="border: 2px solid var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
+            <h3 style="margin: 0 0 0.5rem; color: var(--gold);">${esc(tier.name)}</h3>
+            <p style="margin: 0 0 1rem; font-size: 1.3rem; font-weight: 700; color: var(--green);">${WS.money(tier.min_amount_minor, wedding.currency || "USD", false)}</p>
+            <p style="margin: 0; font-size: 0.9rem; color: #5a5f5a;">${esc(tier.perks)}</p>
+          </div>
+        `).join("");
+      }
+
+      // Display VIP offer
+      if (data.vip) {
+        const v = data.vip;
+        $("vip-section").hidden = false;
+        const available = (v.seats_total || 0) - (v.seats_sold || 0);
+        $("vip-display").innerHTML = `
+          <h3 style="margin: 0 0 1rem; color: var(--gold);">${esc(v.title)}</h3>
+          <p style="margin: 0 0 0.5rem; font-size: 1.1rem; font-weight: 600; color: var(--green);">
+            ${WS.money(v.price_minor, wedding.currency || "USD", false)}
+          </p>
+          <p style="margin: 0 0 1rem; color: #5a5f5a;">${esc(v.description)}</p>
+          <p style="margin: 0; color: var(--sage); font-weight: 600;">
+            ${available} of ${v.seats_total} seats available
+          </p>
+        `;
+      }
+
+      // Display corporate sponsors
+      if (data.sponsors && data.sponsors.length > 0) {
+        $("sponsors").hidden = false;
+        $("sponsors-display").innerHTML = data.sponsors.map(sponsor => `
+          <div style="border: 1px solid #d0d5cc; border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
+            <h4 style="margin: 0 0 0.5rem; color: var(--green);">${esc(sponsor.company_name)}</h4>
+            <p style="margin: 0 0 1rem; color: var(--gold); font-weight: 600;">${WS.money(sponsor.amount_minor, wedding.currency || "USD", false)}</p>
+            ${sponsor.website ? `<p style="margin: 0 0 0.5rem;"><a href="${esc(sponsor.website)}" target="_blank" class="link" style="font-size: 0.9rem;">Visit website</a></p>` : ""}
+            ${sponsor.contact_phone ? `<p style="margin: 0; font-size: 0.85rem; color: #5a5f5a;">${esc(sponsor.contact_phone)}</p>` : ""}
+          </div>
+        `).join("");
+      }
+    } catch (err) {
+      console.warn("Could not load fundraising data:", err);
     }
   }
 

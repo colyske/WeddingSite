@@ -20,7 +20,7 @@ create policy "owner_guests" on public.guests
   for select using (
     wedding_id in (
       select w.id from public.weddings w 
-      where auth.uid() = w.owner_id
+      where auth.uid() = w.client_owner_id
     )
   );
 
@@ -28,7 +28,7 @@ create policy "owner_manage_guests" on public.guests
   for insert with check (
     wedding_id in (
       select w.id from public.weddings w 
-      where auth.uid() = w.owner_id
+      where auth.uid() = w.client_owner_id
     )
   );
 
@@ -36,7 +36,7 @@ create policy "owner_update_guests" on public.guests
   for update using (
     wedding_id in (
       select w.id from public.weddings w 
-      where auth.uid() = w.owner_id
+      where auth.uid() = w.client_owner_id
     )
   );
 
