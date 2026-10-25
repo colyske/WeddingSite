@@ -8,12 +8,32 @@ const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,public_location,
 
 // Load venues and payout info for a wedding
 const loadWeddingDetails = async (weddingId, opts) => {
-  const venues = await supabaseRequest(`/rest/v1/venues?wedding_id=eq.${weddingId}&select=id,name,event_time,map_link,description,is_main,sort_order&order=sort_order.asc`, opts).catch(() => []);
-  const payout = await supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${weddingId}`, opts).catch(() => null);
-  const registry = await supabaseRequest(`/rest/v1/registry_items?wedding_id=eq.${weddingId}&select=id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts).catch(() => []);
-  const tiers = await supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}&select=id,name,min_amount_minor,perks,sort_order&order=sort_order.asc`, opts).catch(() => []);
-  const vip = await supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${weddingId}&select=id,title,description,seats_total,seats_sold,price_minor&limit=1`, opts).catch(() => []);
-  return { venues: venues || [], payout, registry: registry || [], tiers: tiers || [], vip: vip?.[0] || null };
+  try {
+    const venues = await supabaseRequest(`/rest/v1/venues?wedding_id=eq.${weddingId}&select=id,name,event_time,map_link,description,is_main,sort_order&order=sort_order.asc`, opts).catch((e) => {
+      console.warn("Failed to load venues:", e.message);
+      return [];
+    });
+    const payout = await supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${weddingId}`, opts).catch((e) => {
+      console.warn("Failed to load payout preferences:", e.message);
+      return null;
+    });
+    const registry = await supabaseRequest(`/rest/v1/registry_items?wedding_id=eq.${weddingId}&select=id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts).catch((e) => {
+      console.warn("Failed to load registry items:", e.message);
+      return [];
+    });
+    const tiers = await supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}&select=id,name,min_amount_minor,perks,sort_order&order=sort_order.asc`, opts).catch((e) => {
+      console.warn("Failed to load sponsor tiers:", e.message);
+      return [];
+    });
+    const vip = await supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${weddingId}&select=id,title,description,seats_total,seats_sold,price_minor&limit=1`, opts).catch((e) => {
+      console.warn("Failed to load VIP offers:", e.message);
+      return [];
+    });
+    return { venues: venues || [], payout, registry: registry || [], tiers: tiers || [], vip: vip?.[0] || null };
+  } catch (e) {
+    console.error("loadWeddingDetails caught unexpected error:", e.message);
+    throw e;
+  }
 };
 
 // Authenticated Client workspace API. All reads/writes run as the signed-in user so RLS applies.
