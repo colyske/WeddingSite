@@ -65,6 +65,10 @@
         <label for="couple-names">Couple names <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="couple-names" type="text" maxlength="120" required aria-required="true">
 
+        <label for="wedding-slug">Wedding URL <span class="fine" style="font-weight: normal; color: #7a8580;">weddingsite.com/<strong id="slug-preview"></strong></span></label>
+        <input id="wedding-slug" type="text" maxlength="80" placeholder="e.g. sarah-and-john" pattern="[a-z0-9-]+" title="Use only lowercase letters, numbers, and hyphens">
+        <p class="fine" id="slug-error" style="color: #d9534f; display: none; margin-top: 0.5rem;"></p>
+
         <label for="welcome-story">Welcome message
           <button type="button" class="link" id="ai-story-btn" style="margin-left: 0.5rem; font-weight: normal;">✨ Get AI suggestions</button>
         </label>
@@ -731,6 +735,8 @@
         document.title = `${esc(w.couple_names)} — Wedding`;
         $("title").textContent = document.title;
         $("couple-names").value = w.couple_names || "";
+        $("wedding-slug").value = w.slug || "";
+        $("slug-preview").textContent = w.slug || "wedding";
         $("welcome-story").value = w.welcome_story || "";
         $("wedding-date").value = w.wedding_date ? w.wedding_date.split("T")[0] : "";
         $("location").value = w.public_location || "";
@@ -921,6 +927,34 @@
       }
     }
 
+    // Slug preview and validation
+    $("wedding-slug").addEventListener("input", e => {
+      const slug = e.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+      $("slug-preview").textContent = slug || "wedding";
+      $("slug-error").style.display = "none";
+    });
+
+    $("wedding-slug").addEventListener("blur", async e => {
+      const slug = e.target.value.trim().toLowerCase();
+      if (!slug) {
+        $("slug-error").textContent = "Please enter a website address.";
+        $("slug-error").style.display = "block";
+        return;
+      }
+      if (!/^[a-z0-9-]{3,80}$/.test(slug)) {
+        $("slug-error").textContent = "Use 3-80 lowercase letters, numbers, and hyphens only.";
+        $("slug-error").style.display = "block";
+        return;
+      }
+      const reserved = ["admin", "api", "auth", "dashboard", "signin", "guest", "demo", "form-diagnostics", "index"];
+      if (reserved.includes(slug)) {
+        $("slug-error").textContent = "That address is reserved. Please choose a different one.";
+        $("slug-error").style.display = "block";
+        return;
+      }
+      $("slug-error").style.display = "none";
+    });
+
     // Save changes
     $("edit-form").addEventListener("submit", async e => {
       e.preventDefault();
@@ -1011,6 +1045,7 @@
           body: JSON.stringify({
             weddingId,
             coupleNames: $("couple-names").value,
+            slug: $("wedding-slug").value,
             welcomeStory: $("welcome-story").value,
             weddingDate: $("wedding-date").value || null,
             location: $("location").value,

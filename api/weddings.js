@@ -72,6 +72,32 @@ export default async function handler(req, res) {
       if (!methodOnly(req, res, "POST")) return;
       if (!UUID.test(String(body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
       const patch = {};
+      
+      // Handle slug updates with uniqueness validation
+      if (body.slug !== undefined) {
+        const newSlug = String(body.slug).trim().toLowerCase();
+        if (newSlug && !/^[a-z0-9-]{3,80}$/.test(newSlug)) {
+          return sendJson(res, 400, { error: "Slug must be 3-80 lowercase letters, numbers, and hyphens." });
+        }
+        const reserved = ["admin", "api", "auth", "dashboard", "signin", "guest", "demo", "form-diagnostics", "index"];
+        if (newSlug && reserved.includes(newSlug)) {
+          return sendJson(res, 400, { error: "That web address is reserved. Please choose a different one." });
+        }
+        if (newSlug) {
+          // Check uniqueness
+          try {
+            const existing = await supabaseRequest(`/rest/v1/weddings?slug=eq.${encodeURIComponent(newSlug)}&select=id`, opts);
+            if (existing?.length > 0 && existing[0].id !== body.weddingId) {
+              return sendJson(res, 409, { error: "That web address is already taken. Please choose a different one." });
+            }
+            patch.slug = newSlug;
+          } catch (e) {
+            console.warn("Slug uniqueness check error:", e);
+            return sendJson(res, 400, { error: "Could not validate web address. Please try again." });
+          }
+        }
+      }
+      
       if (body.coupleNames !== undefined) patch.couple_names = String(body.coupleNames).trim().slice(0, 120);
       if (body.welcomeStory !== undefined) patch.welcome_story = String(body.welcomeStory).slice(0, 500);
       if (body.weddingDate !== undefined) patch.wedding_date = body.weddingDate || null;
