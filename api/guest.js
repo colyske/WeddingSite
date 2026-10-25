@@ -130,6 +130,15 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { tiers: tiers || [], vip: vip?.[0] || null, sponsors: sponsors || [] });
     }
 
+    if (action === "browse") {
+      if (!methodOnly(req, res, "GET")) return;
+      const offset = Math.max(0, parseInt(req.query.offset || "0"));
+      const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || "12")));
+      
+      const weddings = await rpc("list_published_weddings_paginated", { p_offset: offset, p_limit: limit });
+      return sendJson(res, 200, { weddings: weddings || [] });
+    }
+
     return sendJson(res, 404, { error: "Unknown action." });
   } catch (error) {
     console.error("guest endpoint failed", error.message);

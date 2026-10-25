@@ -68,6 +68,17 @@
       </div>
     </div>
 
+    <!-- Upcoming Weddings -->
+    <div style="margin: 3rem 0;">
+      <h2 style="color: #203a31; margin-bottom: 1.5rem;">Upcoming Weddings</h2>
+      <div id="weddings-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem;">
+        <div style="text-align: center; padding: 2rem; color: #888;">Loading weddings...</div>
+      </div>
+      <div style="text-align: center; margin-top: 2rem;">
+        <button id="load-more-btn" class="cta-btn" style="background: #be9b52; color: #203a31; border: none; cursor: pointer;">Load More</button>
+      </div>
+    </div>
+
     <!-- CTA -->
     <div class="cta-section">
       <h2>Ready to plan your wedding?</h2>
@@ -82,5 +93,81 @@
   </div>
 
   <script src="auth-client.js"></script>
+  <script>
+    let currentOffset = 0;
+    const pageSize = 12;
+
+    async function loadWeddings() {
+      try {
+        const res = await fetch(`/api/guest?action=browse&offset=${currentOffset}&limit=${pageSize}`);
+        const data = await res.json();
+        
+        if (!res.ok) {
+          console.error("Failed to load weddings:", data);
+          return;
+        }
+
+        const container = document.getElementById("weddings-container");
+        const weddings = data.weddings || [];
+
+        if (currentOffset === 0) container.innerHTML = "";
+
+        if (weddings.length === 0 && currentOffset === 0) {
+          container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 2rem; color: #888;">No weddings yet. Be the first!</div>`;
+          document.getElementById("load-more-btn").style.display = "none";
+          return;
+        }
+
+        weddings.forEach(w => {
+          const card = document.createElement("div");
+          card.style.cssText = "padding: 1.5rem; background: #fff; border-radius: 8px; border: 1px solid #e3dcc7; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;";
+          
+          const dateStr = w.wedding_date ? new Date(w.wedding_date).toLocaleDateString() : "TBD";
+          
+          card.innerHTML = `
+            <h3 style="margin-top: 0; color: #203a31; font-size: 1.2rem;">${escapeHtml(w.couple_names || "Wedding")}</h3>
+            <p style="color: #666; margin: 0.5rem 0; font-size: 0.95rem;">
+              <strong>${dateStr}</strong>
+            </p>
+            <p style="color: #888; margin: 0; font-size: 0.9rem;">Currency: ${w.currency || "USD"}</p>
+          `;
+          
+          card.addEventListener("click", () => {
+            window.location.href = `/guest.html?w=${encodeURIComponent(w.slug)}`;
+          });
+          
+          card.addEventListener("mouseenter", () => {
+            card.style.transform = "translateY(-4px)";
+            card.style.boxShadow = "0 8px 16px rgba(0,0,0,0.1)";
+          });
+          
+          card.addEventListener("mouseleave", () => {
+            card.style.transform = "translateY(0)";
+            card.style.boxShadow = "none";
+          });
+          
+          container.appendChild(card);
+        });
+
+        currentOffset += pageSize;
+        document.getElementById("load-more-btn").style.display = weddings.length < pageSize ? "none" : "inline-block";
+      } catch (err) {
+        console.error("Error loading weddings:", err);
+        document.getElementById("weddings-container").innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 2rem; color: #c33;">Error loading weddings.</div>`;
+      }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Load initial weddings
+    document.addEventListener("DOMContentLoaded", loadWeddings);
+
+    // Load more handler
+    document.getElementById("load-more-btn").addEventListener("click", loadWeddings);
+  </script>
 </body>
 </html>
