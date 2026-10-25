@@ -101,19 +101,24 @@ export default async function handler(req, res) {
         }
         return sendJson(res, 400, { error: result.data?.msg || "Could not create account. Please try again." });
       }
-      // Account created, but Supabase will send verification email automatically if email confirmation is enabled
-      // Create profile with default Client role
+      // Account created. Supabase auth trigger will auto-create profile via handle_new_user() trigger.
+      // If trigger fails or is not set up, create profile now using service role key.
       try {
         const userId = result.data?.user?.id;
-        if (userId) {
-          await supabaseRequest("/rest/v1/profiles", {
+        if (userId && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+          const { url } = supabaseConfig();
+          await fetch(`${url}/rest/v1/profiles`, {
             method: "POST",
-            token: result.data?.session?.access_token || "",
-            body: { id: userId, platform_role: "Client" }
-          }).catch(err => console.warn("Could not create profile:", err));
+            headers: {
+              Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+              "Content-Type": "application/json",
+              Prefer: "resolution=merge-duplicates"
+            },
+            body: JSON.stringify({ id: userId, platform_role: "Client" })
+          }).catch(err => console.warn("Could not create profile (will retry on sign-in):", err.message));
         }
       } catch (e) {
-        console.warn("Profile creation error:", e);
+        console.warn("Profile creation error (non-fatal):", e.message);
       }
       return sendJson(res, 201, { message: "Account created. Check your email to verify your address and sign in." });
     }
