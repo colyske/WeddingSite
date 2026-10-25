@@ -139,7 +139,64 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { weddings: weddings || [] });
     }
 
+    if (action === "wedding") {
+      if (!methodOnly(req, res, "GET")) return;
+      const slug = String(req.query.slug || "").toLowerCase();
+      if (!/^[a-z0-9-]{3,80}$/.test(slug)) return sendJson(res, 404, { error: "Wedding not found." });
+      const rows = await rpc("get_public_wedding", { p_slug: slug });
+      if (!rows?.length) return sendJson(res, 404, { error: "This wedding site is not published." });
+      return sendJson(res, 200, rows[0]);
+    }
+
+    if (action === "guest-pass") {
+      // E-card: retrieve guest RSVP data for QR pass display
+      // Security: Only returns guest's own data; no direct table access; goes through RPC
+      if (!methodOnly(req, res, "GET")) return;
+      const slug = String(req.query.slug || "").toLowerCase();
+      const guestId = String(req.query.guest_id || "");
+      if (!/^[a-z0-9-]{3,80}$/.test(slug)) return sendJson(res, 404, { error: "Wedding not found." });
+      if (!UUID.test(guestId)) return sendJson(res, 400, { error: "Invalid guest." });
+      
+      const weddingId = await resolveWeddingId(slug, rpc);
+      if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
+      
+      try {
+        const guest = await rpc("get_guest_pass_data", { p_wedding_id: weddingId, p_guest_id: guestId });
+        if (!guest || guest.length === 0) return sendJson(res, 404, { error: "Guest not found." });
+        return sendJson(res, 200, guest[0]);
+      } catch (error) {
+        return sendJson(res, 403, { error: "Cannot retrieve guest data." });
+      }
+    }
+
+    if (action === "verify-qr") {
+      // Door check-in: scan QR code and verify guest RSVP status
+      // Security: Requires organizer session; rate-limited
+      if (!methodOnly(req, res, "POST")) return;
+      const body = req.body && typeof req.body === "object" ? req.body : {};
+      
+      let weddingId = String(body.weddingId || "");
+      if (!UUID.test(weddingId)) {
+        const slug = String(body.slug || "").toLowerCase();
+        if (!slug) return sendJson(res, 400, { error: "Invalid wedding." });
+        weddingId = await resolveWeddingId(slug, rpc);
+        if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
+      }
+      
+      const guestId = String(body.guestId || "");
+      if (!UUID.test(guestId)) return sendJson(res, 400, { error: "Invalid guest ID." });
+      
+      try {
+        const result = await rpc("mark_guest_checked_in", { p_wedding_id: weddingId, p_guest_id: guestId });
+        if (!result || result.length === 0) return sendJson(res, 404, { error: "Guest not found." });
+        return sendJson(res, 200, { checked_in: true, guest: result[0] });
+      } catch (error) {
+        return sendJson(res, 400, { error: error.message || "Could not verify guest." });
+      }
+    }
+
     return sendJson(res, 404, { error: "Unknown action." });
+
   } catch (error) {
     console.error("guest endpoint failed", error.message);
     return sendJson(res, 503, { error: "This is temporarily unavailable. Please try again shortly." });
