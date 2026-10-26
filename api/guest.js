@@ -1,4 +1,5 @@
 import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
+import { requireAuth } from "../server/auth-middleware.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const text = (value, max) => (typeof value === "string" ? value.trim().slice(0, max) : "");
@@ -14,16 +15,16 @@ async function resolveWeddingId(slug, rpc) {
 // anonymous clients have no direct table access and never receive platform fees or guest emails.
 export default async function handler(req, res) {
   const action = String(req.query?.action || "");
-  const rpc = (name, body) => supabaseRequest(`/rest/v1/rpc/${name}`, { method: "POST", body });
+  const rpc = (name, body, options = {}) => supabaseRequest(`/rest/v1/rpc/${name}`, { ...options, method: "POST", body });
 
   try {
     if (action === "site") {
       if (!methodOnly(req, res, "GET")) return;
       const slug = String(req.query.slug || "").toLowerCase();
       if (!/^[a-z0-9-]{3,80}$/.test(slug)) return sendJson(res, 404, { error: "Wedding not found." });
-      const rows = await rpc("get_public_wedding", { p_slug: slug });
-      if (!rows?.length) return sendJson(res, 404, { error: "This wedding site is not published." });
-      return sendJson(res, 200, { wedding: rows[0] });
+      const wedding = await rpc("get_public_wedding_site", { p_slug: slug });
+      if (!wedding?.id) return sendJson(res, 404, { error: "This wedding site is not published." });
+      return sendJson(res, 200, { wedding });
     }
 
     if (action === "leaderboard") {
@@ -72,16 +73,21 @@ export default async function handler(req, res) {
       
       if (action === "rsvp") {
         try {
-          await rpc("submit_rsvp", {
+          const result = await rpc("submit_rsvp_with_pass", {
             p_wedding_id: weddingId,
             p_guest_email: text(body.guestEmail, 254),
             p_guest_name: text(body.guestName, 100),
             p_attending: body.attending === true,
-            p_dietary_requested: body.guestEmail ? true : false,
-            p_dietary_notes: text(body.dietaryNotes, 240),
+            p_dietary_requested: Boolean(text(body.dietaryPreference, 60) || text(body.dietaryNotes, 240)),
+            p_dietary_notes: [text(body.dietaryPreference, 60), text(body.dietaryNotes, 180)].filter(Boolean).join(": ").slice(0, 240),
             p_plus_one_count: Math.max(0, parseInt(body.plusOnes || 0))
           });
-          return sendJson(res, 200, { message: "RSVP received." });
+          const rsvp = Array.isArray(result) ? result[0] : result;
+          if (!rsvp || !["confirmed", "declined"].includes(rsvp.status) || !rsvp.rsvp_id) {
+            const full = rsvp?.status === "full";
+            return sendJson(res, full ? 409 : 400, { error: rsvp?.message || "RSVP could not be saved." });
+          }
+          return sendJson(res, 200, { message: rsvp.message, status: rsvp.status, rsvpId: rsvp.rsvp_id });
         } catch (error) {
           return sendJson(res, error.message.includes("capacity") ? 409 : 400, { error: error.message || "RSVP failed." });
         }
@@ -89,14 +95,16 @@ export default async function handler(req, res) {
 
       if (action === "bid") {
         try {
-          await rpc("place_dj_bid", {
+          const result = await rpc("place_dj_bid", {
             p_wedding_id: weddingId,
             p_song_title: text(body.songTitle, 160),
             p_artist_name: text(body.artist, 100),
             p_bid_amount_minor: Math.round(Number(body.bidAmount || 0) * 100),
             p_bidder_name: ""
           });
-          return sendJson(res, 200, { message: "Bid placed." });
+          const bid = Array.isArray(result) ? result[0] : result;
+          if (bid?.status !== "placed") return sendJson(res, 400, { error: bid?.message || "Bid could not be saved." });
+          return sendJson(res, 200, { message: bid.message });
         } catch (error) {
           return sendJson(res, 400, { error: error.message || "Bid failed." });
         }
@@ -123,11 +131,8 @@ export default async function handler(req, res) {
       const weddingId = await resolveWeddingId(slug, rpc);
       if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
       
-      const tiers = await supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}&select=id,name,min_amount_minor,perks,sort_order&order=sort_order.asc`).catch(() => []);
-      const vip = await supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${weddingId}&select=id,title,description,seats_total,seats_sold,price_minor&limit=1`).catch(() => []);
-      const sponsors = await supabaseRequest(`/rest/v1/sponsors?wedding_id=eq.${weddingId}&select=id,company_name,contact_email,contact_phone,website,amount_minor&status=eq.active&order=amount_minor.desc&limit=100`).catch(() => []);
-      
-      return sendJson(res, 200, { tiers: tiers || [], vip: vip?.[0] || null, sponsors: sponsors || [] });
+      const result = await rpc("get_public_fundraising", { p_slug: slug });
+      return sendJson(res, 200, result || { tiers: [], vip: null, sponsors: [] });
     }
 
     if (action === "browse") {
@@ -143,9 +148,9 @@ export default async function handler(req, res) {
       if (!methodOnly(req, res, "GET")) return;
       const slug = String(req.query.slug || "").toLowerCase();
       if (!/^[a-z0-9-]{3,80}$/.test(slug)) return sendJson(res, 404, { error: "Wedding not found." });
-      const rows = await rpc("get_public_wedding", { p_slug: slug });
-      if (!rows?.length) return sendJson(res, 404, { error: "This wedding site is not published." });
-      return sendJson(res, 200, rows[0]);
+      const wedding = await rpc("get_public_wedding_site", { p_slug: slug });
+      if (!wedding?.id) return sendJson(res, 404, { error: "This wedding site is not published." });
+      return sendJson(res, 200, wedding);
     }
 
     if (action === "guest-pass") {
@@ -170,26 +175,25 @@ export default async function handler(req, res) {
     }
 
     if (action === "verify-qr") {
-      // Door check-in: scan QR code and verify guest RSVP status
-      // Security: Requires organizer session; rate-limited
-      if (!methodOnly(req, res, "POST")) return;
-      const body = req.body && typeof req.body === "object" ? req.body : {};
-      
-      let weddingId = String(body.weddingId || "");
-      if (!UUID.test(weddingId)) {
-        const slug = String(body.slug || "").toLowerCase();
-        if (!slug) return sendJson(res, 400, { error: "Invalid wedding." });
-        weddingId = await resolveWeddingId(slug, rpc);
-        if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
+      if (req.method === "GET") {
+        const code = String(req.query.code || "");
+        if (!UUID.test(code)) return sendJson(res, 400, { error: "Invalid pass code." });
+        const result = await rpc("get_guest_verification", { p_code: code });
+        const guest = Array.isArray(result) ? result[0] : result;
+        if (!guest?.rsvp_id) return sendJson(res, 404, { error: "Pass not found or wedding is unpublished." });
+        return sendJson(res, 200, { guest });
       }
-      
-      const guestId = String(body.guestId || "");
-      if (!UUID.test(guestId)) return sendJson(res, 400, { error: "Invalid guest ID." });
-      
+      if (!methodOnly(req, res, "POST")) return;
+      const session = await requireAuth(req, res);
+      if (!session) return;
+      const body = req.body && typeof req.body === "object" ? req.body : {};
+      const code = String(body.code || "");
+      if (!UUID.test(code)) return sendJson(res, 400, { error: "Invalid pass code." });
       try {
-        const result = await rpc("mark_guest_checked_in", { p_wedding_id: weddingId, p_guest_id: guestId });
-        if (!result || result.length === 0) return sendJson(res, 404, { error: "Guest not found." });
-        return sendJson(res, 200, { checked_in: true, guest: result[0] });
+        const result = await rpc("mark_guest_rsvp_checked_in", { p_code: code }, { token: session.token });
+        const guest = Array.isArray(result) ? result[0] : result;
+        if (!guest?.rsvp_id) return sendJson(res, 404, { error: "Guest not found." });
+        return sendJson(res, 200, { checked_in: true, guest });
       } catch (error) {
         return sendJson(res, 400, { error: error.message || "Could not verify guest." });
       }

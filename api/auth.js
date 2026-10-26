@@ -46,7 +46,17 @@ export default async function handler(req, res) {
       const result = await authCall("/token?grant_type=password", { body: { email: body.email.trim().toLowerCase(), password: body.password } });
       if (!result.ok || !result.data?.access_token) return sendJson(res, 401, { error: "Email or password is incorrect." });
       const { access_token: accessToken, refresh_token: refreshToken, user } = result.data;
-      return sendJson(res, 200, { accessToken, refreshToken, user: { id: user.id, email: user.email }, role: await roleFor(user.id, accessToken) });
+      const userData = user.user_metadata || {};
+      return sendJson(res, 200, {
+        accessToken,
+        refreshToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          displayName: userData.display_name || userData.full_name || ""
+        },
+        role: await roleFor(user.id, accessToken)
+      });
     }
 
     if (action === "email-link") {
@@ -80,6 +90,23 @@ export default async function handler(req, res) {
       const result = await authCall("/user", { method: "PUT", token: session.token, body: { password: body.password } });
       if (!result.ok) return sendJson(res, 400, { error: result.data?.msg || result.data?.message || "Could not set the password. Request a new link and try again." });
       return sendJson(res, 200, { passwordSet: true });
+    }
+
+    if (action === "update-profile") {
+      if (!methodOnly(req, res, "POST")) return;
+      const session = await requireAuth(req, res);
+      if (!session) return;
+      const displayName = typeof body.displayName === "string" ? body.displayName.trim() : "";
+      if (!displayName || displayName.length > 100) {
+        return sendJson(res, 400, { error: "Enter a display name of 1 to 100 characters." });
+      }
+      const result = await authCall("/user", {
+        method: "PUT",
+        token: session.token,
+        body: { data: { display_name: displayName } }
+      });
+      if (!result.ok) return sendJson(res, 400, { error: "Could not update profile. Please try again." });
+      return sendJson(res, 200, { displayName });
     }
 
     if (action === "register") {
@@ -127,7 +154,15 @@ export default async function handler(req, res) {
       if (!methodOnly(req, res, "GET")) return;
       const session = await requireAuth(req, res);
       if (!session) return;
-      return sendJson(res, 200, { user: { id: session.user.id, email: session.user.email }, role: await roleFor(session.user.id, session.token) });
+      const userData = session.user.user_metadata || {};
+      return sendJson(res, 200, {
+        user: {
+          id: session.user.id,
+          email: session.user.email,
+          displayName: userData.display_name || userData.full_name || ""
+        },
+        role: await roleFor(session.user.id, session.token)
+      });
     }
 
     return sendJson(res, 404, { error: "Unknown auth action." });

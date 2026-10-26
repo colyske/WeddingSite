@@ -233,6 +233,7 @@
       <div class="hero-content">
         <h1 id="couple-names">Wedding</h1>
         <p class="subtitle" id="wedding-date-display">Coming soon…</p>
+        <p class="subtitle" id="countdown-state" hidden aria-live="polite"></p>
 
         <!-- Live countdown -->
         <div class="countdown" id="countdown">
@@ -421,6 +422,9 @@
         <p style="margin: 0 0 1.5rem; font-size: 1.2rem; font-weight: 600; color: var(--green);" id="ecard-guest-name"></p>
         <div id="qrcode" style="display: inline-block; padding: 1rem; background: #fff; border-radius: 8px;"></div>
         <p style="margin: 1rem 0 0; font-size: 0.85rem; color: #7a8580;">Scan to verify attendance</p>
+        <a id="pass-verification-link" class="link" target="_blank" rel="noopener noreferrer" hidden>Open pass verification</a>
+        <a id="standalone-pass-link" class="link" target="_blank" rel="noopener noreferrer" hidden>Open full e-card</a>
+        <p id="pass-status" style="margin: 0.5rem 0 0; font-weight: 600;"></p>
         <p id="ecard-date" style="margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--gold); font-weight: 600;"></p>
       </div>
     </section>
@@ -434,6 +438,14 @@
 (async () => {
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const safeUrl = value => {
+    try {
+      const url = new URL(value);
+      return ["http:", "https:"].includes(url.protocol) ? url.toString() : "";
+    } catch {
+      return "";
+    }
+  };
   const notice = (text, bad) => {
     const el = $("notice");
     el.hidden = !text;
@@ -458,7 +470,7 @@
       wedding = data.wedding;
       if (!wedding) return notice("Wedding not found.", true);
 
-      document.title = `${esc(wedding.couple_names)} — Wedding`;
+      document.title = `${wedding.couple_names || "Wedding"} — Wedding`;
 
       // Couple monogram
       const names = wedding.couple_names?.split(/[&,]|and/).map(n => n.trim().charAt(0).toUpperCase()).join("").slice(0, 3) || "WS";
@@ -475,25 +487,25 @@
       }
 
       // Hero
-      $("couple-names").textContent = esc(wedding.couple_names || "Wedding");
+      $("couple-names").textContent = wedding.couple_names || "Wedding";
 
       if (wedding.wedding_date) {
-        const d = new Date(wedding.wedding_date);
+        const d = parseWeddingDate();
         const opts = { weekday: "long", year: "numeric", month: "long", day: "numeric" };
-        $("wedding-date-display").textContent = d.toLocaleDateString("en-US", opts);
+        if (d) $("wedding-date-display").textContent = d.toLocaleDateString(undefined, opts);
       }
 
       // Story
       if (wedding.welcome_story?.trim()) {
         $("story").hidden = false;
-        $("welcome-story").textContent = esc(wedding.welcome_story);
+        $("welcome-story").textContent = wedding.welcome_story;
       }
 
       // Details
       if (wedding.public_location?.trim() || wedding.palette?.length) {
         $("details").hidden = false;
-        $("wedding-location").textContent = esc(wedding.public_location || "Location TBA");
-        $("palette-preview").innerHTML = (wedding.palette || []).map(c => `<span style="background: ${esc(c)};"></span>`).join("");
+        $("wedding-location").textContent = wedding.public_location || "Location TBA";
+        $("palette-preview").innerHTML = (wedding.palette || []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).map(c => `<span style="background: ${c};"></span>`).join("");
       }
 
       // Venues
@@ -503,7 +515,7 @@
           <div style="border-left: 4px solid var(--sage); padding: 1rem; background: #f8f9f7; border-radius: 4px;">
             ${v.event_time ? `<p style="margin: 0 0 0.5rem; color: var(--gold); font-weight: 600;">${esc(v.event_time)}</p>` : ""}
             <h3 style="margin: 0 0 0.5rem; color: var(--green);">${esc(v.name)}</h3>
-            ${v.map_link ? `<p style="margin: 0 0 0.5rem;"><a href="${esc(v.map_link)}" target="_blank" class="link" style="font-size: 0.95rem;">📍 View on map</a></p>` : ""}
+            ${safeUrl(v.map_link) ? `<p style="margin: 0 0 0.5rem;"><a href="${esc(safeUrl(v.map_link))}" target="_blank" rel="noopener noreferrer" class="link" style="font-size: 0.95rem;">📍 View on map</a></p>` : ""}
             ${v.description ? `<p style="margin: 0; font-size: 0.95rem; color: #5a5f5a;">${esc(v.description)}</p>` : ""}
           </div>
         `).join("");
@@ -512,9 +524,9 @@
       // Attire & Dress Code
       if ((wedding.palette && wedding.palette.length) || wedding.attire_notes?.trim()) {
         $("attire").hidden = false;
-        $("attire-palette-preview").innerHTML = (wedding.palette || []).map(c => `<span style="background: ${esc(c)};"></span>`).join("");
+        $("attire-palette-preview").innerHTML = (wedding.palette || []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).map(c => `<span style="background: ${c};"></span>`).join("");
         if (wedding.attire_notes?.trim()) {
-          $("attire-notes-display").textContent = esc(wedding.attire_notes);
+          $("attire-notes-display").textContent = wedding.attire_notes;
         }
       }
 
@@ -601,7 +613,7 @@
           <div style="border: 1px solid #d0d5cc; border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
             <h4 style="margin: 0 0 0.5rem; color: var(--green);">${esc(sponsor.company_name)}</h4>
             <p style="margin: 0 0 1rem; color: var(--gold); font-weight: 600;">${WS.money(sponsor.amount_minor, wedding.currency || "USD", false)}</p>
-            ${sponsor.website ? `<p style="margin: 0 0 0.5rem;"><a href="${esc(sponsor.website)}" target="_blank" class="link" style="font-size: 0.9rem;">Visit website</a></p>` : ""}
+            ${safeUrl(sponsor.website) ? `<p style="margin: 0 0 0.5rem;"><a href="${esc(safeUrl(sponsor.website))}" target="_blank" rel="noopener noreferrer" class="link" style="font-size: 0.9rem;">Visit website</a></p>` : ""}
             ${sponsor.contact_phone ? `<p style="margin: 0; font-size: 0.85rem; color: #5a5f5a;">${esc(sponsor.contact_phone)}</p>` : ""}
           </div>
         `).join("");
@@ -614,17 +626,24 @@
   // Live countdown
   function startCountdown() {
     if (!wedding.wedding_date) return;
-    const weddingDate = new Date(wedding.wedding_date).getTime();
+    const weddingDate = parseWeddingDate();
+    if (!weddingDate || Number.isNaN(weddingDate.getTime())) return;
     const update = () => {
       const now = Date.now();
-      const diff = weddingDate - now;
+      const diff = weddingDate.getTime() - now;
       if (diff < 0) {
         $("days").textContent = "0";
         $("hours").textContent = "0";
         $("minutes").textContent = "0";
         $("seconds").textContent = "0";
+        $("countdown").hidden = true;
+        $("countdown-state").hidden = false;
+        $("countdown-state").textContent = new Date(weddingDate).toDateString() === new Date().toDateString()
+          ? "Today's celebration is underway!" : "The celebration has started.";
         return;
       }
+      $("countdown").hidden = false;
+      $("countdown-state").hidden = true;
       const s = Math.floor(diff / 1000) % 60;
       const m = Math.floor(diff / 60000) % 60;
       const h = Math.floor(diff / 3600000) % 24;
@@ -638,19 +657,30 @@
     setInterval(update, 1000);
   }
 
+  function parseWeddingDate() {
+    const [year, month, day] = String(wedding.wedding_date || "").split("-").map(Number);
+    if (!year || !month || !day) return null;
+    const venue = (wedding.venues || []).find(item => item.is_main) || (wedding.venues || [])[0];
+    const match = String(venue?.event_time || "").match(/^(\d{2}):(\d{2})(?::(\d{2}))?/);
+    return new Date(year, month - 1, day, Number(match?.[1] || 0), Number(match?.[2] || 0), Number(match?.[3] || 0));
+  }
+
+  const icalEscape = value => String(value ?? "").replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/([,;])/g, "\\$1");
+
   // .ics calendar download
   $("ics-download").addEventListener("click", () => {
     if (!wedding.wedding_date) return alert("Wedding date not set.");
-    const d = new Date(wedding.wedding_date);
+    const d = parseWeddingDate();
+    if (!d) return alert("Wedding date is invalid.");
     const ical = `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//WeddingSite//EN
 CALSCALE:GREGORIAN
 BEGIN:VEVENT
 DTSTART:${d.toISOString().replace(/[-:]/g, "").slice(0, 15)}Z
-SUMMARY:${esc(wedding.couple_names)}'s Wedding
-LOCATION:${esc(wedding.public_location || "")}
-DESCRIPTION:${esc(wedding.welcome_story || "Join us for our wedding!")}
+SUMMARY:${icalEscape(wedding.couple_names)}'s Wedding
+LOCATION:${icalEscape(wedding.public_location || "")}
+DESCRIPTION:${icalEscape(wedding.welcome_story || "Join us for our wedding!")}
 END:VEVENT
 END:VCALENDAR`;
     const blob = new Blob([ical], { type: "text/calendar" });
@@ -723,11 +753,21 @@ END:VCALENDAR`;
       
       // Generate e-card pass
       const guestName = $("guest-name").value;
-      const passData = `${wedding.id}:${guestName}:${Date.now()}`;
+      const verificationUrl = new URL("/verify.html", location.origin);
+      verificationUrl.searchParams.set("code", data.rsvpId);
       
       $("ecard-guest-name").textContent = guestName;
-      if (wedding.wedding_date) {
-        const wDate = new Date(wedding.wedding_date);
+      $("pass-status").textContent = data.status === "confirmed" ? "Attendance confirmed" : "Not attending";
+      $("pass-verification-link").href = verificationUrl.toString();
+      $("pass-verification-link").textContent = "Open pass verification";
+      $("pass-verification-link").hidden = false;
+      const ecardUrl = new URL("/ecard.html", location.origin);
+      ecardUrl.searchParams.set("slug", slug);
+      ecardUrl.searchParams.set("guest_id", data.rsvpId);
+      $("standalone-pass-link").href = ecardUrl.toString();
+      $("standalone-pass-link").hidden = false;
+      if (wedding.wedding_date && parseWeddingDate()) {
+        const wDate = parseWeddingDate();
         $("ecard-date").textContent = wDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
       }
       
@@ -737,7 +777,7 @@ END:VCALENDAR`;
       // Generate new QR code
       try {
         new QRCode($("qrcode"), {
-          text: passData,
+          text: verificationUrl.toString(),
           width: 200,
           height: 200,
           colorDark: "#244b3a",
@@ -806,7 +846,7 @@ END:VCALENDAR`;
         <tr style="border-bottom: 1px solid #e3dcc7;">
           <td style="padding: 0.75rem; color: var(--gold);">${i + 1}</td>
           <td style="padding: 0.75rem;">${esc(b.song_title)}</td>
-          <td style="padding: 0.75rem; color: var(--sage);">${esc(b.artist || "—")}</td>
+          <td style="padding: 0.75rem; color: var(--sage);">${esc(b.artist_name || "—")}</td>
           <td style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, wedding.currency)}</td>
         </tr>
       `).join("");

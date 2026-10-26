@@ -1,8 +1,27 @@
 // Session kept in sessionStorage (cleared when the tab closes). Tokens are never logged.
 window.WS = {
-  save(s) { sessionStorage.setItem("ws-session", JSON.stringify({ a: s.accessToken, r: s.refreshToken || "", role: s.role || null })); },
-  token() { try { return JSON.parse(sessionStorage.getItem("ws-session"))?.a || ""; } catch { return ""; } },
-  role() { try { return JSON.parse(sessionStorage.getItem("ws-session"))?.role || null; } catch { return null; } },
+  session() { try { return JSON.parse(sessionStorage.getItem("ws-session")) || {}; } catch { return {}; } },
+  save(s) {
+    const previous = WS.session();
+    const user = s.user || previous.user || {};
+    sessionStorage.setItem("ws-session", JSON.stringify({
+      a: s.accessToken || previous.a || "",
+      r: s.refreshToken || previous.r || "",
+      role: s.role || previous.role || previous.r || null,
+      user,
+      n: s.displayName || s.name || user.displayName || user.user_metadata?.display_name || user.user_metadata?.full_name || previous.n || "",
+      e: user.email || previous.e || ""
+    }));
+  },
+  token() { return WS.session().a || ""; },
+  role() { const session = WS.session(); return session.role || session.r || null; },
+  name() { const session = WS.session(); return session.n || session.user?.user_metadata?.display_name || session.user?.user_metadata?.full_name || ""; },
+  email() { const session = WS.session(); return session.e || session.user?.email || ""; },
+  setName(name) {
+    const session = WS.session();
+    session.n = name;
+    sessionStorage.setItem("ws-session", JSON.stringify(session));
+  },
   clear() { sessionStorage.removeItem("ws-session"); },
   async api(path, options = {}) {
     const send = () => fetch(path, { ...options, headers: { "Content-Type": "application/json", ...(options.headers || {}), Authorization: "Bearer " + WS.token() } });
