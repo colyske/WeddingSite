@@ -486,10 +486,14 @@
       const container = $("color-inputs");
       const inputs = container.querySelectorAll(".palette-color");
       if (inputs.length === 0) {
-        // Initialize with current palette or defaults
-        const palette = $("palette-preview").innerHTML 
-          ? Array.from($("palette-preview").querySelectorAll("span")).map(s => s.style.background || "#244b3a")
-          : ["#244b3a"];
+        // Initialize with current palette from data attribute or preview
+        let palette;
+        try {
+          const dataAttr = $("palette-preview").dataset.palette;
+          palette = dataAttr ? JSON.parse(dataAttr) : ["#244b3a"];
+        } catch (e) {
+          palette = ["#244b3a"];
+        }
         container.innerHTML = "";
         palette.slice(0, 4).forEach((color, idx) => {
           addColorInput(color);
@@ -540,7 +544,17 @@
     $("apply-colors-btn").addEventListener("click", e => {
       e.preventDefault();
       const colors = Array.from($("color-inputs").querySelectorAll(".palette-color")).map(c => c.value);
-      $("palette-preview").innerHTML = colors.map(c => `<span style="background: ${c};"></span>`).join("");
+      
+      // Validate colors
+      const COLOR_REGEX = /^#[0-9a-f]{6}$/i;
+      if (!colors.length || colors.length > 4 || !colors.every(c => COLOR_REGEX.test(c))) {
+        alert("Please enter valid hex colors (e.g. #244b3a)");
+        return;
+      }
+      
+      // Store palette both as data attribute and visual spans
+      $("palette-preview").dataset.palette = JSON.stringify(colors);
+      $("palette-preview").innerHTML = colors.map(c => `<span style="background: ${c};" data-color="${c}"></span>`).join("");
       colorEditorOpen = false;
       $("attire-editor").style.display = "none";
     });
@@ -744,7 +758,11 @@
         $("background-music-url").value = w.background_music_url || "";
         $("currency").value = w.currency || "USD";
         $("max-capacity").value = w.max_guest_capacity || 150;
-        $("palette-preview").innerHTML = (w.palette || []).map(c => `<span style="background: ${esc(c)};"></span>`).join("");
+        
+        // Load palette: store as data attribute and render as spans
+        const palette = w.palette || ["#244b3a"];
+        $("palette-preview").dataset.palette = JSON.stringify(palette);
+        $("palette-preview").innerHTML = palette.map(c => `<span style="background: ${c};" data-color="${c}"></span>`).join("");
         $("attire-notes").value = w.attire_notes || "";
 
         // Load venues
@@ -979,9 +997,35 @@
           }
         });
 
-        // Collect palette colors
-        const paletteSpans = $("palette-preview").querySelectorAll("span");
-        const palette = Array.from(paletteSpans).map(s => s.style.background).filter(Boolean);
+        // Collect palette colors: extract from data-palette attribute on preview or from visible color picker inputs
+        // If color editor is open, use active color inputs; otherwise use stored data
+        let palette;
+        const dataAttr = $("palette-preview").dataset.palette;
+        if (dataAttr) {
+          palette = JSON.parse(dataAttr);
+        } else {
+          // Try to reconstruct from preview spans (convert RGB to hex if needed)
+          const paletteSpans = $("palette-preview").querySelectorAll("span");
+          palette = Array.from(paletteSpans).map(s => {
+            const bg = s.style.background || s.getAttribute("data-color") || "";
+            // Try to extract hex from data-color first, or convert RGB to hex
+            if (bg.startsWith("#")) return bg;
+            if (bg.startsWith("rgb")) {
+              const match = bg.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+              if (match) {
+                const hex = "#" + [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])].map(x => x.toString(16).padStart(2, "0")).join("").toUpperCase();
+                return hex.toLowerCase();
+              }
+            }
+            return "";
+          }).filter(Boolean);
+        }
+        
+        // Validate palette
+        const COLOR_REGEX = /^#[0-9a-f]{6}$/i;
+        if (!palette.length || palette.length > 4 || !palette.every(c => COLOR_REGEX.test(c))) {
+          throw new Error("Choose one to four hex colors for your wedding palette.");
+        }
 
         // Collect registry items
         const registry = [];
