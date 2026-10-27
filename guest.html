@@ -991,8 +991,8 @@
       });
       const data = await res.json();
       if (!res.ok) { toast(data.error || "Could not place bid.", true); return notice(data.error || "Could not place bid.", true); }
-      notice("Bid placed! Thanks for supporting the DJ!");
-      toast("Bid placed! Thanks for supporting the DJ.");
+      notice("Bid placed! It adds to this song's total and supports the wedding fundraiser.");
+      toast("Bid placed! Added to the song total (supports the wedding fundraiser).");
       $("bid-form").reset();
       await loadBids();
       if (window.WSFeedback) WSFeedback.scrollTo("leaderboard-table");
@@ -1021,7 +1021,7 @@
       $("leaderboard-body").innerHTML = bids.map((b, i) => `
         <tr style="border-bottom: 1px solid #e3dcc7;">
           <td style="padding: 0.75rem; color: var(--gold);">${i + 1}</td>
-          <td style="padding: 0.75rem;">${esc(b.song_title)}</td>
+          <td style="padding: 0.75rem;">${esc(b.song_title)}${Number(b.bid_count) > 1 ? ` <small class="fine">(${Number(b.bid_count)} bids)</small>` : ""}</td>
           <td style="padding: 0.75rem; color: var(--sage);">${esc(b.artist_name || "—")}</td>
           <td style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, wedding.currency)}</td>
         </tr>

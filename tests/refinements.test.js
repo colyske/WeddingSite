@@ -21,7 +21,7 @@ test("RSVP requires a phone number and quotes fees before charging", () => {
   assert.match(src, /needsPayment: true/);
   assert.match(src, /extra_guest_fee_minor/);
   assert.match(src, /premium_diet_fee_minor/);
-  assert.match(src, /record_test_rsvp_fees/);
+  assert.match(src, /record_test_rsvp_fees".*\{ service: true \}/);
 });
 
 test("seating lookup is by phone", async () => {

@@ -212,8 +212,9 @@ export default async function handler(req, res) {
             try { await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvp.rsvp_id}`, { service: true, method: "PATCH", prefer: "return=minimal", body: extra }); }
             catch (e) { console.error("rsvp extras save failed:", e.message); }
           }
+          let charged = 0;
           if (totalMinor > 0) {
-            try { await rpc("record_test_rsvp_fees", { p_wedding_id: weddingId, p_name: text(body.guestName, 100), p_lines: lines }); }
+            try { await rpc("record_test_rsvp_fees", { p_wedding_id: weddingId, p_name: text(body.guestName, 100), p_lines: lines }, { service: true }); charged = totalMinor; }
             catch (e) { console.error("rsvp fee ledger failed:", e.message); }
           }
           let refCode = "";
@@ -226,7 +227,7 @@ export default async function handler(req, res) {
               if (owner?.length) await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvp.rsvp_id}`, { service: true, method: "PATCH", prefer: "return=minimal", body: { referred_by_code: by } });
             }
           } catch (e) { console.error("referral attribution failed:", e.message); }
-          return sendJson(res, 200, { message: rsvp.message, status: rsvp.status, rsvpId: rsvp.rsvp_id, refCode, chargedMinor: totalMinor, lines });
+          return sendJson(res, 200, { message: rsvp.message, status: rsvp.status, rsvpId: rsvp.rsvp_id, refCode, chargedMinor: charged, lines });
         } catch (error) {
           return sendJson(res, error.message.includes("capacity") ? 409 : 400, { error: error.message || "RSVP failed." });
         }
