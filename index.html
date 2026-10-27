@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#203a31">
   <meta name="description" content="WeddingSite: Plan your wedding with coordinated RSVPs, DJ song bidding, guest contributions, and more.">
   <title>WeddingSite — Wedding Planning Simplified</title>
-  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><script src="ornaments.js" defer></script>
+  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><script src="ornaments.js" defer></script>
   <style>
-    .hero { background: linear-gradient(135deg, #f6f1e4 0%, #eee8d9 100%); }
+    
     .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
     .feature-card { padding: 1.5rem; background: #fff; border-radius: 8px; border-left: 4px solid #be9b52; }
     .feature-card h3 { margin-top: 0; color: #203a31; }
@@ -29,6 +29,11 @@
     .wedding-card-body { padding: 1rem; }
     .wedding-card-body p { margin: 0.5rem 0; color: #7a8580; font-size: 0.9rem; }
     .wedding-badge { display: inline-block; padding: 0.3rem 0.6rem; background: #f0ede1; color: #7a8580; border-radius: 4px; font-size: 0.75rem; margin-right: 0.5rem; }
+    a.wedding-card { display: block; text-decoration: none; color: inherit; }
+    .wedding-card:focus-visible { outline: 3px solid #be9b52; outline-offset: 2px; }
+    .wedding-badge.past { background: #203a31; color: #f6f1e4; }
+    .section-sub { text-align: center; color: #5b665f; margin: 0 0 1.5rem; }
+    .empty-state { grid-column: 1/-1; text-align: center; padding: 2rem; background: rgba(255,255,255,.7); border: 1px dashed #d8cfb4; border-radius: 12px; color: #5b665f; }
     .pagination { text-align: center; margin: 2rem 0; }
     .pagination button { padding: 0.5rem 1rem; margin: 0 0.5rem; background: white; border: 1px solid #d0d5cc; border-radius: 4px; cursor: pointer; }
     .pagination button:hover:not(:disabled) { background: #203a31; color: white; }
@@ -37,22 +42,24 @@
 </head>
 <body>
   <div class="wrap">
-    <!-- Header -->
-    <div class="top" style="margin-bottom: 2rem;">
-      <a class="brand" href="/">WeddingSite</a>
-      <a class="btn" href="/signin.html">Sign in / Create wedding</a>
-    </div>
+    <header class="site-header" style="display:flex;justify-content:space-between;align-items:center;padding:.9rem 5.5vw;margin:0 calc(50% - 50vw);">
+      <a class="brand" href="/" aria-label="WeddingSite home"><span class="brand-mark" style="font:500 1.6rem var(--serif);color:var(--green)">W<span style="font-size:.8rem;color:var(--gold)">&amp;</span>S</span> <span style="font:500 1.05rem var(--serif);margin-left:.6rem">Wedding<em style="color:var(--gold)">Site</em></span></a>
+      <a class="btn primary" href="/signin.html">Sign in / Create wedding</a>
+    </header>
 
-    <!-- Hero -->
-    <div class="hero" style="text-align: center; padding: 3rem 1rem; margin: -1.5rem -1.5rem 2rem; border-radius: 8px;">
-      <div data-balloons></div>
-      <h1 style="margin-top: 0;">Plan Your Perfect Wedding</h1>
-      <p style="font-size: 1.1rem; color: #5b665f; max-width: 600px; margin: 1rem auto;">
-        Coordinate RSVPs, collect DJ song requests with bidding, manage guest contributions, and bring your wedding vision to life—all in one place.
-      </p>
-      <a class="cta-btn" href="/signin.html">Get started</a>
-    </div>
-
+    <section class="hero" data-no-divider data-prop-hero="couple" style="margin:0 calc(50% - 50vw) !important;width:100vw;">
+      <div class="hero-image" aria-hidden="true" style="background-image:url('https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=2000&q=80')"></div>
+      <div class="hero-shade" aria-hidden="true"></div>
+      <div class="hero-content">
+        <div data-orn="rings"></div>
+        <p class="eyebrow">Your wedding, your way</p>
+        <h1>Two stories.<br><em>One beautiful</em><br>beginning.</h1>
+        <p class="hero-tag">RSVPs, song bidding, gifts and guests &mdash; all in one elegant place.</p>
+        <p><a class="cta-btn" href="/signin.html" style="background:var(--cream);color:var(--green);text-decoration:none;display:inline-block">Create your wedding &#8599;</a></p>
+      </div>
+      <p class="hero-side" aria-hidden="true">Weddings made with love</p>
+    </section>
+    <div class="prop-row" data-props="ringsLine,cake,bouquet,dove,bell2,balloons" style="margin:2rem 0"></div>
     <!-- Features -->
     <div class="feature-grid">
       <div class="feature-card">
@@ -87,21 +94,23 @@
     </div>
 
     <!-- Upcoming Weddings Section -->
-    <div class="weddings-section">
-      <h2>🎉 Featured Weddings</h2>
-      <p style="text-align: center; color: #7a8580; margin-bottom: 2rem;">Get inspired by beautiful celebrations happening soon</p>
-      
-      <div class="weddings-grid" id="weddings-grid">
-        <div style="grid-column: 1/-1; text-align: center; padding: 2rem;"><p style="color: #7a8580;">Loading upcoming weddings…</p></div>
+    <section class="weddings-section" id="weddings">
+      <h2>Upcoming weddings</h2>
+      <p class="section-sub">Celebrations you can follow, RSVP to and support.</p>
+      <div class="weddings-grid" id="weddings-grid" aria-live="polite">
+        <div class="empty-state"><p>Loading weddings...</p></div>
       </div>
-
+      <div id="past-section" hidden>
+        <h2 style="margin-top:2.5rem">Completed weddings</h2>
+        <p class="section-sub">Memories from recent celebrations.</p>
+        <div class="weddings-grid" id="past-grid"></div>
+      </div>
       <div class="pagination" id="pagination" hidden>
-        <button id="prev-btn" onclick="changePage(-1)">← Previous</button>
+        <button type="button" id="prev-btn">&larr; Previous</button>
         <span id="page-info">Page 1</span>
-        <button id="next-btn" onclick="changePage(1)">Next →</button>
+        <button type="button" id="next-btn">Next &rarr;</button>
       </div>
-    </div>
-
+    </section>
     <!-- CTA Section -->
     <div class="cta-section">
       <h2>Ready to plan your wedding?</h2>
@@ -109,198 +118,52 @@
       <a class="cta-btn" href="/signin.html">Create your wedding</a>
     </div>
 
-    <p class="fine" style="text-align: center; margin-top: 3rem;">WeddingSite © 2026 — Organize your wedding your way</p>
   </div>
 
   <script src="auth-client.js"></script>
-  <script src="fx.js"></script>
   <script>
     const $ = id => document.getElementById(id);
     const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-
+    const PER_PAGE = 12;
     let currentPage = 0;
-    const WEDDINGS_PER_PAGE = 12;
+
+    const card = (w) => {
+      const when = w.wedding_date ? new Date(w.wedding_date + "T00:00:00").toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : "Date to be announced";
+      const href = "/guest.html?slug=" + encodeURIComponent(w.slug);
+      return `<a class="wedding-card" href="${href}" data-wedding-link>
+        <div class="wedding-card-header"><h3>${esc(w.couple_names)}</h3><p>${esc(when)}</p></div>
+        <div class="wedding-card-body"><p>${esc(w.public_location || "Location to be announced")}</p>
+          <span class="wedding-badge${w.is_past ? " past" : ""}">${w.is_past ? "Completed" : "Upcoming"}</span>
+          <span class="wedding-badge">${esc(w.time_zone || "")}</span></div></a>`;
+    };
+
+    const empty = (msg) => `<div class="empty-state">${window.WSOrn ? WSOrn.propRow("bouquet,ringsLine").outerHTML : ""}<p>${msg}</p></div>`;
 
     async function loadWeddings(page = 0) {
       try {
-        const offset = page * WEDDINGS_PER_PAGE;
-        const res = await fetch(`/api/guest?action=browse&offset=${offset}&limit=${WEDDINGS_PER_PAGE}`);
+        const res = await fetch(`/api/guest?action=browse&offset=${page * PER_PAGE}&limit=${PER_PAGE}`);
         const data = await res.json();
-        
         if (!res.ok) throw new Error(data.error || "Could not load weddings");
-
         const weddings = data.weddings || [];
         currentPage = page;
-
-        if (weddings.length === 0) {
-          $("weddings-grid").innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 2rem;">
-            <p style="color: #7a8580;">No featured weddings yet. <a href="/signin.html">Create the first one!</a></p>
-          </div>`;
-          $("pagination").hidden = true;
-          return;
-        }
-
-        $("weddings-grid").innerHTML = weddings.map(w => `
-          <div class="wedding-card" onclick="location.href='/${encodeURIComponent(w.couple_slug)}/'">
-            <div class="wedding-card-header">
-              <h3>${esc(w.couple_names)}</h3>
-              <p>${w.wedding_date ? new Date(w.wedding_date).toLocaleDateString() : "Date TBA"}</p>
-            </div>
-            <div class="wedding-card-body">
-              <p>📍 ${esc(w.location || "Location TBA")}</p>
-              <div>
-                ${w.featured_until > new Date().toISOString() ? '<span class="wedding-badge">✨ Featured</span>' : ''}
-                <span class="wedding-badge">${esc(w.currency || "USD")}</span>
-                ${w.has_fundraising ? '<span class="wedding-badge">💰 Fundraising</span>' : ''}
-              </div>
-            </div>
-          </div>
-        `).join("");
-
-        // Show pagination only if there might be more
-        $("pagination").hidden = weddings.length < WEDDINGS_PER_PAGE;
+        const upcoming = weddings.filter(w => !w.is_past);
+        const past = weddings.filter(w => w.is_past);
+        $("weddings-grid").innerHTML = upcoming.length ? upcoming.map(card).join("") : empty('No upcoming weddings are listed yet. <a href="/signin.html">Create yours</a>.');
+        $("past-section").hidden = !past.length;
+        $("past-grid").innerHTML = past.map(card).join("");
+        $("pagination").hidden = page === 0 && weddings.length < PER_PAGE;
         $("page-info").textContent = `Page ${page + 1}`;
         $("prev-btn").disabled = page === 0;
-        $("next-btn").disabled = weddings.length < WEDDINGS_PER_PAGE;
-
+        $("next-btn").disabled = weddings.length < PER_PAGE;
       } catch (err) {
         console.error("Load weddings failed:", err);
-        $("weddings-grid").innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 2rem;">
-          <p style="color: #d9534f;">Error loading weddings. Try refreshing the page.</p>
-        </div>`;
+        $("weddings-grid").innerHTML = empty("We could not load weddings right now. Please refresh.");
       }
     }
 
-    function changePage(offset) {
-      loadWeddings(Math.max(0, currentPage + offset));
-      document.querySelector(".weddings-section").scrollIntoView({ behavior: "smooth" });
-    }
-
-    // Initialize
+    $("prev-btn").addEventListener("click", () => loadWeddings(Math.max(0, currentPage - 1)));
+    $("next-btn").addEventListener("click", () => loadWeddings(currentPage + 1));
     loadWeddings(0);
   </script>
-</body>
-</html>
-        <h3>💳 Guest Contributions</h3>
-        <p class="fine">Collect funds for DJ services, decorations, catering, and more directly from guests with full transparency.</p>
-      </div>
-
-      <div class="feature-card">
-        <h3>🎨 Customizable</h3>
-        <p class="fine">Set your wedding colors, capacity, currency, and welcome message. Each wedding gets its own branded site.</p>
-      </div>
-
-      <div class="feature-card">
-        <h3>📊 Admin Dashboard</h3>
-        <p class="fine">View all RSVPs, song requests, contributions, and guest details in one organized workspace.</p>
-      </div>
-
-      <div class="feature-card">
-        <h3>🌍 Multi-currency</h3>
-        <p class="fine">Collect in USD, KES, EUR, GBP, NGN, UGX, ZAR or other currencies. Guests see amounts in their currency.</p>
-      </div>
-    </div>
-
-    <!-- Upcoming Weddings -->
-    <div style="margin: 3rem 0;">
-      <h2 style="color: #203a31; margin-bottom: 1.5rem;">Upcoming Weddings</h2>
-      <div id="weddings-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1.5rem;">
-        <div style="text-align: center; padding: 2rem; color: #888;">Loading weddings...</div>
-      </div>
-      <div style="text-align: center; margin-top: 2rem;">
-        <button id="load-more-btn" class="cta-btn" style="background: #be9b52; color: #203a31; border: none; cursor: pointer;">Load More</button>
-      </div>
-    </div>
-
-    <!-- CTA -->
-    <div class="cta-section">
-      <h2>Ready to plan your wedding?</h2>
-      <p>Create a free account and set up your wedding site in minutes.</p>
-      <a class="cta-btn" href="/signin.html">Sign in or create account</a>
-    </div>
-
-    <!-- Footer -->
-    <div style="text-align: center; padding-top: 2rem; border-top: 1px solid #e3dcc7; margin-top: 3rem;">
-      <p class="fine">WeddingSite is in beta. We're actively building. Send feedback to hello@weddingsite.test</p>
-    </div>
-  </div>
-
-  <script src="auth-client.js"></script>
-  <script>
-    let currentOffset = 0;
-    const pageSize = 12;
-
-    async function loadWeddings() {
-      try {
-        const res = await fetch(`/api/guest?action=browse&offset=${currentOffset}&limit=${pageSize}`);
-        const data = await res.json();
-        
-        if (!res.ok) {
-          console.error("Failed to load weddings:", data);
-          return;
-        }
-
-        const container = document.getElementById("weddings-container");
-        const weddings = data.weddings || [];
-
-        if (currentOffset === 0) container.innerHTML = "";
-
-        if (weddings.length === 0 && currentOffset === 0) {
-          container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 2rem; color: #888;">No weddings yet. Be the first!</div>`;
-          document.getElementById("load-more-btn").style.display = "none";
-          return;
-        }
-
-        weddings.forEach(w => {
-          const card = document.createElement("div");
-          card.style.cssText = "padding: 1.5rem; background: #fff; border-radius: 8px; border: 1px solid #e3dcc7; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;";
-          
-          const dateStr = w.wedding_date ? new Date(w.wedding_date).toLocaleDateString() : "TBD";
-          
-          card.innerHTML = `
-            <h3 style="margin-top: 0; color: #203a31; font-size: 1.2rem;">${escapeHtml(w.couple_names || "Wedding")}</h3>
-            <p style="color: #666; margin: 0.5rem 0; font-size: 0.95rem;">
-              <strong>${dateStr}</strong>
-            </p>
-            <p style="color: #888; margin: 0; font-size: 0.9rem;">Currency: ${w.currency || "USD"}</p>
-          `;
-          
-          card.addEventListener("click", () => {
-            window.location.href = `/guest.html?slug=${encodeURIComponent(w.slug)}`;
-          });
-          
-          card.addEventListener("mouseenter", () => {
-            card.style.transform = "translateY(-4px)";
-            card.style.boxShadow = "0 8px 16px rgba(0,0,0,0.1)";
-          });
-          
-          card.addEventListener("mouseleave", () => {
-            card.style.transform = "translateY(0)";
-            card.style.boxShadow = "none";
-          });
-          
-          container.appendChild(card);
-        });
-
-        currentOffset += pageSize;
-        document.getElementById("load-more-btn").style.display = weddings.length < pageSize ? "none" : "inline-block";
-      } catch (err) {
-        console.error("Error loading weddings:", err);
-        document.getElementById("weddings-container").innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 2rem; color: #c33;">Error loading weddings.</div>`;
-      }
-    }
-
-    function escapeHtml(str) {
-      const div = document.createElement("div");
-      div.textContent = str;
-      return div.innerHTML;
-    }
-
-    // Load initial weddings
-    document.addEventListener("DOMContentLoaded", loadWeddings);
-
-    // Load more handler
-    document.getElementById("load-more-btn").addEventListener("click", loadWeddings);
-  </script>
-</body>
+  <script src="footer.js"></script></body>
 </html>

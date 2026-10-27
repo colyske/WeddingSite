@@ -1,5 +1,6 @@
 import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireAuth } from "../server/auth-middleware.js";
+import { isPastWedding } from "../server/wedding-time.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const text = (value, max) => (typeof value === "string" ? value.trim().slice(0, max) : "");
@@ -71,6 +72,12 @@ export default async function handler(req, res) {
         if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
       }
       
+      const wd = await supabaseRequest(`/rest/v1/weddings?id=eq.${weddingId}&published_at=not.is.null&archived_at=is.null&select=wedding_date,time_zone`, { service: true });
+      if (!wd?.length) return sendJson(res, 404, { error: "Wedding not found." });
+      if (isPastWedding(wd[0].wedding_date, wd[0].time_zone)) {
+        return sendJson(res, 410, { error: "This wedding has taken place, so RSVPs and bids are closed. Thank you for celebrating with us!" });
+      }
+
       if (action === "rsvp") {
         try {
           const result = await rpc("submit_rsvp_with_pass", {
@@ -172,6 +179,27 @@ export default async function handler(req, res) {
       } catch (error) {
         return sendJson(res, 403, { error: "Cannot retrieve guest data." });
       }
+    }
+
+    if (action === "pass-lookup") {
+      if (!methodOnly(req, res, "GET")) return;
+      const slug = String(req.query.slug || "").toLowerCase();
+      if (!/^[a-z0-9-]{3,80}$/.test(slug)) return sendJson(res, 404, { error: "Wedding not found." });
+      const weddingId = await resolveWeddingId(slug, rpc);
+      if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
+      const code = String(req.query.code || "").trim();
+      const email = String(req.query.email || "").trim().toLowerCase();
+      if (UUID.test(code)) {
+        const result = await rpc("get_guest_pass_data", { p_wedding_id: weddingId, p_guest_id: code });
+        if (!result?.length) return sendJson(res, 404, { error: "No pass found for that code." });
+        return sendJson(res, 200, { rsvpId: code, guestName: result[0].name });
+      }
+      if (email.length >= 5 && email.length <= 254 && email.includes("@")) {
+        const rows = await rpc("lookup_guest_pass", { p_wedding_id: weddingId, p_email: email });
+        if (!rows?.length) return sendJson(res, 404, { error: "No pass found for that email." });
+        return sendJson(res, 200, { rsvpId: rows[0].rsvp_id, guestName: rows[0].guest_name });
+      }
+      return sendJson(res, 400, { error: "Enter the email you used to RSVP, or your pass code." });
     }
 
     if (action === "verify-qr") {

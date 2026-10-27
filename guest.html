@@ -5,9 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#203a31">
   <title>WeddingSite — Wedding</title>
-  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><script src="ornaments.js" defer></script>
+  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><script src="ornaments.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
+    .past-badge { display:inline-block; padding:.25rem .75rem; border-radius:999px; background:var(--green); color:#fff; font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
+    #toast { position:fixed; left:50%; bottom:1.5rem; transform:translateX(-50%); background:#203a31; color:#fff; padding:.75rem 1.25rem; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.25); z-index:1000; max-width:90vw; }
+    #toast.bad { background:#8a2a2a; }
+    #pay-dialog { border:1px solid #d8cfb4; border-radius:14px; max-width:min(440px,92vw); padding:1.25rem; }
+    #pay-dialog input, #pay-dialog select { width:100%; box-sizing:border-box; }
+    .buy-btn { margin-top:.75rem; }
+    .venue-card dl { margin:.5rem 0 0; display:grid; grid-template-columns:auto 1fr; gap:.25rem .75rem; font-size:.95rem; }
+    .venue-card dt { color:var(--gold); font-weight:600; }
+    .venue-card dd { margin:0; }
     /* Sticky navbar with glassmorphism */
     nav.sticky-nav {
       position: fixed;
@@ -91,82 +100,6 @@
       opacity: 0.7;
     }
 
-    /* Hero section */
-    .hero {
-      margin-top: 70px;
-      min-height: 60vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-      position: relative;
-      overflow: hidden;
-      padding: 2rem;
-    }
-
-    .hero::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.5) 0%, rgba(169, 181, 162, 0.1) 100%);
-      z-index: 1;
-    }
-
-    .hero-content {
-      position: relative;
-      z-index: 2;
-      max-width: 800px;
-    }
-
-    .hero h1 {
-      font-size: clamp(2.5rem, 6vw, 3.5rem);
-      margin-bottom: 0.5rem;
-    }
-
-    .hero .subtitle {
-      font-size: 1.2rem;
-      color: var(--sage);
-      margin-bottom: 2rem;
-      font-style: italic;
-    }
-
-    /* Countdown timer */
-    .countdown {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-      gap: 1rem;
-      margin: 2rem 0;
-      justify-content: center;
-    }
-
-    .countdown-item {
-      background: rgba(255, 255, 255, 0.6);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(190, 155, 82, 0.2);
-      border-radius: 12px;
-      padding: 1rem;
-      text-align: center;
-    }
-
-    .countdown-value {
-      font-size: 1.8rem;
-      font-weight: 700;
-      color: var(--gold);
-      font-family: monospace;
-    }
-
-    .countdown-label {
-      font-size: 0.75rem;
-      color: var(--green);
-      margin-top: 0.5rem;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
     /* Story section */
     .story-section {
       background: rgba(230, 225, 215, 0.4);
@@ -193,15 +126,7 @@
         font-size: 0.85rem;
       }
 
-      .hero {
-        margin-top: 150px;
-        min-height: auto;
-        padding: 2rem 1rem;
-      }
 
-      .countdown {
-        grid-template-columns: repeat(2, 1fr);
-      }
     }
   </style>
 </head>
@@ -229,36 +154,34 @@
     <p id="notice" class="notice" role="status" hidden></p>
 
     <!-- Hero with countdown -->
-    <section class="hero">
+    <section class="hero" data-no-divider data-prop-hero="couple">
+      <div class="hero-image" aria-hidden="true"></div>
+      <div class="hero-shade" aria-hidden="true"></div>
       <div class="hero-content">
-        <div data-orn="rings" style="text-align:center"></div>
+        <div data-orn="rings"></div>
+        <p class="eyebrow">With full hearts, we invite you</p>
         <h1 id="couple-names">Wedding</h1>
-        <p class="subtitle" id="wedding-date-display">Coming soon…</p>
-        <p class="subtitle" id="countdown-state" hidden aria-live="polite"></p>
-
-        <!-- Live countdown -->
-        <div class="countdown" id="countdown">
-          <div class="countdown-item">
-            <div class="countdown-value" id="days">0</div>
-            <div class="countdown-label">Days</div>
-          </div>
-          <div class="countdown-item">
-            <div class="countdown-value" id="hours">0</div>
-            <div class="countdown-label">Hours</div>
-          </div>
-          <div class="countdown-item">
-            <div class="countdown-value" id="minutes">0</div>
-            <div class="countdown-label">Minutes</div>
-          </div>
-          <div class="countdown-item">
-            <div class="countdown-value" id="seconds">0</div>
-            <div class="countdown-label">Seconds</div>
-          </div>
-        </div>
-
-        <!-- .ics download button -->
-        <button id="ics-download" class="btn" style="margin: 1rem 0;">Add to Calendar</button>
+        <p class="hero-tag">Two stories. One beautiful beginning.</p>
+        <p class="subtitle" id="wedding-date-display">Coming soon&hellip;</p>
+        <button id="ics-download" class="btn" type="button">Celebrate with us &#8599; Add to calendar</button>
       </div>
+      <p class="hero-side" aria-hidden="true">A day for all our people</p>
+    </section>
+
+    <section class="countdown-band" aria-label="Countdown">
+      <div class="countdown-intro"><span class="eyebrow">The countdown is on</span><span>Until we say &ldquo;I do&rdquo;</span></div>
+      <p class="subtitle" id="countdown-state" hidden aria-live="polite"></p>
+      <div class="countdown" id="countdown">
+        <div class="countdown-item"><div class="countdown-value" id="days">0</div><div class="countdown-label">Days</div></div>
+        <div class="countdown-item"><div class="countdown-value" id="hours">0</div><div class="countdown-label">Hours</div></div>
+        <div class="countdown-item"><div class="countdown-value" id="minutes">0</div><div class="countdown-label">Minutes</div></div>
+        <div class="countdown-item"><div class="countdown-value" id="seconds">0</div><div class="countdown-label">Seconds</div></div>
+      </div>
+    </section>
+    <section id="past-banner" class="card" hidden data-corners style="text-align:center">
+      <p><span class="past-badge">Completed</span></p>
+      <h2>Thank you for celebrating with us</h2>
+      <p id="past-message">This wedding has taken place. RSVPs, song bids and pledges are now closed, but you are welcome to look back at the day.</p>
     </section>
 
     <!-- Story section -->
@@ -276,13 +199,14 @@
 
     <!-- Venues section -->
     <section id="venues" class="card" hidden>
-      <h2>Venues & Itinerary</h2>
+      <h2>Programme &amp; venues</h2>
+      <p class="fine" id="venues-zone"></p>
       <div id="venues-display" style="display: flex; flex-direction: column; gap: 1.5rem;"></div>
     </section>
 
     <!-- Attire & Dress Code -->
     <section id="attire" class="card" hidden>
-      <h2>Attire & Dress Code</h2>
+      <h2>Dress code</h2>
       <div class="swatches" id="attire-palette-preview"></div>
       <p id="attire-notes-display" class="fine" style="margin-top: 1rem;"></p>
     </section>
@@ -335,6 +259,15 @@
 
         <button type="submit">Submit RSVP</button>
       </form>
+      <details id="pass-lookup" style="margin-top:1rem">
+        <summary>Already RSVP'd? Find your pass</summary>
+        <form id="lookup-form" style="margin-top:.75rem">
+          <label for="lookup-value">Email you used, or your pass code</label>
+          <input id="lookup-value" type="text" maxlength="254" required>
+          <button type="submit">Find my pass</button>
+        </form>
+        <p class="fine">Lookup works with the RSVP email or the pass code printed on your pass.</p>
+      </details>
     </section>
 
     <!-- DJ song bids -->
@@ -415,7 +348,7 @@
     </section>
 
     <!-- Digital e-card pass -->
-    <section id="ecard" class="card" hidden>
+    <section id="ecard" class="card" hidden data-corners>
       <h2>Your Digital E-Card Pass</h2>
       <p class="fine">Screenshot this pass or show it at the entrance to check in.</p>
       <div id="ecard-display" style="text-align: center; padding: 2rem 1rem; background: linear-gradient(135deg, #f8f9f7 0%, #f3faf3 100%); border-radius: 8px; border: 2px solid var(--sage);">
@@ -431,6 +364,21 @@
     </section>
   </div>
 
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="pay-dialog">
+    <form method="dialog" id="pay-form">
+      <h3 id="pay-title">Complete your contribution</h3>
+      <p class="fine"><strong>Test mode:</strong> no real money is charged. This records a simulated payment for demonstration.</p>
+      <p id="pay-summary"></p>
+      <label for="pay-name">Your name *</label><input id="pay-name" maxlength="100" autocomplete="name">
+      <label for="pay-email">Email (optional)</label><input id="pay-email" type="email" maxlength="200" autocomplete="email">
+      <label for="pay-amount">Amount (<span id="pay-currency"></span>) *</label><input id="pay-amount" type="number" min="1" step="0.01" required>
+      <label for="pay-visibility">Show on the public ledger as</label>
+      <select id="pay-visibility"><option value="name">My name</option><option value="anonymous">Anonymous</option><option value="hidden" selected>Do not show</option></select>
+      <p id="pay-error" class="notice bad" hidden></p>
+      <div style="display:flex;gap:.5rem;margin-top:1rem"><button type="submit" id="pay-submit">Pay (test mode)</button><button type="button" id="pay-cancel" class="link">Cancel</button></div>
+    </form>
+  </dialog>
   <audio id="background-music" loop style="display: none;"></audio>
 
   <script src="tz.js"></script>
@@ -501,6 +449,7 @@
         if (start != null) {
           const hasTime = !!(WSTime_mainTime());
           $("wedding-date-display").textContent = WSTime.formatDate(start, zone) + (hasTime ? " · " + WSTime.formatTime(start, zone) : "");
+      const ad = document.getElementById("announce-date"); if (ad) ad.textContent = WSTime.formatDate(start, zone);
         }
       }
 
@@ -517,23 +466,32 @@
         $("palette-preview").innerHTML = (wedding.palette || []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).map(c => `<span style="background: ${c};"></span>`).join("");
       }
 
-      // Venues
+      // Venues: date, time (wedding time zone), address/notes and map link
       if (wedding.venues && wedding.venues.length > 0) {
         $("venues").hidden = false;
-        $("venues-display").innerHTML = wedding.venues.map(v => `
-          <div style="border-left: 4px solid var(--sage); padding: 1rem; background: #f8f9f7; border-radius: 4px;">
-            ${v.event_time ? `<p style="margin: 0 0 0.5rem; color: var(--gold); font-weight: 600;">${esc(venueTimeLabel(v))}</p>` : ""}
-            <h3 style="margin: 0 0 0.5rem; color: var(--green);">${esc(v.name)}</h3>
-            ${safeUrl(v.map_link) ? `<p style="margin: 0 0 0.5rem;"><a href="${esc(safeUrl(v.map_link))}" target="_blank" rel="noopener noreferrer" class="link" style="font-size: 0.95rem;">📍 View on map</a></p>` : ""}
-            ${v.description ? `<p style="margin: 0; font-size: 0.95rem; color: #5a5f5a;">${esc(v.description)}</p>` : ""}
-          </div>
-        `).join("");
+        const zone = wedding.time_zone || WSTime.DEFAULT_ZONE;
+        const startMs = WSTime.weddingStart(wedding);
+        $("venues-zone").textContent = "Times are shown in " + zone.replace(/_/g, " ") + (startMs != null ? " (" + WSTime.abbreviation(zone, startMs) + ")" : "") + ".";
+        $("venues-display").innerHTML = wedding.venues.map(v => {
+          const day = String(v.event_date || wedding.wedding_date || "").slice(0, 10);
+          const ms = day ? WSTime.zonedToUtc(day, v.event_time || "12:00:00", zone) : null;
+          const dateText = ms != null ? WSTime.formatDate(ms, zone) : "";
+          const timeText = v.event_time && ms != null ? WSTime.formatTime(ms, zone) : "";
+          return `<div class="venue-card" style="border-left: 4px solid var(--sage); padding: 1rem; background: #f8f9f7; border-radius: 4px;">
+            <h3 style="margin: 0 0 0.5rem; color: var(--green);">${esc(v.name)}${v.is_main ? " <small>(main ceremony)</small>" : ""}</h3>
+            <dl>
+              ${dateText ? `<dt>Date</dt><dd>${esc(dateText)}</dd>` : ""}
+              ${timeText ? `<dt>Time</dt><dd>${esc(timeText)}</dd>` : ""}
+              ${v.description ? `<dt>Address &amp; notes</dt><dd>${esc(v.description)}</dd>` : ""}
+              ${safeUrl(v.map_link) ? `<dt>Map</dt><dd><a href="${esc(safeUrl(v.map_link))}" target="_blank" rel="noopener noreferrer" class="link">Open map &amp; directions</a></dd>` : ""}
+            </dl>
+          </div>`;
+        }).join("");
       }
-
       // Attire & Dress Code
       if ((wedding.palette && wedding.palette.length) || wedding.attire_notes?.trim()) {
         $("attire").hidden = false;
-        $("attire-palette-preview").innerHTML = (wedding.palette || []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).map(c => `<span style="background: ${c};"></span>`).join("");
+        $("attire-palette-preview").innerHTML = (wedding.palette || []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).map(c => `<span style="background: ${c};" title="${esc(c)}"></span>`).join("");
         if (wedding.attire_notes?.trim()) {
           $("attire-notes-display").textContent = wedding.attire_notes;
         }
@@ -559,20 +517,34 @@
                 ${WS.money(raised, wedding.currency || "USD", true)} of ${WS.money(target, wedding.currency || "USD", true)}
               </p>
               ${item.notes ? `<p style="margin: 0.5rem 0 0; font-size: 0.9rem; color: #5a5f5a;">${esc(item.notes)}</p>` : ""}
+              ${wedding.is_past ? "" : `<button type="button" class="buy-btn" data-buy="pledge" data-ref="${esc(item.id)}" data-label="${esc(item.name)}">Pledge to this</button>`}
             </div>
           `;
         }).join("");
       }
 
       // RSVP & Bids
-      $("rsvp").hidden = false;
-      $("bids").hidden = false;
       $("currency-display").textContent = wedding.currency || "USD";
+      if (wedding.is_past) {
+        $("past-banner").hidden = false;
+        $("countdown").hidden = true;
+        $("ics-download").hidden = true;
+        document.title = `${wedding.couple_names || "Wedding"} — Completed`;
+        $("countdown-state").hidden = false;
+        $("countdown-state").textContent = "Completed - thank you for celebrating with us";
+        $("countdown-state").parentElement.hidden = false;
+      } else {
+        $("rsvp").hidden = false;
+        $("bids").hidden = false;
+        restorePass();
+      }
+      $("bids").querySelector("form").hidden = !!wedding.is_past;
+      if (wedding.is_past) { $("bids").hidden = false; $("bids").querySelector("p.fine").textContent = "Bidding is closed. Here are the final song requests."; }
 
       loadBids();
       loadLedger();
       loadFundraising();
-      startCountdown();
+      if (!wedding.is_past) startCountdown();
     } catch (err) {
       console.error("Load failed:", err);
       notice("Network error loading wedding.", true);
@@ -594,6 +566,7 @@
             <h3 style="margin: 0 0 0.5rem; color: var(--gold);">${esc(tier.name)}</h3>
             <p style="margin: 0 0 1rem; font-size: 1.3rem; font-weight: 700; color: var(--green);">${WS.money(tier.min_amount_minor, wedding.currency || "USD", false)}</p>
             <p style="margin: 0; font-size: 0.9rem; color: #5a5f5a;">${esc(tier.perks)}</p>
+            ${wedding.is_past ? "" : `<button type="button" class="buy-btn" data-buy="sponsor" data-ref="${esc(tier.id)}" data-min="${tier.min_amount_minor}" data-label="${esc(tier.name)} sponsorship">Become a sponsor</button>`}
           </div>
         `).join("");
       }
@@ -612,6 +585,7 @@
           <p style="margin: 0; color: var(--sage); font-weight: 600;">
             ${available} of ${v.seats_total} seats available
           </p>
+          ${wedding.is_past ? "" : available > 0 ? `<button type="button" class="buy-btn" data-buy="vip" data-ref="${esc(v.id)}" data-min="${v.price_minor}" data-exact="1" data-label="${esc(v.title)}">Reserve a seat</button>` : "<p class=\"fine\">Sold out</p>"}
         `;
       }
 
@@ -707,6 +681,95 @@
     }
   });
 
+  // Toast feedback
+  let toastTimer;
+  function toast(text, bad) {
+    const t = $("toast");
+    t.textContent = text; t.className = bad ? "bad" : ""; t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, 4500);
+  }
+
+  // E-card pass: rendered after RSVP, restored from this device, or found by email/code
+  function showPass(rsvpId, guestName, status) {
+    const verificationUrl = new URL("/verify.html", location.origin);
+    verificationUrl.searchParams.set("code", rsvpId);
+    $("ecard-guest-name").textContent = guestName || "Guest";
+    $("pass-status").textContent = status === "declined" || status === "not_attending" ? "Not attending" : "Attendance confirmed";
+    $("pass-verification-link").href = verificationUrl.toString();
+    $("pass-verification-link").textContent = "Open pass verification";
+    $("pass-verification-link").hidden = false;
+    const ecardUrl = new URL("/ecard.html", location.origin);
+    ecardUrl.searchParams.set("slug", slug);
+    ecardUrl.searchParams.set("guest_id", rsvpId);
+    $("standalone-pass-link").href = ecardUrl.toString();
+    $("standalone-pass-link").hidden = false;
+    const wDate = parseWeddingDate();
+    if (wDate) $("ecard-date").textContent = wDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+    $("qrcode").innerHTML = "";
+    try {
+      new QRCode($("qrcode"), { text: verificationUrl.toString(), width: 200, height: 200, colorDark: "#244b3a", colorLight: "#ffffff" });
+    } catch (err) { console.warn("Could not generate QR code:", err); }
+    $("ecard").hidden = false;
+    $("rsvp").hidden = true;
+  }
+  function restorePass() {
+    try {
+      const saved = JSON.parse(localStorage.getItem("ws-pass:" + slug) || "null");
+      if (saved && saved.id) showPass(saved.id, saved.name, saved.status);
+    } catch (_) {}
+  }
+  $("lookup-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const v = $("lookup-value").value.trim();
+    const q = v.includes("@") ? "email=" + encodeURIComponent(v) : "code=" + encodeURIComponent(v);
+    try {
+      const res = await fetch(`/api/guest?action=pass-lookup&slug=${encodeURIComponent(slug)}&${q}`);
+      const data = await res.json();
+      if (!res.ok) return toast(data.error || "No pass found.", true);
+      showPass(data.rsvpId, data.guestName, "confirmed");
+      try { localStorage.setItem("ws-pass:" + slug, JSON.stringify({ id: data.rsvpId, name: data.guestName, status: "confirmed" })); } catch (_) {}
+      toast("Pass found.");
+    } catch (_) { toast("Network error.", true); }
+  });
+
+  // Test-mode checkout for VIP, sponsorship and registry pledges
+  let buying = null;
+  document.addEventListener("click", e => {
+    const btn = e.target.closest("[data-buy]");
+    if (!btn || !wedding) return;
+    buying = { kind: btn.dataset.buy, refId: btn.dataset.ref, exact: btn.dataset.exact === "1" };
+    const min = Number(btn.dataset.min || 0) / 100;
+    $("pay-title").textContent = btn.dataset.label || "Contribute";
+    $("pay-currency").textContent = wedding.currency || "USD";
+    $("pay-summary").textContent = buying.exact ? "Fixed price." : (min ? "Minimum " + min.toFixed(2) + "." : "Choose any amount.");
+    $("pay-amount").value = min ? String(min) : "";
+    $("pay-amount").readOnly = buying.exact;
+    $("pay-error").hidden = true;
+    $("pay-dialog").showModal();
+  });
+  $("pay-cancel").addEventListener("click", () => $("pay-dialog").close());
+  $("pay-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    if (!buying) return;
+    const name = $("pay-name").value.trim();
+    if (!name) { $("pay-error").textContent = "Please enter your name."; $("pay-error").hidden = false; return; }
+    $("pay-submit").disabled = true;
+    try {
+      const res = await fetch("/api/testpay?action=purchase", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, kind: buying.kind, refId: buying.refId, amount: Number($("pay-amount").value),
+          name, email: $("pay-email").value.trim(), visibility: $("pay-visibility").value })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { $("pay-error").textContent = data.error || "Payment could not be recorded."; $("pay-error").hidden = false; return; }
+      $("pay-dialog").close();
+      toast("Thank you! Test payment recorded.");
+      loadFundraising(); loadLedger();
+    } catch (_) {
+      $("pay-error").textContent = "Network error."; $("pay-error").hidden = false;
+    } finally { $("pay-submit").disabled = false; }
+  });
   // RSVP submit
   $("rsvp-form").addEventListener("submit", async e => {
     e.preventDefault();
@@ -755,43 +818,9 @@
       if (!res.ok) return notice(data.error || "Could not submit RSVP.", true);
       notice("RSVP received! Thank you for confirming.");
       
-      // Generate e-card pass
-      const guestName = $("guest-name").value;
-      const verificationUrl = new URL("/verify.html", location.origin);
-      verificationUrl.searchParams.set("code", data.rsvpId);
-      
-      $("ecard-guest-name").textContent = guestName;
-      $("pass-status").textContent = data.status === "confirmed" ? "Attendance confirmed" : "Not attending";
-      $("pass-verification-link").href = verificationUrl.toString();
-      $("pass-verification-link").textContent = "Open pass verification";
-      $("pass-verification-link").hidden = false;
-      const ecardUrl = new URL("/ecard.html", location.origin);
-      ecardUrl.searchParams.set("slug", slug);
-      ecardUrl.searchParams.set("guest_id", data.rsvpId);
-      $("standalone-pass-link").href = ecardUrl.toString();
-      $("standalone-pass-link").hidden = false;
-      if (wedding.wedding_date && parseWeddingDate()) {
-        const wDate = parseWeddingDate();
-        $("ecard-date").textContent = wDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-      }
-      
-      // Clear previous QR code
-      $("qrcode").innerHTML = "";
-      
-      // Generate new QR code
-      try {
-        new QRCode($("qrcode"), {
-          text: verificationUrl.toString(),
-          width: 200,
-          height: 200,
-          colorDark: "#244b3a",
-          colorLight: "#ffffff"
-        });
-      } catch (err) {
-        console.warn("Could not generate QR code:", err);
-      }
-      
-      $("ecard").hidden = false;
+      showPass(data.rsvpId, $("guest-name").value, data.status);
+      try { localStorage.setItem("ws-pass:" + slug, JSON.stringify({ id: data.rsvpId, name: $("guest-name").value, status: data.status })); } catch (_) {}
+      toast("We have noted your RSVP. Your pass is below.");
       $("rsvp-form").reset();
     } catch (err) {
       console.error("RSVP failed:", err);
@@ -900,6 +929,8 @@
   loadWedding();
 })();
   </script>
-  <footer class="ws-promo"><span>Planning your own wedding? <a href="/signin.html">Create your wedding site with WeddingSite</a></span><span class="credit">Made with <a href="/">WeddingSite</a></span></footer>
+  <div class="prop-row" data-props="ringsLine,cake,bouquet,dove,bell2" style="background:var(--green-deep);margin:0;padding:1.6rem 0 0;color:#e1cf9f"></div>
+<footer class="ws-promo"><span>Planning your own wedding? <a href="/signin.html">Create your wedding site with WeddingSite</a></span><span class="credit">Made with <a href="/">WeddingSite</a></span></footer>
+  <script src="footer.js"></script>
 </body>
 </html>
