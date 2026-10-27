@@ -570,6 +570,52 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { bids: rows || [] });
     }
 
+    const wid = String(req.query.weddingId || body.weddingId || "");
+    if (["referrals", "analytics", "wishes-list", "wish-moderate", "extras-get", "extras-save"].includes(action) && !UUID.test(wid)) {
+      return sendJson(res, 400, { error: "Invalid wedding." });
+    }
+
+    if (action === "referrals") {
+      if (!methodOnly(req, res, "GET")) return;
+      const rows = await supabaseRequest("/rest/v1/rpc/referral_summary", { ...opts, method: "POST", body: { p_wedding_id: wid } });
+      return sendJson(res, 200, { referrals: rows || [] });
+    }
+
+    if (action === "analytics") {
+      if (!methodOnly(req, res, "GET")) return;
+      const result = await supabaseRequest("/rest/v1/rpc/wedding_analytics", { ...opts, method: "POST", body: { p_wedding_id: wid } });
+      return sendJson(res, 200, { analytics: result || {} });
+    }
+
+    if (action === "wishes-list") {
+      if (!methodOnly(req, res, "GET")) return;
+      const rows = await supabaseRequest(`/rest/v1/guest_wishes?wedding_id=eq.${wid}&select=id,author_name,message,status,created_at&order=created_at.desc&limit=200`, opts);
+      return sendJson(res, 200, { wishes: rows || [] });
+    }
+
+    if (action === "wish-moderate") {
+      if (!methodOnly(req, res, "POST")) return;
+      if (!UUID.test(String(body.wishId || "")) || !["approved", "hidden", "pending"].includes(body.status)) return sendJson(res, 400, { error: "Invalid request." });
+      await supabaseRequest(`/rest/v1/guest_wishes?id=eq.${body.wishId}&wedding_id=eq.${wid}`, { ...opts, method: "PATCH", prefer: "return=minimal", body: { status: body.status } });
+      return sendJson(res, 200, { ok: true });
+    }
+
+    if (action === "extras-get") {
+      if (!methodOnly(req, res, "GET")) return;
+      const rows = await supabaseRequest(`/rest/v1/weddings?id=eq.${wid}&select=faq,travel_info`, opts);
+      if (!rows?.length) return sendJson(res, 404, { error: "Wedding not found." });
+      return sendJson(res, 200, { faq: rows[0].faq || [], travel: rows[0].travel_info || "" });
+    }
+
+    if (action === "extras-save") {
+      if (!methodOnly(req, res, "POST")) return;
+      const faq = (Array.isArray(body.faq) ? body.faq : []).slice(0, 12)
+        .map(f => ({ q: String(f?.q || "").trim().slice(0, 160), a: String(f?.a || "").trim().slice(0, 600) }))
+        .filter(f => f.q && f.a);
+      const travel = String(body.travel || "").trim().slice(0, 2000);
+      await supabaseRequest(`/rest/v1/weddings?id=eq.${wid}&client_owner_id=eq.${encodeURIComponent(session.user.id)}`, { ...opts, method: "PATCH", prefer: "return=minimal", body: { faq, travel_info: travel || null } });
+      return sendJson(res, 200, { ok: true });
+    }
     return sendJson(res, 404, { error: "Unknown action." });
   } catch (error) {
     // Log full error for debugging but never expose secrets

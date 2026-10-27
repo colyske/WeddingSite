@@ -23,3 +23,19 @@ Status: built features are implemented; payments are test mode (no real money).
 - Pass lookup uses email or code only (no phone stored on RSVPs).
 - Venue dates are saved on update, not on create.
 - Not built (recommended later): Facebook/X/SMS share and Open Graph meta, guestbook, gallery, seating lookup, FAQ/travel, referral tracking, analytics, Swahili toggle, PWA.
+
+## Sharing, referrals and engagement (completion batch)
+
+| Feature | Configured (organizer) | Shown (guest site) | Recorded | Who sees it |
+|---|---|---|---|---|
+| Share panel (copy, native share, WhatsApp, Facebook, X, email, SMS) with invitation text | - | Hero button, "Share the celebration" section, footer link, RSVP pass | - | Public |
+| Open Graph / Twitter previews | - | Shared link `/w/<slug>` is served by `/api/guest?action=og` (server-rendered meta, then redirects to the site); JS also sets tags on the page. Preview image is a fixed stock photo, not the couple's own | - | Public |
+| Save the date (.ics) and Add to Google Calendar | Date, time, zone | Share section | - | Public |
+| Referral tracking | - | Each RSVP gets a random 8-char code and a personal link `?ref=<code>`; consent note beside the link | `site_visits` (salted HMAC of IP+UA, never raw IP, one row per visitor/ref/day), `guest_rsvps.ref_code/referred_by_code` | Couple, admins, owner role ("Guests who invited others", counts only, no emails) |
+| Visit rate limit / dedupe | - | - | Per-instance in-memory limiter (best effort) plus DB unique index (authoritative) | - |
+| Guestbook with moderation | Approve / hide in Guest engagement | Wish form and approved wishes | `guest_wishes` (RLS: managers only; guests post through API) | Public sees approved only; couple/admins moderate |
+| Travel & FAQ | Editor "FAQ & travel info" | "Travel & FAQ" section | `weddings.faq`, `weddings.travel_info` | Public |
+| Organizer analytics | - | - | `wedding_analytics()` RPC: visitors, referred visitors, RSVPs, bids, wishes | Couple, admins, owner role |
+| Post-wedding thank-you | Automatic once the date passes | Memories/thank-you banner; guestbook still open | `is_past` | Public |
+
+Not built yet (recommended next): photo gallery/uploads with moderation (needs storage + size limits), English/Swahili toggle, PWA/offline pass, seating-chart lookup, group RSVP, per-wedding Open Graph image, templates/themes, real WhatsApp/email delivery (needs credentials).

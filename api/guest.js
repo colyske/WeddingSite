@@ -1,9 +1,33 @@
 import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireAuth } from "../server/auth-middleware.js";
 import { isPastWedding } from "../server/wedding-time.js";
+import { createHmac } from "node:crypto";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const text = (value, max) => (typeof value === "string" ? value.trim().slice(0, max) : "");
+
+// Best-effort per-instance rate limiter (the database unique index is the real dedupe).
+const hits = new Map();
+function limited(key, max, windowMs) {
+  const now = Date.now();
+  const arr = (hits.get(key) || []).filter(t => now - t < windowMs);
+  arr.push(now);
+  hits.set(key, arr);
+  if (hits.size > 5000) hits.clear();
+  return arr.length > max;
+}
+const clientHash = (req, slug) => {
+  const ip = String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "").split(",")[0].trim();
+  const key = process.env.WEDDINGSITE_HASH_SALT || process.env.SUPABASE_SERVICE_ROLE_KEY || "weddingsite";
+  return createHmac("sha256", key).update(`${slug}|${ip}|${req.headers["user-agent"] || ""}`).digest("hex").slice(0, 32);
+};
+const REF = /^[a-f0-9]{8}$/;
+const refFor = async (weddingId, rsvpId) => {
+  try {
+    const r = await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvpId}&wedding_id=eq.${weddingId}&select=ref_code`, { service: true });
+    return r?.[0]?.ref_code || "";
+  } catch { return ""; }
+};
 
 // Helper: resolve wedding ID from slug (for guest operations)
 async function resolveWeddingId(slug, rpc) {
@@ -26,6 +50,70 @@ export default async function handler(req, res) {
       const wedding = await rpc("get_public_wedding_site", { p_slug: slug });
       if (!wedding?.id) return sendJson(res, 404, { error: "This wedding site is not published." });
       return sendJson(res, 200, { wedding });
+    }
+
+    if (action === "og") {
+      if (!methodOnly(req, res, "GET")) return;
+      const slug = String(req.query.slug || "").toLowerCase();
+      const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      const site = /^[a-z0-9-]{3,80}$/.test(slug) ? await rpc("get_public_wedding_site", { p_slug: slug }).catch(() => null) : null;
+      const host = req.headers["x-forwarded-host"] || req.headers.host || "weddingsite-six-bice.vercel.app";
+      const origin = `https://${String(host).replace(/[^a-z0-9.:-]/gi, "")}`;
+      const ref = REF.test(String(req.query.ref || "")) ? String(req.query.ref) : "";
+      const target = `/guest.html?slug=${encodeURIComponent(slug)}${ref ? `&ref=${ref}` : ""}`;
+      const title = site?.id ? `${site.couple_names} are getting married` : "WeddingSite";
+      const when = site?.wedding_date ? String(site.wedding_date).slice(0, 10) : "";
+      const desc = site?.id ? `You are invited${when ? " - " + when : ""}${site.public_location ? " - " + site.public_location : ""}. RSVP, send wishes and save the date.` : "Organize your wedding your way.";
+      const image = "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1200&q=80";
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=300");
+      return res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title>
+<meta name="description" content="${esc(desc)}">
+<meta property="og:type" content="website"><meta property="og:site_name" content="WeddingSite">
+<meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
+<meta property="og:url" content="${esc(origin + "/w/" + slug)}"><meta property="og:image" content="${esc(image)}">
+<meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}">
+<meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(image)}">
+<meta http-equiv="refresh" content="0;url=${esc(target)}"></head><body><p><a href="${esc(target)}">Open the wedding site</a></p><script>location.replace(${JSON.stringify(target)})</script></body></html>`);
+    }
+    if (action === "visit") {
+      if (!methodOnly(req, res, "POST")) return;
+      const body = req.body && typeof req.body === "object" ? req.body : {};
+      const slug = String(body.slug || "").toLowerCase();
+      if (!/^[a-z0-9-]{3,80}$/.test(slug)) return sendJson(res, 400, { error: "Invalid wedding." });
+      const hash = clientHash(req, slug);
+      if (limited(`v|${hash}`, 30, 60000)) return sendJson(res, 429, { error: "Too many requests." });
+      const weddingId = await resolveWeddingId(slug, rpc);
+      if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
+      const ref = REF.test(String(body.ref || "")) ? String(body.ref) : "";
+      await supabaseRequest("/rest/v1/site_visits?on_conflict=wedding_id,ref_code,visitor_hash,day", { service: true, method: "POST", prefer: "resolution=ignore-duplicates,return=minimal", body: { wedding_id: weddingId, ref_code: ref, visitor_hash: hash } });
+      return sendJson(res, 200, { ok: true });
+    }
+
+    if (action === "extras") {
+      if (!methodOnly(req, res, "GET")) return;
+      const slug = String(req.query.slug || "").toLowerCase();
+      const weddingId = /^[a-z0-9-]{3,80}$/.test(slug) ? await resolveWeddingId(slug, rpc) : null;
+      if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
+      const [w, wishes] = await Promise.all([
+        supabaseRequest(`/rest/v1/weddings?id=eq.${weddingId}&select=faq,travel_info`, { service: true }),
+        supabaseRequest(`/rest/v1/guest_wishes?wedding_id=eq.${weddingId}&status=eq.approved&select=author_name,message,created_at&order=created_at.desc&limit=50`, { service: true })
+      ]);
+      return sendJson(res, 200, { faq: w?.[0]?.faq || [], travel: w?.[0]?.travel_info || "", wishes: wishes || [] });
+    }
+
+    if (action === "wish") {
+      if (!methodOnly(req, res, "POST")) return;
+      const body = req.body && typeof req.body === "object" ? req.body : {};
+      const slug = String(body.slug || "").toLowerCase();
+      const name = text(body.name, 80), message = text(body.message, 500);
+      if (!name || !message) return sendJson(res, 400, { error: "Please add your name and a message." });
+      if (limited(`w|${clientHash(req, slug)}`, 5, 600000)) return sendJson(res, 429, { error: "Please wait a little before sending another wish." });
+      const weddingId = /^[a-z0-9-]{3,80}$/.test(slug) ? await resolveWeddingId(slug, rpc) : null;
+      if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
+      await supabaseRequest("/rest/v1/guest_wishes", { service: true, method: "POST", prefer: "return=minimal", body: { wedding_id: weddingId, author_name: name, message } });
+      return sendJson(res, 200, { message: "Thank you! Your wish will appear once the couple approves it." });
     }
 
     if (action === "leaderboard") {
@@ -94,7 +182,17 @@ export default async function handler(req, res) {
             const full = rsvp?.status === "full";
             return sendJson(res, full ? 409 : 400, { error: rsvp?.message || "RSVP could not be saved." });
           }
-          return sendJson(res, 200, { message: rsvp.message, status: rsvp.status, rsvpId: rsvp.rsvp_id });
+          let refCode = "";
+          try {
+            const mine = await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvp.rsvp_id}&select=ref_code,referred_by_code`, { service: true });
+            refCode = mine?.[0]?.ref_code || "";
+            const by = String(body.ref || "");
+            if (REF.test(by) && by !== refCode && !mine?.[0]?.referred_by_code) {
+              const owner = await supabaseRequest(`/rest/v1/guest_rsvps?wedding_id=eq.${weddingId}&ref_code=eq.${by}&select=id`, { service: true });
+              if (owner?.length) await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvp.rsvp_id}`, { service: true, method: "PATCH", prefer: "return=minimal", body: { referred_by_code: by } });
+            }
+          } catch (e) { console.error("referral attribution failed:", e.message); }
+          return sendJson(res, 200, { message: rsvp.message, status: rsvp.status, rsvpId: rsvp.rsvp_id, refCode });
         } catch (error) {
           return sendJson(res, error.message.includes("capacity") ? 409 : 400, { error: error.message || "RSVP failed." });
         }
@@ -192,12 +290,12 @@ export default async function handler(req, res) {
       if (UUID.test(code)) {
         const result = await rpc("get_guest_pass_data", { p_wedding_id: weddingId, p_guest_id: code });
         if (!result?.length) return sendJson(res, 404, { error: "No pass found for that code." });
-        return sendJson(res, 200, { rsvpId: code, guestName: result[0].name });
+        return sendJson(res, 200, { rsvpId: code, guestName: result[0].name, refCode: await refFor(weddingId, code) });
       }
       if (email.length >= 5 && email.length <= 254 && email.includes("@")) {
         const rows = await rpc("lookup_guest_pass", { p_wedding_id: weddingId, p_email: email });
         if (!rows?.length) return sendJson(res, 404, { error: "No pass found for that email." });
-        return sendJson(res, 200, { rsvpId: rows[0].rsvp_id, guestName: rows[0].guest_name });
+        return sendJson(res, 200, { rsvpId: rows[0].rsvp_id, guestName: rows[0].guest_name, refCode: await refFor(weddingId, rows[0].rsvp_id) });
       }
       return sendJson(res, 400, { error: "Enter the email you used to RSVP, or your pass code." });
     }

@@ -47,7 +47,7 @@
               <a href="/account.html" class="link" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer; text-decoration: none; color: #0066cc;">Account Settings</a>
               <button type="button" class="link" id="change-password" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer;">Change password</button>
               <a href="/admin.html" class="link" style="display: none;" id="admin-dashboard" title="Admin Dashboard">Admin Dashboard</a>
-              <a href="#" class="link" style="display: none;" id="owner-profile" title="Owner Profile">Owner Profile</a>
+              <a href="/owner.html" class="link" style="display: none;" id="owner-profile" title="Owner dashboard">Owner dashboard</a>
               <hr style="margin: 0.5rem 0; border: none; border-top: 1px solid #ddd;">
               <button type="button" class="link" id="account-sign-out" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer;">Sign out</button>
             </div>
@@ -80,10 +80,10 @@
           <div id="ai-story-list" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
         </div>
 
-        <label for="wedding-date">Date</label>
-        <input id="wedding-date" type="date">
+        <label for="wedding-date">Date <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <input id="wedding-date" type="date" required aria-required="true">
 
-        <label for="wedding-timezone">Time zone <span class="fine" style="font-weight: normal;">(venue times, countdown and calendar use this zone)</span></label>
+        <label for="wedding-timezone">Time zone <span style="color: #d9534f; font-weight: bold;" title="Required">*</span> <span class="fine" style="font-weight: normal;">(venue times, countdown and calendar use this zone)</span></label>
         <select id="wedding-timezone"></select>
 
         <label for="location">Location <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
@@ -199,6 +199,60 @@
         <button type="button" id="confirm-publish" class="ghost">Confirm: publish now</button>
         <button type="button" id="cancel-publish" class="link">Cancel</button>
       </div>
+    </div>
+
+    <!-- Status, fee, unpublish/archive -->
+    <div id="ops-section" class="card" hidden>
+      <h2>Status &amp; publication</h2>
+      <p><span id="status-badge" class="tag"></span></p>
+      <p id="past-note" class="fine" hidden>The wedding date has passed. The guest site now shows a thank-you / memories page; RSVPs, bids and pledges are closed.</p>
+      <div id="fee-box" class="fine"></div>
+      <div class="row">
+        <button type="button" id="pay-fee-btn" class="ghost" hidden>Pay publication fee (test mode)</button>
+        <button type="button" id="unpublish-btn" class="ghost" hidden>Unpublish (reversible)</button>
+        <button type="button" id="archive-btn" class="ghost">Archive</button>
+      </div>
+      <p class="fine">Weddings are never deleted. Unpublishing hides the guest site; you can publish again any time.</p>
+    </div>
+
+    <!-- KYC -->
+    <div id="kyc-section" class="card" hidden>
+      <h2>Couple identity (KYC) &mdash; private</h2>
+      <p class="fine">Required before publishing. Only you, platform admins and the platform owner can see this. It is never shown on the guest site or in any public API, and ID numbers are masked here.</p>
+      <form id="kyc-form" autocomplete="off">
+        <label for="kyc-p1">Partner 1 full legal name <span class="req" title="Required">*</span></label><input id="kyc-p1" maxlength="120" required>
+        <label for="kyc-p2">Partner 2 full legal name <span class="req" title="Required">*</span></label><input id="kyc-p2" maxlength="120" required>
+        <label for="kyc-idtype">ID type <span class="req">*</span></label>
+        <select id="kyc-idtype" required><option value="national_id">National ID</option><option value="passport">Passport</option><option value="other">Other</option></select>
+        <label for="kyc-idnum">ID / passport number <span class="req">*</span></label><input id="kyc-idnum" maxlength="40" required>
+        <label for="kyc-nat">Nationality <span class="req">*</span></label><input id="kyc-nat" maxlength="60" required>
+        <label for="kyc-phone">Phone <span class="req">*</span></label><input id="kyc-phone" type="tel" maxlength="30" required>
+        <label for="kyc-email">Email <span class="req">*</span></label><input id="kyc-email" type="email" maxlength="254" required>
+        <label for="kyc-cname">Organizer / contact person</label><input id="kyc-cname" maxlength="120">
+        <label for="kyc-cphone">Contact phone</label><input id="kyc-cphone" type="tel" maxlength="30">
+        <label for="kyc-kname">Next of kin</label><input id="kyc-kname" maxlength="120">
+        <label for="kyc-kphone">Next of kin phone</label><input id="kyc-kphone" type="tel" maxlength="30">
+        <label for="kyc-krel">Relationship</label><input id="kyc-krel" maxlength="60">
+        <label class="row" style="gap:.5rem"><input id="kyc-consent" type="checkbox" required> <span>I consent to WeddingSite processing these details to verify the organizer and prevent fraud, under applicable data-protection law. I can request correction or deletion by contacting support.</span></label>
+        <div class="row"><button type="submit">Save identity details</button> <span id="kyc-status" class="fine"></span></div>
+      </form>
+    </div>
+    <div id="engage-section" class="card" hidden>
+      <h2>Guest engagement</h2>
+      <div id="analytics-grid" class="fine" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.6rem"></div>
+      <h3>Guests who invited others</h3>
+      <p class="fine">Each guest gets a personal share link (a random short code, no personal details in the URL). Visits are counted once per visitor per day using a salted hash; raw IP addresses are never stored. Only you and platform admins can see this.</p>
+      <div id="referral-list" class="fine">No data yet.</div>
+      <h3>Guestbook moderation</h3>
+      <div id="wish-list" class="fine">No wishes yet.</div>
+      <h3>FAQ &amp; travel info</h3>
+      <form id="extras-form">
+        <label for="travel-info">Travel &amp; accommodation</label>
+        <textarea id="travel-info" rows="3" maxlength="2000" placeholder="Parking, nearby hotels, shuttle times..."></textarea>
+        <label>FAQ (question, then answer)</label>
+        <div id="faq-rows"></div>
+        <div class="row"><button type="button" id="faq-add" class="ghost">Add question</button><button type="submit">Save FAQ &amp; travel</button></div>
+      </form>
     </div>
 
     <!-- Published section -->
@@ -372,7 +426,7 @@
 
     $("change-password").addEventListener("click", async (e) => {
       e.preventDefault();
-      alert("Password change feature coming soon. Contact support to reset your password.");
+      location.href = "/account.html#password";
     });
 
     // Set up role-based navigation
@@ -386,12 +440,8 @@
       
       if (roleWedding === "owner") {
         $("owner-profile").style.display = "block";
-        $("owner-profile").textContent = "Owner Profile (You)";
-        $("owner-profile").href = "#";
-        $("owner-profile").addEventListener("click", (e) => {
-          e.preventDefault();
-          alert("Owner profile coming soon");
-        });
+        $("owner-profile").textContent = "Owner dashboard";
+        $("owner-profile").href = "/owner.html";
       }
     }
 
@@ -724,6 +774,8 @@
         $("wedding-date").value = w.wedding_date ? w.wedding_date.split("T")[0] : "";
         WSTime.fillSelect($("wedding-timezone"), w.time_zone || WSTime.DEFAULT_ZONE);
         setGuestSiteLink(w.slug, !!w.published_at);
+        window.__wedding = w;
+        refreshOps(w);
         $("location").value = w.public_location || "";
         $("background-music-url").value = w.background_music_url || "";
         $("currency").value = w.currency || "USD";
@@ -1022,7 +1074,7 @@
             coupleNames: $("couple-names").value,
             slug: $("wedding-slug").value,
             welcomeStory: $("welcome-story").value,
-            weddingDate: $("wedding-date").value || null,
+            weddingDate: $("wedding-date").value,
             timeZone: $("wedding-timezone").value,
             location: $("location").value,
             currency: $("currency").value,
@@ -1074,6 +1126,13 @@
         if (!res.ok) {
           $("publish-message").textContent = data.error || "Could not publish. Please check required fields and try again.";
           $("publish-message").hidden = false;
+          if (data.paymentRequired || data.kycRequired) {
+            $("publish-section").hidden = true;
+            $("edit-section").hidden = false;
+            notice(data.paymentRequired ? (data.error + " Use \"Pay publication fee\" below, then publish again.") : data.error, true);
+            refreshOps(window.__wedding || {});
+            (data.kycRequired ? $("kyc-section") : $("ops-section")).scrollIntoView({ behavior: "smooth" });
+          }
           return;
         }
         
@@ -1087,6 +1146,8 @@
         $("publish-btn").hidden = true;
         setGuestSiteLink(data.wedding?.slug || $("wedding-slug").value, true);
         notice("Wedding published successfully!");
+        window.__wedding = { ...(window.__wedding || {}), ...(data.wedding || {}), published_at: (data.wedding && data.wedding.published_at) || new Date().toISOString(), archived_at: null };
+        refreshOps(window.__wedding);
         loadRsvps();
         loadBids();
         loadWithdrawals();
@@ -1099,6 +1160,149 @@
       }
     });
 
+    // Status, fee quote, unpublish / archive, KYC
+    const ISO_TODAY = () => new Date().toISOString().slice(0, 10);
+    async function refreshOps(w) {
+      $("ops-section").hidden = false;
+      $("kyc-section").hidden = false;
+      const badge = $("status-badge");
+      const past = w.wedding_date && w.wedding_date.slice(0, 10) < ISO_TODAY();
+      let label = "Draft";
+      if (w.archived_at) label = "Archived";
+      else if (w.published_at) label = past ? "Completed / Past" : "Published";
+      else if (w.unpublished_at) label = "Unpublished";
+      else if (past) label = "Past (draft)";
+      badge.textContent = label;
+      $("past-note").hidden = !past;
+      $("unpublish-btn").hidden = !w.published_at;
+      $("archive-btn").textContent = w.archived_at ? "Restore from archive" : "Archive";
+      $("archive-btn").dataset.archived = w.archived_at ? "1" : "";
+      $("publish-btn").hidden = !!w.published_at || !!w.archived_at;
+      try {
+        const res = await WS.api(`/api/weddings?action=quote&weddingId=${encodeURIComponent(weddingId)}`);
+        const data = await res.json();
+        const q = data.quote || {};
+        if (res.ok && q.fee_minor != null) {
+          $("fee-box").textContent = q.fee_minor > 0 ? `Publication fee: ${WS.money(q.fee_minor, q.currency || "USD", false)}. ${q.reason || ""}` : `No publication fee. ${q.reason || ""}`;
+          $("pay-fee-btn").hidden = !(q.fee_minor > 0) || !!w.published_at;
+          $("pay-fee-btn").dataset.fee = String(q.fee_minor);
+        }
+      } catch (_) {}
+    }
+    async function postAction(action, extra) {
+      const res = await WS.api(`/api/weddings?action=${action}`, { method: "POST", body: JSON.stringify({ weddingId, confirmed: true, ...extra }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Action failed.");
+      return data;
+    }
+    $("unpublish-btn").addEventListener("click", async () => {
+      if (!confirm("Unpublish this wedding? Guests will no longer see the site. You can publish again later.")) return;
+      try {
+        const d = await postAction("unpublish");
+        notice("Wedding unpublished. You can publish again any time.");
+        $("published-section").hidden = true;
+        window.__wedding = d.wedding || window.__wedding;
+        refreshOps(window.__wedding || {});
+      } catch (e) { notice(e.message, true); }
+    });
+    $("archive-btn").addEventListener("click", async () => {
+      const restoring = $("archive-btn").dataset.archived === "1";
+      if (!confirm(restoring ? "Restore this wedding from the archive?" : "Archive this wedding? It will be hidden from guests. Weddings are never deleted.")) return;
+      try {
+        const d = await postAction("archive", { archived: !restoring });
+        notice(restoring ? "Wedding restored." : "Wedding archived.");
+        window.__wedding = d.wedding || window.__wedding;
+        refreshOps(window.__wedding || {});
+      } catch (e) { notice(e.message, true); }
+    });
+    $("pay-fee-btn").addEventListener("click", async () => {
+      if (!confirm("Test mode: this records a simulated publication fee payment. No real money is charged. Continue?")) return;
+      try {
+        const res = await WS.api("/api/testpay?action=publication", { method: "POST", body: JSON.stringify({ weddingId }) });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || "Payment could not be recorded.");
+        notice("Test payment recorded. You can now publish.");
+        refreshOps(window.__wedding || {});
+      } catch (e) { notice(e.message, true); }
+    });
+    const KYC_FIELDS = { "kyc-p1": "partner1_legal_name", "kyc-p2": "partner2_legal_name", "kyc-idtype": "id_type", "kyc-idnum": "id_number", "kyc-nat": "nationality", "kyc-phone": "phone", "kyc-email": "email", "kyc-cname": "contact_name", "kyc-cphone": "contact_phone", "kyc-kname": "next_of_kin_name", "kyc-kphone": "next_of_kin_phone", "kyc-krel": "next_of_kin_relation" };
+    async function loadKyc() {
+      try {
+        const res = await WS.api(`/api/weddings?action=kyc-get&weddingId=${encodeURIComponent(weddingId)}`);
+        const d = await res.json();
+        const k = d.kyc;
+        if (!res.ok || !k || !k.exists) return;
+        for (const [id, key] of Object.entries(KYC_FIELDS)) {
+          $(id).value = id === "kyc-idnum" ? (k.id_number_masked || "") : (k[key] || "");
+        }
+        $("kyc-status").textContent = k.complete ? "Complete. ID number is masked; re-enter it only to change it." : "Incomplete.";
+        $("kyc-consent").checked = !!k.complete;
+      } catch (_) {}
+    }
+    $("kyc-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      const kyc = {};
+      for (const [id, key] of Object.entries(KYC_FIELDS)) kyc[key] = $(id).value;
+      try {
+        const res = await WS.api("/api/weddings?action=kyc-save", { method: "POST", body: JSON.stringify({ weddingId, kyc, consent: $("kyc-consent").checked }) });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || "Could not save identity details.");
+        notice("Identity details saved privately.");
+        loadKyc();
+      } catch (err) { notice(err.message, true); }
+    });
+    loadKyc();
+    // Engagement: analytics, referrals, guestbook, FAQ
+    function faqRow(q, a) {
+      const d = document.createElement("div");
+      d.className = "faq-row";
+      d.innerHTML = '<input type="text" maxlength="160" placeholder="Question" class="faq-q"><textarea rows="2" maxlength="600" placeholder="Answer" class="faq-a"></textarea>';
+      d.querySelector(".faq-q").value = q || "";
+      d.querySelector(".faq-a").value = a || "";
+      $("faq-rows").appendChild(d);
+    }
+    $("faq-add").addEventListener("click", () => faqRow());
+    async function loadEngagement() {
+      $("engage-section").hidden = false;
+      const q = encodeURIComponent(weddingId);
+      try {
+        const r = await WS.api(`/api/weddings?action=analytics&weddingId=${q}`); const d = await r.json();
+        const a = d.analytics || {};
+        const cells = [["Visitors", a.visitors], ["Via invite links", a.referred_visitors], ["RSVPs yes", a.rsvps_confirmed], ["RSVPs no", a.rsvps_declined], ["RSVPs from invites", a.rsvps_referred], ["DJ bids", a.bids], ["Wishes to review", a.wishes_pending]];
+        $("analytics-grid").innerHTML = cells.map(c => `<div><strong style="font-size:1.4rem">${Number(c[1] || 0)}</strong><br>${WS.esc(c[0])}</div>`).join("");
+      } catch (_) {}
+      try {
+        const r = await WS.api(`/api/weddings?action=referrals&weddingId=${q}`); const d = await r.json();
+        const rows = (d.referrals || []).filter(x => x.visits > 0 || x.rsvps_brought > 0);
+        $("referral-list").innerHTML = rows.length ? '<table><thead><tr><th>#</th><th>Guest</th><th>Visits</th><th>RSVPs brought in</th></tr></thead><tbody>' + rows.map((x, i) => `<tr><td>${i + 1}</td><td>${WS.esc(x.guest_name)}</td><td>${x.visits}</td><td>${x.rsvps_brought}</td></tr>`).join("") + "</tbody></table>" : "No invited visits yet. Guests receive a personal link after they RSVP.";
+      } catch (_) {}
+      await loadWishes();
+      try {
+        const r = await WS.api(`/api/weddings?action=extras-get&weddingId=${q}`); const d = await r.json();
+        $("travel-info").value = d.travel || "";
+        $("faq-rows").innerHTML = "";
+        (d.faq || []).forEach(f => faqRow(f.q, f.a));
+      } catch (_) {}
+    }
+    async function loadWishes() {
+      try {
+        const r = await WS.api(`/api/weddings?action=wishes-list&weddingId=${encodeURIComponent(weddingId)}`); const d = await r.json();
+        const w = d.wishes || [];
+        $("wish-list").innerHTML = w.length ? w.map(x => `<div class="wish-item" data-id="${x.id}"><strong>${WS.esc(x.author_name)}</strong> <span class="tag">${WS.esc(x.status)}</span><br>${WS.esc(x.message)}<div class="row"><button type="button" class="ghost" data-wish="approved">Approve</button><button type="button" class="ghost" data-wish="hidden">Hide</button></div></div>`).join("") : "No wishes yet.";
+      } catch (_) {}
+    }
+    $("wish-list").addEventListener("click", async e => {
+      const b = e.target.closest("[data-wish]"); if (!b) return;
+      const res = await WS.api("/api/weddings?action=wish-moderate", { method: "POST", body: JSON.stringify({ weddingId, wishId: b.closest(".wish-item").dataset.id, status: b.dataset.wish }) });
+      if (res.ok) { notice("Wish updated."); loadWishes(); } else notice("Could not update the wish.", true);
+    });
+    $("extras-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      const faq = [...document.querySelectorAll(".faq-row")].map(r => ({ q: r.querySelector(".faq-q").value, a: r.querySelector(".faq-a").value }));
+      const res = await WS.api("/api/weddings?action=extras-save", { method: "POST", body: JSON.stringify({ weddingId, faq, travel: $("travel-info").value }) });
+      notice(res.ok ? "FAQ and travel info saved." : "Could not save FAQ and travel info.", !res.ok);
+    });
+    loadEngagement();
     // Load RSVPs
     async function loadRsvps() {
       try {
@@ -1221,31 +1425,6 @@
         $("request-withdrawal-btn").disabled = false;
       }
     });
-
-    $("change-password").addEventListener("click", async (e) => {
-      e.preventDefault();
-      alert("Password change feature coming soon. Contact support to reset your password.");
-    });
-
-    // Set up role-based navigation
-    const role = window.WS.role();
-    if (role) {
-      $("role-display").textContent = `Role: ${role.charAt(0).toUpperCase() + role.slice(1)}`;
-      
-      if (role === "admin" || role === "superadmin" || role === "owner") {
-        $("admin-dashboard").style.display = "block";
-      }
-      
-      if (role === "owner") {
-        $("owner-profile").style.display = "block";
-        $("owner-profile").textContent = "Owner Profile (You)";
-        $("owner-profile").href = "#";
-        $("owner-profile").addEventListener("click", (e) => {
-          e.preventDefault();
-          alert("Owner profile coming soon");
-        });
-      }
-    }
 
     loadWedding();
 })();

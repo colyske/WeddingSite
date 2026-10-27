@@ -382,6 +382,7 @@
   <audio id="background-music" loop style="display: none;"></audio>
 
   <script src="tz.js"></script>
+  <script src="share.js"></script>
   <script src="auth-client.js"></script>
   <script>
 (async () => {
@@ -420,6 +421,7 @@
       if (!wedding) return notice("Wedding not found.", true);
 
       document.title = `${wedding.couple_names || "Wedding"} — Wedding`;
+      document.dispatchEvent(new CustomEvent("ws:wedding", { detail: wedding }));
 
       // Couple monogram
       const names = wedding.couple_names?.split(/[&,]|and/).map(n => n.trim().charAt(0).toUpperCase()).join("").slice(0, 3) || "WS";
@@ -728,7 +730,8 @@
       const data = await res.json();
       if (!res.ok) return toast(data.error || "No pass found.", true);
       showPass(data.rsvpId, data.guestName, "confirmed");
-      try { localStorage.setItem("ws-pass:" + slug, JSON.stringify({ id: data.rsvpId, name: data.guestName, status: "confirmed" })); } catch (_) {}
+      try { localStorage.setItem("ws-pass:" + slug, JSON.stringify({ id: data.rsvpId, name: data.guestName, status: "confirmed", refCode: data.refCode || "" })); } catch (_) {}
+      document.dispatchEvent(new CustomEvent("ws:pass", { detail: { refCode: data.refCode || "" } }));
       toast("Pass found.");
     } catch (_) { toast("Network error.", true); }
   });
@@ -811,7 +814,8 @@
           attending: attending,
           dietaryPreference: $("dietary-preference").value,
           dietaryNotes: $("dietary-notes").value,
-          plusOnes: plusOnes
+          plusOnes: plusOnes,
+          ref: (() => { try { return localStorage.getItem("ws-ref:" + slug) || ""; } catch (_) { return ""; } })()
         })
       });
       const data = await res.json();
@@ -819,7 +823,8 @@
       notice("RSVP received! Thank you for confirming.");
       
       showPass(data.rsvpId, $("guest-name").value, data.status);
-      try { localStorage.setItem("ws-pass:" + slug, JSON.stringify({ id: data.rsvpId, name: $("guest-name").value, status: data.status })); } catch (_) {}
+      document.dispatchEvent(new CustomEvent("ws:pass", { detail: { refCode: data.refCode || "" } }));
+      try { localStorage.setItem("ws-pass:" + slug, JSON.stringify({ id: data.rsvpId, name: $("guest-name").value, status: data.status, refCode: data.refCode || "" })); } catch (_) {}
       toast("We have noted your RSVP. Your pass is below.");
       $("rsvp-form").reset();
     } catch (err) {
@@ -931,6 +936,7 @@
   </script>
   <div class="prop-row" data-props="ringsLine,cake,bouquet,dove,bell2" style="background:var(--green-deep);margin:0;padding:1.6rem 0 0;color:#e1cf9f"></div>
 <footer class="ws-promo"><span>Planning your own wedding? <a href="/signin.html">Create your wedding site with WeddingSite</a></span><span class="credit">Made with <a href="/">WeddingSite</a></span></footer>
+  <script src="guest-extras.js"></script>
   <script src="footer.js"></script>
 </body>
 </html>
