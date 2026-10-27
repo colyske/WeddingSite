@@ -308,7 +308,7 @@ export default async function handler(req, res) {
             const tier = {
               name: t.name.trim().slice(0, 60),
               min_amount_minor: Math.round(t.minAmount * 100),
-              perks: String(t.perks || "").slice(0, 240),
+              perks: String(t.perks || "").trim().slice(0, 240) || "Recognised as a supporter",
               sort_order: i
             };
             if (t.id && existing.includes(t.id)) {
@@ -539,7 +539,7 @@ export default async function handler(req, res) {
         if (!methodOnly(req, res, "POST")) return;
         const tiers = (Array.isArray(body.tiers) ? body.tiers : []).slice(0, 6).map((t, i) => ({
           wedding_id: weddingId, name: String(t.name || "").trim().slice(0, 60),
-          min_amount_minor: Math.round(Number(t.minAmount) * 100), perks: String(t.perks || "").slice(0, 240), sort_order: i
+          min_amount_minor: Math.round(Number(t.minAmount) * 100), perks: String(t.perks || "").trim().slice(0, 240) || "Recognised as a supporter", sort_order: i
         })).filter(t => t.name && Number.isSafeInteger(t.min_amount_minor) && t.min_amount_minor > 0);
         await supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}`, { ...opts, method: "DELETE", prefer: "return=minimal" });
         if (tiers.length) await supabaseRequest("/rest/v1/sponsor_tiers", { ...opts, method: "POST", body: tiers, prefer: "return=minimal" });

@@ -19,3 +19,8 @@ test("every page loads shared submit feedback", () => {
     assert.match(readFileSync(`${p}.html`, "utf8"), /feedback\.js/, p);
   }
 });
+test("sponsor tiers never send empty perks (DB check requires 1-240 chars)", () => {
+  const src = readFileSync("api/weddings.js", "utf8");
+  assert.equal((src.match(/Recognised as a supporter/g) || []).length, 2);
+  assert.match(readFileSync("wedding.html", "utf8"), /pattern="\[a-z0-9\\-\]\+"/);
+});
