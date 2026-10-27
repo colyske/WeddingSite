@@ -8,6 +8,24 @@ permissions:
   contents: read
 
 jobs:
+  migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start isolated local database
+        run: supabase start --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - name: Apply all migrations to a fresh database
+        run: supabase db reset --local --no-seed
+      - name: Lint the migrated schema
+        run: supabase db lint --local --schema public --level error
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --no-backup
+
   verify:
     runs-on: ubuntu-latest
     steps:
