@@ -1282,6 +1282,66 @@ begin
   return true;
 end $$;
 
+create or replace function public.admin_operations_queue() returns jsonb
+language plpgsql stable security definer set search_path = '' set row_security = off
+as $$
+declare result jsonb;
+begin
+  perform public.require_staff();
+  if public.current_platform_role() = 'owner' then
+    select jsonb_build_object(
+      'counts', jsonb_build_object(
+        'payment_reviews', (select count(*) from public.payment_action_reviews where resolved_at is null),
+        'kyc_exceptions', (select count(*) from public.admin_list_weddings() where not kyc_complete),
+        'reconciliations', (select count(*) from public.reconciliation_records where status <> 'matched'),
+        'payouts', (select count(*) from public.admin_payouts() where status in ('requested', 'approved'))
+      )
+    ) into result;
+    return result;
+  end if;
+  select jsonb_build_object(
+    'payment_reviews', coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.created_at desc) from (
+        select r.id, r.wedding_id, w.couple_names, r.reason_code, r.created_at
+        from public.payment_action_reviews r
+        join public.weddings w on w.id = r.wedding_id
+        where r.resolved_at is null
+        order by r.created_at desc limit 100
+      ) x
+    ), '[]'::jsonb),
+    'kyc_exceptions', coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.created_at desc) from (
+        select w.id, w.slug, w.couple_names, w.wedding_date, w.created_at
+        from public.admin_list_weddings() w
+        where not w.kyc_complete
+        order by w.created_at desc limit 100
+      ) x
+    ), '[]'::jsonb),
+    'reconciliations', coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.created_at desc) from (
+        select r.id, r.wedding_id, w.couple_names, r.provider, r.expected_minor,
+          r.reported_minor, r.difference_minor, r.currency, r.status, r.created_at
+        from public.reconciliation_records r
+        join public.weddings w on w.id = r.wedding_id
+        where r.status <> 'matched'
+        order by r.created_at desc limit 100
+      ) x
+    ), '[]'::jsonb),
+    'payouts', coalesce((
+      select jsonb_agg(to_jsonb(x) order by x.requested_at asc) from (
+        select p.id, p.wedding_id, p.couple_names, p.amount_minor, p.currency,
+          p.status, p.requested_at, p.note, p.own_request
+        from public.admin_payouts() p
+        where p.status in ('requested', 'approved')
+        order by p.requested_at asc limit 100
+      ) x
+    ), '[]'::jsonb)
+  ) into result;
+  return result;
+end $$;
+revoke all on function public.admin_operations_queue() from public, anon;
+grant execute on function public.admin_operations_queue() to authenticated;
+
 -- Keep public contributor lists paid-only; pending checkout rows are private.
 drop function if exists public.get_published_contributions_page(uuid, integer, integer);
 create function public.get_published_contributions_page(

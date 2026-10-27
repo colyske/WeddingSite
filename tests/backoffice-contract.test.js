@@ -70,3 +70,20 @@ test("editor marks date, time zone and location as required and wires unpublish/
   assert.match(html, /kycRequired/);
   assert.match(html, /paymentRequired/);
 });
+
+test("Admin exception queue is role-checked and Owner receives counts only", async () => {
+  const migration = await read("supabase/migrations/202610300002_verified_test_payments.sql");
+  const ui = await read("backoffice.js");
+  const queueFn = migration.split("create or replace function public.admin_operations_queue")[1]
+    .split("revoke all on function public.admin_operations_queue")[0];
+  assert.match(queueFn, /perform public\.require_staff\(\)/);
+  assert.match(queueFn, /if public\.current_platform_role\(\) = 'owner' then/i);
+  assert.match(queueFn, /payment_action_reviews/);
+  assert.match(queueFn, /reconciliation_records/);
+  assert.match(queueFn, /admin_payouts\(\)/);
+  assert.match(queueFn, /admin_list_weddings\(\)/);
+  assert.doesNotMatch(queueFn, /id_number|phone|email|document/i);
+  assert.match(ui, /Admin exception queue/);
+  assert.match(ui, /Paid action failures do not authorize a second charge/);
+  assert.match(ui, /counts\.payment_reviews/);
+});

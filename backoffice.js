@@ -2,7 +2,7 @@
 (function () {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => WS.esc(s);
-  const SEC = { overview: "Overview", weddings: "Weddings", users: "Users & roles", fees: "Fees & settings", ledger: "Ledger", payouts: "Payouts", audit: "Audit log", security: "Security" };
+  const SEC = { overview: "Overview", operations: "Operations", weddings: "Weddings", users: "Users & roles", fees: "Fees & settings", ledger: "Ledger", payouts: "Payouts", audit: "Audit log", security: "Security" };
   let role = "";
   let cache = {};
 
@@ -96,6 +96,35 @@
         ${stat("Held pending provider fee", esc(moneyMap(o.provider_fee_holds_by_currency)))}
         ${stat("Publication fees", esc(moneyMap(o.publication_fees_by_currency)))}</div>
         <p class="fine">Checkout only accepts verified test-provider payments. Test checkout remains unavailable until provider keys, allowed currencies and markets, Turnstile site/secret keys, and a wedding-specific provider configuration are all ready. Payment credentials are never shown here.</p>`;
+    },
+    async operations(el) {
+      const { queue: q } = await get("operations");
+      const reviews = q.payment_reviews || [];
+      const kyc = q.kyc_exceptions || [];
+      const reconciliations = q.reconciliations || [];
+      const payouts = q.payouts || [];
+      if (role === "owner") {
+        const counts = q.counts || {};
+        el.innerHTML = `<h2>Operational health</h2><p class="fine">Routine exception work is assigned to Admins. The Owner view is limited to aggregate escalations; no private KYC values are shown.</p>
+          <div class="stats">${stat("Paid actions needing follow-up", counts.payment_reviews ?? 0)}${stat("KYC exceptions", counts.kyc_exceptions ?? 0)}
+          ${stat("Reconciliation differences", counts.reconciliations ?? 0)}${stat("Payouts awaiting staff action", counts.payouts ?? 0)}</div>`;
+        return;
+      }
+      const reviewRows = reviews.map((r) => `<tr><td>${date(r.created_at)}</td><td>${esc(r.couple_names)}</td><td>${esc(r.reason_code)}</td>
+        <td>${btn("Wedding metrics", `data-ops-wedding="${esc(r.wedding_id)}"`)}</td></tr>`);
+      const kycRows = kyc.map((w) => `<tr><td>${esc(w.couple_names)}</td><td>${esc(w.wedding_date || "-")}</td>
+        <td>${btn("Review wedding", `data-ops-wedding="${esc(w.id)}"`)}</td></tr>`);
+      const reconRows = reconciliations.map((r) => `<tr><td>${date(r.created_at)}</td><td>${esc(r.couple_names)}</td><td>${esc(r.provider)}</td>
+        <td>${esc(WS.money(Number(r.expected_minor || 0), r.currency, false))}</td><td>${esc(WS.money(Number(r.reported_minor || 0), r.currency, false))}</td>
+        <td>${esc(r.status)}</td></tr>`);
+      const payoutRows = payouts.map((p) => `<tr><td>${date(p.requested_at)}</td><td>${esc(p.couple_names)}</td>
+        <td>${esc(WS.money(Number(p.amount_minor || 0), p.currency, false))}</td><td>${esc(p.status)}</td></tr>`);
+      el.innerHTML = `<h2>Admin exception queue</h2><p class="fine">Work unresolved exceptions first. Paid action failures do not authorize a second charge; reconcile the verified payment before any manual fulfilment. KYC completeness is not independent identity verification.</p>
+        <h3>Paid actions needing follow-up (${reviews.length})</h3>${table(["Detected", "Wedding", "Reason", "Next step"], reviewRows)}
+        <h3>KYC completeness exceptions (${kyc.length})</h3>${table(["Wedding", "Date", "Next step"], kycRows)}
+        <h3>Reconciliation differences (${reconciliations.length})</h3>${table(["Detected", "Wedding", "Provider", "Expected", "Reported", "Status"], reconRows)}
+        <h3>Payouts awaiting staff action (${payouts.length})</h3>${table(["Requested", "Wedding", "Amount", "Status"], payoutRows)}
+        <p class="fine">Provider disputes/refunds and automated payout execution are unavailable until provider integration and settlement operations are configured. Do not mark an exception resolved from this screen.</p>`;
     },
     async weddings(el) {
       if (el.dataset.wedding) return weddingMetrics(el, el.dataset.wedding);
@@ -231,13 +260,14 @@
     }
     if (opts.ownerOnly && role !== "owner") return location.replace("/account.html");
     $("role-badge").textContent = "Role: " + role;
-    const tabs = opts.ownerOnly ? ["overview", "users", "fees", "ledger", "payouts", "audit", "weddings", "security"] : ["overview", "weddings", "users", "fees", "ledger", "payouts", "audit"];
+    const tabs = opts.ownerOnly ? ["overview", "operations", "users", "fees", "ledger", "payouts", "audit", "weddings", "security"] : ["overview", "operations", "weddings", "users", "fees", "ledger", "payouts", "audit"];
     $("admin-nav").innerHTML = tabs.map((t, i) => `<button type="button" class="tab-btn${i ? "" : " active"}" role="tab" aria-selected="${i ? "false" : "true"}" data-tab="${t}">${SEC[t]}</button>`).join("");
     $("admin-nav").addEventListener("click", (e) => { const b = e.target.closest(".tab-btn"); if (b) { delete $("panel").dataset.wedding; show(b.dataset.tab); } });
     $("sign-out").addEventListener("click", () => { WS.clear(); location.replace("/signin.html"); });
 
     const panel = $("panel");
     panel.addEventListener("click", async (e) => {
+      if (e.target.closest("[data-ops-wedding]")) { panel.dataset.wedding = e.target.closest("[data-ops-wedding]").dataset.opsWedding; return show("weddings"); }
       if (e.target.closest("[data-wm]")) { panel.dataset.wedding = e.target.closest("[data-wm]").dataset.wm; return show("weddings"); }
       if (e.target.closest("[data-wm-back]")) { delete panel.dataset.wedding; return show("weddings"); }
       const t = e.target.closest("button[data-wa],button[data-ps],button[data-setrole]");

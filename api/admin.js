@@ -11,6 +11,7 @@ const GET_ACTIONS = {
   ledger: async (t) => ({ ledger: await rpc("admin_ledger", t, { p_limit: 500 }) }),
   payouts: async (t) => ({ payouts: await rpc("admin_payouts", t) }),
   audit: async (t) => ({ audit: await rpc("admin_audit", t, { p_limit: 500 }) }),
+  operations: async (t) => ({ queue: await rpc("admin_operations_queue", t) }),
   policies: async (t) => ({ policies: await rpc("admin_get_policies", t) }),
   "policy-history": async (t) => ({ history: await rpc("admin_policy_history", t, { p_limit: 50 }) }),
   "wedding-metrics": async (t, q) => {
