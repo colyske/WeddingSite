@@ -1218,7 +1218,7 @@
       $("leaderboard-body").innerHTML = bids.map((b, i) => `
         <tr style="border-bottom: 1px solid #e3dcc7;">
           <td style="padding: 0.75rem; color: var(--gold);">${i + 1}</td>
-          <td style="padding: 0.75rem;">${esc(b.song_title)}</td>
+          <td style="padding: 0.75rem;">${esc(b.song_title)}${Number(b.bid_count) > 1 ? ` <small class="fine">(${Number(b.bid_count)} bids)</small>` : ""}</td>
           <td style="padding: 0.75rem; color: var(--sage);">${esc(b.artist_name || "—")}</td>
           <td style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, wedding.currency)}</td>
           <td style="padding: 0.75rem;">${wedding.is_past ? "Closed" : [500, 1000, 2500, 5000].map(amount =>
