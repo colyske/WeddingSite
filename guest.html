@@ -211,6 +211,13 @@
       <p id="attire-notes-display" class="fine" style="margin-top: 1rem;"></p>
     </section>
 
+    <!-- Fundraising campaigns -->
+    <section id="campaigns" class="card" hidden>
+      <h2>A gift for our next chapter</h2>
+      <p class="fine">Optional. If you would like to help, choose a fundraiser below. No gift is ever expected. Payments on this site are in test mode.</p>
+      <div id="campaigns-display"></div>
+    </section>
+
     <!-- Registry & Crowdfunding -->
     <section id="registry" class="card" hidden>
       <h2>Registry & Crowdfunding</h2>
@@ -563,6 +570,25 @@
       if (!res.ok) return;
       const data = await res.json();
 
+      // Fundraising campaigns with milestones
+      const camps = data.campaigns || [];
+      $("campaigns").hidden = !camps.length;
+      if (camps.length) {
+        const cur = wedding.currency || "USD";
+        $("campaigns-display").innerHTML = camps.map(c => {
+          const pct = c.goal_minor > 0 ? Math.min(100, Math.round(c.raised_minor / c.goal_minor * 100)) : 0;
+          const presets = [10, 25, 50];
+          return `<article class="campaign" data-campaign="${esc(c.id)}">
+            <h3>${esc(c.name)}</h3>
+            ${c.purpose && c.purpose !== c.name ? `<p>${esc(c.purpose)}</p>` : ""}
+            <div class="camp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="${esc(c.name)} progress"><span style="width:${pct}%"></span></div>
+            <p class="camp-total"><strong>${pct}%</strong> of ${WS.money(c.goal_minor, cur, false)} · ${WS.money(c.raised_minor, cur, false)} raised</p>
+            ${c.milestones.length ? `<ul class="camp-ms">${c.milestones.map(m => `<li class="${m.reached ? "done" : ""}"><span aria-hidden="true">${m.reached ? "☑" : "☐"}</span> <span><strong>${esc(m.name)}</strong> · ${WS.money(m.target_minor, cur, false)}${m.description ? `<br><small>${esc(m.description)}</small>` : ""}<span class="sr-only">${m.reached ? " (reached)" : " (not yet reached)"}</span></span></li>`).join("")}</ul>` : ""}
+            ${wedding.is_past ? "" : `<div class="camp-give">${presets.map(p => `<button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-min="${p * 100}" data-preset data-label="${esc(c.name)}">${esc(cur)} ${p}</button>`).join("")}<button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-preset data-label="${esc(c.name)}">Other</button></div>`}
+          </article>`;
+        }).join("");
+      }
+
       // Display sponsorship tiers
       if (data.tiers && data.tiers.length > 0) {
         $("sponsor-tiers").hidden = false;
@@ -748,7 +774,7 @@
     const min = Number(btn.dataset.min || 0) / 100;
     $("pay-title").textContent = btn.dataset.label || "Contribute";
     $("pay-currency").textContent = wedding.currency || "USD";
-    $("pay-summary").textContent = buying.exact ? "Fixed price." : (min ? "Minimum " + min.toFixed(2) + "." : "Choose any amount.");
+    $("pay-summary").textContent = buying.exact ? "Fixed price." : (btn.dataset.preset !== undefined ? "Change the amount if you like." : (min ? "Minimum " + min.toFixed(2) + "." : "Choose any amount."));
     $("pay-amount").value = min ? String(min) : "";
     $("pay-amount").readOnly = buying.exact;
     $("pay-error").hidden = true;
@@ -772,7 +798,7 @@
       $("pay-dialog").close();
       toast("Thank you! Test payment recorded.");
       loadFundraising(); loadLedger();
-      if (window.WSFeedback) WSFeedback.scrollTo("ledger");
+      if (window.WSFeedback) WSFeedback.scrollTo(buying && buying.kind === "fund" ? "campaigns" : "ledger");
     } catch (_) {
       $("pay-error").textContent = "Network error."; $("pay-error").hidden = false;
     } finally { $("pay-submit").disabled = false; }

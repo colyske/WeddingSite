@@ -3,7 +3,7 @@ import { requireAuth } from "../server/auth-middleware.js";
 import { isPastWedding } from "../server/wedding-time.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const KINDS = new Set(["vip", "sponsor", "pledge"]);
+const KINDS = new Set(["vip", "sponsor", "pledge", "fund"]);
 const text = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
 
 // Test-mode payment simulator. No money moves; rows are labelled provider "test-simulator".
@@ -29,11 +29,20 @@ export default async function handler(req, res) {
       const name = text(body.name, 100);
       const email = text(body.email, 200).toLowerCase();
       if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return sendJson(res, 400, { error: "Enter a valid email or leave it blank." });
-      if (kind !== "pledge" && !name) return sendJson(res, 400, { error: "Please enter your name." });
+      if (kind !== "pledge" && kind !== "fund" && !name) return sendJson(res, 400, { error: "Please enter your name." });
       const weddings = await supabaseRequest(`/rest/v1/weddings?slug=eq.${encodeURIComponent(slug)}&published_at=not.is.null&archived_at=is.null&select=id,wedding_date,time_zone`, { service: true });
       if (!weddings?.length) return sendJson(res, 404, { error: "Wedding not found." });
       if (isPastWedding(weddings[0].wedding_date, weddings[0].time_zone)) {
         return sendJson(res, 410, { error: "This wedding has taken place, so contributions are closed." });
+      }
+      if (kind === "fund") {
+        const fid = await rpc("record_test_campaign_pledge", {
+          p_wedding_id: weddings[0].id, p_stream_id: body.refId,
+          p_milestone_id: UUID.test(String(body.milestoneId || "")) ? body.milestoneId : null,
+          p_name: name, p_amount_minor: amount,
+          p_visibility: ["name", "anonymous", "hidden"].includes(body.visibility) ? body.visibility : "hidden"
+        });
+        return sendJson(res, 200, { ok: true, test: true, contributionId: fid, message: "Test payment recorded. No real money was moved." });
       }
       const id = await rpc("record_test_purchase", {
         p_kind: kind, p_wedding_id: weddings[0].id, p_ref: body.refId, p_name: name, p_email: email,

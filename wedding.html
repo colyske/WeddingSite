@@ -237,6 +237,15 @@
         <div class="row"><button type="submit">Save identity details</button> <span id="kyc-status" class="fine"></span></div>
       </form>
     </div>
+    <div id="campaigns-section" class="card" hidden>
+      <h2>Fundraising campaigns</h2>
+      <p class="fine">Optional giving goals (e.g. "Home fund", "Honeymoon"). Each campaign has its own goal and milestones that tick off as guests give. Guests see these on your site; this is separate from the gift registry. Amounts are in your wedding currency. Campaigns you remove are switched off, never deleted, so your ledger is kept.</p>
+      <div id="campaign-list"></div>
+      <div class="row"><button type="button" class="ghost" id="add-campaign">+ Add campaign</button> <button type="button" id="save-campaigns">Save campaigns</button> <span id="campaign-status" class="fine"></span></div>
+      <h3>Campaign ledger</h3>
+      <div id="campaign-summary" class="fine"></div>
+      <div id="campaign-ledger" class="fine" style="overflow-x:auto">No gifts yet.</div>
+    </div>
     <div id="engage-section" class="card" hidden>
       <h2>Guest engagement</h2>
       <div id="analytics-grid" class="fine" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.6rem"></div>
@@ -1263,6 +1272,60 @@
       $("faq-rows").appendChild(d);
     }
     $("faq-add").addEventListener("click", () => faqRow());
+    let campaignCurrency = "USD";
+    function milestoneRow(m = {}) {
+      const d = document.createElement("div");
+      d.className = "ms-row row";
+      d.dataset.id = m.id || "";
+      d.innerHTML = `<input class="ms-name" maxlength="100" placeholder="Milestone (e.g. Our first kitchen)" aria-label="Milestone name" value="${WS.esc(m.name || "")}"><input class="ms-target" type="number" min="1" step="0.01" placeholder="Reached at amount" aria-label="Milestone target amount" value="${m.target_minor ? m.target_minor / 100 : ""}"><input class="ms-desc" maxlength="240" placeholder="Description (optional)" aria-label="Milestone description" value="${WS.esc(m.description || "")}"><button type="button" class="ghost ms-del" aria-label="Remove milestone">✕</button>`;
+      return d;
+    }
+    function campaignCard(c = {}) {
+      const d = document.createElement("div");
+      d.className = "campaign-card";
+      d.dataset.id = c.id || "";
+      d.style.cssText = "border:1px solid #d0d5cc;padding:1rem;margin-bottom:1rem;background:#fafbf9";
+      d.innerHTML = `<div class="row"><input class="cp-name" maxlength="100" placeholder="Campaign name (e.g. Help us build our little home)" aria-label="Campaign name" value="${WS.esc(c.name || "")}"><input class="cp-goal" type="number" min="1" step="0.01" placeholder="Goal amount" aria-label="Campaign goal" value="${c.goal_minor ? c.goal_minor / 100 : ""}"></div>
+        <input class="cp-purpose" maxlength="240" placeholder="Short description for guests" aria-label="Campaign description" value="${WS.esc(c.purpose || "")}">
+        <label class="row" style="gap:.5rem"><input class="cp-enabled" type="checkbox" ${c.enabled === false ? "" : "checked"}> Visible to guests</label>
+        <div class="ms-list"></div>
+        <div class="row"><button type="button" class="ghost ms-add">+ Add milestone</button> <button type="button" class="ghost cp-del">Remove campaign</button></div>`;
+      (c.milestones || []).forEach(m => d.querySelector(".ms-list").appendChild(milestoneRow(m)));
+      return d;
+    }
+    async function loadCampaigns() {
+      $("campaigns-section").hidden = false;
+      try {
+        const r = await WS.api(`/api/weddings?action=campaigns&weddingId=${encodeURIComponent(weddingId)}`); const d = await r.json();
+        campaignCurrency = d.currency || "USD";
+        $("campaign-list").innerHTML = "";
+        (d.campaigns || []).filter(c => c.enabled).forEach(c => $("campaign-list").appendChild(campaignCard(c)));
+        const sum = d.summary || [];
+        $("campaign-summary").innerHTML = sum.length ? sum.map(s => `<strong>${WS.esc(s.name)}</strong>: ${WS.money(s.raised_minor, campaignCurrency, true)} of ${WS.money(s.goal_minor, campaignCurrency, true)} · ${s.pledges} gift${s.pledges === 1 ? "" : "s"}${s.enabled ? "" : " (hidden)"}`).join("<br>") : "No campaigns yet.";
+        const rows = d.rows || [];
+        $("campaign-ledger").innerHTML = rows.length ? '<table><thead><tr><th>Guest</th><th>Amount</th><th>Campaign</th><th>Milestone</th><th>Status</th><th>Date</th></tr></thead><tbody>' + rows.map(x => `<tr><td>${WS.esc(x.guest)}</td><td>${WS.money(x.amount_minor, campaignCurrency, true)}</td><td>${WS.esc(x.campaign)}</td><td>${WS.esc(x.milestone || "—")}</td><td>${WS.esc(x.status)}${x.provider === "test-simulator" ? " (test)" : ""}</td><td>${WS.esc(String(x.created_at).slice(0, 10))}</td></tr>`).join("") + "</tbody></table>" : "No gifts yet.";
+      } catch (_) {}
+    }
+    $("add-campaign").addEventListener("click", () => $("campaign-list").appendChild(campaignCard()));
+    $("campaign-list").addEventListener("click", e => {
+      const card = e.target.closest(".campaign-card"); if (!card) return;
+      if (e.target.closest(".ms-add")) card.querySelector(".ms-list").appendChild(milestoneRow());
+      else if (e.target.closest(".ms-del")) e.target.closest(".ms-row").remove();
+      else if (e.target.closest(".cp-del") && confirm("Remove this campaign? It will be hidden from guests; existing gifts stay in your ledger.")) card.remove();
+    });
+    $("save-campaigns").addEventListener("click", async () => {
+      const campaigns = [...$("campaign-list").querySelectorAll(".campaign-card")].map(c => ({
+        id: c.dataset.id || null, name: c.querySelector(".cp-name").value, goal: c.querySelector(".cp-goal").value,
+        purpose: c.querySelector(".cp-purpose").value, enabled: c.querySelector(".cp-enabled").checked,
+        milestones: [...c.querySelectorAll(".ms-row")].map(m => ({ id: m.dataset.id || null, name: m.querySelector(".ms-name").value, target: m.querySelector(".ms-target").value, description: m.querySelector(".ms-desc").value }))
+      }));
+      const res = await WS.api("/api/weddings?action=campaigns-save", { method: "POST", body: JSON.stringify({ weddingId, campaigns }) });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) { $("campaign-status").textContent = out.error || "Could not save."; return notice(out.error || "Could not save campaigns.", true); }
+      $("campaign-status").textContent = "Saved.";
+      notice("Fundraising campaigns saved.");
+      await loadCampaigns();
+    });
     async function loadEngagement() {
       $("engage-section").hidden = false;
       const q = encodeURIComponent(weddingId);
@@ -1304,7 +1367,7 @@
       notice(res.ok ? "FAQ and travel info saved." : "Could not save FAQ and travel info.", !res.ok);
     });
     loadEngagement();
-    // Load RSVPs
+    loadCampaigns();
     async function loadRsvps() {
       try {
         const res = await WS.api(`/api/weddings?action=rsvps&weddingId=${encodeURIComponent(weddingId)}`);

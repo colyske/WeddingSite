@@ -130,3 +130,17 @@ nav.sticky-nav a:hover { color: var(--gold, #bd9954) !important; }
 .hero .eyebrow { color: #e1cf9f !important; } .countdown-intro .eyebrow { color: #d6c69f !important; }
 
 [hidden] { display: none !important; }
+
+/* Fundraising campaigns */
+.campaign { border: 1px solid rgba(190,155,82,.4); background: #fbfaf6; padding: 1.4rem; margin-bottom: 1.2rem; }
+.campaign h3 { font-family: "Playfair Display", Georgia, serif; font-size: 1.5rem; margin: 0 0 .4rem; color: var(--green, #244b3a); }
+.camp-bar { height: 10px; background: #e3dcc7; overflow: hidden; margin: .8rem 0 .4rem; }
+.camp-bar span { display: block; height: 100%; background: var(--gold, #be9b52); transition: width .4s ease; }
+.camp-total { margin: 0 0 .8rem; color: #5a5f5a; }
+.camp-ms { list-style: none; margin: 0 0 1rem; padding: 0; }
+.camp-ms li { display: flex; gap: .6rem; padding: .5rem 0; border-top: 1px solid rgba(0,0,0,.08); }
+.camp-ms li.done { color: var(--green, #244b3a); }
+.camp-ms li.done > span:first-child { color: var(--gold, #be9b52); }
+.camp-give { display: flex; flex-wrap: wrap; gap: .5rem; }
+.camp-give .buy-btn { margin: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

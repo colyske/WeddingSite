@@ -479,7 +479,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (["balance", "withdraw", "withdrawals", "guests-import", "guests-list", "fundraising", "fundraising-save"].includes(action)) {
+    if (["balance", "withdraw", "withdrawals", "guests-import", "guests-list", "fundraising", "fundraising-save", "campaigns", "campaigns-save"].includes(action)) {
       const weddingId = String(req.query.weddingId || body.weddingId || "");
       if (!UUID.test(weddingId)) return sendJson(res, 400, { error: "Invalid wedding." });
       const owned = await supabaseRequest(
@@ -534,6 +534,38 @@ export default async function handler(req, res) {
           supabaseRequest(`/rest/v1/sponsors?wedding_id=eq.${weddingId}&select=id,company_name,contact_email,contact_phone,website,amount_minor,status,created_at&order=amount_minor.desc&limit=200`, opts)
         ]);
         return sendJson(res, 200, { tiers: tiers || [], vip: vip?.[0] || null, sponsors: sponsors || [] });
+      }
+      if (action === "campaigns") {
+        if (!methodOnly(req, res, "GET")) return;
+        const data = await supabaseRequest("/rest/v1/rpc/get_campaign_ledger", { service: true, method: "POST", body: { p_wedding_id: weddingId } });
+        const streams = await supabaseRequest(`/rest/v1/fundraising_streams?wedding_id=eq.${weddingId}&select=id,name,purpose,goal_minor,enabled,sort_order&order=sort_order`, { service: true });
+        const ms = await supabaseRequest(`/rest/v1/fundraising_milestones?wedding_id=eq.${weddingId}&select=id,stream_id,name,description,target_minor,sort_order&order=sort_order`, { service: true });
+        const campaigns = (streams || []).map(s => ({ ...s, milestones: (ms || []).filter(m => m.stream_id === s.id) }));
+        return sendJson(res, 200, { currency, campaigns, summary: data?.campaigns || [], rows: data?.rows || [] });
+      }
+      if (action === "campaigns-save") {
+        if (!methodOnly(req, res, "POST")) return;
+        const minor = v => Math.round(Number(v) * 100);
+        const okAmt = n => Number.isSafeInteger(n) && n > 0 && n <= 100000000000;
+        const list = Array.isArray(body.campaigns) ? body.campaigns.slice(0, 6) : [];
+        const payload = [];
+        for (const c of list) {
+          const name = String(c.name || "").trim().slice(0, 100);
+          if (!name) continue;
+          const goal = minor(c.goal);
+          if (!okAmt(goal)) return sendJson(res, 400, { error: `Set a goal amount for "${name}".` });
+          const milestones = [];
+          for (const m of (Array.isArray(c.milestones) ? c.milestones.slice(0, 10) : [])) {
+            const mn = String(m.name || "").trim().slice(0, 100);
+            if (!mn) continue;
+            const t = minor(m.target);
+            if (!okAmt(t)) return sendJson(res, 400, { error: `Set a target amount for milestone "${mn}".` });
+            milestones.push({ id: m.id || null, name: mn, description: String(m.description || "").slice(0, 240), target_minor: t });
+          }
+          payload.push({ id: c.id || null, name, purpose: String(c.purpose || "").slice(0, 240), goal_minor: goal, enabled: c.enabled !== false, milestones });
+        }
+        await supabaseRequest("/rest/v1/rpc/save_fundraising_campaigns", { service: true, method: "POST", body: { p_wedding_id: weddingId, p_payload: payload } });
+        return sendJson(res, 200, { saved: true });
       }
       if (action === "fundraising-save") {
         if (!methodOnly(req, res, "POST")) return;
