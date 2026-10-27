@@ -74,8 +74,12 @@ test("editor marks date, time zone and location as required and wires unpublish/
 test("Admin exception queue is role-checked and Owner receives counts only", async () => {
   const migration = await read("supabase/migrations/202610300002_verified_test_payments.sql");
   const ui = await read("backoffice.js");
+  const finalizeFn = migration.split("create or replace function public.finalize_paid_checkout_action()")[1]
+    .split("drop trigger if exists finalize_paid_checkout_action")[0];
   const queueFn = migration.split("create or replace function public.admin_operations_queue")[1]
     .split("revoke all on function public.admin_operations_queue")[0];
+  assert.match(finalizeFn, /v_reason_code := case new\.purchase_action/i);
+  assert.doesNotMatch(finalizeFn, /sqlerrm/i);
   assert.match(queueFn, /perform public\.require_staff\(\)/);
   assert.match(queueFn, /if public\.current_platform_role\(\) = 'owner' then/i);
   assert.match(queueFn, /payment_action_reviews/);

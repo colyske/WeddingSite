@@ -903,7 +903,7 @@ declare
   v_sponsor_tier public.sponsor_tiers;
   v_item public.registry_items;
   v_bid record;
-  v_reason text;
+  v_reason_code text;
 begin
   if new.payment_status <> 'paid' or old.payment_status = 'paid'
       or new.purchase_action is null or new.action_completed_at is not null then
@@ -983,11 +983,19 @@ begin
     end if;
     new.action_completed_at := now();
   exception when others then
-    v_reason := sqlerrm;
+    v_reason_code := case new.purchase_action
+      when 'fundraiser' then 'fundraiser_finalize_failed'
+      when 'registry' then 'registry_finalize_failed'
+      when 'song_bid' then 'song_bid_finalize_failed'
+      when 'vip' then 'vip_finalize_failed'
+      when 'sponsor' then 'sponsor_finalize_failed'
+      when 'rsvp' then 'rsvp_finalize_failed'
+      else 'checkout_action_finalize_failed'
+    end;
     new.action_result := jsonb_build_object('completed', false, 'status', 'review_required');
     new.action_completed_at := null;
     insert into public.payment_action_reviews (contribution_id, wedding_id, reason_code)
-      values (new.id, new.wedding_id, left(coalesce(v_reason, 'action_finalize_failed'), 120))
+      values (new.id, new.wedding_id, v_reason_code)
       on conflict (contribution_id) do nothing;
   end;
   return new;
