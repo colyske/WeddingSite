@@ -125,6 +125,6 @@ nav.sticky-nav { position: sticky !important; top: 0; padding: .9rem 5.5vw !impo
 nav.sticky-nav .monogram { background: none !important; color: var(--green, #243f35) !important; box-shadow: none !important; border-radius: 0 !important; width: auto !important; height: auto !important; font: 500 1.5rem var(--serif, serif) !important; letter-spacing: -.08em; }
 nav.sticky-nav a { font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; color: #494b43 !important; }
 nav.sticky-nav a:hover { color: var(--gold, #bd9954) !important; }
-.hero, .countdown-band { width: 100vw !important; max-width: none !important; position: relative; left: 50%; margin-left: -50vw !important; box-sizing: border-box; }
+.hero, .countdown-band { width: 100vw !important; max-width: none !important; position: relative; left: 0; margin-left: calc(50% - 50vw) !important; margin-right: calc(50% - 50vw) !important; box-sizing: border-box; }
 .wrap { overflow-x: clip; }
 .hero .eyebrow { color: #e1cf9f !important; } .countdown-intro .eyebrow { color: #d6c69f !important; }

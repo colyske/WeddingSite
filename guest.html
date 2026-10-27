@@ -228,6 +228,9 @@
 
         <label for="guest-email">Email *</label>
         <input id="guest-email" type="email" required>
+<label for="guest-phone">Phone (optional)</label>
+<input id="guest-phone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="+254 700 000000">
+<p class="fine">Shared only with the couple, to coordinate your attendance.</p>
 
         <label for="attending">Will you attend? *</label>
         <select id="attending" required>
@@ -262,11 +265,11 @@
       <details id="pass-lookup" style="margin-top:1rem">
         <summary>Already RSVP'd? Find your pass</summary>
         <form id="lookup-form" style="margin-top:.75rem">
-          <label for="lookup-value">Email you used, or your pass code</label>
+          <label for="lookup-value">Email, phone number or pass code you used</label>
           <input id="lookup-value" type="text" maxlength="254" required>
           <button type="submit">Find my pass</button>
         </form>
-        <p class="fine">Lookup works with the RSVP email or the pass code printed on your pass.</p>
+        <p class="fine">Lookup works with the RSVP email, phone number or the pass code printed on your pass.</p>
       </details>
     </section>
 
@@ -724,7 +727,7 @@
   $("lookup-form").addEventListener("submit", async e => {
     e.preventDefault();
     const v = $("lookup-value").value.trim();
-    const q = v.includes("@") ? "email=" + encodeURIComponent(v) : "code=" + encodeURIComponent(v);
+    const q = v.includes("@") ? "email=" + encodeURIComponent(v) : /^\+?[0-9 ()\-]{7,20}$/.test(v) ? "phone=" + encodeURIComponent(v) : "code=" + encodeURIComponent(v);
     try {
       const res = await fetch(`/api/guest?action=pass-lookup&slug=${encodeURIComponent(slug)}&${q}`);
       const data = await res.json();
@@ -769,6 +772,7 @@
       $("pay-dialog").close();
       toast("Thank you! Test payment recorded.");
       loadFundraising(); loadLedger();
+      if (window.WSFeedback) WSFeedback.scrollTo("ledger");
     } catch (_) {
       $("pay-error").textContent = "Network error."; $("pay-error").hidden = false;
     } finally { $("pay-submit").disabled = false; }
@@ -811,6 +815,7 @@
           weddingSlug: slug,
           guestName: $("guest-name").value,
           guestEmail: $("guest-email").value,
+          guestPhone: $("guest-phone").value,
           attending: attending,
           dietaryPreference: $("dietary-preference").value,
           dietaryNotes: $("dietary-notes").value,
@@ -819,7 +824,7 @@
         })
       });
       const data = await res.json();
-      if (!res.ok) return notice(data.error || "Could not submit RSVP.", true);
+      if (!res.ok) { toast(data.error || "Could not submit RSVP.", true); return notice(data.error || "Could not submit RSVP.", true); }
       notice("RSVP received! Thank you for confirming.");
       
       showPass(data.rsvpId, $("guest-name").value, data.status);
@@ -827,6 +832,7 @@
       try { localStorage.setItem("ws-pass:" + slug, JSON.stringify({ id: data.rsvpId, name: $("guest-name").value, status: data.status, refCode: data.refCode || "" })); } catch (_) {}
       toast("We have noted your RSVP. Your pass is below.");
       $("rsvp-form").reset();
+      if (window.WSFeedback) WSFeedback.scrollTo("ecard");
     } catch (err) {
       console.error("RSVP failed:", err);
       notice("Network error submitting RSVP.", true);
@@ -854,10 +860,12 @@
         })
       });
       const data = await res.json();
-      if (!res.ok) return notice(data.error || "Could not place bid.", true);
+      if (!res.ok) { toast(data.error || "Could not place bid.", true); return notice(data.error || "Could not place bid.", true); }
       notice("Bid placed! Thanks for supporting the DJ!");
+      toast("Bid placed! Thanks for supporting the DJ.");
       $("bid-form").reset();
-      loadBids();
+      await loadBids();
+      if (window.WSFeedback) WSFeedback.scrollTo("leaderboard-table");
     } catch (err) {
       console.error("Bid failed:", err);
       notice("Network error placing bid.", true);
@@ -938,5 +946,6 @@
 <footer class="ws-promo"><span>Planning your own wedding? <a href="/signin.html">Create your wedding site with WeddingSite</a></span><span class="credit">Made with <a href="/">WeddingSite</a></span></footer>
   <script src="guest-extras.js"></script>
   <script src="footer.js"></script>
+<script src="/feedback.js"></script>
 </body>
 </html>

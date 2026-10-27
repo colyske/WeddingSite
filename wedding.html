@@ -381,6 +381,7 @@
       el.hidden = !text; 
       el.textContent = text || ""; 
       el.className = "notice" + (bad ? " bad" : ""); 
+      if (text && window.WSFeedback) { WSFeedback.toast(text, bad); if (bad) WSFeedback.scrollTo(el); }
     };
     const params = new URLSearchParams(location.search);
     const weddingId = params.get("id");
@@ -1320,7 +1321,7 @@
         $("rsvps-body").innerHTML = rsvps.map(r => `
           <tr>
             <td>${esc(r.guest_name)}</td>
-            <td>${esc(r.guest_email)}</td>
+            <td>${esc(r.guest_email)}${r.phone ? "<br><span class=fine>" + esc(r.phone) + "</span>" : ""}</td>
             <td>${r.attendance_status === "yes" ? "✓ Yes" : r.attendance_status === "no" ? "✗ No" : esc(r.attendance_status || "Pending")}</td>
             <td>${esc(r.dietary_notes || "—")}</td>
             <td>${new Date(r.rsvped_at || r.created_at).toLocaleDateString()}${r.checked_in_at ? " · Checked in" : ""}</td>
@@ -1430,5 +1431,6 @@
 })();
   </script>
   <script src="footer.js"></script>
+<script src="/feedback.js"></script>
 </body>
 </html>
