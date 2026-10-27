@@ -15,6 +15,9 @@ test("campaign migration is idempotent and keeps money rows safe", () => {
     assert.match(sql, new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\) to service_role`));
   }
   const paymentMigration = readFileSync("supabase/migrations/202610300002_verified_test_payments.sql", "utf8");
+  const campaignLedger = paymentMigration.split("create or replace function public.get_campaign_ledger")[1]
+    .split("revoke all on function public.get_campaign_ledger")[0];
+  assert.match(campaignLedger, /from public\.weddings w\s+where w\.id = p_wedding_id/i);
   assert.match(paymentMigration, /drop function if exists public\.record_test_campaign_pledge/);
   assert.match(paymentMigration, /drop function if exists public\.get_dj_leaderboard\(uuid\)/);
   assert.match(paymentMigration, /bid_count bigint, currency char\(3\)/);

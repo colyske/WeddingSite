@@ -1153,7 +1153,9 @@ as $$
         where c.wedding_id = p_wedding_id and c.stream_id is not null
           and c.payment_status = 'paid' and c.verified_provider_payment
         order by c.paid_at desc limit 200) x), '[]'::jsonb)
-  );
+  )
+  from public.weddings w
+  where w.id = p_wedding_id;
 $$;
 revoke all on function public.get_campaign_ledger(uuid) from public, anon, authenticated;
 grant execute on function public.get_campaign_ledger(uuid) to service_role;
