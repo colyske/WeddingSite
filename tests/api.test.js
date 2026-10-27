@@ -10,6 +10,7 @@ import {
 import checkoutHandler from "../api/checkout.js";
 
 const ownerMigration = readFileSync(new URL("../supabase/migrations/202610160002_protected_owner_identity.sql", import.meta.url), "utf8");
+const verifiedPaymentsMigration = readFileSync(new URL("../supabase/migrations/202610300002_verified_test_payments.sql", import.meta.url), "utf8");
 const platformMarkup = readFileSync(new URL("../demo.html", import.meta.url), "utf8");
 const platformScript = readFileSync(new URL("../platform.js", import.meta.url), "utf8");
 
@@ -98,11 +99,19 @@ test("checkout endpoint stays disabled until explicitly enabled", async () => {
     const res = responseRecorder();
     await checkoutHandler({ method: "POST", query: { action: "create" }, body: {} }, res);
     assert.equal(res.statusCode, 503);
-    assert.equal(JSON.parse(res.body).error, "Live payments are disabled. The guest demo remains pledge-only.");
+    assert.equal(JSON.parse(res.body).error, "Payments are currently unavailable. Paid actions cannot be completed until a test provider is enabled.");
   } finally {
     if (previous === undefined) delete process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED;
     else process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED = previous;
   }
+});
+
+test("verified payments finalize paid actions once and keep pending money unavailable", () => {
+  assert.equal((verifiedPaymentsMigration.match(/create or replace function public\.finalize_paid_checkout_action\(\)/g) || []).length, 1);
+  assert.match(verifiedPaymentsMigration, /payment_status = 'pending'/);
+  assert.match(verifiedPaymentsMigration, /new\.payment_status <> 'paid'/);
+  assert.match(verifiedPaymentsMigration, /verified_provider_payment/);
+  assert.match(verifiedPaymentsMigration, /client_owner_id is distinct from auth\.uid\(\)/);
 });
 
 test("Stripe webhook signature validation accepts a current exact-body signature", () => {

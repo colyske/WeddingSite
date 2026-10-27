@@ -59,6 +59,7 @@
 
     <h1 id="title">Wedding</h1>
     <p id="notice" class="notice" role="status" hidden></p>
+    <div id="setup-progress" class="card" aria-live="polite" aria-atomic="false"></div>
     <div id="share-panel" class="card" hidden></div>
 
     <!-- Wedding details form -->
@@ -111,7 +112,7 @@
 
         <fieldset id="rsvp-fees-fieldset" style="border:1px solid #d0d5cc; border-radius:8px; padding:1rem; margin:1rem 0;">
           <legend>RSVP fees (optional, in your wedding currency)</legend>
-          <p class="fine">Leave at 0 for free RSVPs. Guests see the total and confirm before submitting. Payments are simulated in demo mode: they are recorded in the ledger but no real money moves.</p>
+          <p class="fine">Leave at 0 for free RSVPs. Guests see the exact fee quote before checkout. A paid RSVP is saved only after a configured test provider verifies payment; no simulator records payments.</p>
           <label for="rsvp-fee">Base RSVP fee</label>
           <input id="rsvp-fee" type="number" min="0" step="0.01" value="0.00">
           <label for="extra-guest-fee">Fee per extra guest (a party of 3 pays base + 2 &times; this)</label>
@@ -122,7 +123,7 @@
           <input id="premium-diet-fee" type="number" min="0" step="0.01" value="0.00">
         </fieldset>
 
-        <label for="venues-section">Venues & Itinerary (including pre-wedding events)
+        <label for="venues-section" id="venues-section">Venues & Itinerary (including pre-wedding events)
           <button type="button" class="link" id="add-venue-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add event / venue</button>
         </label>
         <div id="venues-list" style="margin-bottom: 1.5rem;"></div>
@@ -131,14 +132,17 @@
           <button type="button" class="link" id="edit-colors-btn" style="margin-left: 0.5rem; font-weight: normal;">🎨 Edit colours</button>
         </label>
         <div id="attire-editor" style="display: none; border: 2px dashed #d0d5cc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: #fafbf9;">
-          <p style="margin: 0 0 1rem; font-weight: 500;">Edit the single wedding palette used throughout your site and lookbook. Add one to four colours and name each one (e.g. "Forest Green"); guests see the name and hex code.</p>
+          <p style="margin: 0 0 1rem; font-weight: 500;">Edit the wedding theme palette used throughout your site and lookbook. Add up to four colours, name them or enter a recognized colour name, and remove any or all colours. Guests see each name and hex code.</p>
           <div id="color-inputs" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
             <div style="display: flex; align-items: center; gap: 0.5rem;">
               <input type="color" class="palette-color" value="#244b3a" style="width: 60px; height: 60px; border: none; border-radius: 4px; cursor: pointer;">
               <input type="text" class="palette-color-hex" placeholder="Hex code" maxlength="7" value="#244b3a" style="width: 100px; padding: 0.5rem; border: 1px solid #d0d5cc; border-radius: 4px;">
+              <input type="text" class="palette-color-name" placeholder="Colour name" maxlength="40" value="Forest Green" aria-label="Colour name" style="width: 140px; padding: 0.5rem; border: 1px solid #d0d5cc; border-radius: 4px;">
+              <button type="button" class="remove-color-btn link" style="padding: 0; margin: 0;" aria-label="Remove colour">×</button>
             </div>
           </div>
           <button type="button" id="add-color-btn" class="link" style="margin-right: 1rem;">+ Add colour</button>
+          <button type="button" id="restore-colors-btn" class="link" style="margin-right: 1rem;">Restore default colours</button>
           <button type="button" id="apply-colors-btn">Apply palette</button>
           <button type="button" id="cancel-colors-btn" class="link">Cancel</button>
         </div>
@@ -171,6 +175,15 @@
             <button type="button" class="link" id="add-tier-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add tier</button>
           </label>
           <div id="tiers-list" style="margin-bottom: 1.5rem;"></div>
+          <label style="display:flex;align-items:flex-start;gap:.6rem;margin:0 0 1rem;">
+            <input id="allow-in-kind-sponsorship" type="checkbox">
+            <span>Accept free / in-kind sponsor enquiries. These remain pending until an organizer reviews and approves them.</span>
+          </label>
+          <div id="sponsor-enquiries-panel" class="card" hidden>
+            <h4>In-kind sponsor enquiries</h4>
+            <p class="fine">An enquiry is not a confirmed sponsor. Approval publishes a clearly labeled in-kind sponsor card; no payment is implied.</p>
+            <div id="sponsor-enquiries-list"></div>
+          </div>
 
           <label>VIP Seating Offer</label>
           <div id="vip-offer" style="padding: 1rem; background: #fafbf9; border: 1px solid #d0d5cc; border-radius: 6px; margin-bottom: 1.5rem;">
@@ -218,10 +231,10 @@
     <div id="ops-section" class="card" hidden>
       <h2>Status &amp; publication</h2>
       <p><span id="status-badge" class="tag"></span></p>
-      <p id="past-note" class="fine" hidden>The wedding date has passed. The guest site now shows a thank-you / memories page; RSVPs, bids and pledges are closed.</p>
+      <p id="past-note" class="fine" hidden>The wedding date has passed. The guest site now shows a thank-you / memories page; RSVPs, bids and new contributions are closed.</p>
       <div id="fee-box" class="fine"></div>
       <div class="row">
-        <button type="button" id="pay-fee-btn" class="ghost" hidden>Pay publication fee (test mode)</button>
+        <button type="button" id="pay-fee-btn" class="ghost" hidden disabled>Publication payment unavailable</button>
         <button type="button" id="unpublish-btn" class="ghost" hidden>Unpublish (reversible)</button>
         <button type="button" id="archive-btn" class="ghost">Archive</button>
       </div>
@@ -231,22 +244,28 @@
     <!-- KYC -->
     <div id="kyc-section" class="card" hidden>
       <h2>Couple identity (KYC) &mdash; private</h2>
-      <p class="fine">Required before publishing. Only you, platform admins and the platform owner can see this. It is never shown on the guest site or in any public API, and ID numbers are masked here.</p>
+      <p class="fine">Required before publishing. Both partners must submit their own details. IDs are masked in this editor and never shown to guests. WeddingSite has no independent ID-verification provider configured; submission does not mean identity is verified.</p>
       <form id="kyc-form" autocomplete="off">
         <label for="kyc-p1">Partner 1 full legal name <span class="req" title="Required">*</span></label><input id="kyc-p1" maxlength="120" required>
+        <label for="kyc-p1-type">Partner 1 ID type <span class="req">*</span></label>
+        <select id="kyc-p1-type" required><option value="national_id">National ID</option><option value="passport">Passport</option><option value="other">Other</option></select>
+        <label for="kyc-p1-id">Partner 1 ID / passport number <span class="req">*</span></label><input id="kyc-p1-id" maxlength="40" required>
+        <label for="kyc-p1-nationality">Partner 1 nationality <span class="req">*</span></label><input id="kyc-p1-nationality" maxlength="60" required>
+        <label for="kyc-p1-phone">Partner 1 phone <span class="req">*</span></label><input id="kyc-p1-phone" type="tel" maxlength="30" required>
+        <label for="kyc-p1-email">Partner 1 email <span class="req">*</span></label><input id="kyc-p1-email" type="email" maxlength="254" required>
         <label for="kyc-p2">Partner 2 full legal name <span class="req" title="Required">*</span></label><input id="kyc-p2" maxlength="120" required>
-        <label for="kyc-idtype">ID type <span class="req">*</span></label>
-        <select id="kyc-idtype" required><option value="national_id">National ID</option><option value="passport">Passport</option><option value="other">Other</option></select>
-        <label for="kyc-idnum">ID / passport number <span class="req">*</span></label><input id="kyc-idnum" maxlength="40" required>
-        <label for="kyc-nat">Nationality <span class="req">*</span></label><input id="kyc-nat" maxlength="60" required>
-        <label for="kyc-phone">Phone <span class="req">*</span></label><input id="kyc-phone" type="tel" maxlength="30" required>
-        <label for="kyc-email">Email <span class="req">*</span></label><input id="kyc-email" type="email" maxlength="254" required>
+        <label for="kyc-p2-type">Partner 2 ID type <span class="req">*</span></label>
+        <select id="kyc-p2-type" required><option value="national_id">National ID</option><option value="passport">Passport</option><option value="other">Other</option></select>
+        <label for="kyc-p2-id">Partner 2 ID / passport number <span class="req">*</span></label><input id="kyc-p2-id" maxlength="40" required>
+        <label for="kyc-p2-nationality">Partner 2 nationality <span class="req">*</span></label><input id="kyc-p2-nationality" maxlength="60" required>
+        <label for="kyc-p2-phone">Partner 2 phone <span class="req">*</span></label><input id="kyc-p2-phone" type="tel" maxlength="30" required>
+        <label for="kyc-p2-email">Partner 2 email <span class="req">*</span></label><input id="kyc-p2-email" type="email" maxlength="254" required>
         <label for="kyc-cname">Organizer / contact person</label><input id="kyc-cname" maxlength="120">
         <label for="kyc-cphone">Contact phone</label><input id="kyc-cphone" type="tel" maxlength="30">
         <label for="kyc-kname">Next of kin</label><input id="kyc-kname" maxlength="120">
         <label for="kyc-kphone">Next of kin phone</label><input id="kyc-kphone" type="tel" maxlength="30">
         <label for="kyc-krel">Relationship</label><input id="kyc-krel" maxlength="60">
-        <label class="row" style="gap:.5rem"><input id="kyc-consent" type="checkbox" required> <span>I consent to WeddingSite processing these details to verify the organizer and prevent fraud, under applicable data-protection law. I can request correction or deletion by contacting support.</span></label>
+        <label class="row" style="gap:.5rem"><input id="kyc-consent" type="checkbox" required> <span>Both partners consent to WeddingSite processing these details for organizer review and fraud prevention. This is not a claim that WeddingSite independently verifies identity. We can request correction or deletion through support.</span></label>
         <div class="row"><button type="submit">Save identity details</button> <span id="kyc-status" class="fine"></span></div>
       </form>
     </div>
@@ -394,6 +413,7 @@
   <script src="auth-client.js"></script>
   <script src="tz.js"></script>
   <script src="share.js"></script>
+  <script src="setup-progress.js"></script>
   <script>
 (async () => {
     const $ = id => document.getElementById(id);
@@ -404,6 +424,17 @@
       el.textContent = text || ""; 
       el.className = "notice" + (bad ? " bad" : ""); 
       if (text && window.WSFeedback) { WSFeedback.toast(text, bad); if (bad) WSFeedback.scrollTo(el); }
+    };
+    const focusInvalidField = field => {
+      const target = field === "venues" ? $("venues-list") : $(field);
+      const input = field === "venues"
+        ? $("venues-list").querySelector("input[required]:invalid, textarea[required]:invalid")
+        : target;
+      if (input) {
+        input.setAttribute("aria-invalid", "true");
+        input.focus({ preventScroll: true });
+      }
+      target?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
     };
     const params = new URLSearchParams(location.search);
     const weddingId = params.get("id");
@@ -509,9 +540,10 @@
     });
 
     // Venues management
-    window.venueExtra = (kind, address) => `
+    window.venueExtra = (kind, address, date) => `
+          <input type="date" class="venue-date" value="${esc(date || $("wedding-date").value)}" aria-label="Event date" required>
           <select class="venue-kind" aria-label="Event type"><option value="main"${kind === "pre" ? "" : " selected"}>Wedding day event</option><option value="pre"${kind === "pre" ? " selected" : ""}>Before the wedding (fundraiser, rehearsal, party)</option></select>
-          <input type="text" class="venue-addr" value="${esc(address || "")}" placeholder="Street address (shown with Get directions)" maxlength="200">`;
+          <input type="text" class="venue-addr" value="${esc(address || "")}" placeholder="Street address (shown with Get directions)" maxlength="200" required>`;
     let venueCount = 0;
     function addVenueEditor() {
       const id = `venue-${venueCount++}`;
@@ -520,9 +552,9 @@
           <div class="venue-main-label">
             <input type="checkbox" class="venue-main-cb" title="Set as main venue"> <span>Main venue</span>
           </div>
-          <input type="text" class="venue-name" placeholder="Venue name (e.g. Cathedral, Reception)" maxlength="80">
-          <input type="text" class="venue-time" placeholder="Time (e.g. 10:00 AM)">
-          ${window.venueExtra("main", "")}
+          <input type="text" class="venue-name" placeholder="Venue / event name (e.g. Cathedral, Reception)" maxlength="80" required>
+          <input type="text" class="venue-time" placeholder="Time (e.g. 10:00 AM)" required>
+          ${window.venueExtra("main", "", $("wedding-date").value)}
           <input type="url" class="venue-address" placeholder="Address or map link (e.g. Google Maps URL)">
           <textarea class="venue-notes" placeholder="Details (e.g. Dress code, parking info)" maxlength="240"></textarea>
           <button type="button" class="remove-venue" data-venue-id="${id}">Remove</button>
@@ -560,22 +592,49 @@
       }
     });
 
+    const paletteColorNames = [
+      ["Forest Green", "#244b3a"], ["Eucalyptus Sage", "#a9b5a2"], ["Royal Gold", "#be9b52"], ["Ivory", "#eee8d9"],
+      ["Black", "#000000"], ["White", "#ffffff"], ["Charcoal", "#36454f"], ["Navy", "#000080"],
+      ["Royal Blue", "#4169e1"], ["Sky Blue", "#87ceeb"], ["Teal", "#008080"], ["Turquoise", "#40e0d0"],
+      ["Sage Green", "#9caf88"], ["Olive Green", "#808000"], ["Mint", "#98ff98"], ["Burgundy", "#800020"],
+      ["Crimson", "#dc143c"], ["Rose", "#ff007f"], ["Blush Pink", "#de5d83"], ["Lavender", "#e6e6fa"],
+      ["Purple", "#800080"], ["Plum", "#8e4585"], ["Orange", "#ffa500"], ["Coral", "#ff7f50"],
+      ["Terracotta", "#e2725b"], ["Mustard", "#ffdb58"], ["Gold", "#ffd700"], ["Beige", "#f5f5dc"],
+      ["Taupe", "#483c32"], ["Brown", "#8b4513"], ["Silver", "#c0c0c0"]
+    ];
+    function friendlyPaletteName(hex) {
+      const rgb = String(hex).slice(1).match(/.{2}/g)?.map(v => parseInt(v, 16)) || [];
+      if (rgb.length !== 3) return "";
+      let closest = paletteColorNames[0], distance = Infinity;
+      paletteColorNames.forEach(candidate => {
+        const values = candidate[1].slice(1).match(/.{2}/g).map(v => parseInt(v, 16));
+        const next = values.reduce((sum, value, index) => sum + (value - rgb[index]) ** 2, 0);
+        if (next < distance) { distance = next; closest = candidate; }
+      });
+      return closest[0];
+    }
+    function colorForPaletteName(name) {
+      if (/^#[0-9a-f]{6}$/i.test(name.trim())) return name.trim().toLowerCase();
+      const normalized = name.trim().toLowerCase().replace(/\s+/g, " ");
+      return paletteColorNames.find(([label]) => label.toLowerCase() === normalized)?.[1] || null;
+    }
+
     function renderColorInputs() {
       const container = $("color-inputs");
       let palette;
       try {
-        palette = JSON.parse($("palette-preview").dataset.palette || "[]");
+        const saved = $("palette-preview").dataset.palette;
+        palette = saved === undefined ? ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"] : JSON.parse(saved);
       } catch {
-        palette = [];
+        palette = ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"];
       }
       palette = Array.isArray(palette)
         ? palette.filter(color => typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color)).slice(0, 4)
         : [];
-      if (!palette.length) palette = ["#244b3a"];
       container.replaceChildren();
       let names = [];
       try { names = JSON.parse($("palette-preview").dataset.names || "[]"); } catch { names = []; }
-      palette.forEach((color, i) => addColorInput(color, names[i] || ""));
+      palette.forEach((color, i) => addColorInput(color, names[i] || friendlyPaletteName(color)));
     }
 
     function addColorInput(color = "#244b3a", name = "") {
@@ -593,30 +652,53 @@
       
       const colorInput = div.querySelector(".palette-color");
       const hexInput = div.querySelector(".palette-color-hex");
-      const removeBtn = div.querySelector(".remove-color-btn");
+      const nameInput = div.querySelector(".palette-color-name");
+      if (!nameInput.value) nameInput.value = friendlyPaletteName(color);
+      nameInput.dataset.generated = friendlyPaletteName(color);
       
       colorInput.addEventListener("change", () => {
         hexInput.value = colorInput.value;
+        if (!nameInput.value || nameInput.value === nameInput.dataset.generated) {
+          nameInput.value = friendlyPaletteName(colorInput.value);
+          nameInput.dataset.generated = nameInput.value;
+        }
       });
       hexInput.addEventListener("change", () => {
-        const hex = hexInput.value.trim();
-        if (/^#[0-9a-fA-F]{6}$/.test(hex)) {
+        const hex = colorForPaletteName(hexInput.value);
+        if (hex) {
           colorInput.value = hex;
+          hexInput.value = hex;
+          if (!nameInput.value || nameInput.value === nameInput.dataset.generated) {
+            nameInput.value = friendlyPaletteName(hex);
+            nameInput.dataset.generated = nameInput.value;
+          }
         }
       });
-      removeBtn.addEventListener("click", e => {
-        e.preventDefault();
-        if ($("color-inputs").querySelectorAll(".palette-color").length > 1) {
-          div.remove();
-        }
+      nameInput.addEventListener("change", () => {
+        const hex = colorForPaletteName(nameInput.value);
+        if (!hex) return;
+        colorInput.value = hex;
+        hexInput.value = hex;
+        nameInput.value = friendlyPaletteName(hex);
+        nameInput.dataset.generated = nameInput.value;
       });
       
       container.appendChild(div);
     }
 
+    $("color-inputs").addEventListener("click", e => {
+      const button = e.target.closest(".remove-color-btn");
+      if (button) button.closest("div").remove();
+    });
     $("add-color-btn").addEventListener("click", e => {
       e.preventDefault();
       addColorInput();
+    });
+    $("restore-colors-btn").addEventListener("click", e => {
+      e.preventDefault();
+      $("color-inputs").replaceChildren();
+      [["#244b3a", "Forest Green"], ["#a9b5a2", "Eucalyptus Sage"], ["#be9b52", "Royal Gold"], ["#eee8d9", "Ivory"]]
+        .forEach(([color, name]) => addColorInput(color, name));
     });
 
     $("apply-colors-btn").addEventListener("click", e => {
@@ -625,16 +707,18 @@
       
       // Validate colors
       const COLOR_REGEX = /^#[0-9a-f]{6}$/i;
-      if (!colors.length || colors.length > 4 || !colors.every(c => COLOR_REGEX.test(c))) {
-        alert("Please enter valid hex colors (e.g. #244b3a)");
+      if (colors.length > 4 || !colors.every(c => COLOR_REGEX.test(c))) {
+        alert("Please enter up to four valid hex colours (e.g. #244b3a).");
         return;
       }
       
-      // Store palette both as data attribute and visual spans
-      const cnames = Array.from($("color-inputs").querySelectorAll(".palette-color-name")).map(n => n.value.trim());
+      const cnames = Array.from($("color-inputs").querySelectorAll(".palette-color-name"))
+        .map((n, i) => n.value.trim() || friendlyPaletteName(colors[i]));
       $("palette-preview").dataset.palette = JSON.stringify(colors);
       $("palette-preview").dataset.names = JSON.stringify(cnames);
-      $("palette-preview").innerHTML = colors.map((c, i) => `<span style="background: ${c};" data-color="${c}" title="${esc((cnames[i] || "Colour " + (i + 1)) + " " + c.toUpperCase())}"></span>`).join("");
+      $("palette-preview").innerHTML = colors.length
+        ? colors.map((c, i) => `<span style="background: ${c};" data-color="${c}" title="${esc((cnames[i] || "Colour " + (i + 1)) + " " + c.toUpperCase())}"></span>`).join("")
+        : '<span class="fine">No wedding theme colours selected.</span>';
       colorEditorOpen = false;
       $("attire-editor").style.display = "none";
     });
@@ -794,6 +878,61 @@
         : "No payout service is currently configured for this wedding's currency. No account details are collected.";
     }
 
+    async function refreshSetupProgress() {
+      try {
+        const res = await WS.api(`/api/weddings?action=get&weddingId=${encodeURIComponent(weddingId)}`);
+        const data = await res.json();
+        if (!res.ok || !data.wedding) throw new Error(data.error || "Could not reload saved setup data.");
+        window.__wedding = data.wedding;
+        if (window.WSSetupProgress) window.WSSetupProgress.render($("setup-progress"), data.wedding);
+      } catch (error) {
+        console.error("Setup progress refresh failed:", error);
+        notice("Changes were saved, but setup progress could not be refreshed. Reload this editor to see the latest saved score.", true);
+      }
+    }
+
+    async function loadSponsorEnquiries() {
+      try {
+        const res = await WS.api(`/api/weddings?action=sponsor-enquiries&weddingId=${encodeURIComponent(weddingId)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not load sponsor enquiries.");
+        const enquiries = data.enquiries || [];
+        $("sponsor-enquiries-panel").hidden = !enquiries.length;
+        $("sponsor-enquiries-list").innerHTML = enquiries.length ? enquiries.map(enquiry => `
+          <article class="card" data-sponsor-enquiry="${esc(enquiry.id)}">
+            <strong>${esc(enquiry.company_name)}</strong> · ${esc(enquiry.status)}
+            <p>${esc(enquiry.offer || "No offer details")}</p>
+            <p class="fine">${esc(enquiry.contact_name)} · ${esc(enquiry.contact_email)}${enquiry.contact_phone ? " · " + esc(enquiry.contact_phone) : ""}${enquiry.location ? " · " + esc(enquiry.location) : ""}</p>
+            ${enquiry.public_contact ? "<small>Requested public contact details on the sponsor card.</small>" : "<small>Contact details remain private.</small>"}
+            ${enquiry.status === "pending" ? `<div class="row"><button type="button" class="ghost" data-sponsor-review="approved">Approve in-kind card</button><button type="button" class="ghost" data-sponsor-review="declined">Decline</button></div>` : ""}
+          </article>`).join("") : "<p class='fine'>No enquiries yet.</p>";
+      } catch (error) {
+        console.warn("Sponsor enquiries unavailable:", error.message);
+      }
+    }
+    $("sponsor-enquiries-list").addEventListener("click", async e => {
+      const button = e.target.closest("[data-sponsor-review]");
+      if (!button) return;
+      const decision = button.dataset.sponsorReview;
+      if (!confirm(decision === "approved"
+        ? "Approve this free/in-kind sponsor card? This will publish the organization's name and offer; it does not represent a payment."
+        : "Decline this sponsor enquiry?")) return;
+      button.disabled = true;
+      try {
+        const res = await WS.api("/api/weddings?action=sponsor-enquiry-review", {
+          method: "POST",
+          body: JSON.stringify({ weddingId, enquiryId: button.closest("[data-sponsor-enquiry]").dataset.sponsorEnquiry, status: decision })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not review this enquiry.");
+        notice(decision === "approved" ? "In-kind sponsor approved and published." : "Sponsor enquiry declined.");
+        await loadSponsorEnquiries();
+      } catch (error) {
+        notice(error.message || "Could not review the enquiry.", true);
+        button.disabled = false;
+      }
+    });
+
     // Load wedding
     async function loadWedding() {
       try {
@@ -812,6 +951,7 @@
         WSTime.fillSelect($("wedding-timezone"), w.time_zone || WSTime.DEFAULT_ZONE);
         setGuestSiteLink(w.slug, !!w.published_at);
         window.__wedding = w;
+        if (window.WSSetupProgress) window.WSSetupProgress.render($("setup-progress"), w);
         refreshOps(w);
         $("location").value = w.public_location || "";
         $("background-music-url").value = w.background_music_url || "";
@@ -822,12 +962,15 @@
         const palette = w.palette || ["#244b3a"];
         $("palette-preview").dataset.palette = JSON.stringify(palette);
         $("palette-preview").dataset.names = JSON.stringify(w.palette_names || []);
-        $("palette-preview").innerHTML = palette.map((c, i) => `<span style="background: ${c};" data-color="${c}" title="${esc(((w.palette_names || [])[i] || "Colour " + (i + 1)) + " " + c.toUpperCase())}"></span>`).join("");
+        $("palette-preview").innerHTML = palette.length
+          ? palette.map((c, i) => `<span style="background: ${c};" data-color="${c}" title="${esc(((w.palette_names || [])[i] || friendlyPaletteName(c)) + " " + c.toUpperCase())}"></span>`).join("")
+          : '<span class="fine">No wedding theme colours selected.</span>';
         $("rsvp-fee").value = ((w.rsvp_fee_minor || 0) / 100).toFixed(2);
         $("extra-guest-fee").value = ((w.extra_guest_fee_minor || 0) / 100).toFixed(2);
         $("premium-diet-fee").value = ((w.premium_diet_fee_minor || 0) / 100).toFixed(2);
         $("premium-diet-options").value = (w.premium_diet_options || []).join(", ");
         $("attire-notes").value = w.attire_notes || "";
+        $("allow-in-kind-sponsorship").checked = w.allow_in_kind_sponsorship === true;
 
         // Load venues
         if (w.venues && Array.isArray(w.venues)) {
@@ -839,9 +982,9 @@
                 <div class="venue-main-label">
                   <input type="checkbox" class="venue-main-cb" title="Set as main venue" ${venue.is_main ? "checked" : ""}> <span>Main venue</span>
                 </div>
-                <input type="text" class="venue-name" value="${esc(venue.name || "")}" placeholder="Venue name" maxlength="80">
-                <input type="text" class="venue-time" value="${esc(venue.event_time || "")}" placeholder="Time">
-                ${window.venueExtra(venue.kind, venue.address)}
+                <input type="text" class="venue-name" value="${esc(venue.name || "")}" placeholder="Venue / event name" maxlength="80" required>
+                <input type="text" class="venue-time" value="${esc(venue.event_time || "")}" placeholder="Time" required>
+                ${window.venueExtra(venue.kind, venue.address, venue.event_date || w.wedding_date)}
                 <input type="url" class="venue-address" value="${esc(venue.map_link || "")}" placeholder="Map link">
                 <textarea class="venue-notes" placeholder="Details" maxlength="240">${esc(venue.description || "")}</textarea>
                 <input type="hidden" class="venue-id" value="${esc(venue.id || "")}">
@@ -954,6 +1097,7 @@
           $("vip-description").value = "";
         }
         await loadPayoutMethods(w.currency);
+        await loadSponsorEnquiries();
 
         // Load payout preferences
         if (w.payout) {
@@ -1027,6 +1171,7 @@
               id: item.querySelector(".venue-id")?.value || null,
               name: name,
               eventTime: item.querySelector(".venue-time").value || null,
+              eventDate: item.querySelector(".venue-date").value || null,
               mapLink: item.querySelector(".venue-address").value || null,
               description: item.querySelector(".venue-notes").value || null,
               kind: item.querySelector(".venue-kind").value || "main",
@@ -1132,6 +1277,7 @@
             extraGuestFee: Number($("extra-guest-fee").value || 0),
             premiumDietFee: Number($("premium-diet-fee").value || 0),
             premiumDietOptions: $("premium-diet-options").value,
+            allowInKindSponsorship: $("allow-in-kind-sponsorship").checked,
             registry: registry,
             tiers: tiers,
             vip: vip,
@@ -1140,8 +1286,13 @@
           })
         });
         const data = await res.json();
-        if (!res.ok) return notice(data.error || "Could not save wedding.", true);
+        if (!res.ok) {
+          if (data.field) focusInvalidField(data.field);
+          return notice(data.error || "Could not save wedding.", true);
+        }
         if (data.wedding?.slug) setGuestSiteLink(data.wedding.slug, !!data.wedding.published_at);
+        window.__wedding = data.wedding || window.__wedding;
+        if (window.WSSetupProgress && data.wedding) window.WSSetupProgress.render($("setup-progress"), data.wedding);
         notice("Changes saved.");
       } catch (err) {
         console.error("Save failed:", err);
@@ -1179,7 +1330,7 @@
           if (data.paymentRequired || data.kycRequired) {
             $("publish-section").hidden = true;
             $("edit-section").hidden = false;
-            notice(data.paymentRequired ? (data.error + " Use \"Pay publication fee\" below, then publish again.") : data.error, true);
+            notice(data.paymentRequired ? (data.error + " No payment was recorded. Publication payment requires a configured test provider; simulated payments are disabled.") : data.error, true);
             refreshOps(window.__wedding || {});
             (data.kycRequired ? $("kyc-section") : $("ops-section")).scrollIntoView({ behavior: "smooth" });
           }
@@ -1233,9 +1384,10 @@
         const data = await res.json();
         const q = data.quote || {};
         if (res.ok && q.fee_minor != null) {
-          $("fee-box").textContent = q.fee_minor > 0 ? `Publication fee: ${WS.money(q.fee_minor, q.currency || "USD", false)}. ${q.reason || ""}` : `No publication fee. ${q.reason || ""}`;
-          $("pay-fee-btn").hidden = !(q.fee_minor > 0) || !!w.published_at;
-          $("pay-fee-btn").dataset.fee = String(q.fee_minor);
+          $("fee-box").textContent = q.fee_minor > 0
+            ? `Publication fee: ${WS.money(q.fee_minor, q.currency || "USD", false)}. ${q.reason || ""} A test payment provider is not configured for this fee; simulated payments are disabled.`
+            : `No publication fee. ${q.reason || ""}`;
+          $("pay-fee-btn").hidden = true;
         }
       } catch (_) {}
     }
@@ -1265,17 +1417,17 @@
         refreshOps(window.__wedding || {});
       } catch (e) { notice(e.message, true); }
     });
-    $("pay-fee-btn").addEventListener("click", async () => {
-      if (!confirm("Test mode: this records a simulated publication fee payment. No real money is charged. Continue?")) return;
-      try {
-        const res = await WS.api("/api/testpay?action=publication", { method: "POST", body: JSON.stringify({ weddingId }) });
-        const d = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(d.error || "Payment could not be recorded.");
-        notice("Test payment recorded. You can now publish.");
-        refreshOps(window.__wedding || {});
-      } catch (e) { notice(e.message, true); }
-    });
-    const KYC_FIELDS = { "kyc-p1": "partner1_legal_name", "kyc-p2": "partner2_legal_name", "kyc-idtype": "id_type", "kyc-idnum": "id_number", "kyc-nat": "nationality", "kyc-phone": "phone", "kyc-email": "email", "kyc-cname": "contact_name", "kyc-cphone": "contact_phone", "kyc-kname": "next_of_kin_name", "kyc-kphone": "next_of_kin_phone", "kyc-krel": "next_of_kin_relation" };
+    const KYC_FIELDS = {
+      "kyc-p1": "partner1_legal_name", "kyc-p1-type": "partner1_id_type",
+      "kyc-p1-id": "partner1_id_number", "kyc-p1-nationality": "partner1_nationality",
+      "kyc-p1-phone": "partner1_phone", "kyc-p1-email": "partner1_email",
+      "kyc-p2": "partner2_legal_name", "kyc-p2-type": "partner2_id_type",
+      "kyc-p2-id": "partner2_id_number", "kyc-p2-nationality": "partner2_nationality",
+      "kyc-p2-phone": "partner2_phone", "kyc-p2-email": "partner2_email",
+      "kyc-cname": "contact_name", "kyc-cphone": "contact_phone",
+      "kyc-kname": "next_of_kin_name", "kyc-kphone": "next_of_kin_phone",
+      "kyc-krel": "next_of_kin_relation"
+    };
     async function loadKyc() {
       try {
         const res = await WS.api(`/api/weddings?action=kyc-get&weddingId=${encodeURIComponent(weddingId)}`);
@@ -1283,9 +1435,13 @@
         const k = d.kyc;
         if (!res.ok || !k || !k.exists) return;
         for (const [id, key] of Object.entries(KYC_FIELDS)) {
-          $(id).value = id === "kyc-idnum" ? (k.id_number_masked || "") : (k[key] || "");
+          const masked = id === "kyc-p1-id" ? k.partner1_id_number_masked
+            : id === "kyc-p2-id" ? k.partner2_id_number_masked : null;
+          $(id).value = masked || k[key] || "";
         }
-        $("kyc-status").textContent = k.complete ? "Complete. ID number is masked; re-enter it only to change it." : "Incomplete.";
+        $("kyc-status").textContent = k.complete
+          ? "Submission complete; no independent ID-verification provider is configured. ID numbers are masked."
+          : "Incomplete — both partners’ required details are needed.";
         $("kyc-consent").checked = !!k.complete;
       } catch (_) {}
     }
@@ -1299,6 +1455,7 @@
         if (!res.ok) throw new Error(d.error || "Could not save identity details.");
         notice("Identity details saved privately.");
         loadKyc();
+        await refreshSetupProgress();
       } catch (err) { notice(err.message, true); }
     });
     loadKyc();
@@ -1363,6 +1520,7 @@
       const out = await res.json().catch(() => ({}));
       if (!res.ok) { $("campaign-status").textContent = out.error || "Could not save."; return notice(out.error || "Could not save campaigns.", true); }
       $("campaign-status").textContent = "Saved.";
+      await refreshSetupProgress();
       notice("Fundraising campaigns saved.");
       await loadCampaigns();
     });
@@ -1405,6 +1563,7 @@
       const faq = [...document.querySelectorAll(".faq-row")].map(r => ({ q: r.querySelector(".faq-q").value, a: r.querySelector(".faq-a").value }));
       const res = await WS.api("/api/weddings?action=extras-save", { method: "POST", body: JSON.stringify({ weddingId, faq, travel: $("travel-info").value }) });
       notice(res.ok ? "FAQ and travel info saved." : "Could not save FAQ and travel info.", !res.ok);
+      if (res.ok) await refreshSetupProgress();
     });
     loadEngagement();
     loadCampaigns();

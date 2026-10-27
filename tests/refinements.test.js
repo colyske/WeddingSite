@@ -21,7 +21,8 @@ test("RSVP requires a phone number and quotes fees before charging", () => {
   assert.match(src, /needsPayment: true/);
   assert.match(src, /extra_guest_fee_minor/);
   assert.match(src, /premium_diet_fee_minor/);
-  assert.match(src, /record_test_rsvp_fees".*\{ service: true \}/);
+  assert.doesNotMatch(src, /record_test_rsvp_fees/);
+  assert.match(read("supabase/migrations/202610300002_verified_test_payments.sql"), /revoke all on function public\.record_test_rsvp_fees/);
 });
 
 test("seating lookup is by phone", async () => {
@@ -31,6 +32,7 @@ test("seating lookup is by phone", async () => {
   });
   assert.equal((await call({ action: "seating", slug: "some-wedding", phone: "x" })).status, 400);
   assert.match(read("guest.html"), /id="seat-phone"/);
+  assert.match(read("api/guest.js"), /update or re-import the guest list with your phone number/);
 });
 
 test("guest site shows palette names with hex, theme label, celebration and pre-wedding sections", () => {
@@ -38,8 +40,10 @@ test("guest site shows palette names with hex, theme label, celebration and pre-
   assert.match(g, /palette-label/);
   assert.match(g, /id="prewedding-display"/);
   assert.match(g, /Get directions/);
-  assert.match(g, /not to the DJ/);
-  assert.match(g, /confirmQuote/);
+  assert.match(g, /not the DJ/);
+  assert.match(g, /Total charged now/);
+  assert.match(g, /Your advert could be here/);
+  assert.match(g, /Become a sponsor/);
   const sql = read("supabase/migrations/202610300001_refinements.sql");
   assert.match(sql, /palette_names/);
   assert.match(sql, /group by lower\(trim\(/i);

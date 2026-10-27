@@ -185,7 +185,7 @@
     <section id="past-banner" class="card" hidden data-corners style="text-align:center">
       <p><span class="past-badge">Completed</span></p>
       <h2>Thank you for celebrating with us</h2>
-      <p id="past-message">This wedding has taken place. RSVPs, song bids and pledges are now closed, but you are welcome to look back at the day.</p>
+      <p id="past-message">This wedding has taken place. RSVPs, song bids and contributions are now closed, but you are welcome to look back at the day.</p>
     </section>
 
     <!-- Story section -->
@@ -211,7 +211,7 @@
 
     <!-- Pre-wedding events -->
     <section id="prewedding" class="card" hidden>
-      <h2>Before the wedding</h2>
+      <h2>04 Before the wedding: The road to the day</h2>
       <p class="fine">Fundraisers, rehearsals and gatherings leading up to the day.</p>
       <div id="prewedding-display" style="display: flex; flex-direction: column; gap: 1.5rem;"></div>
     </section>
@@ -227,7 +227,7 @@
     <!-- Fundraising campaigns -->
     <section id="campaigns" class="card" hidden>
       <h2>A gift for our next chapter</h2>
-      <p class="fine">Optional. If you would like to help, choose a fundraiser below. No gift is ever expected. Payments on this site are in test mode.</p>
+      <p class="fine">Optional. If you would like to help, choose a fundraiser below. No gift is ever expected. Payment is collected on the spot through the configured test checkout.</p>
       <div id="campaigns-display"></div>
     </section>
 
@@ -303,22 +303,7 @@
     <!-- DJ song bids -->
     <section id="bids" class="card" hidden>
       <h2>DJ Song Requests</h2>
-      <p class="fine">Have a song that should be on the dance floor? Make a bid and help us build the perfect playlist.</p>
-
-      <form id="bid-form">
-        <label for="song-title">Song title *</label>
-        <input id="song-title" type="text" maxlength="100" required>
-
-        <label for="artist">Artist *</label>
-        <input id="artist" type="text" maxlength="100" required>
-
-        <label for="bid-amount">Bid amount (in <span id="currency-display">USD</span>) *</label>
-        <input id="bid-amount" type="number" step="0.01" min="0" placeholder="0.00" required>
-
-        <p class="fine" id="bid-note">Bids on the same song add up. Money from bids goes to the couple&rsquo;s wedding fundraiser, not to the DJ. The DJ simply plays the most-requested songs.</p>
-
-        <button type="submit">Place Bid</button>
-      </form>
+      <p class="fine">Choose a song already on the list and make an on-the-spot bid. Paid bids combine into one song total and support the couple&rsquo;s wedding fund, not the DJ.</p>
 
       <!-- DJ leaderboard -->
       <div style="margin-top: 2rem;">
@@ -329,7 +314,8 @@
               <th style="text-align: left; padding: 0.75rem; color: var(--green);">#</th>
               <th style="text-align: left; padding: 0.75rem; color: var(--green);">Song</th>
               <th style="text-align: left; padding: 0.75rem; color: var(--green);">Artist</th>
-              <th style="text-align: right; padding: 0.75rem; color: var(--green);">Total Bids</th>
+              <th style="text-align: right; padding: 0.75rem; color: var(--green);">Paid total</th>
+              <th style="text-align: left; padding: 0.75rem; color: var(--green);">Add a bid</th>
             </tr>
           </thead>
           <tbody id="leaderboard-body"></tbody>
@@ -359,8 +345,9 @@
     <!-- Sponsorship tiers -->
     <section id="sponsor-tiers" class="card" hidden>
       <h2>Sponsorship Levels</h2>
-      <p class="fine">Join us in supporting this special celebration at a level that works for you.</p>
+      <p class="fine">Fixed-price packages support the celebration. Sponsor placement appears only after verified payment.</p>
       <div id="tiers-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;"></div>
+      <button type="button" class="link" id="sponsor-enquiry-link" hidden>Ask about free / in-kind support</button>
     </section>
 
     <!-- VIP seating -->
@@ -371,11 +358,41 @@
     </section>
 
     <!-- Corporate sponsors -->
-    <section id="sponsors" class="card" hidden>
+    <section id="sponsors" class="card">
       <h2>Our Sponsors</h2>
-      <p class="fine">We're grateful to these organizations for their generous support.</p>
-      <div id="sponsors-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;"></div>
+      <p class="fine">Thank you to the organizations supporting this celebration. Paid sponsor cards follow verified payment; free/in-kind support is labeled and appears only after organizer approval.</p>
+      <div id="sponsors-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+        <article style="border: 2px dashed var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
+          <h3>Your advert could be here</h3>
+          <p>Support this couple&rsquo;s celebration.</p>
+          <button type="button" class="buy-btn" id="sponsor-cta">Become a sponsor</button>
+        </article>
+      </div>
     </section>
+
+    <dialog id="sponsor-enquiry-dialog" aria-labelledby="sponsor-enquiry-title">
+      <form id="sponsor-enquiry-form" method="dialog">
+        <h2 id="sponsor-enquiry-title">Become a sponsor</h2>
+        <p id="sponsor-enquiry-status" class="fine">Checking the couple’s sponsor options…</p>
+        <div id="sponsor-enquiry-fields" hidden>
+          <label for="enquiry-company">Organization name *</label>
+          <input id="enquiry-company" required maxlength="100">
+          <label for="enquiry-contact">Contact name *</label>
+          <input id="enquiry-contact" required maxlength="100">
+          <label for="enquiry-email">Email *</label>
+          <input id="enquiry-email" type="email" required maxlength="254" autocomplete="email">
+          <label for="enquiry-phone">Phone</label>
+          <input id="enquiry-phone" type="tel" maxlength="30" autocomplete="tel">
+          <label for="enquiry-location">Location</label>
+          <input id="enquiry-location" maxlength="160">
+          <label for="enquiry-offer">What would you like to offer? *</label>
+          <textarea id="enquiry-offer" required maxlength="360"></textarea>
+          <label><input id="enquiry-public-contact" type="checkbox"> I consent to the selected phone/email being shown on an approved sponsor card.</label>
+          <button type="submit" id="sponsor-enquiry-submit">Send enquiry</button>
+        </div>
+        <button type="button" id="sponsor-enquiry-close" class="link">Close</button>
+      </form>
+    </dialog>
 
     <!-- Seating lookup -->
     <section id="seating" class="card" hidden>
@@ -410,13 +427,19 @@
   <dialog id="pay-dialog">
     <form method="dialog" id="pay-form">
       <h3 id="pay-title">Complete your contribution</h3>
-      <p class="fine"><strong>Test mode:</strong> no real money is charged. This records a simulated payment for demonstration.</p>
+      <p class="fine"><strong>Test checkout:</strong> the action completes only after the provider confirms payment. No live payment keys are accepted.</p>
       <p id="pay-summary"></p>
-      <label for="pay-name">Your name *</label><input id="pay-name" maxlength="100" autocomplete="name">
-      <label for="pay-email">Email (optional)</label><input id="pay-email" type="email" maxlength="200" autocomplete="email">
+      <label for="pay-provider">Payment provider *</label><select id="pay-provider" required></select>
+      <label for="pay-name">Your name / organization *</label><input id="pay-name" maxlength="100" autocomplete="name">
+      <label for="pay-email">Email (required by some providers)</label><input id="pay-email" type="email" maxlength="200" autocomplete="email">
       <label for="pay-amount">Amount (<span id="pay-currency"></span>) *</label><input id="pay-amount" type="number" min="1" step="0.01" required>
-      <label for="pay-visibility">Show on the public ledger as</label>
-      <select id="pay-visibility"><option value="name">My name</option><option value="anonymous">Anonymous</option><option value="hidden" selected>Do not show</option></select>
+      <div id="pay-sponsor-fields" hidden>
+        <label for="pay-phone">Public contact phone (optional)</label><input id="pay-phone" type="tel" maxlength="30">
+        <label for="pay-website">Website (optional)</label><input id="pay-website" type="url" maxlength="300">
+        <label for="pay-location">Location (optional)</label><input id="pay-location" maxlength="160">
+        <label for="pay-offer">What your organization offers (optional)</label><textarea id="pay-offer" maxlength="360"></textarea>
+      </div>
+      <div id="pay-captcha"></div>
       <p id="pay-error" class="notice bad" hidden></p>
       <div style="display:flex;gap:.5rem;margin-top:1rem"><button type="submit" id="pay-submit">Pay (test mode)</button><button type="button" id="pay-cancel" class="link">Cancel</button></div>
     </form>
@@ -451,6 +474,8 @@
 
   let wedding = null;
   let audioEnabled = false;
+  let sponsorEnquiryEnabled = false;
+  let sponsorPackageCount = 0;
 
   // Load wedding data
   async function loadWedding() {
@@ -551,14 +576,14 @@
                 ${WS.money(raised, wedding.currency || "USD", true)} of ${WS.money(target, wedding.currency || "USD", true)}
               </p>
               ${item.notes ? `<p style="margin: 0.5rem 0 0; font-size: 0.9rem; color: #5a5f5a;">${esc(item.notes)}</p>` : ""}
-              ${wedding.is_past ? "" : `<button type="button" class="buy-btn" data-buy="pledge" data-ref="${esc(item.id)}" data-label="${esc(item.name)}">Pledge to this</button>`}
+              ${wedding.is_past ? "" : `<button type="button" class="buy-btn" data-buy="registry" data-ref="${esc(item.id)}" data-label="${esc(item.name)}">Contribute now</button>`}
             </div>
           `;
         }).join("");
       }
 
       // RSVP & Bids
-      $("currency-display").textContent = wedding.currency || "USD";
+      if ($("currency-display")) $("currency-display").textContent = wedding.currency || "USD";
       if (wedding.is_past) {
         $("past-banner").hidden = false;
         $("countdown").hidden = true;
@@ -572,7 +597,6 @@
         $("bids").hidden = false;
         restorePass();
       }
-      $("bids").querySelector("form").hidden = !!wedding.is_past;
       if (wedding.is_past) { $("bids").hidden = false; $("bids").querySelector("p.fine").textContent = "Bidding is closed. Here are the final song requests."; }
 
       loadBids();
@@ -580,6 +604,7 @@
       loadFundraising();
       $("seating").hidden = false;
       if (!wedding.is_past) startCountdown();
+      await handlePaymentReturn();
     } catch (err) {
       console.error("Load failed:", err);
       notice("Network error loading wedding.", true);
@@ -589,7 +614,8 @@
   function paletteFigs(w) {
     const names = w.palette_names || [];
     return (w.palette || []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).map((c, i) => {
-      const name = String(names[i] || "").trim() || `Colour 0${i + 1}`;
+      const defaults = { "#244b3a": "Forest Green", "#a9b5a2": "Eucalyptus Sage", "#be9b52": "Royal Gold", "#eee8d9": "Ivory" };
+      const name = String(names[i] || "").trim() || defaults[c.toLowerCase()] || `Colour ${c.toUpperCase()}`;
       return `<figure><span style="background: ${c};"></span><figcaption>${esc(name)} <small>(${esc(c.toUpperCase())})</small></figcaption></figure>`;
     }).join("");
   }
@@ -605,9 +631,12 @@
     const dateText = ms != null ? WSTime.formatDate(ms, zone) : "";
     const timeText = v.event_time && ms != null ? WSTime.formatTime(ms, zone) : "";
     const href = directionsUrl(v);
+    const lapsed = ms != null && ms < Date.now();
+    const eventType = v.event_type || (v.kind === "pre" ? "Pre-wedding gathering" : "Wedding day");
     return `<div class="sched-row venue-card">
-      <div class="sched-time">${timeText ? esc(timeText).replace(/\s?(AM|PM)$/i, " <small>$1</small>") : "&mdash;"}${dateText ? `<span class="sched-date">${esc(dateText)}</span>` : ""}</div>
+      <div class="sched-time">${timeText ? esc(timeText).replace(/\s?(AM|PM)$/i, " <small>$1</small>") : "&mdash;"}${dateText ? `<span class="sched-date">${esc(dateText)}</span>` : ""}${lapsed ? '<span class="event-lapsed">Completed</span>' : ""}</div>
       <div class="sched-body">
+        <p class="fine">${esc(eventType)}</p>
         <h3>${esc(v.name)}${v.is_main ? " <small>(main ceremony)</small>" : ""}</h3>
         ${v.address ? `<p class="venue-address">${esc(v.address)}</p>` : ""}
         ${v.description ? `<p>${esc(v.description)}</p>` : ""}
@@ -622,6 +651,13 @@
       const res = await fetch(`/api/guest?action=fundraising&slug=${encodeURIComponent(slug)}`);
       if (!res.ok) return;
       const data = await res.json();
+      sponsorEnquiryEnabled = data.allow_in_kind_sponsorship === true;
+      sponsorPackageCount = (data.tiers || []).length;
+      $("sponsor-enquiry-link").hidden = !sponsorEnquiryEnabled;
+      $("sponsor-enquiry-fields").hidden = !sponsorEnquiryEnabled;
+      $("sponsor-enquiry-status").textContent = sponsorEnquiryEnabled
+        ? "Free or in-kind enquiries are reviewed by the couple. Sending this form does not confirm sponsorship."
+        : "This couple is not accepting free or in-kind enquiries right now. Fixed-price packages, if listed above, can be selected and paid at checkout.";
 
       // Fundraising campaigns with milestones
       const camps = data.campaigns || [];
@@ -636,7 +672,7 @@
             ${c.purpose && c.purpose !== c.name ? `<p>${esc(c.purpose)}</p>` : ""}
             <div class="camp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="${esc(c.name)} progress"><span style="width:${pct}%"></span></div>
             <p class="camp-total"><strong>${pct}%</strong> of ${WS.money(c.goal_minor, cur, false)} · ${WS.money(c.raised_minor, cur, false)} raised</p>
-            ${c.milestones.length ? `<ul class="camp-ms">${c.milestones.map(m => `<li class="${m.reached ? "done" : ""}"><span aria-hidden="true">${m.reached ? "☑" : "☐"}</span> <span><strong>${esc(m.name)}</strong> · ${WS.money(m.target_minor, cur, false)}${m.description ? `<br><small>${esc(m.description)}</small>` : ""}<span class="sr-only">${m.reached ? " (reached)" : " (not yet reached)"}</span></span></li>`).join("")}</ul>` : ""}
+            ${c.milestones.length ? `<ul class="camp-ms">${c.milestones.map(m => `<li class="${m.reached ? "done" : ""}"><span aria-hidden="true">${m.reached ? "☑" : "☐"}</span> <span><strong>${esc(m.name)}</strong> · ${WS.money(m.target_minor, cur, false)}${m.description ? `<br><small>${esc(m.description)}</small>` : ""}<span class="sr-only">${m.reached ? " (reached)" : " (not yet reached)"}</span>${wedding.is_past ? "" : `<br><button type="button" class="link" data-buy="fund" data-ref="${esc(c.id)}" data-milestone="${esc(m.id)}" data-label="${esc(c.name)} · ${esc(m.name)}">Contribute to this milestone</button>`}</span></li>`).join("")}</ul>` : ""}
             ${wedding.is_past ? "" : `<div class="camp-give">${presets.map(p => `<button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-min="${p * 100}" data-preset data-label="${esc(c.name)}">${esc(cur)} ${p}</button>`).join("")}<button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-preset data-label="${esc(c.name)}">Other</button></div>`}
           </article>`;
         }).join("");
@@ -674,21 +710,66 @@
       }
 
       // Display corporate sponsors
-      if (data.sponsors && data.sponsors.length > 0) {
-        $("sponsors").hidden = false;
-        $("sponsors-display").innerHTML = data.sponsors.map(sponsor => `
+      const sponsorCards = (data.sponsors || []).map(sponsor => `
           <div style="border: 1px solid #d0d5cc; border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
             <h4 style="margin: 0 0 0.5rem; color: var(--green);">${esc(sponsor.company_name)}</h4>
-            <p style="margin: 0 0 1rem; color: var(--gold); font-weight: 600;">${WS.money(sponsor.amount_minor, wedding.currency || "USD", false)}</p>
+            <p style="margin: 0 0 1rem; color: var(--gold); font-weight: 600;">${sponsor.in_kind ? "Approved in-kind supporter" : WS.money(sponsor.amount_minor, wedding.currency || "USD", false)}</p>
+            ${sponsor.location ? `<p>${esc(sponsor.location)}</p>` : ""}
+            ${sponsor.offer ? `<p>${esc(sponsor.offer)}</p>` : ""}
             ${safeUrl(sponsor.website) ? `<p style="margin: 0 0 0.5rem;"><a href="${esc(safeUrl(sponsor.website))}" target="_blank" rel="noopener noreferrer" class="link" style="font-size: 0.9rem;">Visit website</a></p>` : ""}
-            ${sponsor.contact_phone ? `<p style="margin: 0; font-size: 0.85rem; color: #5a5f5a;">${esc(sponsor.contact_phone)}</p>` : ""}
+            ${sponsor.contact_email ? `<p style="margin: 0; font-size: 0.85rem; color: #5a5f5a;"><a href="mailto:${esc(sponsor.contact_email)}">${esc(sponsor.contact_email)}</a></p>` : ""}
+            ${sponsor.contact_phone ? `<p style="margin: 0; font-size: 0.85rem; color: #5a5f5a;"><a href="tel:${esc(sponsor.contact_phone)}">${esc(sponsor.contact_phone)}</a></p>` : ""}
           </div>
         `).join("");
-      }
+      const placeholder = `<article style="border: 2px dashed var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
+        <h3>Your advert could be here</h3>
+        <p>Support ${esc(wedding.couple_names || "the couple")}&rsquo;s celebration.</p>
+        <button type="button" class="buy-btn" id="sponsor-cta" ${wedding.is_past ? "disabled" : ""}>Become a sponsor</button>
+      </article>`;
+      $("sponsors-display").innerHTML = sponsorCards + placeholder;
     } catch (err) {
       console.warn("Could not load fundraising data:", err);
     }
   }
+
+  $("sponsors-display").addEventListener("click", e => {
+    if (!e.target.closest("#sponsor-cta")) return;
+    if (sponsorPackageCount) {
+      $("sponsor-tiers").scrollIntoView({ behavior: "smooth", block: "center" });
+      $("tiers-display").querySelector("button")?.focus({ preventScroll: true });
+      return;
+    }
+    $("sponsor-enquiry-dialog").showModal();
+  });
+  $("sponsor-enquiry-link").addEventListener("click", () => $("sponsor-enquiry-dialog").showModal());
+  $("sponsor-enquiry-close").addEventListener("click", () => $("sponsor-enquiry-dialog").close());
+  $("sponsor-enquiry-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    if (!sponsorEnquiryEnabled) return;
+    const submit = $("sponsor-enquiry-submit");
+    submit.disabled = true;
+    try {
+      const res = await fetch("/api/guest?action=sponsor-enquiry", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug, companyName: $("enquiry-company").value, contactName: $("enquiry-contact").value,
+          contactEmail: $("enquiry-email").value, contactPhone: $("enquiry-phone").value,
+          location: $("enquiry-location").value, offer: $("enquiry-offer").value,
+          publicContact: $("enquiry-public-contact").checked
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not send this enquiry.");
+      $("sponsor-enquiry-status").textContent = data.message;
+      $("sponsor-enquiry-form").reset();
+      toast("Sponsor enquiry sent for review. It is not yet confirmed.");
+    } catch (error) {
+      $("sponsor-enquiry-status").textContent = error.message || "Could not send this enquiry.";
+      toast(error.message || "Could not send this enquiry.", true);
+    } finally {
+      submit.disabled = false;
+    }
+  });
 
   // Live countdown
   function startCountdown() {
@@ -774,6 +855,50 @@
     toastTimer = setTimeout(() => { t.hidden = true; }, 4500);
   }
 
+  async function handlePaymentReturn() {
+    const paymentId = params.get("paymentReturn");
+    const cancelledId = params.get("paymentCancel");
+    if (cancelledId) {
+      toast("Checkout was cancelled. No paid action was completed.", true);
+      params.delete("paymentCancel");
+      history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
+      return;
+    }
+    if (!paymentId) return;
+    let saved = {};
+    try { saved = JSON.parse(sessionStorage.getItem(`ws-payment:${paymentId}`) || "{}"); } catch (_) {}
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      try {
+        const res = await fetch(`/api/checkout?action=status&id=${encodeURIComponent(paymentId)}`, { cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Payment status could not be checked.");
+        if (data.paymentStatus === "paid" && data.actionStatus === "completed") {
+          if (data.action === "rsvp" && data.actionResult?.rsvpId) {
+            showPass(data.actionResult.rsvpId, saved.guestName || "Guest", "yes");
+            try {
+              const pass = { id: data.actionResult.rsvpId, name: saved.guestName || "Guest", status: "yes", refCode: data.actionResult.refCode || "" };
+              localStorage.setItem("ws-pass:" + slug, JSON.stringify(pass));
+            } catch (_) {}
+          }
+          toast("Payment verified. Your action is complete.");
+          await Promise.all([loadBids(), loadLedger(), loadFundraising()]);
+          try { sessionStorage.removeItem(`ws-payment:${paymentId}`); } catch (_) {}
+          params.delete("paymentReturn");
+          history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
+          return;
+        }
+        if (data.paymentStatus === "paid" && data.actionStatus === "review_required") {
+          toast("Payment verified; your request needs organizer review. Please do not pay again.", true);
+          return;
+        }
+      } catch (error) {
+        if (attempt === 29) toast(error.message || "Payment is not confirmed yet. No action was completed.", true);
+      }
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    toast("Payment is not confirmed yet. No action was completed; check this page again before retrying.", true);
+  }
+
   // E-card pass: rendered after RSVP, restored from this device, or found by email/code
   function showPass(rsvpId, guestName, status) {
     const verificationUrl = new URL("/verify.html", location.origin);
@@ -832,44 +957,159 @@
     } catch (_) { toast("Network error.", true); }
   });
 
-  // Test-mode checkout for VIP, sponsorship and registry pledges
+  // Provider-confirmed test checkout for paid guest actions
   let buying = null;
+  let captchaToken = "";
+  let turnstileWidget = null;
+  let turnstileLoad = null;
+  async function prepareTurnstile(siteKey) {
+    if (!siteKey) throw new Error("Payment anti-abuse verification is not configured.");
+    if (!window.turnstile) {
+      if (!turnstileLoad) {
+        turnstileLoad = new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
+          script.async = true;
+          script.onload = resolve;
+          script.onerror = () => reject(new Error("Could not load anti-abuse verification."));
+          document.head.appendChild(script);
+        });
+      }
+      await turnstileLoad;
+    }
+    const root = $("pay-captcha");
+    root.replaceChildren();
+    captchaToken = "";
+    turnstileWidget = window.turnstile.render(root, {
+      sitekey: siteKey,
+      callback: token => { captchaToken = token; },
+      "expired-callback": () => { captchaToken = ""; }
+    });
+  }
+  async function showPaymentDialog(next) {
+    buying = next;
+    $("pay-title").textContent = next.title || "Complete your payment";
+    $("pay-currency").textContent = wedding.currency || "USD";
+    $("pay-name").value = next.data?.guestName || $("guest-name")?.value || "";
+    $("pay-email").value = next.data?.guestEmail || $("guest-email")?.value || "";
+    $("pay-phone").value = "";
+    $("pay-website").value = "";
+    $("pay-location").value = "";
+    $("pay-offer").value = "";
+    $("pay-sponsor-fields").hidden = next.action !== "sponsor";
+    $("pay-amount").value = next.amountMinor ? String(next.amountMinor / 100) : "";
+    $("pay-amount").readOnly = next.exact === true;
+    $("pay-error").hidden = true;
+    $("pay-submit").disabled = true;
+    $("pay-summary").textContent = next.summary || "Your action will be saved only after the payment provider confirms the charge.";
+    $("pay-provider").replaceChildren(new Option("Loading payment options…", ""));
+    $("pay-dialog").showModal();
+    try {
+      const optionsRes = await fetch(`/api/checkout?action=options&weddingId=${encodeURIComponent(wedding.id)}&currency=${encodeURIComponent(wedding.currency || "USD")}`);
+      const options = await optionsRes.json();
+      if (!optionsRes.ok || !options.paymentAvailable) throw new Error(options.message || "Verified test checkout is not available for this wedding.");
+      $("pay-provider").replaceChildren(...options.providers.map(p =>
+        new Option(`${p.name} · ${p.market}`, `${p.id}|${p.market}`)
+      ));
+      await prepareTurnstile(options.turnstileSiteKey);
+      $("pay-submit").disabled = false;
+    } catch (error) {
+      $("pay-error").textContent = error.message || "Checkout is unavailable. No action was completed.";
+      $("pay-error").hidden = false;
+    }
+  }
   document.addEventListener("click", e => {
+    const bidBtn = e.target.closest("[data-song-bid]");
+    if (bidBtn && wedding) {
+      showPaymentDialog({
+        action: "song_bid", title: "Bid on this song", exact: true,
+        amountMinor: Number(bidBtn.dataset.amount),
+        summary: `This paid bid adds to “${bidBtn.dataset.title}” and supports the wedding fund, not the DJ.`,
+        data: { songTitle: bidBtn.dataset.title, artist: bidBtn.dataset.artist }
+      });
+      return;
+    }
     const btn = e.target.closest("[data-buy]");
     if (!btn || !wedding) return;
-    buying = { kind: btn.dataset.buy, refId: btn.dataset.ref, exact: btn.dataset.exact === "1" };
+    const kind = btn.dataset.buy;
+    const action = kind === "fund" ? "fundraiser" : kind === "registry" ? "registry" : kind;
+    const minAmountMinor = Number(btn.dataset.min || 0);
+    const exact = btn.dataset.exact === "1";
+    const next = {
+    kind, action, refId: btn.dataset.ref, milestoneId: btn.dataset.milestone || null, exact, title: btn.dataset.label || "Complete your payment",
+      amountMinor: exact ? minAmountMinor : (btn.dataset.preset !== undefined ? minAmountMinor : 0)
+    };
     const min = Number(btn.dataset.min || 0) / 100;
-    $("pay-title").textContent = btn.dataset.label || "Contribute";
-    $("pay-currency").textContent = wedding.currency || "USD";
-    $("pay-summary").textContent = buying.exact ? "Fixed price." : (btn.dataset.preset !== undefined ? "Change the amount if you like." : (min ? "Minimum " + min.toFixed(2) + "." : "Choose any amount."));
-    $("pay-amount").value = min ? String(min) : "";
-    $("pay-amount").readOnly = buying.exact;
-    $("pay-error").hidden = true;
-    $("pay-dialog").showModal();
+    if (kind === "fund" || kind === "registry") {
+      next.summary = kind === "fund" ? "Payment is collected now and added to this campaign only after provider confirmation." : "Your registry contribution is charged now and recorded only after provider confirmation.";
+      next.exact = false;
+    } else if (kind === "sponsor") {
+      next.summary = `Minimum package amount ${min.toFixed(2)} ${wedding.currency || "USD"}. Sponsor placement is shown only after verified payment.`;
+      next.exact = true;
+    } else if (kind === "vip") {
+      next.summary = `Fixed price ${min.toFixed(2)} ${wedding.currency || "USD"}. The seat is reserved only after provider confirmation.`;
+    }
+    showPaymentDialog(next);
   });
   $("pay-cancel").addEventListener("click", () => $("pay-dialog").close());
   $("pay-form").addEventListener("submit", async e => {
     e.preventDefault();
     if (!buying) return;
     const name = $("pay-name").value.trim();
-    if (!name) { $("pay-error").textContent = "Please enter your name."; $("pay-error").hidden = false; return; }
+    if ((buying.action === "vip" || buying.action === "sponsor") && !name) {
+      $("pay-error").textContent = buying.action === "sponsor" ? "Please enter your organization's name." : "Please enter your name for the reservation.";
+      $("pay-error").hidden = false;
+      return;
+    }
+    const selected = $("pay-provider").value.split("|");
+    const provider = selected[0];
+    const market = selected[1];
+    if (!provider || !market || !captchaToken) {
+      $("pay-error").textContent = !captchaToken ? "Complete the anti-abuse check before continuing." : "Choose a payment provider.";
+      $("pay-error").hidden = false;
+      return;
+    }
+    const amountMinor = Math.round(Number($("pay-amount").value) * 100);
+    if (!Number.isSafeInteger(amountMinor) || amountMinor < 1) {
+      $("pay-error").textContent = "Enter a valid payment amount.";
+      $("pay-error").hidden = false;
+      return;
+    }
     $("pay-submit").disabled = true;
     try {
-      const res = await fetch("/api/testpay?action=purchase", {
+      const payload = {
+        weddingId: wedding.id, weddingSlug: slug, currency: wedding.currency || "USD", provider, market,
+        purchaseAction: buying.action, idempotencyKey: crypto.randomUUID(), captchaToken,
+        visibility: "hidden", publicConsent: false,
+        amountMinor, guestName: name, displayName: name,
+        email: $("pay-email").value.trim(), guestEmail: $("pay-email").value.trim(),
+        refId: buying.refId, streamId: buying.action === "fundraiser" ? buying.refId : undefined,
+        milestoneId: buying.action === "fundraiser" ? buying.milestoneId : undefined,
+        registryItemId: buying.action === "registry" ? buying.refId : undefined,
+        songTitle: buying.data?.songTitle, artist: buying.data?.artist,
+        phone: $("pay-phone").value.trim(), website: $("pay-website").value.trim(),
+        location: $("pay-location").value.trim(), offer: $("pay-offer").value.trim()
+      };
+      if (buying.action === "rsvp") Object.assign(payload, buying.data);
+      const res = await fetch("/api/checkout?action=create", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug, kind: buying.kind, refId: buying.refId, amount: Number($("pay-amount").value),
-          name, email: $("pay-email").value.trim(), visibility: $("pay-visibility").value })
+        body: JSON.stringify(payload)
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { $("pay-error").textContent = data.error || "Payment could not be recorded."; $("pay-error").hidden = false; return; }
-      $("pay-dialog").close();
-      toast("Thank you! Test payment recorded.");
-      loadFundraising();
-      $("seating").hidden = false; loadLedger();
-      if (window.WSFeedback) WSFeedback.scrollTo(buying && buying.kind === "fund" ? "campaigns" : "ledger");
-    } catch (_) {
-      $("pay-error").textContent = "Network error."; $("pay-error").hidden = false;
-    } finally { $("pay-submit").disabled = false; }
+      if (!res.ok) throw new Error(data.error || "Checkout could not be started.");
+      try {
+        sessionStorage.setItem(`ws-payment:${data.paymentId}`, JSON.stringify({
+          action: buying.action, guestName: buying.data?.guestName || name, amountMinor
+        }));
+      } catch (_) {}
+      location.assign(data.checkoutUrl);
+    } catch (error) {
+      $("pay-error").textContent = error.message || "Checkout could not be started. No action was completed.";
+      $("pay-error").hidden = false;
+      $("pay-submit").disabled = false;
+      if (turnstileWidget !== null && window.turnstile) window.turnstile.reset(turnstileWidget);
+      captchaToken = "";
+    }
   });
   const feeMoney = (m) => (Number(m) / 100).toFixed(2) + " " + (wedding.currency || "");
   function applyRsvpFees() {
@@ -886,20 +1126,7 @@
     if (Number(wedding.extra_guest_fee_minor) > 0) bits.push(feeMoney(wedding.extra_guest_fee_minor) + " per extra guest");
     if (opts.length && Number(wedding.premium_diet_fee_minor) > 0) bits.push("premium dietary choices " + feeMoney(wedding.premium_diet_fee_minor));
     const note = $("rsvp-fee-note");
-    if (bits.length) { note.hidden = false; note.textContent = "Fees set by the couple: " + bits.join(" · ") + ". You will see the total and confirm before submitting. (Demo mode: no real money moves.)"; }
-  }
-  function confirmQuote(quote) {
-    return new Promise((resolve) => {
-      let d = $("rsvp-pay-dialog");
-      if (!d) { d = document.createElement("dialog"); d.id = "rsvp-pay-dialog"; document.body.appendChild(d); }
-      const money = (m) => (Number(m) / 100).toFixed(2) + " " + quote.currency;
-      d.innerHTML = `<form method="dialog"><h3>Confirm your RSVP fees</h3><ul>${quote.lines.map((l) => `<li>${l.label}: <strong>${money(l.amount_minor)}</strong></li>`).join("")}</ul>
-        <p><strong>Total: ${money(quote.totalMinor)}</strong></p><p class="fine">Demo mode: this is recorded as a test payment; no real money moves.</p>
-        <button value="ok">Confirm and RSVP</button> <button value="cancel" formnovalidate>Cancel</button></form>`;
-      d.addEventListener("close", () => resolve(d.returnValue === "ok"), { once: true });
-      d.returnValue = "";
-      d.showModal();
-    });
+    if (bits.length) { note.hidden = false; note.textContent = "Regular wedding food is included at no charge. Fees apply only to the base RSVP, extra guests and premium dietary options selected above. The exact total is charged through test checkout before your RSVP is completed."; }
   }
 
   // RSVP submit
@@ -949,10 +1176,14 @@
       let res = await send();
       let data = await res.json();
       if (res.status === 402 && data.needsPayment) {
-        if (!(await confirmQuote(data.quote))) { notice("RSVP not submitted: fees not confirmed.", true); return; }
-        rsvpBody.payConfirmed = true;
-        res = await send();
-        data = await res.json();
+        const quote = data.quote || { lines: [], totalMinor: 0, currency: wedding.currency };
+        const summary = `${quote.lines.map(line => `${line.label}: ${feeMoney(line.amount_minor)}`).join(" · ")}. Total charged now: ${feeMoney(quote.totalMinor)}.`;
+        await showPaymentDialog({
+          action: "rsvp", title: "Complete your RSVP payment",
+          amountMinor: Number(quote.totalMinor), exact: true,
+          summary, data: rsvpBody
+        });
+        return;
       }
       if (!res.ok) { toast(data.error || "Could not submit RSVP.", true); return notice(data.error || "Could not submit RSVP.", true); }
       notice("RSVP received! Thank you for confirming.");
@@ -960,47 +1191,13 @@
       showPass(data.rsvpId, $("guest-name").value, data.status);
       document.dispatchEvent(new CustomEvent("ws:pass", { detail: { refCode: data.refCode || "" } }));
       try { localStorage.setItem("ws-pass:" + slug, JSON.stringify({ id: data.rsvpId, name: $("guest-name").value, status: data.status, refCode: data.refCode || "" })); } catch (_) {}
-      toast(data.chargedMinor > 0 ? "RSVP noted. Test payment of " + (data.chargedMinor / 100).toFixed(2) + " recorded. Your pass is below." : "We have noted your RSVP. Your pass is below.");
+      toast("We have noted your RSVP. Your pass is below.");
       $("rsvp-form").reset();
-      if (window.WSFeedback) WSFeedback.scrollTo("ecard");
     } catch (err) {
       console.error("RSVP failed:", err);
       notice("Network error submitting RSVP.", true);
     } finally {
       delete $("rsvp-form").dataset.submitting;
-    }
-  });
-
-  // DJ bid submit
-  $("bid-form").addEventListener("submit", async e => {
-    e.preventDefault();
-    if ($("bid-form").dataset.submitting) return;
-    $("bid-form").dataset.submitting = "true";
-    notice("");
-
-    try {
-      const res = await fetch("/api/guest?action=bid", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          weddingSlug: slug,
-          songTitle: $("song-title").value,
-          artist: $("artist").value,
-          bidAmount: Number($("bid-amount").value)
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) { toast(data.error || "Could not place bid.", true); return notice(data.error || "Could not place bid.", true); }
-      notice("Bid placed! It adds to this song's total and supports the wedding fundraiser.");
-      toast("Bid placed! Added to the song total (supports the wedding fundraiser).");
-      $("bid-form").reset();
-      await loadBids();
-      if (window.WSFeedback) WSFeedback.scrollTo("leaderboard-table");
-    } catch (err) {
-      console.error("Bid failed:", err);
-      notice("Network error placing bid.", true);
-    } finally {
-      delete $("bid-form").dataset.submitting;
     }
   });
 
@@ -1021,9 +1218,12 @@
       $("leaderboard-body").innerHTML = bids.map((b, i) => `
         <tr style="border-bottom: 1px solid #e3dcc7;">
           <td style="padding: 0.75rem; color: var(--gold);">${i + 1}</td>
-          <td style="padding: 0.75rem;">${esc(b.song_title)}${Number(b.bid_count) > 1 ? ` <small class="fine">(${Number(b.bid_count)} bids)</small>` : ""}</td>
+          <td style="padding: 0.75rem;">${esc(b.song_title)}</td>
           <td style="padding: 0.75rem; color: var(--sage);">${esc(b.artist_name || "—")}</td>
           <td style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, wedding.currency)}</td>
+          <td style="padding: 0.75rem;">${wedding.is_past ? "Closed" : [500, 1000, 2500, 5000].map(amount =>
+            `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}" data-amount="${amount}">${esc(wedding.currency || "USD")} ${(amount / 100).toFixed(2)}</button>`
+          ).join(" ")}</td>
         </tr>
       `).join("");
     } catch (err) {

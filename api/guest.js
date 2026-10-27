@@ -120,6 +120,46 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { message: "Thank you! Your wish will appear once the couple approves it." });
     }
 
+    if (action === "sponsor-enquiry") {
+      if (!methodOnly(req, res, "POST")) return;
+      const body = req.body && typeof req.body === "object" ? req.body : {};
+      const slug = String(body.slug || "").toLowerCase();
+      if (!/^[a-z0-9-]{3,80}$/.test(slug)) return sendJson(res, 400, { error: "Invalid wedding." });
+      if (limited(`sponsor|${clientHash(req, slug)}`, 3, 60 * 60 * 1000)) {
+        return sendJson(res, 429, { error: "Please wait before sending another sponsor enquiry." });
+      }
+      const companyName = text(body.companyName, 100);
+      const contactName = text(body.contactName, 100);
+      const contactEmail = text(body.contactEmail, 254).toLowerCase();
+      const contactPhone = text(body.contactPhone, 30);
+      const location = text(body.location, 160);
+      const offer = text(body.offer, 360);
+      if (!companyName || !contactName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail) || !offer) {
+        return sendJson(res, 400, { error: "Enter the organization, contact name, valid email and proposed offer." });
+      }
+      const weddingId = await resolveWeddingId(slug, rpc);
+      if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
+      const wedding = (await supabaseRequest(
+        `/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=allow_in_kind_sponsorship,wedding_date,time_zone`,
+        { service: true }
+      ))?.[0];
+      if (!wedding) return sendJson(res, 404, { error: "Wedding not found." });
+      if (isPastWedding(wedding.wedding_date, wedding.time_zone)) return sendJson(res, 410, { error: "This wedding has passed and is no longer accepting sponsor enquiries." });
+      if (!wedding.allow_in_kind_sponsorship) return sendJson(res, 409, { error: "This couple is not accepting free or in-kind sponsor enquiries right now. You can choose a fixed-price package if one is listed." });
+      await supabaseRequest("/rest/v1/sponsor_enquiries", {
+        service: true, method: "POST", prefer: "return=minimal",
+        body: {
+          wedding_id: weddingId, company_name: companyName, contact_name: contactName,
+          contact_email: contactEmail, contact_phone: contactPhone || null,
+          location: location || null, offer, in_kind: true, public_contact: body.publicContact === true
+        }
+      });
+      return sendJson(res, 201, {
+        status: "pending",
+        message: "Enquiry sent for organizer review. This is not a confirmed sponsorship and does not imply payment."
+      });
+    }
+
     if (action === "leaderboard") {
       if (!methodOnly(req, res, "GET")) return;
       const slug = String(req.query.slug || "").toLowerCase();
@@ -187,8 +227,13 @@ export default async function handler(req, res) {
             }
           }
           const totalMinor = lines.reduce((s, l) => s + l.amount_minor, 0);
-          if (totalMinor > 0 && body.payConfirmed !== true) {
-            return sendJson(res, 402, { needsPayment: true, quote: { lines, totalMinor, currency: cfg.currency } });
+          if (totalMinor > 0) {
+            return sendJson(res, 402, {
+              needsPayment: true,
+              quote: { lines, totalMinor, currency: cfg.currency },
+              purchaseAction: "rsvp",
+              message: "Complete verified checkout before this paid RSVP is saved."
+            });
           }
           const existing = await supabaseRequest(`/rest/v1/guest_rsvps?wedding_id=eq.${weddingId}&phone=${phoneIn(phone)}&select=guest_email&order=created_at.asc&limit=1`, { service: true });
           const keyEmail = existing?.[0]?.guest_email || text(body.guestEmail, 254).toLowerCase() || phoneKeyEmail(phone);
@@ -212,11 +257,6 @@ export default async function handler(req, res) {
             try { await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvp.rsvp_id}`, { service: true, method: "PATCH", prefer: "return=minimal", body: extra }); }
             catch (e) { console.error("rsvp extras save failed:", e.message); }
           }
-          let charged = 0;
-          if (totalMinor > 0) {
-            try { await rpc("record_test_rsvp_fees", { p_wedding_id: weddingId, p_name: text(body.guestName, 100), p_lines: lines }, { service: true }); charged = totalMinor; }
-            catch (e) { console.error("rsvp fee ledger failed:", e.message); }
-          }
           let refCode = "";
           try {
             const mine = await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvp.rsvp_id}&select=ref_code,referred_by_code`, { service: true });
@@ -227,27 +267,18 @@ export default async function handler(req, res) {
               if (owner?.length) await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvp.rsvp_id}`, { service: true, method: "PATCH", prefer: "return=minimal", body: { referred_by_code: by } });
             }
           } catch (e) { console.error("referral attribution failed:", e.message); }
-          return sendJson(res, 200, { message: rsvp.message, status: rsvp.status, rsvpId: rsvp.rsvp_id, refCode, chargedMinor: charged, lines });
+          return sendJson(res, 200, { message: rsvp.message, status: rsvp.status, rsvpId: rsvp.rsvp_id, refCode, lines });
         } catch (error) {
           return sendJson(res, error.message.includes("capacity") ? 409 : 400, { error: error.message || "RSVP failed." });
         }
       }
 
       if (action === "bid") {
-        try {
-          const result = await rpc("place_dj_bid", {
-            p_wedding_id: weddingId,
-            p_song_title: text(body.songTitle, 160),
-            p_artist_name: text(body.artist, 100),
-            p_bid_amount_minor: Math.round(Number(body.bidAmount || 0) * 100),
-            p_bidder_name: ""
-          });
-          const bid = Array.isArray(result) ? result[0] : result;
-          if (bid?.status !== "placed") return sendJson(res, 400, { error: bid?.message || "Bid could not be saved." });
-          return sendJson(res, 200, { message: bid.message });
-        } catch (error) {
-          return sendJson(res, 400, { error: error.message || "Bid failed." });
-        }
+        return sendJson(res, 402, {
+          needsPayment: true,
+          purchaseAction: "song_bid",
+          message: "Song bids must complete verified checkout before they are added."
+        });
       }
     }
 
@@ -327,7 +358,7 @@ export default async function handler(req, res) {
       const weddingId = await resolveWeddingId(slug, rpc);
       if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
       const rows = await supabaseRequest(`/rest/v1/guests?wedding_id=eq.${weddingId}&phone=${phoneIn(phone)}&select=name,table_number&limit=1`, { service: true });
-      if (!rows?.length) return sendJson(res, 404, { error: "We could not find that phone number on the guest list. Try the number the couple invited, or ask them." });
+      if (!rows?.length) return sendJson(res, 404, { error: "We could not find that phone number on the guest list. Try the number on your invitation, or ask the couple to update or re-import the guest list with your phone number." });
       return sendJson(res, 200, { name: rows[0].name, table: rows[0].table_number || null });
     }
 

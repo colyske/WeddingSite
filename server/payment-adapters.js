@@ -19,7 +19,7 @@ export async function checkProviderHealth(provider) {
 
   const mode = process.env.WEDDINGSITE_PAYMENT_MODE;
   const key = provider === "stripe" ? process.env.STRIPE_SECRET_KEY : process.env.PAYSTACK_SECRET_KEY;
-  const expectedPrefix = mode === "test" ? "sk_test_" : mode === "live" ? "sk_live_" : "";
+  const expectedPrefix = mode === "test" ? "sk_test_" : "";
   if (!key || !expectedPrefix || !key.startsWith(expectedPrefix)) return false;
 
   const endpoint = provider === "stripe"
@@ -76,7 +76,12 @@ export function normalizeStripePayment(event) {
   const contributionId = checkout.client_reference_id || checkout.metadata?.contribution_id;
   const currency = String(checkout.currency || "").toUpperCase();
   if (!event.id || !contributionId || !Number.isSafeInteger(amountMinor) || amountMinor < 1 || !/^[A-Z]{3}$/.test(currency)) return null;
-  return { provider: "stripe", eventId: String(event.id), contributionId, amountMinor, currency, reference: String(checkout.id || "") };
+  const fee = checkout.payment_intent?.latest_charge?.balance_transaction?.fee;
+  return {
+    provider: "stripe", eventId: String(event.id), contributionId, amountMinor, currency,
+    reference: String(checkout.id || ""),
+    providerFeeMinor: Number.isSafeInteger(Number(fee)) && Number(fee) >= 0 ? Number(fee) : null
+  };
 }
 
 export function normalizePaystackPayment(event) {
@@ -92,6 +97,61 @@ export function normalizePaystackPayment(event) {
     contributionId,
     amountMinor,
     currency,
-    reference: String(transaction.reference)
+    reference: String(transaction.reference),
+    providerFeeMinor: Number.isSafeInteger(Number(transaction.fees)) && Number(transaction.fees) >= 0 ? Number(transaction.fees) : null
+  };
+}
+
+export async function verifyProviderPayment(provider, reference, contributionId) {
+  const mode = process.env.WEDDINGSITE_PAYMENT_MODE;
+  const key = provider === "stripe" ? process.env.STRIPE_SECRET_KEY
+    : provider === "paystack" ? process.env.PAYSTACK_SECRET_KEY : "";
+  if (mode !== "test" || !key?.startsWith("sk_test_") || !reference || !contributionId) {
+    throw new Error("A test-mode payment provider is not configured.");
+  }
+  const endpoint = provider === "stripe"
+    ? `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(reference)}?expand%5B%5D=payment_intent.latest_charge.balance_transaction`
+    : provider === "paystack"
+      ? `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`
+      : null;
+  if (!endpoint) throw new Error("Unsupported payment provider.");
+  const response = await fetch(endpoint, {
+    headers: { Authorization: "Bearer " + key },
+    cache: "no-store",
+    signal: AbortSignal.timeout(8000)
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error("The payment provider could not verify this checkout.");
+
+  if (provider === "stripe") {
+    const checkout = result;
+    if (checkout.metadata?.contribution_id !== contributionId || checkout.client_reference_id !== contributionId) {
+      throw new Error("Provider checkout does not match the WeddingSite payment.");
+    }
+    if (checkout.payment_status !== "paid") return { verified: false };
+    const amountMinor = Number(checkout.amount_total);
+    const currency = String(checkout.currency || "").toUpperCase();
+    const fee = checkout.payment_intent?.latest_charge?.balance_transaction?.fee;
+    if (!Number.isSafeInteger(amountMinor) || !/^[A-Z]{3}$/.test(currency)) throw new Error("Provider returned invalid payment details.");
+    return {
+      verified: true, provider, eventId: `verified:${checkout.id}`,
+      amountMinor, currency, reference: String(checkout.id),
+      providerFeeMinor: Number.isSafeInteger(Number(fee)) && Number(fee) >= 0 ? Number(fee) : null
+    };
+  }
+
+  const transaction = result.data;
+  if (result.status !== true || transaction?.metadata?.contribution_id !== contributionId ||
+      String(transaction.reference) !== String(reference)) {
+    throw new Error("Provider transaction does not match the WeddingSite payment.");
+  }
+  if (transaction.status !== "success") return { verified: false };
+  const amountMinor = Number(transaction.amount);
+  const currency = String(transaction.currency || "").toUpperCase();
+  if (!Number.isSafeInteger(amountMinor) || !/^[A-Z]{3}$/.test(currency)) throw new Error("Provider returned invalid payment details.");
+  return {
+    verified: true, provider, eventId: `verified:${transaction.id || transaction.reference}`,
+    amountMinor, currency, reference: String(transaction.reference),
+    providerFeeMinor: Number.isSafeInteger(Number(transaction.fees)) && Number(transaction.fees) >= 0 ? Number(transaction.fees) : null
   };
 }

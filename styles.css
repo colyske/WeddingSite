@@ -401,3 +401,17 @@ h1,h2,h3,p{margin-top:0}
 .public-ledger{border-top:1px solid #d9d6cb;margin-top:30px;padding-top:22px}.ledger-heading{display:flex;justify-content:space-between;align-items:center;gap:14px}.ledger-heading h3{font:25px var(--serif);font-weight:400;color:var(--green);margin:0}.ledger-demo-label{font-size:7px;letter-spacing:.1em;color:#8c7650;background:#f4f0e4;padding:6px 8px;white-space:nowrap}.public-ledger .fine-print{max-width:820px}.public-ledger-table{min-width:620px;margin-top:14px}.public-ledger-table th{font:7px var(--sans);letter-spacing:.1em;color:#898a80;background:#e9e7de}.public-ledger-table td{padding:10px 9px;border-bottom:1px solid #dddace;font-size:9px;color:#596056}.public-ledger-table td:first-child{color:#34483a;font-weight:500}.ledger-status{font-size:8px!important;white-space:nowrap}.ledger-status.paid{color:#4e7254!important}.ledger-status.pledged{color:#8b774c!important}.ledger-pagination{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;color:#7c7e73;font-size:8px}.ledger-pagination>div{display:flex;gap:6px}.ledger-page-button{border:1px solid #d2d0c5;background:#fff;color:var(--green);padding:7px 10px;font-size:8px}.ledger-page-button:disabled{opacity:.45;cursor:not-allowed}
 .action-dialog .dialog-fields>label:has(select[name=visibility]){display:flex;flex-direction:column;gap:5px}.action-dialog .dialog-fields select[name=visibility]{width:100%;padding:9px;border:1px solid #ddd9ce;background:#fff;color:#50574d;font-size:10px}.action-dialog .ledger-display-name{display:block}.action-dialog .ledger-display-name[hidden]{display:none}.action-dialog .ledger-consent{display:flex;align-items:flex-start;gap:7px;line-height:1.5}.action-dialog .ledger-consent input{margin:2px 0 0;flex:none;accent-color:var(--green)}.action-dialog .ledger-consent span{font-size:9px}
 @media(max-width:700px){.ledger-heading{align-items:flex-start;flex-direction:column;gap:7px}.public-ledger-table{min-width:590px}.ledger-pagination{align-items:flex-start;flex-direction:column}}
+[aria-invalid="true"], input:required:invalid, select:required:invalid, textarea:required:invalid {
+  border-color: #b42318 !important;
+  background-color: #fff8f7;
+}
+.event-lapsed {
+  display: inline-block;
+  margin-top: .3rem;
+  padding: .08rem .4rem;
+  border-radius: 999px;
+  background: #e9eee8;
+  color: #47574c;
+  font-size: .72rem;
+  font-weight: 700;
+}

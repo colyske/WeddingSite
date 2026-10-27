@@ -11,7 +11,10 @@ async function rawBody(req) {
 
 async function handleStripeWebhook(req, res) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) return sendJson(res, 503, { error: "Payment webhooks are disabled until separately approved and configured." });
+  if (process.env.WEDDINGSITE_PAYMENT_MODE !== "test" ||
+      !process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") || !secret) {
+    return sendJson(res, 503, { error: "Test payment webhooks are unavailable until a test-mode provider and webhook secret are configured." });
+  }
   try {
     const raw = await rawBody(req);
     if (!verifyStripeSignature(raw, req.headers["stripe-signature"], secret)) return sendJson(res, 400, { error: "Invalid or expired provider signature." });
@@ -26,7 +29,8 @@ async function handleStripeWebhook(req, res) {
         p_contribution_id: payment.contributionId,
         p_amount_minor: payment.amountMinor,
         p_currency: payment.currency,
-        p_provider_reference: payment.reference
+        p_provider_reference: payment.reference,
+        p_provider_fee_minor: payment.providerFeeMinor
       }
     });
     return sendJson(res, 200, { received: true, processed: Boolean(result) });
@@ -38,7 +42,9 @@ async function handleStripeWebhook(req, res) {
 
 async function handlePaystackWebhook(req, res) {
   const secret = process.env.PAYSTACK_SECRET_KEY;
-  if (!secret) return sendJson(res, 503, { error: "Paystack webhooks are disabled until separately approved and configured." });
+  if (process.env.WEDDINGSITE_PAYMENT_MODE !== "test" || !secret?.startsWith("sk_test_")) {
+    return sendJson(res, 503, { error: "Test payment webhooks are unavailable until Paystack test mode is configured." });
+  }
   try {
     const raw = await rawBody(req);
     if (!verifyPaystackSignature(raw, req.headers["x-paystack-signature"], secret)) {
@@ -55,7 +61,8 @@ async function handlePaystackWebhook(req, res) {
         p_contribution_id: payment.contributionId,
         p_amount_minor: payment.amountMinor,
         p_currency: payment.currency,
-        p_provider_reference: payment.reference
+        p_provider_reference: payment.reference,
+        p_provider_fee_minor: payment.providerFeeMinor
       }
     });
     return sendJson(res, 200, { received: true, processed: Boolean(result) });

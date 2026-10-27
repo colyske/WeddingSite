@@ -11,9 +11,11 @@ test("campaign migration is idempotent and keeps money rows safe", () => {
   assert.match(sql, /add column if not exists milestone_id/);
   assert.match(sql, /enabled = false where wedding_id/); // removed campaigns are disabled, not deleted
   assert.doesNotMatch(sql, /delete from public\.(fundraising_streams|contributions)/);
-  for (const fn of ["save_fundraising_campaigns", "get_campaign_ledger", "record_test_campaign_pledge"]) {
+  for (const fn of ["save_fundraising_campaigns", "get_campaign_ledger"]) {
     assert.match(sql, new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\) to service_role`));
   }
+  const paymentMigration = readFileSync("supabase/migrations/202610300002_verified_test_payments.sql", "utf8");
+  assert.match(paymentMigration, /revoke all on function public\.record_test_campaign_pledge/);
 });
 
 test("public campaign data exposes no donor details", () => {
@@ -24,7 +26,7 @@ test("public campaign data exposes no donor details", () => {
 test("organizer, guest and payment APIs are wired for campaigns", () => {
   assert.match(readFileSync("api/weddings.js", "utf8"), /action === "campaigns-save"/);
   assert.match(readFileSync("api/guest.js", "utf8"), /get_public_campaigns/);
-  assert.match(readFileSync("api/testpay.js", "utf8"), /record_test_campaign_pledge/);
+  assert.match(readFileSync("api/testpay.js", "utf8"), /Simulated payments are disabled/);
   const guest = readFileSync("guest.html", "utf8");
   assert.match(guest, /id="campaigns-display"/);
   assert.match(guest, /data-buy="fund"/);

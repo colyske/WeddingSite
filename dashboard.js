@@ -10,7 +10,7 @@
   const DEFAULT_FIELDS = { names: "", date: "", timeZone: window.WSTime ? window.WSTime.browserZone() : "Africa/Nairobi", location: "", currency: "USD", capacity: "150" };
 
   let nextVenueId = 1;
-  const newVenue = () => ({ id: nextVenueId++, name: "", time: "", map: "", description: "" });
+  const newVenue = () => ({ id: nextVenueId++, name: "", time: "", eventDate: "", address: "", map: "", description: "" });
 
   const state = {
     fields: { ...DEFAULT_FIELDS },
@@ -27,7 +27,7 @@
 
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const safeColor = (c) => (HEX.test(c) ? c : "#cccccc");
-  const setNotice = (text, kind) => { state.notice = text ? { text, bad: kind === "bad" } : null; renderNotice(); if (text && window.WSFeedback) { WSFeedback.toast(text, kind === "bad"); WSFeedback.scrollTo(kind === "bad" ? "notice" : "created"); } };
+  const setNotice = (text, kind, target) => { state.notice = text ? { text, bad: kind === "bad" } : null; renderNotice(); if (text && window.WSFeedback) { WSFeedback.toast(text, kind === "bad"); WSFeedback.scrollTo(target || (kind === "bad" ? "notice" : "created")); } };
 
   function renderNotice() {
     const el = $("notice");
@@ -62,8 +62,10 @@
           <input type="radio" name="main-venue" data-action="set-main" data-id="${v.id}" ${v.id === state.mainVenueId ? "checked" : ""}>
           <span>Main venue</span>
         </label>
-        <input type="text" data-venue-field="name" data-id="${v.id}" placeholder="${i === 0 ? "e.g. Church service" : "e.g. Reception, photo shoot, procession meeting point"}" maxlength="100" value="${esc(v.name)}" aria-label="Venue ${i + 1} name">
-        <input type="time" data-venue-field="time" data-id="${v.id}" value="${esc(v.time)}" aria-label="Venue ${i + 1} time">
+        <input type="text" data-venue-field="name" data-id="${v.id}" placeholder="${i === 0 ? "e.g. Church service" : "e.g. Reception, photo shoot, procession meeting point"}" maxlength="100" value="${esc(v.name)}" aria-label="Venue ${i + 1} name" required>
+        <input type="date" data-venue-field="eventDate" data-id="${v.id}" value="${esc(v.eventDate || state.fields.date)}" aria-label="Event ${i + 1} date" required>
+        <input type="time" data-venue-field="time" data-id="${v.id}" value="${esc(v.time)}" aria-label="Venue ${i + 1} time" required>
+        <input type="text" data-venue-field="address" data-id="${v.id}" placeholder="Street address" maxlength="200" value="${esc(v.address)}" aria-label="Venue ${i + 1} address" required>
         <input type="url" data-venue-field="map" data-id="${v.id}" placeholder="Map link (Google Maps, Apple Maps, etc.)" maxlength="500" value="${esc(v.map)}" aria-label="Venue ${i + 1} map link">
         <textarea data-venue-field="description" data-id="${v.id}" placeholder="Notes (address, parking, dress code)" maxlength="500" aria-label="Venue ${i + 1} notes">${esc(v.description)}</textarea>
         <button type="button" class="remove-venue" data-action="remove-venue" data-id="${v.id}">✕ Remove venue</button>
@@ -106,12 +108,22 @@
         </p>
         <p class="fine" style="margin: .5rem 0;">👥 Max ${esc(w.max_guest_capacity)} guests • ${esc(w.currency)}</p>
         <div class="swatches">${(w.palette || []).map((c) => `<span style="background: ${esc(safeColor(c))};"></span>`).join("")}</div>
+        <div class="card" data-setup-progress="${esc(w.id)}" style="margin-top:1rem;padding:1rem;"></div>
         ${window.WSShare.panelHTML(window.WSShare.guestUrl(w.slug), { title: w.couple_names, published: !!w.published_at })}
         <div class="row" style="margin-top: 1.5rem;">
           <a class="btn" href="/wedding.html?id=${encodeURIComponent(w.id)}&slug=${encodeURIComponent(w.slug)}">✎ Edit</a>
           ${w.published_at ? `<a class="btn" href="/guest.html?slug=${encodeURIComponent(w.slug)}" target="_blank" rel="noopener">👁 View</a>` : ""}
         </div>
       </div>`).join("");
+    for (const w of list) {
+      const target = document.querySelector(`[data-setup-progress="${CSS.escape(String(w.id))}"]`);
+      if (target && window.WSSetupProgress) {
+        window.WSSetupProgress.render(target, w, {
+          compact: true,
+          editorUrl: `/wedding.html?id=${encodeURIComponent(w.id)}&slug=${encodeURIComponent(w.slug)}`
+        });
+      }
+    }
   }
 
   const renderAll = () => { renderNotice(); renderFields(); renderPalette(); renderVenues(); renderSubmit(); renderCreated(); renderWeddings(); };
@@ -133,15 +145,23 @@
     const errorFields = [];
     
     if (!f.names.trim()) {
-      errors.push("✓ Couple names (required)");
+      errors.push("Couple names (required)");
       $("couple-names").setAttribute("aria-invalid", "true");
       errorFields.push($("couple-names"));
     } else {
       $("couple-names").removeAttribute("aria-invalid");
     }
+
+    if (!f.date || !/^\d{4}-\d{2}-\d{2}$/.test(f.date)) {
+      errors.push("Wedding date (required)");
+      $("wedding-date").setAttribute("aria-invalid", "true");
+      errorFields.push($("wedding-date"));
+    } else {
+      $("wedding-date").removeAttribute("aria-invalid");
+    }
     
     if (!f.location.trim()) {
-      errors.push("✓ Location (required)");
+      errors.push("Location (required)");
       $("location").setAttribute("aria-invalid", "true");
       errorFields.push($("location"));
     } else {
@@ -149,7 +169,7 @@
     }
     
     if (!f.currency || !/^[A-Z]{3}$/.test(f.currency)) {
-      errors.push("✓ Currency (required)");
+      errors.push("Currency (required)");
       $("currency").setAttribute("aria-invalid", "true");
       errorFields.push($("currency"));
     } else {
@@ -158,7 +178,7 @@
     
     const cap = Number(f.capacity);
     if (!f.capacity.trim() || !Number.isInteger(cap) || cap < 1) {
-      errors.push("✓ Guest capacity (required, must be 1 or more)");
+      errors.push("Guest capacity (required, must be 1 or more)");
       $("max-capacity").setAttribute("aria-invalid", "true");
       errorFields.push($("max-capacity"));
     } else {
@@ -167,23 +187,43 @@
     
     if (!state.palette.every((c) => HEX.test(c))) errors.push("Each colour must be valid");
     
-    for (const v of state.venues) {
+    for (const [index, v] of state.venues.entries()) {
+      const requiredVenueFields = [
+        ["name", v.name.trim()], ["eventDate", v.eventDate || f.date],
+        ["time", v.time], ["address", v.address.trim()]
+      ];
+      for (const [field, value] of requiredVenueFields) {
+        const input = document.querySelector(`[data-venue-field="${field}"][data-id="${v.id}"]`);
+        if (!value) {
+          input?.setAttribute("aria-invalid", "true");
+          errorFields.push(input);
+        } else {
+          input?.removeAttribute("aria-invalid");
+        }
+      }
+      if (requiredVenueFields.some(([, value]) => !value)) {
+        errors.push(`Event ${index + 1} needs a name, date, start time and street address`);
+      }
       if (v.map.trim() && !/^https?:\/\//i.test(v.map.trim())) errors.push("Venue map links must start with http:// or https://");
     }
     
     if (errors.length) {
       const firstErrorField = errorFields[0] || $("couple-names");
       firstErrorField?.focus?.();
-      return "Please fix these required fields: " + errors.join(", ");
+      return { message: "Please fix these required fields: " + errors.join(", "), field: firstErrorField };
     }
-    return "";
+    return null;
   }
 
   function buildPayload() {
     const f = state.fields;
     const venues = state.venues
-      .filter((v) => v.name.trim() || v.time || v.map.trim() || v.description.trim())
-      .map((v) => ({ name: v.name.trim(), time: v.time, map: v.map.trim(), description: v.description.trim(), isMain: v.id === state.mainVenueId }));
+      .filter((v) => v.name.trim() || v.time || v.map.trim() || v.address.trim() || v.description.trim())
+      .map((v) => ({
+        name: v.name.trim(), time: v.time, eventDate: v.eventDate || state.fields.date,
+        address: v.address.trim(), map: v.map.trim(), description: v.description.trim(),
+        isMain: v.id === state.mainVenueId
+      }));
     return {
       coupleNames: f.names.trim(),
       weddingDate: f.date || null,
@@ -204,7 +244,7 @@
     renderCreated();
 
     const problem = validate();
-    if (problem) return setNotice(problem, "bad");
+    if (problem) return setNotice(problem.message, "bad", problem.field);
     if (!window.WS.token()) return setNotice("Your session has expired. Please sign in again; what you entered will be kept until you leave this page.", "bad");
 
     state.submitting = true;
@@ -298,6 +338,10 @@
     if (t.dataset.venueField) { const v = findVenue(t.dataset.id); if (v) v[t.dataset.venueField] = t.value; return; }
     if (t.dataset.colorIndex !== undefined) { state.palette[Number(t.dataset.colorIndex)] = t.value; renderPalette(); return; }
     readFieldsFromDom();
+    if (t.id === "wedding-date") {
+      state.venues.forEach(v => { if (!v.eventDate) v.eventDate = t.value; });
+      renderVenues();
+    }
   });
 
   $("create-form").addEventListener("submit", (e) => { e.preventDefault(); submitCreate(); });
