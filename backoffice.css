@@ -18,6 +18,8 @@
 .guide li { margin: .5rem 0; }
 #fees-form { display: grid; gap: .4rem; max-width: 480px; }
 #fees-form input { padding: .55rem; }
+#fees-form fieldset { display: grid; gap: .4rem; border: 0; padding: 0; margin: 0; min-width: 0; }
+.policy-version pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow: auto; }
 
 .bo-nav button.active { background: #203a31; color: #fff; font-weight: 700; border-bottom-color: #b8924a; border-radius: 4px 4px 0 0; }
 .bo-nav button:hover:not(.active) { background: #f1ede0; }

@@ -653,7 +653,7 @@ declare
   current_policy public.platform_policies;
   next_values jsonb;
 begin
-  if public.current_platform_role() <> 'owner' then raise exception 'Only the protected Owner can change platform financial policies.'; end if;
+  if public.current_platform_role() is distinct from 'owner' then raise exception 'Only the protected Owner can change platform financial policies.'; end if;
   select * into current_policy from public.platform_policies where id for update;
   update public.platform_policies set
     publication_fee_minor = coalesce((p_data->>'publication_fee_minor')::bigint, publication_fee_minor),
@@ -678,13 +678,35 @@ begin
   return true;
 end $$;
 
+create or replace function public.admin_policy_history(p_limit integer default 50) returns jsonb
+language plpgsql stable security definer set search_path = '' set row_security = off
+as $$
+begin
+  if public.current_platform_role() is distinct from 'owner' then
+    raise exception 'Only the protected Owner can view platform policy history.';
+  end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'changed_at', h.changed_at, 'old_values', h.old_values, 'new_values', h.new_values
+    ) order by h.changed_at desc)
+    from (
+      select changed_at, old_values, new_values
+      from public.platform_policy_history
+      order by changed_at desc
+      limit least(greatest(coalesce(p_limit, 50), 1), 100)
+    ) h
+  ), '[]'::jsonb);
+end $$;
+revoke all on function public.admin_policy_history(integer) from public, anon;
+grant execute on function public.admin_policy_history(integer) to authenticated;
+
 -- Role changes are a protected Owner-only operation; other staff permissions remain unchanged.
 create or replace function public.admin_set_role(p_user_id uuid, p_role text) returns boolean
 language plpgsql security definer set search_path = '' set row_security = off
 as $$
 declare ok boolean;
 begin
-  if public.current_platform_role() <> 'owner' then raise exception 'Only the Owner can delegate platform roles.'; end if;
+  if public.current_platform_role() is distinct from 'owner' then raise exception 'Only the Owner can delegate platform roles.'; end if;
   if p_role not in ('client', 'admin', 'superadmin') then raise exception 'Choose client, admin or superadmin.'; end if;
   if p_user_id = auth.uid() then raise exception 'You cannot change your own role.'; end if;
   ok := public.assign_platform_role(p_user_id, p_role::public.platform_role);
@@ -730,7 +752,8 @@ begin
   if inserted_count = 0 then return false; end if;
   if c.payment_status = 'paid' then
     if p_provider_fee_minor is not null and c.provider_fee_pending then
-      update public.contributions set provider_fee_minor = p_provider_fee_minor, provider_fee_pending = false
+      update public.contributions set provider_fee_minor = p_provider_fee_minor,
+        provider_fee_pending = p_provider_fee_minor > c.net_paid_minor
         where id = c.id;
       return true;
     end if;
@@ -750,7 +773,7 @@ begin
     platform_fee_minor = fee,
     net_paid_minor = p_amount_minor - fee,
     provider_fee_minor = p_provider_fee_minor,
-    provider_fee_pending = p_provider_fee_minor is null,
+    provider_fee_pending = p_provider_fee_minor is null or p_provider_fee_minor > p_amount_minor - fee,
     provider_name = p_provider,
     provider_reference = left(p_provider_reference, 160),
     paid_at = now(),
@@ -1065,6 +1088,15 @@ begin
     'fees_by_currency', coalesce((select jsonb_object_agg(currency, t) from (
       select currency, sum(platform_fee_minor) t from public.contributions
       where payment_status = 'paid' and verified_provider_payment group by currency) x), '{}'::jsonb),
+    'provider_fees_by_currency', coalesce((select jsonb_object_agg(currency, t) from (
+      select currency, sum(provider_fee_minor) t from public.contributions
+      where payment_status = 'paid' and verified_provider_payment and not provider_fee_pending group by currency) x), '{}'::jsonb),
+    'net_to_weddings_by_currency', coalesce((select jsonb_object_agg(currency, t) from (
+      select currency, sum(net_paid_minor - provider_fee_minor) t from public.contributions
+      where payment_status = 'paid' and verified_provider_payment and not provider_fee_pending group by currency) x), '{}'::jsonb),
+    'provider_fee_holds_by_currency', coalesce((select jsonb_object_agg(currency, t) from (
+      select currency, sum(net_paid_minor) t from public.contributions
+      where payment_status = 'paid' and verified_provider_payment and provider_fee_pending group by currency) x), '{}'::jsonb),
     'publication_fees_by_currency', coalesce((select jsonb_object_agg(currency, t) from (
       select currency, sum(amount_minor) t from public.publication_fees
       where status = 'paid' and provider is distinct from 'test-simulator' group by currency) x), '{}'::jsonb),
@@ -1109,8 +1141,10 @@ begin
     'party_size', (select coalesce(sum(1 + plus_one_count), 0) from public.guest_rsvps
       where wedding_id = p_wedding_id and attendance_status = 'yes'),
     'funds_by_campaign', coalesce((
-      select jsonb_agg(jsonb_build_object('campaign', t.stream_name, 'gross_minor', t.g, 'net_minor', t.n, 'count', t.c) order by t.g desc)
-      from (select stream_name, sum(paid_amount_minor) g, sum(net_paid_minor - provider_fee_minor) n, count(*) c
+      select jsonb_agg(jsonb_build_object('campaign', t.stream_name, 'gross_minor', t.g, 'platform_fee_minor', t.f,
+        'provider_fee_minor', t.pf, 'net_minor', t.n, 'count', t.c) order by t.g desc)
+      from (select stream_name, sum(paid_amount_minor) g, sum(platform_fee_minor) f,
+          sum(provider_fee_minor) pf, sum(net_paid_minor - provider_fee_minor) n, count(*) c
         from public.contributions where wedding_id = p_wedding_id and payment_status = 'paid'
           and verified_provider_payment and not provider_fee_pending group by stream_name) t), '[]'::jsonb),
     'top_songs', coalesce((

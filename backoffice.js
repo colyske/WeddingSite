@@ -78,7 +78,7 @@
       <div class="stats">${stat("Confirmed RSVPs", a.rsvps_confirmed ?? 0)}${stat("Guests attending (incl. party)", m.party_size ?? 0)}${stat("Declined", a.rsvps_declined ?? 0)}
         ${stat("Visitors", a.visitors ?? 0)}${stat("Via referral links", a.referred_visitors ?? 0)}${stat("RSVPs from referrals", a.rsvps_referred ?? 0)}
         ${stat("Song bids", a.bids ?? 0)}${stat("Top bid", money(a.top_bid_minor))}</div>
-      <h3>Funds raised by campaign</h3>${list(m.funds_by_campaign, [["Campaign", (r) => esc(r.campaign)], ["Payments", (r) => r.count], ["Gross", (r) => money(r.gross_minor)], ["Net", (r) => money(r.net_minor)]])}
+      <h3>Funds raised by campaign</h3>${list(m.funds_by_campaign, [["Campaign", (r) => esc(r.campaign)], ["Payments", (r) => r.count], ["Gross", (r) => money(r.gross_minor)], ["Platform fee", (r) => money(r.platform_fee_minor)], ["Provider fee", (r) => money(r.provider_fee_minor)], ["Couple net", (r) => money(r.net_minor)]])}
       <h3>Top songs (bids added up)</h3>${list(m.top_songs, [["Song", (r) => esc(r.song)], ["Artist", (r) => esc(r.artist || "-")], ["Bids", (r) => r.bids], ["Total", (r) => money(r.total_minor)]])}
       <h3>Guests who invited others</h3>${list(m.top_inviters, [["Guest", (r) => esc(r.guest_name)], ["Visits", (r) => r.visits], ["RSVPs brought in", (r) => r.rsvps_brought]])}`;
   }
@@ -91,8 +91,11 @@
         ${stat("Pending payouts", o.pending_payouts)}${stat("Test payments", o.test_payments)}</div>
         <div class="stats">${stat("Contributions collected", esc(moneyMap(o.collected_by_currency)))}
         ${stat("Platform fees (contributions)", esc(moneyMap(o.fees_by_currency)))}
+        ${stat("Known provider charges", esc(moneyMap(o.provider_fees_by_currency)))}
+        ${stat("Couple net, before withdrawals", esc(moneyMap(o.net_to_weddings_by_currency)))}
+        ${stat("Held pending provider fee", esc(moneyMap(o.provider_fee_holds_by_currency)))}
         ${stat("Publication fees", esc(moneyMap(o.publication_fees_by_currency)))}</div>
-        <p class="fine">Payments are processed in <strong>test mode</strong>; amounts labelled test-simulator are not real money.</p>`;
+        <p class="fine">Checkout only accepts verified test-provider payments. Test checkout remains unavailable until provider keys, allowed currencies and markets, Turnstile site/secret keys, and a wedding-specific provider configuration are all ready. Payment credentials are never shown here.</p>`;
     },
     async weddings(el) {
       if (el.dataset.wedding) return weddingMetrics(el, el.dataset.wedding);
@@ -121,11 +124,11 @@
     async users(el) {
       const search = el.dataset.search || "";
       const { users } = await get("users", search ? "&search=" + encodeURIComponent(search) : "");
-      const canRole = role === "owner" || role === "superadmin";
+      const canRole = role === "owner";
       const me = WS.session().user?.id;
       mountPaged(el, "users", {
         title: "Users & roles",
-        intro: canRole ? "Role changes are audited. You cannot change your own role. SuperAdmins can only manage Admin/Client; only the Owner can promote to SuperAdmin." : "Only the Owner or a SuperAdmin can change roles.",
+        intro: canRole ? "The protected Owner controls Admin/SuperAdmin delegation. Role changes are audited, and you cannot change your own role." : "Only the protected Owner can change platform roles.",
         head: ["Email", "Name", "Role", "Weddings", "Joined"],
         items: users,
         text: (u) => [u.email, u.display_name, u.platform_role].join(" "),
@@ -139,21 +142,31 @@
     },
     async fees(el) {
       const { policies: p } = await get("policies");
+      const extendedPolicy = ["contribution_fixed_fee_minor", "contribution_fixed_fee_currency", "min_payout_minor", "payout_hold_days"]
+        .every((key) => Object.prototype.hasOwnProperty.call(p, key));
+      const { history = [] } = role === "owner" && extendedPolicy ? await get("policy-history") : {};
       const major = (v) => (v === null || v === undefined ? "" : (Number(v) / 100).toFixed(2));
-      const f = (id, label, val, hint) => `<label for="${id}">${esc(label)}</label><input id="${id}" type="number" min="0" step="0.01" value="${esc(major(val))}"><span class="fine">${esc(hint)}</span>`;
-      const g = (id, label, val, hint) => `<label for="${id}">${esc(label)}</label><input id="${id}" type="number" min="0" step="1" value="${esc(val ?? "")}"><span class="fine">${esc(hint)}</span>`;
-      const full = role === "owner" || role === "superadmin";
+      const f = (id, label, val, hint, max = "") => `<label for="${id}">${esc(label)}</label><input id="${id}" type="number" min="0" ${max ? `max="${max}"` : ""} step="0.01" value="${esc(major(val))}" required><span class="fine">${esc(hint)}</span>`;
+      const g = (id, label, val, hint) => `<label for="${id}">${esc(label)}</label><input id="${id}" type="number" min="0" step="1" value="${esc(val ?? "")}" required><span class="fine">${esc(hint)}</span>`;
+      const owner = role === "owner";
+      const percent = (Number(p.contribution_fee_basis_points || 0) / 100).toFixed(2);
       el.innerHTML = `<h2>Fees & settings</h2>
         <p class="fine"><strong>How publication fees combine:</strong> (1) a paid or waived fee is never charged twice; (2) if the wedding date is further away than the far-future threshold, the far-future fee applies (this overrides the free allowance); (3) otherwise the client's first N published weddings are free; (4) after that the standard per-wedding fee applies.</p>
         <p class="fine"><strong>Units:</strong> money fields are entered and shown in major units with 2 decimals (e.g. <code>15.50</code> = 15 units and 50 cents). They are stored in minor units (<code>15.50 &times; 100 = 1550</code>) and use each wedding's own currency.</p>
-        <form id="fees-form">
+        <p class="fine"><strong>Commission:</strong> this is deducted from the wedding's proceeds, not added as a guest surcharge. Each new transaction snapshots the policy; later changes do not reprice existing payments. Unknown provider charges are not guessed.</p>
+        <form id="fees-form"><fieldset${owner ? "" : " disabled"}>
         ${f("p-fee", "Standard publication fee", p.publication_fee_minor, "Charged after the free allowance is used.")}
         ${g("p-ff-months", "Far-future threshold (months)", p.far_future_months, "Weddings further away than this are charged the far-future fee.")}
         ${f("p-ff-fee", "Far-future fee", p.far_future_fee_minor, "Applies before the free allowance.")}
         ${g("p-free", "Free publications per client", p.free_publications_per_client, "First N published weddings per client are free.")}
-        ${g("p-bps", "Contribution fee (basis points)", p.contribution_fee_basis_points, "250 = 2.5% of each contribution.")}
-        ${full ? f("p-max", "Max single contribution", p.max_contribution_minor, "Safety cap per payment.") : ""}
-        <button type="submit">Save settings</button></form>`;
+        <label for="p-percent">Platform commission (%)</label><input id="p-percent" type="number" min="0" max="100" step="0.01" value="${esc(percent)}" required><span class="fine">Deducted from each verified payment. Stored to the nearest 0.01% (basis points).</span>
+        ${extendedPolicy ? `${f("p-fixed-fee", "Optional fixed commission", p.contribution_fixed_fee_minor, "Also deducted per verified payment when its currency matches the currency below.")}<label for="p-fixed-currency">Fixed commission currency</label><input id="p-fixed-currency" type="text" minlength="3" maxlength="3" pattern="[A-Za-z]{3}" value="${esc(p.contribution_fixed_fee_currency || "USD")}" required><span class="fine">Three-letter ISO currency code; fixed commission is not applied in other currencies.</span>` : '<p class="fine">Fixed commission and settlement-hold controls will appear after the financial policy migration is validated and applied.</p>'}
+        ${f("p-max", "Max single contribution", p.max_contribution_minor, "Safety cap per payment.")}
+        ${f("p-max-payout", "Maximum withdrawal", p.max_payout_minor, "Per-request limit; available balance and holds are checked separately.")}
+        ${extendedPolicy ? `${f("p-min-payout", "Minimum withdrawal", p.min_payout_minor, "Minimum eligible net balance required for a withdrawal request.")}${g("p-hold-days", "Settlement hold (days)", p.payout_hold_days, "Funds remain unavailable until this hold and provider settlement are satisfied.")}` : ""}
+        <button type="submit"${owner ? "" : " disabled"}>${owner ? "Save settings" : "Owner access required"}</button></fieldset></form>
+        <p class="fine">Only the protected Owner can change platform fee and payout policies. Admins can view these settings; transaction eligibility and fee calculation are enforced server-side.</p>
+        ${owner && extendedPolicy ? `<details><summary>Recent policy versions (${history.length})</summary>${history.length ? history.map((h) => `<article class="policy-version"><strong>${date(h.changed_at)}</strong><pre>${esc(JSON.stringify({ old: h.old_values, new: h.new_values }, null, 2))}</pre></article>`).join("") : '<p class="fine">No policy changes have been recorded yet.</p>'}</details>` : ""}`;
     },
     async ledger(el) {
       const { ledger } = await get("ledger");
@@ -188,7 +201,7 @@
     },    async security(el) {
       el.innerHTML = `<h2>Security guidance</h2><ul class="guide">
         <li>Use a unique password of 12+ characters for the Owner account and rotate it if it was ever shared.</li>
-        <li>Owner is the only role that can promote SuperAdmins; keep at least one trusted SuperAdmin as backup.</li>
+        <li>The Owner controls all Admin/SuperAdmin delegation; changes are audited and the protected Owner identity cannot be reassigned from this screen.</li>
         <li>ID/passport numbers are stored privately and masked; only staff can reveal them and each reveal is audited.</li>
         <li>MFA enrolment is not built into WeddingSite yet: enable MFA on the email account used for recovery.</li>
         <li>Payments are in test mode until live provider credentials are configured by the Owner in the hosting environment.</li>
@@ -252,7 +265,19 @@
       if (e.target.id === "fees-form") {
         const n = (id) => (panel.querySelector("#" + id) ? Number(panel.querySelector("#" + id).value) : undefined);
         const mn = (id) => { const v = n(id); return v === undefined || Number.isNaN(v) ? undefined : Math.round(v * 100); };
-        const policies = { publication_fee_minor: mn("p-fee"), far_future_months: n("p-ff-months"), far_future_fee_minor: mn("p-ff-fee"), free_publications_per_client: n("p-free"), contribution_fee_basis_points: n("p-bps"), max_contribution_minor: mn("p-max") };
+        const policies = {
+          publication_fee_minor: mn("p-fee"),
+          far_future_months: n("p-ff-months"),
+          far_future_fee_minor: mn("p-ff-fee"),
+          free_publications_per_client: n("p-free"),
+          contribution_fee_basis_points: Math.round(n("p-percent") * 100),
+          contribution_fixed_fee_minor: mn("p-fixed-fee"),
+          contribution_fixed_fee_currency: panel.querySelector("#p-fixed-currency")?.value.trim().toUpperCase(),
+          max_contribution_minor: mn("p-max"),
+          min_payout_minor: mn("p-min-payout"),
+          max_payout_minor: mn("p-max-payout"),
+          payout_hold_days: n("p-hold-days")
+        };
         for (const k of Object.keys(policies)) if (policies[k] === undefined || Number.isNaN(policies[k])) delete policies[k];
         try { await post("policies-save", { policies }); toast("Settings saved."); } catch (err) { toast(err.message, true); }
       }

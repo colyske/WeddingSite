@@ -12,6 +12,7 @@ const GET_ACTIONS = {
   payouts: async (t) => ({ payouts: await rpc("admin_payouts", t) }),
   audit: async (t) => ({ audit: await rpc("admin_audit", t, { p_limit: 500 }) }),
   policies: async (t) => ({ policies: await rpc("admin_get_policies", t) }),
+  "policy-history": async (t) => ({ history: await rpc("admin_policy_history", t, { p_limit: 50 }) }),
   "wedding-metrics": async (t, q) => {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(q.weddingId || ""))) throw new Error("Invalid wedding.");
     return { metrics: await rpc("admin_wedding_metrics", t, { p_wedding_id: q.weddingId }) };
@@ -50,7 +51,7 @@ export default async function handler(req, res) {
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
 
     if (action === "set-role") {
-      if (!["owner", "superadmin"].includes(role)) return sendJson(res, 403, { error: "Only the Owner or a SuperAdmin can change roles." });
+      if (role !== "owner") return sendJson(res, 403, { error: "Only the protected Owner can change platform roles." });
       if (!ROLES.has(body.role) || !body.user_id) return sendJson(res, 400, { error: "Choose a user and a valid role." });
       await rpc("admin_set_role", token, { p_user_id: body.user_id, p_role: body.role });
       return sendJson(res, 200, { ok: true });

@@ -22,6 +22,7 @@ test("admin endpoint gates every action by platform role and the owner API is ow
   const admin = await read("api/admin.js");
   assert.match(admin, /owner/);
   assert.match(admin, /superadmin/);
+  assert.match(admin, /role !== "owner"/);
   assert.match(admin, /403/);
   assert.doesNotMatch(admin, /method:\s*"DELETE"/);
 });
