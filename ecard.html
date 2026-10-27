@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#203a31">
   <title>WeddingSite — Your E-Card Pass</title>
-  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><script src="ornaments.js" defer></script>
+  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><script src="ornaments.js" defer></script><script src="tz.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     .ecard-container {
@@ -233,7 +233,7 @@
 
         $("couple-names").textContent = weddingData.couple_names || "Wedding";
         $("event-date").textContent = weddingData.wedding_date 
-          ? new Date(weddingData.wedding_date).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })
+          ? (() => { const ms = WSTime.weddingStart(weddingData); const z = weddingData.time_zone || WSTime.DEFAULT_ZONE; if (ms == null) return "Date TBA"; const hasT = (weddingData.venues || []).some(v => v.event_time); return WSTime.formatDate(ms, z) + (hasT ? " · " + WSTime.formatTime(ms, z) : ""); })()
           : "Date TBA";
 
         const gRes = await fetch(`/api/guest?action=verify-qr&code=${encodeURIComponent(guestId)}`);

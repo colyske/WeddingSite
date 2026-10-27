@@ -59,6 +59,7 @@
 
     <h1 id="title">Wedding</h1>
     <p id="notice" class="notice" role="status" hidden></p>
+    <div id="share-panel" class="card" hidden></div>
 
     <!-- Wedding details form -->
     <div id="edit-section" class="card" hidden>
@@ -81,6 +82,9 @@
 
         <label for="wedding-date">Date</label>
         <input id="wedding-date" type="date">
+
+        <label for="wedding-timezone">Time zone <span class="fine" style="font-weight: normal;">(venue times, countdown and calendar use this zone)</span></label>
+        <select id="wedding-timezone"></select>
 
         <label for="location">Location <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="location" type="text" maxlength="120" required aria-required="true">
@@ -312,6 +316,8 @@
   </div>
 
   <script src="auth-client.js"></script>
+  <script src="tz.js"></script>
+  <script src="share.js"></script>
   <script>
 (async () => {
     const $ = id => document.getElementById(id);
@@ -324,10 +330,13 @@
     };
     const params = new URLSearchParams(location.search);
     const weddingId = params.get("id");
-    const setGuestSiteLink = slug => {
+    const setGuestSiteLink = (slug, published) => {
       const guestUrl = `${location.origin}/guest.html?slug=${encodeURIComponent(slug || "")}`;
       $("guest-site-url").textContent = `Guest site: ${guestUrl}`;
       $("view-guest-site").href = guestUrl;
+      const panel = $("share-panel");
+      panel.innerHTML = WSShare.panelHTML(guestUrl, { title: $("couple-names").value || "Our wedding", published: published !== false });
+      panel.hidden = false;
     };
 
     if (!WS.token()) return location.replace("/signin.html");
@@ -713,6 +722,8 @@
         $("slug-preview").textContent = w.slug || "wedding";
         $("welcome-story").value = w.welcome_story || "";
         $("wedding-date").value = w.wedding_date ? w.wedding_date.split("T")[0] : "";
+        WSTime.fillSelect($("wedding-timezone"), w.time_zone || WSTime.DEFAULT_ZONE);
+        setGuestSiteLink(w.slug, !!w.published_at);
         $("location").value = w.public_location || "";
         $("background-music-url").value = w.background_music_url || "";
         $("currency").value = w.currency || "USD";
@@ -859,7 +870,7 @@
 
         if (w.published_at) {
           $("published-section").hidden = false;
-          setGuestSiteLink(w.slug);
+          setGuestSiteLink(w.slug, true);
           $("rsvps-section").hidden = false;
           $("bids-section").hidden = false;
           $("seating-section").hidden = false;
@@ -1012,6 +1023,7 @@
             slug: $("wedding-slug").value,
             welcomeStory: $("welcome-story").value,
             weddingDate: $("wedding-date").value || null,
+            timeZone: $("wedding-timezone").value,
             location: $("location").value,
             currency: $("currency").value,
             maxCapacity: Number($("max-capacity").value),
@@ -1027,7 +1039,7 @@
         });
         const data = await res.json();
         if (!res.ok) return notice(data.error || "Could not save wedding.", true);
-        if (data.wedding?.published_at) setGuestSiteLink(data.wedding.slug);
+        if (data.wedding?.slug) setGuestSiteLink(data.wedding.slug, !!data.wedding.published_at);
         notice("Changes saved.");
       } catch (err) {
         console.error("Save failed:", err);
@@ -1073,7 +1085,7 @@
         $("seating-section").hidden = false;
         $("withdrawals-section").hidden = false;
         $("publish-btn").hidden = true;
-        setGuestSiteLink(data.wedding?.slug || $("wedding-slug").value);
+        setGuestSiteLink(data.wedding?.slug || $("wedding-slug").value, true);
         notice("Wedding published successfully!");
         loadRsvps();
         loadBids();

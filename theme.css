@@ -82,3 +82,16 @@ input, select, textarea { border-radius: 12px; background: rgba(255,255,255,.85)
   * { scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
 @media print { .orn-layer { display: none; } }
+
+/* share-link panel */
+.ws-share { border: 1px dashed var(--gold,#be9b52); border-radius: 16px; padding: .8rem 1rem; margin: .8rem 0; background: rgba(255,255,255,.6); }
+.ws-share-label { margin: 0 0 .3rem; font-weight: 700; color: var(--green,#203a31); font-size: .85rem; letter-spacing: .04em; text-transform: uppercase; }
+.ws-share-url { width: 100%; font: 600 1rem/1.3 ui-monospace, Consolas, monospace; margin: 0 0 .5rem; }
+.ws-share-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.ws-share-actions .btn, .ws-share-actions button { padding: .5rem 1rem; text-decoration: none; font-size: .9rem; cursor: pointer; }
+.ws-share-note { margin: 0 0 .5rem; color: #8a6d2a; }
+
+/* promo footer */
+.ws-promo { text-align: center; padding: 1.6rem 1rem 2rem; font-size: .85rem; color: #5f6b64; }
+.ws-promo a { color: var(--green,#203a31); font-weight: 600; text-decoration-color: var(--gold,#be9b52); text-underline-offset: 3px; }
+.ws-promo .credit { display: block; margin-top: .35rem; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; opacity: .75; }

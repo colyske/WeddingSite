@@ -434,6 +434,7 @@
   <audio id="background-music" loop style="display: none;"></audio>
 
   <script src="fx.js"></script>
+<script src="tz.js"></script>
   <script src="auth-client.js"></script>
   <script>
 (async () => {
@@ -496,9 +497,12 @@
       $("couple-names").textContent = wedding.couple_names || "Wedding";
 
       if (wedding.wedding_date) {
-        const d = parseWeddingDate();
-        const opts = { weekday: "long", year: "numeric", month: "long", day: "numeric" };
-        if (d) $("wedding-date-display").textContent = d.toLocaleDateString(undefined, opts);
+        const start = WSTime.weddingStart(wedding);
+        const zone = wedding.time_zone || WSTime.DEFAULT_ZONE;
+        if (start != null) {
+          const hasTime = !!(WSTime_mainTime());
+          $("wedding-date-display").textContent = WSTime.formatDate(start, zone) + (hasTime ? " · " + WSTime.formatTime(start, zone) : "");
+        }
       }
 
       // Story
@@ -519,7 +523,7 @@
         $("venues").hidden = false;
         $("venues-display").innerHTML = wedding.venues.map(v => `
           <div style="border-left: 4px solid var(--sage); padding: 1rem; background: #f8f9f7; border-radius: 4px;">
-            ${v.event_time ? `<p style="margin: 0 0 0.5rem; color: var(--gold); font-weight: 600;">${esc(v.event_time)}</p>` : ""}
+            ${v.event_time ? `<p style="margin: 0 0 0.5rem; color: var(--gold); font-weight: 600;">${esc(venueTimeLabel(v))}</p>` : ""}
             <h3 style="margin: 0 0 0.5rem; color: var(--green);">${esc(v.name)}</h3>
             ${safeUrl(v.map_link) ? `<p style="margin: 0 0 0.5rem;"><a href="${esc(safeUrl(v.map_link))}" target="_blank" rel="noopener noreferrer" class="link" style="font-size: 0.95rem;">📍 View on map</a></p>` : ""}
             ${v.description ? `<p style="margin: 0; font-size: 0.95rem; color: #5a5f5a;">${esc(v.description)}</p>` : ""}
@@ -644,7 +648,8 @@
         $("seconds").textContent = "0";
         $("countdown").hidden = true;
         $("countdown-state").hidden = false;
-        $("countdown-state").textContent = new Date(weddingDate).toDateString() === new Date().toDateString()
+        const zone = wedding.time_zone || WSTime.DEFAULT_ZONE;
+        $("countdown-state").textContent = WSTime.formatDate(weddingDate.getTime(), zone) === WSTime.formatDate(Date.now(), zone)
           ? "Today's celebration is underway!" : "The celebration has started.";
         return;
       }
@@ -663,32 +668,26 @@
     setInterval(update, 1000);
   }
 
-  function parseWeddingDate() {
-    const [year, month, day] = String(wedding.wedding_date || "").split("-").map(Number);
-    if (!year || !month || !day) return null;
+  function WSTime_mainTime() {
     const venue = (wedding.venues || []).find(item => item.is_main) || (wedding.venues || [])[0];
-    const match = String(venue?.event_time || "").match(/^(\d{2}):(\d{2})(?::(\d{2}))?/);
-    return new Date(year, month - 1, day, Number(match?.[1] || 0), Number(match?.[2] || 0), Number(match?.[3] || 0));
+    return venue?.event_time || "";
+  }
+  function venueTimeLabel(v) {
+    const zone = wedding.time_zone || WSTime.DEFAULT_ZONE;
+    const ms = WSTime.zonedToUtc(String(wedding.wedding_date || "").slice(0, 10) || "2000-01-01", v.event_time, zone);
+    return ms == null ? String(v.event_time) : WSTime.formatTime(ms, zone);
   }
 
-  const icalEscape = value => String(value ?? "").replace(/\\/g, "\\\\").replace(/\r?\n/g, "\\n").replace(/([,;])/g, "\\$1");
+  function parseWeddingDate() {
+    const ms = WSTime.weddingStart(wedding);
+    return ms == null ? null : new Date(ms);
+  }
 
-  // .ics calendar download
+  // .ics calendar download (UTC DTSTART computed from the wedding's own time zone)
   $("ics-download").addEventListener("click", () => {
     if (!wedding.wedding_date) return alert("Wedding date not set.");
-    const d = parseWeddingDate();
-    if (!d) return alert("Wedding date is invalid.");
-    const ical = `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//WeddingSite//EN
-CALSCALE:GREGORIAN
-BEGIN:VEVENT
-DTSTART:${d.toISOString().replace(/[-:]/g, "").slice(0, 15)}Z
-SUMMARY:${icalEscape(wedding.couple_names)}'s Wedding
-LOCATION:${icalEscape(wedding.public_location || "")}
-DESCRIPTION:${icalEscape(wedding.welcome_story || "Join us for our wedding!")}
-END:VEVENT
-END:VCALENDAR`;
+    const ical = WSTime.buildIcs(wedding);
+    if (!ical) return alert("Wedding date is invalid.");
     const blob = new Blob([ical], { type: "text/calendar" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -902,5 +901,6 @@ END:VCALENDAR`;
   loadWedding();
 })();
   </script>
+  <footer class="ws-promo"><span>Planning your own wedding? <a href="/signin.html">Create your wedding site with WeddingSite</a></span><span class="credit">Made with <a href="/">WeddingSite</a></span></footer>
 </body>
 </html>

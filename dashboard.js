@@ -7,7 +7,7 @@
   const $ = (id) => document.getElementById(id);
   const HEX = /^#[0-9a-f]{6}$/i;
   const DEFAULT_PALETTE = ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"];
-  const DEFAULT_FIELDS = { names: "", date: "", location: "", currency: "USD", capacity: "150" };
+  const DEFAULT_FIELDS = { names: "", date: "", timeZone: window.WSTime ? window.WSTime.browserZone() : "Africa/Nairobi", location: "", currency: "USD", capacity: "150" };
 
   let nextVenueId = 1;
   const newVenue = () => ({ id: nextVenueId++, name: "", time: "", map: "", description: "" });
@@ -37,7 +37,7 @@
   }
 
   function renderFields() {
-    const map = { "couple-names": "names", "wedding-date": "date", location: "location", currency: "currency", "max-capacity": "capacity" };
+    const map = { "couple-names": "names", "wedding-date": "date", "wedding-timezone": "timeZone", location: "location", currency: "currency", "max-capacity": "capacity" };
     for (const [id, key] of Object.entries(map)) {
       const el = $(id);
       if (el.value !== state.fields[key]) el.value = state.fields[key];
@@ -82,6 +82,7 @@
     el.hidden = !c;
     el.innerHTML = c
       ? `<h3>🎉 Wedding created</h3><p><strong>${esc(c.names)}</strong>${c.location ? " · 📍 " + esc(c.location) : ""}</p>` +
+        window.WSShare.panelHTML(window.WSShare.guestUrl(c.slug), { title: c.names, published: false }) +
         `<a class="btn" href="/wedding.html?id=${encodeURIComponent(c.weddingId)}&slug=${encodeURIComponent(c.slug)}">Open ${esc(c.names)} →</a>`
       : "";
   }
@@ -105,6 +106,7 @@
         </p>
         <p class="fine" style="margin: .5rem 0;">👥 Max ${esc(w.max_guest_capacity)} guests • ${esc(w.currency)}</p>
         <div class="swatches">${(w.palette || []).map((c) => `<span style="background: ${esc(safeColor(c))};"></span>`).join("")}</div>
+        ${window.WSShare.panelHTML(window.WSShare.guestUrl(w.slug), { title: w.couple_names, published: !!w.published_at })}
         <div class="row" style="margin-top: 1.5rem;">
           <a class="btn" href="/wedding.html?id=${encodeURIComponent(w.id)}&slug=${encodeURIComponent(w.slug)}">✎ Edit</a>
           ${w.published_at ? `<a class="btn" href="/guest.html?slug=${encodeURIComponent(w.slug)}" target="_blank" rel="noopener">👁 View</a>` : ""}
@@ -118,6 +120,7 @@
     state.fields = {
       names: $("couple-names").value,
       date: $("wedding-date").value,
+      timeZone: $("wedding-timezone").value,
       location: $("location").value,
       currency: $("currency").value,
       capacity: $("max-capacity").value
@@ -184,6 +187,7 @@
     return {
       coupleNames: f.names.trim(),
       weddingDate: f.date || null,
+      timeZone: f.timeZone,
       location: f.location.trim(),
       currency: f.currency,
       maxCapacity: Number(f.capacity),
@@ -231,7 +235,7 @@
       // Auto-navigate to the newly created wedding after a brief delay
       setTimeout(() => {
         location.href = `/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}`;
-      }, 1000);
+      }, 2500);
     } catch (err) {
       console.error("Create wedding error:", err);
       setNotice(`Could not reach the server (${err.message}). Your details are kept; please check your connection and try again.`, "bad");
@@ -353,6 +357,7 @@
   if (!window.WS.token()) {
     location.replace("/signin.html");
   } else {
+    window.WSTime.fillSelect($("wedding-timezone"), state.fields.timeZone);
     renderAll();
     loadWeddings();
   }

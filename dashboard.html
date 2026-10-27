@@ -57,6 +57,8 @@
 
         <label for="wedding-date">📅 Wedding date (optional)</label>
         <input id="wedding-date" type="date">
+        <label for="wedding-timezone">🌍 Time zone <span class="fine">(venue times, countdown and calendar use this zone)</span></label>
+        <select id="wedding-timezone"></select>
 
         <label for="location">📍 Location <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="location" type="text" maxlength="120" placeholder="City, venue, or coordinates" autocomplete="off" required aria-required="true">
@@ -111,6 +113,8 @@
   </div>
 
   <script src="auth-client.js"></script>
+  <script src="tz.js"></script>
+  <script src="share.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>
