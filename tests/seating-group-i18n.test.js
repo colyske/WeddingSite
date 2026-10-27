@@ -8,14 +8,14 @@ const call = query => new Promise(resolve => {
   handler({ method: "GET", query, headers: {}, socket: {} }, res);
 });
 
-test("seating lookup rejects bad slug and missing email before touching the database", async () => {
-  assert.equal((await call({ action: "seating", slug: "x", email: "a@b.co" })).status, 404);
-  assert.equal((await call({ action: "seating", slug: "some-wedding", email: "nope" })).status, 400);
+test("seating lookup rejects bad slug and missing phone before touching the database", async () => {
+  assert.equal((await call({ action: "seating", slug: "x", phone: "0712345678" })).status, 404);
+  assert.equal((await call({ action: "seating", slug: "some-wedding", phone: "nope" })).status, 400);
 });
 
-test("seating lookup only returns the caller's own table, matched by exact email", () => {
+test("seating lookup only returns the caller's own table, matched by phone", () => {
   const src = readFileSync("api/guest.js", "utf8").split('action === "seating"')[1].split('action === "pass-lookup"')[0];
-  assert.match(src, /email=eq\./);
+  assert.match(src, /phone=/);
   assert.match(src, /select=name,table_number&limit=1/);
   assert.match(src, /limited\(/);
 });

@@ -2,6 +2,7 @@ import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireAuth } from "../server/auth-middleware.js";
 import { isPastWedding } from "../server/wedding-time.js";
 import { createHmac } from "node:crypto";
+import { normalizePhone, phoneKeyEmail } from "../server/phone.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const text = (value, max) => (typeof value === "string" ? value.trim().slice(0, max) : "");
@@ -22,12 +23,8 @@ const clientHash = (req, slug) => {
   return createHmac("sha256", key).update(`${slug}|${ip}|${req.headers["user-agent"] || ""}`).digest("hex").slice(0, 32);
 };
 const REF = /^[a-f0-9]{8}$/;
-function normPhone(v) {
-  const s = String(v || "").trim();
-  if (!s) return "";
-  const n = (s.startsWith("+") ? "+" : "") + s.replace(/\D/g, "");
-  return /^\+?[0-9]{7,15}$/.test(n) ? n : "";
-}
+const normPhone = normalizePhone;
+const phoneIn = p => `in.(${p},%2B${p})`;
 
 const refFor = async (weddingId, rsvpId) => {
   try {
@@ -175,9 +172,29 @@ export default async function handler(req, res) {
 
       if (action === "rsvp") {
         try {
+          const phone = normPhone(body.guestPhone);
+          if (!phone) return sendJson(res, 400, { error: "Please enter your phone number (with country code if it is not Kenyan)." });
+          const attending = body.attending === true;
+          const plusOnes = Math.min(10, Math.max(0, parseInt(body.plusOnes || 0) || 0));
+          const cfg = (await supabaseRequest(`/rest/v1/weddings?id=eq.${weddingId}&select=currency,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options`, { service: true }))?.[0] || {};
+          const lines = [];
+          if (attending) {
+            if (cfg.rsvp_fee_minor > 0) lines.push({ label: "RSVP fee", amount_minor: Number(cfg.rsvp_fee_minor) });
+            if (plusOnes > 0 && cfg.extra_guest_fee_minor > 0) lines.push({ label: `Extra guests (${plusOnes} x fee)`, amount_minor: plusOnes * Number(cfg.extra_guest_fee_minor) });
+            const diet = text(body.dietaryPreference, 60).toLowerCase();
+            if (diet && cfg.premium_diet_fee_minor > 0 && (cfg.premium_diet_options || []).some(o => String(o).toLowerCase() === diet)) {
+              lines.push({ label: "Premium dietary preference", amount_minor: Number(cfg.premium_diet_fee_minor) });
+            }
+          }
+          const totalMinor = lines.reduce((s, l) => s + l.amount_minor, 0);
+          if (totalMinor > 0 && body.payConfirmed !== true) {
+            return sendJson(res, 402, { needsPayment: true, quote: { lines, totalMinor, currency: cfg.currency } });
+          }
+          const existing = await supabaseRequest(`/rest/v1/guest_rsvps?wedding_id=eq.${weddingId}&phone=${phoneIn(phone)}&select=guest_email&order=created_at.asc&limit=1`, { service: true });
+          const keyEmail = existing?.[0]?.guest_email || text(body.guestEmail, 254).toLowerCase() || phoneKeyEmail(phone);
           const result = await rpc("submit_rsvp_with_pass", {
             p_wedding_id: weddingId,
-            p_guest_email: text(body.guestEmail, 254),
+            p_guest_email: keyEmail,
             p_guest_name: text(body.guestName, 100),
             p_attending: body.attending === true,
             p_dietary_requested: Boolean(text(body.dietaryPreference, 60) || text(body.dietaryNotes, 240)),
@@ -189,12 +206,15 @@ export default async function handler(req, res) {
             const full = rsvp?.status === "full";
             return sendJson(res, full ? 409 : 400, { error: rsvp?.message || "RSVP could not be saved." });
           }
-          const phone = normPhone(body.guestPhone);
           const partyNames = body.attending === true && Number(body.plusOnes) > 0 ? text(body.partyNames, 400) : "";
-          const extra = { ...(phone ? { phone } : {}), ...(partyNames ? { party_names: partyNames } : {}) };
+          const extra = { phone, ...(partyNames ? { party_names: partyNames } : {}) };
           if (Object.keys(extra).length) {
             try { await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvp.rsvp_id}`, { service: true, method: "PATCH", prefer: "return=minimal", body: extra }); }
             catch (e) { console.error("rsvp extras save failed:", e.message); }
+          }
+          if (totalMinor > 0) {
+            try { await rpc("record_test_rsvp_fees", { p_wedding_id: weddingId, p_name: text(body.guestName, 100), p_lines: lines }); }
+            catch (e) { console.error("rsvp fee ledger failed:", e.message); }
           }
           let refCode = "";
           try {
@@ -206,7 +226,7 @@ export default async function handler(req, res) {
               if (owner?.length) await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvp.rsvp_id}`, { service: true, method: "PATCH", prefer: "return=minimal", body: { referred_by_code: by } });
             }
           } catch (e) { console.error("referral attribution failed:", e.message); }
-          return sendJson(res, 200, { message: rsvp.message, status: rsvp.status, rsvpId: rsvp.rsvp_id, refCode });
+          return sendJson(res, 200, { message: rsvp.message, status: rsvp.status, rsvpId: rsvp.rsvp_id, refCode, chargedMinor: totalMinor, lines });
         } catch (error) {
           return sendJson(res, error.message.includes("capacity") ? 409 : 400, { error: error.message || "RSVP failed." });
         }
@@ -301,12 +321,12 @@ export default async function handler(req, res) {
       const slug = String(req.query.slug || "").toLowerCase();
       if (!/^[a-z0-9-]{3,80}$/.test(slug)) return sendJson(res, 404, { error: "Wedding not found." });
       if (limited(`seat|${clientHash(req, slug)}`, 12, 10 * 60 * 1000)) return sendJson(res, 429, { error: "Too many lookups. Please try again in a few minutes." });
-      const email = String(req.query.email || "").trim().toLowerCase();
-      if (email.length < 5 || email.length > 254 || !email.includes("@")) return sendJson(res, 400, { error: "Enter the email address the couple has on their guest list." });
+      const phone = normPhone(req.query.phone);
+      if (!phone) return sendJson(res, 400, { error: "Enter the phone number the couple has on their guest list (with country code if it is not Kenyan)." });
       const weddingId = await resolveWeddingId(slug, rpc);
       if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
-      const rows = await supabaseRequest(`/rest/v1/guests?wedding_id=eq.${weddingId}&email=eq.${encodeURIComponent(email)}&select=name,table_number&limit=1`, { service: true });
-      if (!rows?.length) return sendJson(res, 404, { error: "We could not find that email on the guest list. Try the email the couple invited, or ask them." });
+      const rows = await supabaseRequest(`/rest/v1/guests?wedding_id=eq.${weddingId}&phone=${phoneIn(phone)}&select=name,table_number&limit=1`, { service: true });
+      if (!rows?.length) return sendJson(res, 404, { error: "We could not find that phone number on the guest list. Try the number the couple invited, or ask them." });
       return sendJson(res, 200, { name: rows[0].name, table: rows[0].table_number || null });
     }
 
@@ -330,7 +350,7 @@ export default async function handler(req, res) {
       }
       const phone = normPhone(req.query.phone);
       if (phone) {
-        const rows = await supabaseRequest(`/rest/v1/guest_rsvps?wedding_id=eq.${weddingId}&phone=eq.${encodeURIComponent(phone)}&select=id,guest_name&order=created_at.desc&limit=1`, { service: true });
+        const rows = await supabaseRequest(`/rest/v1/guest_rsvps?wedding_id=eq.${weddingId}&phone=${phoneIn(phone)}&select=id,guest_name&order=created_at.desc&limit=1`, { service: true });
         if (!rows?.length) return sendJson(res, 404, { error: "No pass found for that phone number." });
         return sendJson(res, 200, { rsvpId: rows[0].id, guestName: rows[0].guest_name, refCode: await refFor(weddingId, rows[0].id) });
       }
