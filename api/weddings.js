@@ -5,7 +5,7 @@ import { paymentAdaptersFor } from "./checkout.js";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,max_guest_capacity,palette,attire_notes,enabled_payment_methods,background_music_url,published_at,created_at";
+const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,max_guest_capacity,palette,attire_notes,enabled_payment_methods,background_music_url,published_at,created_at,archived_at,unpublished_at,first_published_at";
 const DEFAULT_ZONE = "Africa/Nairobi";
 const validZone = tz => {
   if (typeof tz !== "string" || !tz || tz.length > 64) return false;
@@ -26,6 +26,12 @@ const parseVenueTime = value => {
   if (meridiem) hours = hours % 12 + (meridiem === "PM" ? 12 : 0);
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 };
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const validDate = value => {
+  if (typeof value !== "string" || !DATE_ONLY.test(value)) return false;
+  const d = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+};
 const configuredPayoutMethods = currency => {
   const markets = new Set([
     ...String(process.env.STRIPE_SUPPORTED_MARKETS || "").split(","),
@@ -41,7 +47,7 @@ const configuredPayoutMethods = currency => {
 // Load venues and payout info for a wedding
 const loadWeddingDetails = async (weddingId, opts) => {
   const [venues, payout, registry, tiers, vip] = await Promise.all([
-    supabaseRequest(`/rest/v1/venues?wedding_id=eq.${weddingId}&select=id,name,event_time,map_link,description,is_main,sort_order&order=sort_order.asc`, opts),
+    supabaseRequest(`/rest/v1/venues?wedding_id=eq.${weddingId}&select=id,name,event_time,event_date,map_link,description,is_main,sort_order&order=sort_order.asc`, opts),
     supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${weddingId}&select=method,display_mask,verified`, opts),
     supabaseRequest(`/rest/v1/registry_items?wedding_id=eq.${weddingId}&select=id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts),
     supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}&select=id,name,min_amount_minor,perks,sort_order&order=sort_order.asc`, opts),
@@ -105,6 +111,8 @@ export default async function handler(req, res) {
           !Number.isInteger(capacity) || capacity < 1 || palette.length < 1 || palette.length > 4 || !palette.every(c => COLOR.test(c))) {
         return sendJson(res, 400, { error: "Check the couple names, location, currency, guest capacity and up to four hex colors." });
       }
+      if (!validDate(body.weddingDate)) return sendJson(res, 400, { error: "The wedding date is required (YYYY-MM-DD)." });
+      if (!venues.some(venue => venue.eventTime)) return sendJson(res, 400, { error: "The wedding time is required: add the main venue with a start time." });
       const base = toSlug(names) || "wedding";
       if (body.timeZone !== undefined && body.timeZone !== null && body.timeZone !== "" && !validZone(body.timeZone)) {
         return sendJson(res, 400, { error: "Choose a valid time zone." });
@@ -114,7 +122,7 @@ export default async function handler(req, res) {
         try {
           const id = await supabaseRequest("/rest/v1/rpc/create_wedding_with_venues", { ...opts, method: "POST", body: {
             p_slug: `${base}${suffix}`.slice(0, 80).padEnd(3, "x"), p_couple_names: names,
-            p_wedding_date: body.weddingDate || null, p_location: location.slice(0, 120),
+            p_wedding_date: body.weddingDate, p_location: location.slice(0, 120),
             p_currency: currency, p_capacity: capacity, p_palette: palette, p_venues: venues } });
           if (timeZone !== DEFAULT_ZONE) {
             await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(id)}&client_owner_id=eq.${encodeURIComponent(session.user.id)}`,
@@ -139,11 +147,15 @@ export default async function handler(req, res) {
             id: v?.id || null,
             name: String(v?.name || "").trim().slice(0, 100),
             eventTime: parseVenueTime(v?.eventTime ?? v?.time),
+            eventDate: validDate(v?.eventDate) ? v.eventDate : null,
             mapLink: String(v?.mapLink ?? v?.map ?? "").trim() || null,
             description: String(v?.description || "").trim().slice(0, 500) || null,
             isMain: v?.isMain === true,
             sortOrder
           })).filter(v => v.name);
+          if (!normalizedVenues.some(v => v.eventTime)) {
+            return sendJson(res, 400, { error: "The wedding time is required: at least one venue needs a start time." });
+          }
           if (normalizedVenues.some(v => v.mapLink && !/^https?:\/\//i.test(v.mapLink))) {
             return sendJson(res, 400, { error: "Venue map links must use HTTP or HTTPS." });
           }
@@ -179,7 +191,10 @@ export default async function handler(req, res) {
       
       if (body.coupleNames !== undefined) patch.couple_names = String(body.coupleNames).trim().slice(0, 120);
       if (body.welcomeStory !== undefined) patch.welcome_story = String(body.welcomeStory).slice(0, 500);
-      if (body.weddingDate !== undefined) patch.wedding_date = body.weddingDate || null;
+      if (body.weddingDate !== undefined) {
+        if (!validDate(body.weddingDate)) return sendJson(res, 400, { error: "The wedding date is required (YYYY-MM-DD)." });
+        patch.wedding_date = body.weddingDate;
+      }
       if (body.timeZone !== undefined) {
         if (!validZone(body.timeZone)) return sendJson(res, 400, { error: "Choose a valid time zone." });
         patch.time_zone = body.timeZone;
@@ -231,6 +246,7 @@ export default async function handler(req, res) {
             const venue = {
               name: v.name,
               event_time: v.eventTime,
+              event_date: v.eventDate,
               map_link: v.mapLink || null,
               description: v.description || null,
               is_main: v.isMain || false,
@@ -363,6 +379,46 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { methods: configuredPayoutMethods(rows[0].currency) });
     }
 
+    if (action === "delete" || req.method === "DELETE") {
+      return sendJson(res, 405, { error: "Weddings are never deleted. Unpublish or archive instead." });
+    }
+
+    if (action === "quote") {
+      if (!methodOnly(req, res, "GET")) return;
+      if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+      const quote = await supabaseRequest("/rest/v1/rpc/publication_quote", { ...opts, method: "POST", body: { p_wedding_id: req.query.weddingId } });
+      return sendJson(res, 200, { quote });
+    }
+
+    if (action === "unpublish" || action === "archive") {
+      if (!methodOnly(req, res, "POST")) return;
+      if (!UUID.test(String(body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+      if (body.confirmed !== true) return sendJson(res, 400, { error: "Please confirm this action." });
+      if (action === "unpublish") {
+        await supabaseRequest("/rest/v1/rpc/unpublish_wedding", { ...opts, method: "POST", body: { p_wedding_id: body.weddingId, p_confirmed: true } });
+      } else {
+        await supabaseRequest("/rest/v1/rpc/archive_wedding", { ...opts, method: "POST", body: { p_wedding_id: body.weddingId, p_archived: body.archived !== false } });
+      }
+      const rows = await supabaseRequest(`/rest/v1/weddings?id=eq.${body.weddingId}&select=${FIELDS}`, opts);
+      return sendJson(res, 200, { ok: true, wedding: rows?.[0] || null });
+    }
+
+    if (action === "kyc-get") {
+      if (!methodOnly(req, res, "GET")) return;
+      if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+      const kyc = await supabaseRequest("/rest/v1/rpc/get_wedding_kyc", { ...opts, method: "POST", body: { p_wedding_id: req.query.weddingId, p_reveal: false } });
+      return sendJson(res, 200, { kyc });
+    }
+
+    if (action === "kyc-save") {
+      if (!methodOnly(req, res, "POST")) return;
+      if (!UUID.test(String(body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+      const data = body.kyc && typeof body.kyc === "object" ? body.kyc : {};
+      const result = await supabaseRequest("/rest/v1/rpc/save_wedding_kyc", { ...opts, method: "POST",
+        body: { p_wedding_id: body.weddingId, p_data: data, p_consent: body.consent === true } });
+      return sendJson(res, 200, { ok: true, kyc: result });
+    }
+
     if (action === "publish") {
       if (!methodOnly(req, res, "POST")) return;
       if (!UUID.test(String(body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
@@ -371,8 +427,14 @@ export default async function handler(req, res) {
       } catch (error) {
         const msg = error.message || "";
         let userMessage = msg;
-        if (msg.includes("publication fee")) {
-          userMessage = "Publication fee must be paid or waived. Contact platform support to waive for testing.";
+        if (msg.includes("PAYMENT_REQUIRED")) {
+          return sendJson(res, 402, { error: msg.replace(/^.*PAYMENT_REQUIRED:?\s*/, "").slice(0, 300) || "A publication fee is required.", paymentRequired: true });
+        } else if (/KYC|identity/i.test(msg)) {
+          return sendJson(res, 409, { error: "Complete the couple identity (KYC) details before publishing.", kycRequired: true });
+        } else if (/date/i.test(msg)) {
+          userMessage = "Set the wedding date before publishing.";
+        } else if (msg.includes("publication fee")) {
+          userMessage = "Publication fee must be paid or waived.";
         } else if (msg.includes("web address")) {
           userMessage = "Set a public web address (slug) before publishing.";
         } else if (msg.includes("confirmation")) {
