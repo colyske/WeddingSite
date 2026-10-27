@@ -93,7 +93,7 @@ function applyApprovedWeddingDetails() {
   document.querySelector("#pass-couple").textContent = couple.toUpperCase();
   document.querySelector("#pass-date").textContent = `${String(event.getDate()).padStart(2, "0")} · ${String(event.getMonth() + 1).padStart(2, "0")} · ${String(event.getFullYear()).slice(-2)}`;
   document.querySelector("#pass-location").textContent = wedding.venue.toUpperCase();
-  document.querySelector("#pass-time").textContent = `${new Intl.DateTimeFormat("en-GB", { weekday: "long" }).format(event).toUpperCase()} · 10:00 AM`;
+  document.querySelector("#pass-time").textContent = `${new Intl.DateTimeFormat("en-GB", { weekday: "long" }).format(event).toUpperCase()} · 10:00 AM EAT`;
   const rsvpDeadline = new Date(event);
   rsvpDeadline.setDate(rsvpDeadline.getDate() - 27);
   document.querySelector("#rsvp-deadline").textContent = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric" }).format(rsvpDeadline);

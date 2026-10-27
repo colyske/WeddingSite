@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#203a31">
   <title>WeddingSite — Workspace</title>
-  <link rel="stylesheet" href="app-shell.css">
+  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><script src="ornaments.js" defer></script>
   <style>
     .color-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin: 1.5rem 0; }
     .color-grid small { color: #7a8580; }
@@ -57,6 +57,8 @@
 
         <label for="wedding-date">📅 Wedding date (optional)</label>
         <input id="wedding-date" type="date">
+        <label for="wedding-timezone">🌍 Time zone <span class="fine">(venue times, countdown and calendar use this zone)</span></label>
+        <select id="wedding-timezone"></select>
 
         <label for="location">📍 Location <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="location" type="text" maxlength="120" placeholder="City, venue, or coordinates" autocomplete="off" required aria-required="true">
@@ -111,6 +113,8 @@
   </div>
 
   <script src="auth-client.js"></script>
+  <script src="tz.js"></script>
+  <script src="share.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>

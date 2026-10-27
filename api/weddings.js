@@ -5,7 +5,12 @@ import { paymentAdaptersFor } from "./checkout.js";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,public_location,currency,max_guest_capacity,palette,attire_notes,enabled_payment_methods,background_music_url,published_at,created_at";
+const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,max_guest_capacity,palette,attire_notes,enabled_payment_methods,background_music_url,published_at,created_at";
+const DEFAULT_ZONE = "Africa/Nairobi";
+const validZone = tz => {
+  if (typeof tz !== "string" || !tz || tz.length > 64) return false;
+  try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return true; } catch { return false; }
+};
 const parseVenueTime = value => {
   const input = String(value || "").trim();
   if (!input) return null;
@@ -101,12 +106,20 @@ export default async function handler(req, res) {
         return sendJson(res, 400, { error: "Check the couple names, location, currency, guest capacity and up to four hex colors." });
       }
       const base = toSlug(names) || "wedding";
+      if (body.timeZone !== undefined && body.timeZone !== null && body.timeZone !== "" && !validZone(body.timeZone)) {
+        return sendJson(res, 400, { error: "Choose a valid time zone." });
+      }
+      const timeZone = validZone(body.timeZone) ? body.timeZone : DEFAULT_ZONE;
       for (const suffix of ["", `-${Math.random().toString(36).slice(2, 6)}`, `-${Math.random().toString(36).slice(2, 8)}`]) {
         try {
           const id = await supabaseRequest("/rest/v1/rpc/create_wedding_with_venues", { ...opts, method: "POST", body: {
             p_slug: `${base}${suffix}`.slice(0, 80).padEnd(3, "x"), p_couple_names: names,
             p_wedding_date: body.weddingDate || null, p_location: location.slice(0, 120),
             p_currency: currency, p_capacity: capacity, p_palette: palette, p_venues: venues } });
+          if (timeZone !== DEFAULT_ZONE) {
+            await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(id)}&client_owner_id=eq.${encodeURIComponent(session.user.id)}`,
+              { ...opts, method: "PATCH", body: { time_zone: timeZone } });
+          }
           return sendJson(res, 201, { weddingId: id, slug: `${base}${suffix}` });
         } catch (error) {
           if (!/duplicate|unique/i.test(error.message)) throw error;
@@ -167,6 +180,10 @@ export default async function handler(req, res) {
       if (body.coupleNames !== undefined) patch.couple_names = String(body.coupleNames).trim().slice(0, 120);
       if (body.welcomeStory !== undefined) patch.welcome_story = String(body.welcomeStory).slice(0, 500);
       if (body.weddingDate !== undefined) patch.wedding_date = body.weddingDate || null;
+      if (body.timeZone !== undefined) {
+        if (!validZone(body.timeZone)) return sendJson(res, 400, { error: "Choose a valid time zone." });
+        patch.time_zone = body.timeZone;
+      }
       if (body.location !== undefined) patch.public_location = String(body.location).slice(0, 120);
       if (body.maxCapacity !== undefined) {
         const capacity = Number(body.maxCapacity);

@@ -1,0 +1,4 @@
+/* Unobtrusive "Made with WeddingSite" promo footer (shared by guest site and client-site template). */
+.ws-promo { text-align: center; padding: 1.6rem 1rem 2rem; font: 400 .85rem/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: #5f6b64; margin: 0; }
+.ws-promo a { color: #203a31; font-weight: 600; text-decoration: underline; text-decoration-color: #be9b52; text-underline-offset: 3px; }
+.ws-promo .credit { display: block; margin-top: .35rem; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; opacity: .8; }

@@ -128,7 +128,9 @@ test("success: sends every field (currency, capacity, palette, venues), shows cr
   assert.equal(b.palette[1], "#123456");
   assert.deepEqual(b.venues.map((v) => [v.name, v.isMain]), [["Church", false], ["Reception", true]]);
   assert.match(await page.textContent("#created"), /Sarah & John/);
-  assert.match(await page.getAttribute("#created a", "href"), /wedding\.html\?id=1111.*slug=sarah-john/);
+  assert.match(await page.getAttribute('#created a[href*="wedding.html"]', "href"), /wedding\.html\?id=1111.*slug=sarah-john/);
+  assert.ok(b.timeZone, "time zone is sent");
+  assert.match(await page.inputValue("#created .ws-share-url"), /guest\.html\?slug=sarah-john$/);
   assert.equal(await page.inputValue("#couple-names"), "", "form reset only after success");
   await close();
 });
