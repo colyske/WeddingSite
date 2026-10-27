@@ -96,12 +96,12 @@
     $("weddings-grid").innerHTML = list.map((w) => `
       <div class="card">
         <div class="top" style="margin-bottom: .5rem;">
-          <span class="tag ${w.published_at ? "live" : ""}">${w.published_at ? "✓ Published" : "📋 Draft"}</span>
+          <span class="tag ${w.published_at && !w.archived_at ? "live" : ""}">${statusLabel(w)}</span>
           <span class="fine">${esc(new Date(w.created_at).toLocaleDateString())}</span>
         </div>
         <h3>${esc(w.couple_names)}</h3>
         <p class="fine" style="margin: .5rem 0;">
-          ${w.wedding_date ? "📅 " + esc(new Date(w.wedding_date).toLocaleDateString()) : "(No date set)"}
+          ${w.wedding_date ? "📅 " + esc(new Date(w.wedding_date).toLocaleDateString()) : "(Date required - open to set)"}
           ${w.public_location ? " • 📍 " + esc(w.public_location) : ""}
         </p>
         <p class="fine" style="margin: .5rem 0;">👥 Max ${esc(w.max_guest_capacity)} guests • ${esc(w.currency)}</p>
@@ -362,3 +362,10 @@
     loadWeddings();
   }
 })();
+function statusLabel(w) {
+  const past = w.wedding_date && String(w.wedding_date).slice(0, 10) < new Date().toISOString().slice(0, 10);
+  if (w.archived_at) return "Archived";
+  if (w.published_at) return past ? "Completed / Past" : "Published";
+  if (w.unpublished_at) return "Unpublished";
+  return past ? "Past (draft)" : "Draft";
+}

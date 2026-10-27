@@ -1,4 +1,7 @@
 {
+  "rewrites": [
+    { "source": "/w/:slug", "destination": "/api/guest?action=og&slug=:slug" }
+  ],
   "crons": [
     {
       "path": "/api/reminders",

@@ -237,6 +237,24 @@
         <div class="row"><button type="submit">Save identity details</button> <span id="kyc-status" class="fine"></span></div>
       </form>
     </div>
+    <div id="engage-section" class="card" hidden>
+      <h2>Guest engagement</h2>
+      <div id="analytics-grid" class="fine" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.6rem"></div>
+      <h3>Guests who invited others</h3>
+      <p class="fine">Each guest gets a personal share link (a random short code, no personal details in the URL). Visits are counted once per visitor per day using a salted hash; raw IP addresses are never stored. Only you and platform admins can see this.</p>
+      <div id="referral-list" class="fine">No data yet.</div>
+      <h3>Guestbook moderation</h3>
+      <div id="wish-list" class="fine">No wishes yet.</div>
+      <h3>FAQ &amp; travel info</h3>
+      <form id="extras-form">
+        <label for="travel-info">Travel &amp; accommodation</label>
+        <textarea id="travel-info" rows="3" maxlength="2000" placeholder="Parking, nearby hotels, shuttle times..."></textarea>
+        <label>FAQ (question, then answer)</label>
+        <div id="faq-rows"></div>
+        <div class="row"><button type="button" id="faq-add" class="ghost">Add question</button><button type="submit">Save FAQ &amp; travel</button></div>
+      </form>
+    </div>
+
     <!-- Published section -->
     <div id="published-section" class="card" hidden>
       <h2>Published</h2>
@@ -1234,6 +1252,57 @@
       } catch (err) { notice(err.message, true); }
     });
     loadKyc();
+    // Engagement: analytics, referrals, guestbook, FAQ
+    function faqRow(q, a) {
+      const d = document.createElement("div");
+      d.className = "faq-row";
+      d.innerHTML = '<input type="text" maxlength="160" placeholder="Question" class="faq-q"><textarea rows="2" maxlength="600" placeholder="Answer" class="faq-a"></textarea>';
+      d.querySelector(".faq-q").value = q || "";
+      d.querySelector(".faq-a").value = a || "";
+      $("faq-rows").appendChild(d);
+    }
+    $("faq-add").addEventListener("click", () => faqRow());
+    async function loadEngagement() {
+      $("engage-section").hidden = false;
+      const q = encodeURIComponent(weddingId);
+      try {
+        const r = await WS.api(`/api/weddings?action=analytics&weddingId=${q}`); const d = await r.json();
+        const a = d.analytics || {};
+        const cells = [["Visitors", a.visitors], ["Via invite links", a.referred_visitors], ["RSVPs yes", a.rsvps_confirmed], ["RSVPs no", a.rsvps_declined], ["RSVPs from invites", a.rsvps_referred], ["DJ bids", a.bids], ["Wishes to review", a.wishes_pending]];
+        $("analytics-grid").innerHTML = cells.map(c => `<div><strong style="font-size:1.4rem">${Number(c[1] || 0)}</strong><br>${WS.esc(c[0])}</div>`).join("");
+      } catch (_) {}
+      try {
+        const r = await WS.api(`/api/weddings?action=referrals&weddingId=${q}`); const d = await r.json();
+        const rows = (d.referrals || []).filter(x => x.visits > 0 || x.rsvps_brought > 0);
+        $("referral-list").innerHTML = rows.length ? '<table><thead><tr><th>#</th><th>Guest</th><th>Visits</th><th>RSVPs brought in</th></tr></thead><tbody>' + rows.map((x, i) => `<tr><td>${i + 1}</td><td>${WS.esc(x.guest_name)}</td><td>${x.visits}</td><td>${x.rsvps_brought}</td></tr>`).join("") + "</tbody></table>" : "No invited visits yet. Guests receive a personal link after they RSVP.";
+      } catch (_) {}
+      await loadWishes();
+      try {
+        const r = await WS.api(`/api/weddings?action=extras-get&weddingId=${q}`); const d = await r.json();
+        $("travel-info").value = d.travel || "";
+        $("faq-rows").innerHTML = "";
+        (d.faq || []).forEach(f => faqRow(f.q, f.a));
+      } catch (_) {}
+    }
+    async function loadWishes() {
+      try {
+        const r = await WS.api(`/api/weddings?action=wishes-list&weddingId=${encodeURIComponent(weddingId)}`); const d = await r.json();
+        const w = d.wishes || [];
+        $("wish-list").innerHTML = w.length ? w.map(x => `<div class="wish-item" data-id="${x.id}"><strong>${WS.esc(x.author_name)}</strong> <span class="tag">${WS.esc(x.status)}</span><br>${WS.esc(x.message)}<div class="row"><button type="button" class="ghost" data-wish="approved">Approve</button><button type="button" class="ghost" data-wish="hidden">Hide</button></div></div>`).join("") : "No wishes yet.";
+      } catch (_) {}
+    }
+    $("wish-list").addEventListener("click", async e => {
+      const b = e.target.closest("[data-wish]"); if (!b) return;
+      const res = await WS.api("/api/weddings?action=wish-moderate", { method: "POST", body: JSON.stringify({ weddingId, wishId: b.closest(".wish-item").dataset.id, status: b.dataset.wish }) });
+      if (res.ok) { notice("Wish updated."); loadWishes(); } else notice("Could not update the wish.", true);
+    });
+    $("extras-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      const faq = [...document.querySelectorAll(".faq-row")].map(r => ({ q: r.querySelector(".faq-q").value, a: r.querySelector(".faq-a").value }));
+      const res = await WS.api("/api/weddings?action=extras-save", { method: "POST", body: JSON.stringify({ weddingId, faq, travel: $("travel-info").value }) });
+      notice(res.ok ? "FAQ and travel info saved." : "Could not save FAQ and travel info.", !res.ok);
+    });
+    loadEngagement();
     // Load RSVPs
     async function loadRsvps() {
       try {
