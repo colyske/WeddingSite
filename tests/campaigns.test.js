@@ -18,6 +18,10 @@ test("campaign migration is idempotent and keeps money rows safe", () => {
   assert.match(paymentMigration, /drop function if exists public\.record_test_campaign_pledge/);
   assert.match(paymentMigration, /drop function if exists public\.get_dj_leaderboard\(uuid\)/);
   assert.match(paymentMigration, /bid_count bigint, currency char\(3\)/);
+  assert.ok(paymentMigration.indexOf("drop view if exists public.finance_summary;") < paymentMigration.indexOf("alter column payment_status type text"));
+  assert.ok(paymentMigration.indexOf("drop view if exists public.public_contribution_ledger;") < paymentMigration.indexOf("alter column payment_status type text"));
+  assert.match(paymentMigration, /grant select on public\.public_contribution_ledger to anon, authenticated/);
+  assert.match(paymentMigration, /grant select on public\.finance_summary to authenticated/);
   assert.match(paymentMigration, /v_keep uuid\[\] := array\[\]::uuid\[\]/);
   assert.match(paymentMigration, /v_mkeep := array\[\]::uuid\[\]/);
   assert.match(paymentMigration, /grant execute on function public\.save_fundraising_campaigns\(uuid, jsonb\) to service_role/);

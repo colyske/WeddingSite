@@ -9,6 +9,8 @@ alter table public.contributions add column if not exists provider_fee_minor big
   check (provider_fee_minor is null or provider_fee_minor between 0 and 100000000000);
 alter table public.contributions drop constraint if exists amount_consistency;
 alter table public.contributions alter column payment_status drop default;
+drop view if exists public.finance_summary;
+drop view if exists public.public_contribution_ledger;
 alter table public.contributions alter column payment_status type text using payment_status::text;
 update public.contributions set payment_status = 'cancelled' where payment_status = 'pledged';
 alter table public.contributions alter column payment_status set default 'pending';
@@ -615,6 +617,7 @@ select id, wedding_id, stream_name,
 from public.contributions
 where payment_status = 'paid' and verified_provider_payment and public_consent_at is not null
   and visibility in ('name', 'anonymous') and public.is_published_wedding(wedding_id);
+grant select on public.public_contribution_ledger to anon, authenticated;
 
 create or replace view public.finance_summary
 with (security_invoker = true)
@@ -670,6 +673,7 @@ left join lateral (
   select sum(planned_minor) as planned_minor, sum(actual_minor) as actual_minor
   from public.budget_lines where wedding_id = w.id and currency = currencies.currency
 ) b on true;
+grant select on public.finance_summary to authenticated;
 
 -- A server-owned action record is finalized in the same database transaction that marks
 -- a provider payment as paid. No guest request can directly create a completed action.
