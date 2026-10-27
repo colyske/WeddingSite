@@ -725,7 +725,7 @@ begin
   end if;
   if p_data ? 'contribution_fee_basis_points'
       and ((p_data->>'contribution_fee_basis_points')::integer not between 0 and 10000) then
-    raise exception 'Platform commission must be between 0% and 100%.';
+    raise exception 'Platform commission must be between zero and one hundred percent.';
   end if;
   if p_data ? 'contribution_fixed_fee_minor'
       and ((p_data->>'contribution_fixed_fee_minor')::bigint not between 0 and 100000000) then
