@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#203a31">
   <title>WeddingSite — Wedding</title>
-  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><script src="ornaments.js" defer></script>
+  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><script src="ornaments.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     .past-badge { display:inline-block; padding:.25rem .75rem; border-radius:999px; background:var(--green); color:#fff; font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
@@ -100,82 +100,6 @@
       opacity: 0.7;
     }
 
-    /* Hero section */
-    .hero {
-      margin-top: 70px;
-      min-height: 60vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-      position: relative;
-      overflow: hidden;
-      padding: 2rem;
-    }
-
-    .hero::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: linear-gradient(135deg, rgba(255, 255, 255, 0.5) 0%, rgba(169, 181, 162, 0.1) 100%);
-      z-index: 1;
-    }
-
-    .hero-content {
-      position: relative;
-      z-index: 2;
-      max-width: 800px;
-    }
-
-    .hero h1 {
-      font-size: clamp(2.5rem, 6vw, 3.5rem);
-      margin-bottom: 0.5rem;
-    }
-
-    .hero .subtitle {
-      font-size: 1.2rem;
-      color: var(--sage);
-      margin-bottom: 2rem;
-      font-style: italic;
-    }
-
-    /* Countdown timer */
-    .countdown {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-      gap: 1rem;
-      margin: 2rem 0;
-      justify-content: center;
-    }
-
-    .countdown-item {
-      background: rgba(255, 255, 255, 0.6);
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(190, 155, 82, 0.2);
-      border-radius: 12px;
-      padding: 1rem;
-      text-align: center;
-    }
-
-    .countdown-value {
-      font-size: 1.8rem;
-      font-weight: 700;
-      color: var(--gold);
-      font-family: monospace;
-    }
-
-    .countdown-label {
-      font-size: 0.75rem;
-      color: var(--green);
-      margin-top: 0.5rem;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-
     /* Story section */
     .story-section {
       background: rgba(230, 225, 215, 0.4);
@@ -202,15 +126,7 @@
         font-size: 0.85rem;
       }
 
-      .hero {
-        margin-top: 150px;
-        min-height: auto;
-        padding: 2rem 1rem;
-      }
 
-      .countdown {
-        grid-template-columns: repeat(2, 1fr);
-      }
     }
   </style>
 </head>
@@ -238,39 +154,31 @@
     <p id="notice" class="notice" role="status" hidden></p>
 
     <!-- Hero with countdown -->
-    <section class="hero">
+    <section class="hero" data-no-divider data-prop-hero="couple">
+      <div class="hero-image" aria-hidden="true"></div>
+      <div class="hero-shade" aria-hidden="true"></div>
       <div class="hero-content">
-        <div data-orn="rings" style="text-align:center"></div>
+        <div data-orn="rings"></div>
+        <p class="eyebrow">With full hearts, we invite you</p>
         <h1 id="couple-names">Wedding</h1>
-        <p class="subtitle" id="wedding-date-display">Coming soon…</p>
-        <p class="subtitle" id="countdown-state" hidden aria-live="polite"></p>
-
-        <!-- Live countdown -->
-        <div class="countdown" id="countdown">
-          <div class="countdown-item">
-            <div class="countdown-value" id="days">0</div>
-            <div class="countdown-label">Days</div>
-          </div>
-          <div class="countdown-item">
-            <div class="countdown-value" id="hours">0</div>
-            <div class="countdown-label">Hours</div>
-          </div>
-          <div class="countdown-item">
-            <div class="countdown-value" id="minutes">0</div>
-            <div class="countdown-label">Minutes</div>
-          </div>
-          <div class="countdown-item">
-            <div class="countdown-value" id="seconds">0</div>
-            <div class="countdown-label">Seconds</div>
-          </div>
-        </div>
-
-        <!-- .ics download button -->
-        <button id="ics-download" class="btn" style="margin: 1rem 0;">Add to Calendar</button>
+        <p class="hero-tag">Two stories. One beautiful beginning.</p>
+        <p class="subtitle" id="wedding-date-display">Coming soon&hellip;</p>
+        <button id="ics-download" class="btn" type="button">Celebrate with us &#8599; Add to calendar</button>
       </div>
+      <p class="hero-side" aria-hidden="true">A day for all our people</p>
     </section>
 
-    <section id="past-banner" class="card" hidden>
+    <section class="countdown-band" aria-label="Countdown">
+      <div class="countdown-intro"><span class="eyebrow">The countdown is on</span><span>Until we say &ldquo;I do&rdquo;</span></div>
+      <p class="subtitle" id="countdown-state" hidden aria-live="polite"></p>
+      <div class="countdown" id="countdown">
+        <div class="countdown-item"><div class="countdown-value" id="days">0</div><div class="countdown-label">Days</div></div>
+        <div class="countdown-item"><div class="countdown-value" id="hours">0</div><div class="countdown-label">Hours</div></div>
+        <div class="countdown-item"><div class="countdown-value" id="minutes">0</div><div class="countdown-label">Minutes</div></div>
+        <div class="countdown-item"><div class="countdown-value" id="seconds">0</div><div class="countdown-label">Seconds</div></div>
+      </div>
+    </section>
+    <section id="past-banner" class="card" hidden data-corners style="text-align:center">
       <p><span class="past-badge">Completed</span></p>
       <h2>Thank you for celebrating with us</h2>
       <p id="past-message">This wedding has taken place. RSVPs, song bids and pledges are now closed, but you are welcome to look back at the day.</p>
@@ -440,7 +348,7 @@
     </section>
 
     <!-- Digital e-card pass -->
-    <section id="ecard" class="card" hidden>
+    <section id="ecard" class="card" hidden data-corners>
       <h2>Your Digital E-Card Pass</h2>
       <p class="fine">Screenshot this pass or show it at the entrance to check in.</p>
       <div id="ecard-display" style="text-align: center; padding: 2rem 1rem; background: linear-gradient(135deg, #f8f9f7 0%, #f3faf3 100%); border-radius: 8px; border: 2px solid var(--sage);">
@@ -541,6 +449,7 @@
         if (start != null) {
           const hasTime = !!(WSTime_mainTime());
           $("wedding-date-display").textContent = WSTime.formatDate(start, zone) + (hasTime ? " · " + WSTime.formatTime(start, zone) : "");
+      const ad = document.getElementById("announce-date"); if (ad) ad.textContent = WSTime.formatDate(start, zone);
         }
       }
 
@@ -623,6 +532,7 @@
         document.title = `${wedding.couple_names || "Wedding"} — Completed`;
         $("countdown-state").hidden = false;
         $("countdown-state").textContent = "Completed - thank you for celebrating with us";
+        $("countdown-state").parentElement.hidden = false;
       } else {
         $("rsvp").hidden = false;
         $("bids").hidden = false;
@@ -1019,7 +929,8 @@
   loadWedding();
 })();
   </script>
-  <footer class="ws-promo"><span>Planning your own wedding? <a href="/signin.html">Create your wedding site with WeddingSite</a></span><span class="credit">Made with <a href="/">WeddingSite</a></span></footer>
+  <div class="prop-row" data-props="ringsLine,cake,bouquet,dove,bell2" style="background:var(--green-deep);margin:0;padding:1.6rem 0 0;color:#e1cf9f"></div>
+<footer class="ws-promo"><span>Planning your own wedding? <a href="/signin.html">Create your wedding site with WeddingSite</a></span><span class="credit">Made with <a href="/">WeddingSite</a></span></footer>
   <script src="footer.js"></script>
 </body>
 </html>

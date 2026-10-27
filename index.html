@@ -6,9 +6,9 @@
   <meta name="theme-color" content="#203a31">
   <meta name="description" content="WeddingSite: Plan your wedding with coordinated RSVPs, DJ song bidding, guest contributions, and more.">
   <title>WeddingSite — Wedding Planning Simplified</title>
-  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><script src="ornaments.js" defer></script>
+  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><script src="ornaments.js" defer></script>
   <style>
-    .hero { background: linear-gradient(135deg, #f6f1e4 0%, #eee8d9 100%); }
+    
     .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
     .feature-card { padding: 1.5rem; background: #fff; border-radius: 8px; border-left: 4px solid #be9b52; }
     .feature-card h3 { margin-top: 0; color: #203a31; }
@@ -42,22 +42,24 @@
 </head>
 <body>
   <div class="wrap">
-    <!-- Header -->
-    <div class="top" style="margin-bottom: 2rem;">
-      <a class="brand" href="/">WeddingSite</a>
-      <a class="btn" href="/signin.html">Sign in / Create wedding</a>
-    </div>
+    <header class="site-header" style="display:flex;justify-content:space-between;align-items:center;padding:.9rem 5.5vw;margin:0 calc(50% - 50vw);">
+      <a class="brand" href="/" aria-label="WeddingSite home"><span class="brand-mark" style="font:500 1.6rem var(--serif);color:var(--green)">W<span style="font-size:.8rem;color:var(--gold)">&amp;</span>S</span> <span style="font:500 1.05rem var(--serif);margin-left:.6rem">Wedding<em style="color:var(--gold)">Site</em></span></a>
+      <a class="btn primary" href="/signin.html">Sign in / Create wedding</a>
+    </header>
 
-    <!-- Hero -->
-    <div class="hero" style="text-align: center; padding: 3rem 1rem; margin: -1.5rem -1.5rem 2rem; border-radius: 8px;">
-      <div data-balloons></div>
-      <h1 style="margin-top: 0;">Plan Your Perfect Wedding</h1>
-      <p style="font-size: 1.1rem; color: #5b665f; max-width: 600px; margin: 1rem auto;">
-        Coordinate RSVPs, collect DJ song requests with bidding, manage guest contributions, and bring your wedding vision to life—all in one place.
-      </p>
-      <a class="cta-btn" href="/signin.html">Get started</a>
-    </div>
-
+    <section class="hero" data-no-divider data-prop-hero="couple" style="margin:0 calc(50% - 50vw) !important;width:100vw;">
+      <div class="hero-image" aria-hidden="true" style="background-image:url('https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&w=2000&q=80')"></div>
+      <div class="hero-shade" aria-hidden="true"></div>
+      <div class="hero-content">
+        <div data-orn="rings"></div>
+        <p class="eyebrow">Your wedding, your way</p>
+        <h1>Two stories.<br><em>One beautiful</em><br>beginning.</h1>
+        <p class="hero-tag">RSVPs, song bidding, gifts and guests &mdash; all in one elegant place.</p>
+        <p><a class="cta-btn" href="/signin.html" style="background:var(--cream);color:var(--green);text-decoration:none;display:inline-block">Create your wedding &#8599;</a></p>
+      </div>
+      <p class="hero-side" aria-hidden="true">Weddings made with love</p>
+    </section>
+    <div class="prop-row" data-props="ringsLine,cake,bouquet,dove,bell2,balloons" style="margin:2rem 0"></div>
     <!-- Features -->
     <div class="feature-grid">
       <div class="feature-card">
@@ -135,7 +137,7 @@
           <span class="wedding-badge">${esc(w.time_zone || "")}</span></div></a>`;
     };
 
-    const empty = (msg) => `<div class="empty-state"><p>${msg}</p></div>`;
+    const empty = (msg) => `<div class="empty-state">${window.WSOrn ? WSOrn.propRow("bouquet,ringsLine").outerHTML : ""}<p>${msg}</p></div>`;
 
     async function loadWeddings(page = 0) {
       try {
