@@ -1383,7 +1383,7 @@
         
         $("rsvps-body").innerHTML = rsvps.map(r => `
           <tr>
-            <td>${esc(r.guest_name)}</td>
+            <td>${esc(r.guest_name)}${r.plus_one_count > 0 ? `<br><span class=fine>Party of ${1 + r.plus_one_count}${r.party_names ? ": " + esc(r.party_names) : ""}</span>` : ""}</td>
             <td>${esc(r.guest_email)}${r.phone ? "<br><span class=fine>" + esc(r.phone) + "</span>" : ""}</td>
             <td>${r.attendance_status === "yes" ? "✓ Yes" : r.attendance_status === "no" ? "✗ No" : esc(r.attendance_status || "Pending")}</td>
             <td>${esc(r.dietary_notes || "—")}</td>
