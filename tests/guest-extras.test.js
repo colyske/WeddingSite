@@ -95,7 +95,8 @@ test("guest site: share channels, OG tags, referral visit, personal link, guestb
   await page.fill("#guest-email", "njeri@example.com");
   await page.selectOption("#attending", { index: 1 });
   await page.click("#rsvp-form button[type=submit]");
-  await page.waitForFunction(() => document.querySelector("#share-pass"), null, { timeout: 10000 });
+  await page.waitForSelector("#ecard:not([hidden])", { timeout: 10000 });
+  await page.waitForFunction(() => document.querySelector("#share-pass [data-ws-copy]")?.dataset.wsCopy.includes("abcdef12"), null, { timeout: 10000 });
   assert.equal(calls.rsvp.ref, "0a1b2c3d");
   const personal = await page.$$eval("#share-pass [data-ws-copy]", b => b.map(x => x.dataset.wsCopy));
   assert.ok(personal[0].endsWith("/w/a-and-o?ref=abcdef12"));
