@@ -39,11 +39,19 @@
     "Thank you for celebrating with us": "Asanteni kwa kusherehekea nasi",
     "Back to top ↑": "Rudi juu ↑", "Get directions ↗": "Pata maelekezo ↗",
     "Made with love on": "Imetengenezwa kwa upendo kwenye",
-    "Share this wedding": "Shiriki harusi hii"
+    "Share this wedding": "Shiriki harusi hii",
+    "Phone number *": "Namba ya simu *", "Phone number": "Namba ya simu", "Email (optional)": "Barua pepe (si lazima)",
+    "Your phone number is how we find your RSVP, pass and table. Shared only with the couple.": "Namba yako ya simu ndiyo tunayotumia kupata RSVP, pasi na meza yako. Inashirikiwa na wanandoa tu.",
+    "Enter the phone number the couple invited you with to see your table. Only your own table is shown.": "Weka namba ya simu waliyokualika nayo wanandoa ili uone meza yako. Meza yako pekee ndiyo huonyeshwa.",
+    "Wedding theme · colour palette": "Mandhari ya harusi · rangi",
+    "Before the wedding": "Kabla ya harusi",
+    "Fundraisers, rehearsals and gatherings leading up to the day.": "Michango, mazoezi na mikusanyiko kabla ya siku kuu.",
+    "Bids on the same song add up. Money from bids goes to the couple’s wedding fundraiser, not to the DJ. The DJ simply plays the most-requested songs.": "Zabuni za wimbo mmoja huongezwa pamoja. Pesa za zabuni huenda kwenye mchango wa harusi wa wanandoa, si kwa DJ. DJ huchezesha nyimbo zinazoombwa zaidi."
   };
   const SECTIONS = {
     story: ["Hadithi yetu", "Hadithi <em>yetu.</em>"],
     details: ["Maelezo", "Kila kitu <em>unachohitaji kujua.</em>"],
+    prewedding: ["Kabla ya harusi", "Njiani <em>kuelekea siku kuu.</em>"],
     venues: ["Sherehe", "Siku iliyojaa <em>nyakati.</em>"],
     attire: ["Mwonekano", "Vaa kama <em>furaha ya siku.</em>"],
     campaigns: ["Zawadi kwa sura yetu ijayo", "Tusherehekee, <em>ukipenda.</em>"],

@@ -39,6 +39,49 @@
       : '<p class="empty">Nothing here yet.</p>';
   const btn = (label, attrs) => `<button type="button" class="mini" ${attrs}>${esc(label)}</button>`;
 
+  // Client-side search + pagination (default 20 per page, selectable).
+  const pgState = {};
+  function mountPaged(el, tab, cfg) {
+    const st = (pgState[tab] = pgState[tab] || { page: 1, per: 20, q: "" });
+    el.innerHTML = `<h2>${esc(cfg.title)}</h2><p class="fine">${esc(cfg.intro)}</p>
+      <div class="pg-bar"><input type="search" class="pg-q" aria-label="Search ${esc(cfg.title)}" placeholder="Search..." value="${esc(st.q)}">
+      <label class="pg-per-l">Per page <select class="pg-per">${[10, 20, 50, 100].map((n) => `<option value="${n}"${n === st.per ? " selected" : ""}>${n}</option>`).join("")}</select></label></div>
+      <div class="pg-table"></div><div class="pg-pager"></div>`;
+    const draw = () => {
+      const q = st.q.toLowerCase();
+      const hits = q ? cfg.items.filter((i) => cfg.text(i).toLowerCase().includes(q)) : cfg.items;
+      const pages = Math.max(1, Math.ceil(hits.length / st.per));
+      if (st.page > pages) st.page = pages;
+      const slice = hits.slice((st.page - 1) * st.per, st.page * st.per);
+      el.querySelector(".pg-table").innerHTML = table(cfg.head, slice.map(cfg.row));
+      el.querySelector(".pg-pager").innerHTML = `<span class="fine">${hits.length} result${hits.length === 1 ? "" : "s"}${q ? " (filtered from " + cfg.items.length + ")" : ""} &middot; page ${st.page} of ${pages}</span>
+        ${btn("Previous", `data-pg="-1"${st.page <= 1 ? " disabled" : ""}`)} ${btn("Next", `data-pg="1"${st.page >= pages ? " disabled" : ""}`)}`;
+    };
+    el.querySelector(".pg-q").addEventListener("input", (e) => { st.q = e.target.value; st.page = 1; draw(); });
+    el.querySelector(".pg-per").addEventListener("change", (e) => { st.per = Number(e.target.value); st.page = 1; draw(); });
+    el.querySelector(".pg-pager").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-pg]");
+      if (b && !b.disabled) { st.page += Number(b.dataset.pg); draw(); }
+    });
+    draw();
+  }
+
+  async function weddingMetrics(el, id) {
+    const { metrics: m } = await get("wedding-metrics", "&weddingId=" + encodeURIComponent(id));
+    const w = m.wedding || {};
+    const a = m.analytics || {};
+    const cur = w.currency || "USD";
+    const money = (v) => esc(WS.money(Number(v || 0), cur, false));
+    const list = (rows, cols) => rows && rows.length ? table(cols.map((c) => c[0]), rows.map((r) => `<tr>${cols.map((c) => `<td>${c[1](r)}</td>`).join("")}</tr>`)) : '<p class="empty">Nothing here yet.</p>';
+    el.innerHTML = `<p><button type="button" class="mini" data-wm-back="1">&larr; All weddings</button></p>
+      <h2>${esc(w.couple_names || "Wedding")} <small class="fine">${esc(w.wedding_date || "")} &middot; ${w.archived ? "Archived" : w.published ? "Published" : "Draft"}</small></h2>
+      <div class="stats">${stat("Confirmed RSVPs", a.rsvps_confirmed ?? 0)}${stat("Guests attending (incl. party)", m.party_size ?? 0)}${stat("Declined", a.rsvps_declined ?? 0)}
+        ${stat("Visitors", a.visitors ?? 0)}${stat("Via referral links", a.referred_visitors ?? 0)}${stat("RSVPs from referrals", a.rsvps_referred ?? 0)}
+        ${stat("Song bids", a.bids ?? 0)}${stat("Top bid", money(a.top_bid_minor))}</div>
+      <h3>Funds raised by campaign</h3>${list(m.funds_by_campaign, [["Campaign", (r) => esc(r.campaign)], ["Payments", (r) => r.count], ["Gross", (r) => money(r.gross_minor)], ["Net", (r) => money(r.net_minor)]])}
+      <h3>Top songs (bids added up)</h3>${list(m.top_songs, [["Song", (r) => esc(r.song)], ["Artist", (r) => esc(r.artist || "-")], ["Bids", (r) => r.bids], ["Total", (r) => money(r.total_minor)]])}
+      <h3>Guests who invited others</h3>${list(m.top_inviters, [["Guest", (r) => esc(r.guest_name)], ["Visits", (r) => r.visits], ["RSVPs brought in", (r) => r.rsvps_brought]])}`;
+  }
   const panels = {
     async overview(el) {
       const o = await get("overview");
@@ -52,60 +95,77 @@
         <p class="fine">Payments are processed in <strong>test mode</strong>; amounts labelled test-simulator are not real money.</p>`;
     },
     async weddings(el) {
+      if (el.dataset.wedding) return weddingMetrics(el, el.dataset.wedding);
       const { weddings } = await get("weddings");
-      const rows = weddings.map((w) => {
-        const state = w.archived_at ? "Archived" : w.is_past ? "Completed" : w.published_at ? "Published" : "Draft";
-        const acts = [
-          w.published_at && !w.archived_at ? btn("Unpublish", `data-wa="unpublish" data-id="${esc(w.id)}"`) : "",
-          w.archived_at ? btn("Restore", `data-wa="restore" data-id="${esc(w.id)}"`) : btn("Archive", `data-wa="archive" data-id="${esc(w.id)}"`),
-          w.fee_status !== "paid" && w.fee_status !== "waived" ? btn("Waive fee", `data-wa="waive_fee" data-id="${esc(w.id)}"`) : "",
-          w.slug && w.published_at ? `<a class="mini" href="/guest.html?slug=${encodeURIComponent(w.slug)}" target="_blank" rel="noopener">Guest site</a>` : ""
-        ].join(" ");
-        return `<tr><td>${esc(w.couple_names)}</td><td>${esc(w.owner_email || "-")}</td><td>${esc(w.wedding_date || "-")} ${esc(w.time_zone || "")}</td>
-          <td>${state}</td><td>${w.rsvps}/${w.bids}</td><td>${esc(WS.money(Number(w.collected_minor), w.currency, false))}</td>
-          <td>${esc(w.fee_status)}</td><td>${w.kyc_complete ? "Complete" : "Missing"}</td><td class="acts">${acts}</td></tr>`;
+      mountPaged(el, "weddings", {
+        title: "All weddings",
+        intro: "Weddings are never deleted: they can only be unpublished or archived (reversible). Click Metrics for a per-wedding drill-down.",
+        head: ["Couple", "Owner", "Date / zone", "State", "RSVPs/Bids", "Collected", "Pub. fee", "KYC", "Actions"],
+        items: weddings,
+        text: (w) => [w.couple_names, w.owner_email, w.slug, w.fee_status].join(" "),
+        row: (w) => {
+          const state = w.archived_at ? "Archived" : w.is_past ? "Completed" : w.published_at ? "Published" : "Draft";
+          const acts = [
+            btn("Metrics", `data-wm="${esc(w.id)}"`),
+            w.published_at && !w.archived_at ? btn("Unpublish", `data-wa="unpublish" data-id="${esc(w.id)}"`) : "",
+            w.archived_at ? btn("Restore", `data-wa="restore" data-id="${esc(w.id)}"`) : btn("Archive", `data-wa="archive" data-id="${esc(w.id)}"`),
+            w.fee_status !== "paid" && w.fee_status !== "waived" ? btn("Waive fee", `data-wa="waive_fee" data-id="${esc(w.id)}"`) : "",
+            w.slug && w.published_at ? `<a class="mini" href="/guest.html?slug=${encodeURIComponent(w.slug)}" target="_blank" rel="noopener">Guest site</a>` : ""
+          ].join(" ");
+          return `<tr><td>${esc(w.couple_names)}</td><td>${esc(w.owner_email || "-")}</td><td>${esc(w.wedding_date || "-")} ${esc(w.time_zone || "")}</td>
+            <td>${state}</td><td>${w.rsvps}/${w.bids}</td><td>${esc(WS.money(Number(w.collected_minor), w.currency, false))}</td>
+            <td>${esc(w.fee_status)}</td><td>${w.kyc_complete ? "Complete" : "Missing"}</td><td class="acts">${acts}</td></tr>`;
+        }
       });
-      el.innerHTML = `<h2>All weddings</h2><p class="fine">Weddings are never deleted: they can only be unpublished or archived (reversible).</p>` +
-        table(["Couple", "Owner", "Date / zone", "State", "RSVPs/Bids", "Collected", "Pub. fee", "KYC", "Actions"], rows);
     },
     async users(el) {
       const search = el.dataset.search || "";
       const { users } = await get("users", search ? "&search=" + encodeURIComponent(search) : "");
       const canRole = role === "owner" || role === "superadmin";
       const me = WS.session().user?.id;
-      const rows = users.map((u) => {
-        const sel = canRole && u.id !== me && u.platform_role !== "owner"
-          ? `<select data-role-for="${esc(u.id)}" aria-label="Role for ${esc(u.email)}">${["client", "admin", "superadmin"].map((r) => `<option value="${r}"${r === u.platform_role ? " selected" : ""}>${r}</option>`).join("")}</select> ${btn("Apply", `data-setrole="${esc(u.id)}"`)}`
-          : esc(u.platform_role);
-        return `<tr><td>${esc(u.email || "-")}</td><td>${esc(u.display_name || "-")}</td><td>${sel}</td><td>${u.wedding_count}</td><td>${date(u.created_at)}</td></tr>`;
+      mountPaged(el, "users", {
+        title: "Users & roles",
+        intro: canRole ? "Role changes are audited. You cannot change your own role. SuperAdmins can only manage Admin/Client; only the Owner can promote to SuperAdmin." : "Only the Owner or a SuperAdmin can change roles.",
+        head: ["Email", "Name", "Role", "Weddings", "Joined"],
+        items: users,
+        text: (u) => [u.email, u.display_name, u.platform_role].join(" "),
+        row: (u) => {
+          const sel = canRole && u.id !== me && u.platform_role !== "owner"
+            ? `<select data-role-for="${esc(u.id)}" aria-label="Role for ${esc(u.email)}">${["client", "admin", "superadmin"].map((r) => `<option value="${r}"${r === u.platform_role ? " selected" : ""}>${r}</option>`).join("")}</select> ${btn("Apply", `data-setrole="${esc(u.id)}"`)}`
+            : esc(u.platform_role);
+          return `<tr><td>${esc(u.email || "-")}</td><td>${esc(u.display_name || "-")}</td><td>${sel}</td><td>${u.wedding_count}</td><td>${date(u.created_at)}</td></tr>`;
+        }
       });
-      el.innerHTML = `<h2>Users & roles</h2>
-        <form id="user-search" class="inline"><input type="search" id="user-q" placeholder="Search email or name" value="${esc(search)}"><button type="submit" class="mini">Search</button></form>
-        ${canRole ? '<p class="fine">Role changes are audited. You cannot change your own role. SuperAdmins can only manage Admin/Client; only the Owner can promote to SuperAdmin.</p>' : '<p class="fine">Only the Owner or a SuperAdmin can change roles.</p>'}` +
-        table(["Email", "Name", "Role", "Weddings", "Joined"], rows);
     },
     async fees(el) {
       const { policies: p } = await get("policies");
-      const f = (id, label, val, hint) => `<label for="${id}">${esc(label)}</label><input id="${id}" type="number" min="0" step="1" value="${esc(val ?? "")}"><span class="fine">${esc(hint)}</span>`;
+      const major = (v) => (v === null || v === undefined ? "" : (Number(v) / 100).toFixed(2));
+      const f = (id, label, val, hint) => `<label for="${id}">${esc(label)}</label><input id="${id}" type="number" min="0" step="0.01" value="${esc(major(val))}"><span class="fine">${esc(hint)}</span>`;
+      const g = (id, label, val, hint) => `<label for="${id}">${esc(label)}</label><input id="${id}" type="number" min="0" step="1" value="${esc(val ?? "")}"><span class="fine">${esc(hint)}</span>`;
       const full = role === "owner" || role === "superadmin";
       el.innerHTML = `<h2>Fees & settings</h2>
-        <p class="fine"><strong>How publication fees combine:</strong> (1) a paid or waived fee is never charged twice; (2) if the wedding date is further away than the far-future threshold, the far-future fee applies (this overrides the free allowance); (3) otherwise the client's first N published weddings are free; (4) after that the standard per-wedding fee applies. Amounts are in minor units (cents).</p>
+        <p class="fine"><strong>How publication fees combine:</strong> (1) a paid or waived fee is never charged twice; (2) if the wedding date is further away than the far-future threshold, the far-future fee applies (this overrides the free allowance); (3) otherwise the client's first N published weddings are free; (4) after that the standard per-wedding fee applies.</p>
+        <p class="fine"><strong>Units:</strong> money fields are entered and shown in major units with 2 decimals (e.g. <code>15.50</code> = 15 units and 50 cents). They are stored in minor units (<code>15.50 &times; 100 = 1550</code>) and use each wedding's own currency.</p>
         <form id="fees-form">
-        ${f("p-fee", "Standard publication fee (minor units)", p.publication_fee_minor, "Charged after the free allowance is used.")}
-        ${f("p-ff-months", "Far-future threshold (months)", p.far_future_months, "Weddings further away than this are charged the far-future fee.")}
-        ${f("p-ff-fee", "Far-future fee (minor units)", p.far_future_fee_minor, "Applies before the free allowance.")}
-        ${f("p-free", "Free publications per client", p.free_publications_per_client, "First N published weddings per client are free.")}
-        ${f("p-bps", "Contribution fee (basis points)", p.contribution_fee_basis_points, "250 = 2.5% of each contribution.")}
-        ${full ? f("p-max", "Max single contribution (minor units)", p.max_contribution_minor, "Safety cap per payment.") : ""}
+        ${f("p-fee", "Standard publication fee", p.publication_fee_minor, "Charged after the free allowance is used.")}
+        ${g("p-ff-months", "Far-future threshold (months)", p.far_future_months, "Weddings further away than this are charged the far-future fee.")}
+        ${f("p-ff-fee", "Far-future fee", p.far_future_fee_minor, "Applies before the free allowance.")}
+        ${g("p-free", "Free publications per client", p.free_publications_per_client, "First N published weddings per client are free.")}
+        ${g("p-bps", "Contribution fee (basis points)", p.contribution_fee_basis_points, "250 = 2.5% of each contribution.")}
+        ${full ? f("p-max", "Max single contribution", p.max_contribution_minor, "Safety cap per payment.") : ""}
         <button type="submit">Save settings</button></form>`;
     },
     async ledger(el) {
       const { ledger } = await get("ledger");
-      el.innerHTML = `<h2>Ledger</h2><p class="fine">Newest 200 contributions across all weddings. test-simulator rows are simulated.</p>` +
-        table(["Date", "Wedding", "Stream", "Amount", "Fee", "Net", "Status", "Provider"], ledger.map((l) =>
-          `<tr><td>${date(l.created_at)}</td><td>${esc(l.couple_names)}</td><td>${esc(l.stream_name)}</td><td>${esc(WS.money(Number(l.amount_minor), l.currency, false))}</td><td>${esc(WS.money(Number(l.fee_minor || 0), l.currency, false))}</td><td>${esc(WS.money(Number(l.net_minor || 0), l.currency, false))}</td><td>${esc(l.status)}</td><td>${esc(l.provider || "-")}</td></tr>`));
-    },
-    async payouts(el) {
+      mountPaged(el, "ledger", {
+        title: "Ledger",
+        intro: "Newest 500 contributions across all weddings. test-simulator rows are simulated.",
+        head: ["Date", "Wedding", "Stream", "Amount", "Fee", "Net", "Status", "Provider"],
+        items: ledger,
+        text: (l) => [l.couple_names, l.stream_name, l.status, l.provider].join(" "),
+        row: (l) => `<tr><td>${date(l.created_at)}</td><td>${esc(l.couple_names)}</td><td>${esc(l.stream_name)}</td><td>${esc(WS.money(Number(l.amount_minor), l.currency, false))}</td><td>${esc(WS.money(Number(l.fee_minor || 0), l.currency, false))}</td><td>${esc(WS.money(Number(l.net_minor || 0), l.currency, false))}</td><td>${esc(l.status)}</td><td>${esc(l.provider || "-")}</td></tr>`
+      });
+    },    async payouts(el) {
       const { payouts } = await get("payouts");
       el.innerHTML = `<h2>Payouts / withdrawals</h2><p class="fine">Four-eyes rule: you cannot approve a payout you requested. No money moves automatically; "sent" records a manual transfer.</p>` +
         table(["Requested", "Wedding", "Amount", "Status", "Note", "Actions"], payouts.map((p) => {
@@ -117,10 +177,15 @@
     },
     async audit(el) {
       const { audit } = await get("audit");
-      el.innerHTML = `<h2>Audit log</h2>` + table(["When", "Actor", "Action", "Table"], audit.map((a) =>
-        `<tr><td>${date(a.created_at)}</td><td>${esc(a.actor)}</td><td>${esc(a.action)}</td><td>${esc(a.table_name || "")}</td></tr>`));
-    },
-    async security(el) {
+      mountPaged(el, "audit", {
+        title: "Audit log",
+        intro: "Newest 500 events.",
+        head: ["When", "Actor", "Action", "Table"],
+        items: audit,
+        text: (a) => [a.actor, a.action, a.table_name].join(" "),
+        row: (a) => `<tr><td>${date(a.created_at)}</td><td>${esc(a.actor)}</td><td>${esc(a.action)}</td><td>${esc(a.table_name || "")}</td></tr>`
+      });
+    },    async security(el) {
       el.innerHTML = `<h2>Security guidance</h2><ul class="guide">
         <li>Use a unique password of 12+ characters for the Owner account and rotate it if it was ever shared.</li>
         <li>Owner is the only role that can promote SuperAdmins; keep at least one trusted SuperAdmin as backup.</li>
@@ -132,7 +197,7 @@
   };
 
   async function show(tab) {
-    document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+    document.querySelectorAll(".tab-btn").forEach((b) => { const on = b.dataset.tab === tab; b.classList.toggle("active", on); b.setAttribute("aria-selected", on ? "true" : "false"); });
     const el = $("panel");
     el.innerHTML = '<p class="fine">Loading...</p>';
     el.dataset.tab = tab;
@@ -154,12 +219,14 @@
     if (opts.ownerOnly && role !== "owner") return location.replace("/account.html");
     $("role-badge").textContent = "Role: " + role;
     const tabs = opts.ownerOnly ? ["overview", "users", "fees", "ledger", "payouts", "audit", "weddings", "security"] : ["overview", "weddings", "users", "fees", "ledger", "payouts", "audit"];
-    $("admin-nav").innerHTML = tabs.map((t, i) => `<button type="button" class="tab-btn${i ? "" : " active"}" data-tab="${t}">${SEC[t]}</button>`).join("");
-    $("admin-nav").addEventListener("click", (e) => { const b = e.target.closest(".tab-btn"); if (b) show(b.dataset.tab); });
+    $("admin-nav").innerHTML = tabs.map((t, i) => `<button type="button" class="tab-btn${i ? "" : " active"}" role="tab" aria-selected="${i ? "false" : "true"}" data-tab="${t}">${SEC[t]}</button>`).join("");
+    $("admin-nav").addEventListener("click", (e) => { const b = e.target.closest(".tab-btn"); if (b) { delete $("panel").dataset.wedding; show(b.dataset.tab); } });
     $("sign-out").addEventListener("click", () => { WS.clear(); location.replace("/signin.html"); });
 
     const panel = $("panel");
     panel.addEventListener("click", async (e) => {
+      if (e.target.closest("[data-wm]")) { panel.dataset.wedding = e.target.closest("[data-wm]").dataset.wm; return show("weddings"); }
+      if (e.target.closest("[data-wm-back]")) { delete panel.dataset.wedding; return show("weddings"); }
       const t = e.target.closest("button[data-wa],button[data-ps],button[data-setrole]");
       if (!t) return;
       try {
@@ -184,7 +251,8 @@
       if (e.target.id === "user-search") { panel.dataset.search = $("user-q").value.trim(); return show("users"); }
       if (e.target.id === "fees-form") {
         const n = (id) => (panel.querySelector("#" + id) ? Number(panel.querySelector("#" + id).value) : undefined);
-        const policies = { publication_fee_minor: n("p-fee"), far_future_months: n("p-ff-months"), far_future_fee_minor: n("p-ff-fee"), free_publications_per_client: n("p-free"), contribution_fee_basis_points: n("p-bps"), max_contribution_minor: n("p-max") };
+        const mn = (id) => { const v = n(id); return v === undefined || Number.isNaN(v) ? undefined : Math.round(v * 100); };
+        const policies = { publication_fee_minor: mn("p-fee"), far_future_months: n("p-ff-months"), far_future_fee_minor: mn("p-ff-fee"), free_publications_per_client: n("p-free"), contribution_fee_basis_points: n("p-bps"), max_contribution_minor: mn("p-max") };
         for (const k of Object.keys(policies)) if (policies[k] === undefined || Number.isNaN(policies[k])) delete policies[k];
         try { await post("policies-save", { policies }); toast("Settings saved."); } catch (err) { toast(err.message, true); }
       }

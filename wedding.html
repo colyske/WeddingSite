@@ -109,8 +109,21 @@
         <label>Wedding theme palette</label>
         <div class="swatches" id="palette-preview"></div>
 
-        <label for="venues-section">Venues & Itinerary
-          <button type="button" class="link" id="add-venue-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add venue</button>
+        <fieldset id="rsvp-fees-fieldset" style="border:1px solid #d0d5cc; border-radius:8px; padding:1rem; margin:1rem 0;">
+          <legend>RSVP fees (optional, in your wedding currency)</legend>
+          <p class="fine">Leave at 0 for free RSVPs. Guests see the total and confirm before submitting. Payments are simulated in demo mode: they are recorded in the ledger but no real money moves.</p>
+          <label for="rsvp-fee">Base RSVP fee</label>
+          <input id="rsvp-fee" type="number" min="0" step="0.01" value="0.00">
+          <label for="extra-guest-fee">Fee per extra guest (a party of 3 pays base + 2 &times; this)</label>
+          <input id="extra-guest-fee" type="number" min="0" step="0.01" value="0.00">
+          <label for="premium-diet-options">Premium dietary options (comma separated; standard options stay free)</label>
+          <input id="premium-diet-options" type="text" maxlength="300" placeholder="e.g. Lobster menu, Wagyu steak">
+          <label for="premium-diet-fee">Premium dietary fee</label>
+          <input id="premium-diet-fee" type="number" min="0" step="0.01" value="0.00">
+        </fieldset>
+
+        <label for="venues-section">Venues & Itinerary (including pre-wedding events)
+          <button type="button" class="link" id="add-venue-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add event / venue</button>
         </label>
         <div id="venues-list" style="margin-bottom: 1.5rem;"></div>
 
@@ -118,7 +131,7 @@
           <button type="button" class="link" id="edit-colors-btn" style="margin-left: 0.5rem; font-weight: normal;">🎨 Edit colours</button>
         </label>
         <div id="attire-editor" style="display: none; border: 2px dashed #d0d5cc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: #fafbf9;">
-          <p style="margin: 0 0 1rem; font-weight: 500;">Edit the single wedding palette used throughout your site and lookbook. Add one to four hex colours.</p>
+          <p style="margin: 0 0 1rem; font-weight: 500;">Edit the single wedding palette used throughout your site and lookbook. Add one to four colours and name each one (e.g. "Forest Green"); guests see the name and hex code.</p>
           <div id="color-inputs" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
             <div style="display: flex; align-items: center; gap: 0.5rem;">
               <input type="color" class="palette-color" value="#244b3a" style="width: 60px; height: 60px; border: none; border-radius: 4px; cursor: pointer;">
@@ -281,7 +294,7 @@
         <thead>
           <tr>
             <th>Name</th>
-            <th>Email</th>
+            <th>Phone / email</th>
             <th>Status</th>
             <th>Dietary needs</th>
             <th>Submitted</th>
@@ -496,6 +509,9 @@
     });
 
     // Venues management
+    window.venueExtra = (kind, address) => `
+          <select class="venue-kind" aria-label="Event type"><option value="main"${kind === "pre" ? "" : " selected"}>Wedding day event</option><option value="pre"${kind === "pre" ? " selected" : ""}>Before the wedding (fundraiser, rehearsal, party)</option></select>
+          <input type="text" class="venue-addr" value="${esc(address || "")}" placeholder="Street address (shown with Get directions)" maxlength="200">`;
     let venueCount = 0;
     function addVenueEditor() {
       const id = `venue-${venueCount++}`;
@@ -506,6 +522,7 @@
           </div>
           <input type="text" class="venue-name" placeholder="Venue name (e.g. Cathedral, Reception)" maxlength="80">
           <input type="text" class="venue-time" placeholder="Time (e.g. 10:00 AM)">
+          ${window.venueExtra("main", "")}
           <input type="url" class="venue-address" placeholder="Address or map link (e.g. Google Maps URL)">
           <textarea class="venue-notes" placeholder="Details (e.g. Dress code, parking info)" maxlength="240"></textarea>
           <button type="button" class="remove-venue" data-venue-id="${id}">Remove</button>
@@ -556,10 +573,12 @@
         : [];
       if (!palette.length) palette = ["#244b3a"];
       container.replaceChildren();
-      palette.forEach(color => addColorInput(color));
+      let names = [];
+      try { names = JSON.parse($("palette-preview").dataset.names || "[]"); } catch { names = []; }
+      palette.forEach((color, i) => addColorInput(color, names[i] || ""));
     }
 
-    function addColorInput(color = "#244b3a") {
+    function addColorInput(color = "#244b3a", name = "") {
       const container = $("color-inputs");
       if (container.querySelectorAll(".palette-color").length >= 4) return;
       
@@ -568,6 +587,7 @@
       div.innerHTML = `
         <input type="color" class="palette-color" value="${color}" style="width: 60px; height: 60px; border: none; border-radius: 4px; cursor: pointer;">
         <input type="text" class="palette-color-hex" placeholder="Hex code" maxlength="7" value="${color}" style="width: 100px; padding: 0.5rem; border: 1px solid #d0d5cc; border-radius: 4px;">
+        <input type="text" class="palette-color-name" placeholder="Colour name" maxlength="40" value="${esc(name)}" aria-label="Colour name" style="width: 140px; padding: 0.5rem; border: 1px solid #d0d5cc; border-radius: 4px;">
         <button type="button" class="remove-color-btn link" style="padding: 0; margin: 0;">✕</button>
       `;
       
@@ -611,8 +631,10 @@
       }
       
       // Store palette both as data attribute and visual spans
+      const cnames = Array.from($("color-inputs").querySelectorAll(".palette-color-name")).map(n => n.value.trim());
       $("palette-preview").dataset.palette = JSON.stringify(colors);
-      $("palette-preview").innerHTML = colors.map(c => `<span style="background: ${c};" data-color="${c}"></span>`).join("");
+      $("palette-preview").dataset.names = JSON.stringify(cnames);
+      $("palette-preview").innerHTML = colors.map((c, i) => `<span style="background: ${c};" data-color="${c}" title="${esc((cnames[i] || "Colour " + (i + 1)) + " " + c.toUpperCase())}"></span>`).join("");
       colorEditorOpen = false;
       $("attire-editor").style.display = "none";
     });
@@ -717,10 +739,15 @@
       reader.onload = async event => {
         try {
           const csv = event.target.result;
-          const lines = csv.trim().split("\n").slice(1); // Skip header
-          const guests = lines.map(line => {
-            const [name, email, dietary, table] = line.split(",").map(s => s.trim());
-            return { name, email, dietary, table };
+          const rows = csv.trim().split(/\r?\n/);
+          const header = rows.shift().split(",").map(s => s.trim().toLowerCase());
+          const col = (...names) => header.findIndex(h => names.includes(h));
+          const idx = { name: col("name", "guest", "full name"), phone: col("phone", "phone number", "mobile", "tel"), email: col("email", "e-mail"), dietary: col("dietary", "diet"), table: col("table", "table number") };
+          if (idx.name < 0) { idx.name = 0; idx.email = idx.email < 0 ? 1 : idx.email; idx.dietary = idx.dietary < 0 ? 2 : idx.dietary; idx.table = idx.table < 0 ? 3 : idx.table; }
+          const guests = rows.map(line => {
+            const cells = line.split(",").map(s => s.trim());
+            const at = i => (i >= 0 ? cells[i] || "" : "");
+            return { name: at(idx.name), phone: at(idx.phone), email: at(idx.email), dietary: at(idx.dietary), table: at(idx.table) };
           }).filter(g => g.name);
           
           if (guests.length === 0) {
@@ -738,7 +765,7 @@
           $("guest-list-display").innerHTML = guests.map((g, idx) => `
             <div style="border-left: 4px solid var(--sage); padding: 1rem; background: #f8f9f7; border-radius: 4px;">
               <p style="margin: 0 0 0.5rem; font-weight: 600; color: var(--green);">${esc(g.name)}</p>
-              <p style="margin: 0; font-size: 0.9rem; color: #5a5f5a;">📧 ${esc(g.email || "—")}</p>
+              <p style="margin: 0; font-size: 0.9rem; color: #5a5f5a;">📱 ${esc(g.phone || "—")}${g.email ? " · 📧 " + esc(g.email) : ""}</p>
               ${g.dietary ? `<p style="margin: 0.25rem 0 0; font-size: 0.9rem; color: var(--gold);">🍽️ ${esc(g.dietary)}</p>` : ""}
               ${g.table ? `<p style="margin: 0.25rem 0 0; font-size: 0.9rem; color: var(--green);">🪑 Table ${esc(g.table)}</p>` : ""}
             </div>
@@ -747,7 +774,7 @@
           notice(`Imported and saved ${guests.length} guests.`);
         } catch (err) {
           console.error("CSV parse error:", err);
-          notice("Could not parse CSV file. Check format: name, email, dietary, table", true);
+          notice("Could not parse CSV file. Check format: name, phone, email, dietary, table (header row first)", true);
         }
       };
       reader.readAsText(file);
@@ -794,7 +821,12 @@
         // Load palette: store as data attribute and render as spans
         const palette = w.palette || ["#244b3a"];
         $("palette-preview").dataset.palette = JSON.stringify(palette);
-        $("palette-preview").innerHTML = palette.map(c => `<span style="background: ${c};" data-color="${c}"></span>`).join("");
+        $("palette-preview").dataset.names = JSON.stringify(w.palette_names || []);
+        $("palette-preview").innerHTML = palette.map((c, i) => `<span style="background: ${c};" data-color="${c}" title="${esc(((w.palette_names || [])[i] || "Colour " + (i + 1)) + " " + c.toUpperCase())}"></span>`).join("");
+        $("rsvp-fee").value = ((w.rsvp_fee_minor || 0) / 100).toFixed(2);
+        $("extra-guest-fee").value = ((w.extra_guest_fee_minor || 0) / 100).toFixed(2);
+        $("premium-diet-fee").value = ((w.premium_diet_fee_minor || 0) / 100).toFixed(2);
+        $("premium-diet-options").value = (w.premium_diet_options || []).join(", ");
         $("attire-notes").value = w.attire_notes || "";
 
         // Load venues
@@ -809,6 +841,7 @@
                 </div>
                 <input type="text" class="venue-name" value="${esc(venue.name || "")}" placeholder="Venue name" maxlength="80">
                 <input type="text" class="venue-time" value="${esc(venue.event_time || "")}" placeholder="Time">
+                ${window.venueExtra(venue.kind, venue.address)}
                 <input type="url" class="venue-address" value="${esc(venue.map_link || "")}" placeholder="Map link">
                 <textarea class="venue-notes" placeholder="Details" maxlength="240">${esc(venue.description || "")}</textarea>
                 <input type="hidden" class="venue-id" value="${esc(venue.id || "")}">
@@ -996,6 +1029,8 @@
               eventTime: item.querySelector(".venue-time").value || null,
               mapLink: item.querySelector(".venue-address").value || null,
               description: item.querySelector(".venue-notes").value || null,
+              kind: item.querySelector(".venue-kind").value || "main",
+              address: item.querySelector(".venue-addr").value.trim() || null,
               isMain: item.querySelector(".venue-main-cb").checked || false
             });
           }
@@ -1092,6 +1127,11 @@
             venues: venues,
             palette: palette,
             attireNotes: $("attire-notes").value,
+            paletteNames: (() => { try { return JSON.parse($("palette-preview").dataset.names || "[]"); } catch { return []; } })(),
+            rsvpFee: Number($("rsvp-fee").value || 0),
+            extraGuestFee: Number($("extra-guest-fee").value || 0),
+            premiumDietFee: Number($("premium-diet-fee").value || 0),
+            premiumDietOptions: $("premium-diet-options").value,
             registry: registry,
             tiers: tiers,
             vip: vip,
@@ -1384,7 +1424,7 @@
         $("rsvps-body").innerHTML = rsvps.map(r => `
           <tr>
             <td>${esc(r.guest_name)}${r.plus_one_count > 0 ? `<br><span class=fine>Party of ${1 + r.plus_one_count}${r.party_names ? ": " + esc(r.party_names) : ""}</span>` : ""}</td>
-            <td>${esc(r.guest_email)}${r.phone ? "<br><span class=fine>" + esc(r.phone) + "</span>" : ""}</td>
+            <td>${esc(r.phone || "-")}${r.guest_email ? "<br><span class=fine>" + esc(r.guest_email) + "</span>" : ""}</td>
             <td>${r.attendance_status === "yes" ? "✓ Yes" : r.attendance_status === "no" ? "✗ No" : esc(r.attendance_status || "Pending")}</td>
             <td>${esc(r.dietary_notes || "—")}</td>
             <td>${new Date(r.rsvped_at || r.created_at).toLocaleDateString()}${r.checked_in_at ? " · Checked in" : ""}</td>

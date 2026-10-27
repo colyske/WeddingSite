@@ -109,7 +109,7 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     assert.match(await page.locator("#sponsors-display").textContent(), /Acme & Co/);
 
     await page.fill("#guest-name", couple);
-    await page.fill("#guest-email", "guest@example.test");
+    await page.fill("#guest-phone", "0712345678");
     await page.selectOption("#attending", "yes");
     await page.click('#rsvp-form button[type="submit"]');
     await page.waitForFunction(() => !document.querySelector("#ecard").hidden);

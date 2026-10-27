@@ -198,6 +198,7 @@
     <section id="details" class="card" hidden>
       <h2>Wedding Details</h2>
       <p id="wedding-location" class="fine"></p>
+      <p class="fine palette-label">Wedding theme &middot; colour palette</p>
       <div class="swatches" id="palette-preview"></div>
     </section>
 
@@ -208,9 +209,17 @@
       <div id="venues-display" style="display: flex; flex-direction: column; gap: 1.5rem;"></div>
     </section>
 
+    <!-- Pre-wedding events -->
+    <section id="prewedding" class="card" hidden>
+      <h2>Before the wedding</h2>
+      <p class="fine">Fundraisers, rehearsals and gatherings leading up to the day.</p>
+      <div id="prewedding-display" style="display: flex; flex-direction: column; gap: 1.5rem;"></div>
+    </section>
+
     <!-- Attire & Dress Code -->
     <section id="attire" class="card" hidden>
       <h2>Dress code</h2>
+      <p class="fine palette-label">Wedding theme &middot; colour palette</p>
       <div class="swatches" id="attire-palette-preview"></div>
       <p id="attire-notes-display" class="fine" style="margin-top: 1rem;"></p>
     </section>
@@ -237,11 +246,12 @@
         <label for="guest-name">Your name *</label>
         <input id="guest-name" type="text" maxlength="100" required>
 
-        <label for="guest-email">Email *</label>
-        <input id="guest-email" type="email" required>
-<label for="guest-phone">Phone (optional)</label>
-<input id="guest-phone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="+254 700 000000">
-<p class="fine">Shared only with the couple, to coordinate your attendance.</p>
+        <label for="guest-phone">Phone number *</label>
+<input id="guest-phone" type="tel" inputmode="tel" maxlength="20" autocomplete="tel" placeholder="+254 700 000000" required>
+<p class="fine">Your phone number is how we find your RSVP, pass and table. Shared only with the couple.</p>
+
+        <label for="guest-email">Email (optional)</label>
+        <input id="guest-email" type="email">
 
         <label for="attending">Will you attend? *</label>
         <select id="attending" required>
@@ -273,6 +283,7 @@
         <label for="dietary-notes">Dietary notes (optional)</label>
         <textarea id="dietary-notes" maxlength="200" rows="2" placeholder="e.g. specific allergies, cooking preferences…"></textarea>
 
+        <p class="fine" id="rsvp-fee-note" hidden></p>
         <p class="fine" id="rsvp-capacity-warning" hidden style="color: var(--gold);"></p>
         <p class="fine"><em>We'd love to accommodate your preferences!</em></p>
 
@@ -304,7 +315,7 @@
         <label for="bid-amount">Bid amount (in <span id="currency-display">USD</span>) *</label>
         <input id="bid-amount" type="number" step="0.01" min="0" placeholder="0.00" required>
 
-        <p class="fine" id="bid-note">Your bid helps support the DJ and music at our wedding.</p>
+        <p class="fine" id="bid-note">Bids on the same song add up. Money from bids goes to the couple&rsquo;s wedding fundraiser, not to the DJ. The DJ simply plays the most-requested songs.</p>
 
         <button type="submit">Place Bid</button>
       </form>
@@ -369,10 +380,10 @@
     <!-- Seating lookup -->
     <section id="seating" class="card" hidden>
       <h2>Find your seat</h2>
-      <p class="fine">Enter the email address the couple invited you with to see your table. Only your own table is shown.</p>
+      <p class="fine">Enter the phone number the couple invited you with to see your table. Only your own table is shown.</p>
       <form id="seat-form">
-        <label for="seat-email">Email</label>
-        <input id="seat-email" type="email" maxlength="254" required autocomplete="email">
+        <label for="seat-phone">Phone number</label>
+        <input id="seat-phone" type="tel" inputmode="tel" maxlength="20" required autocomplete="tel" placeholder="+254 700 000000">
         <button type="submit">Find my table</button>
       </form>
       <p id="seat-result" class="notice" role="status" hidden></p>
@@ -453,6 +464,7 @@
 
       document.title = `${wedding.couple_names || "Wedding"} — Wedding`;
       document.dispatchEvent(new CustomEvent("ws:wedding", { detail: wedding }));
+      applyRsvpFees();
 
       // Couple monogram
       const names = wedding.couple_names?.split(/[&,]|and/).map(n => n.trim().charAt(0).toUpperCase()).join("").slice(0, 3) || "WS";
@@ -496,34 +508,24 @@
       if (wedding.public_location?.trim() || wedding.palette?.length) {
         $("details").hidden = false;
         $("wedding-location").textContent = wedding.public_location || "Location TBA";
-        $("palette-preview").innerHTML = (wedding.palette || []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).map(c => `<span style="background: ${c};"></span>`).join("");
+        $("palette-preview").innerHTML = paletteFigs(wedding);
       }
 
       // Venues: date, time (wedding time zone), address/notes and map link
-      if (wedding.venues && wedding.venues.length > 0) {
+      const mainVenues = (wedding.venues || []).filter(v => v.kind !== "pre");
+      const preVenues = (wedding.venues || []).filter(v => v.kind === "pre");
+      if (preVenues.length) { $("prewedding").hidden = false; $("prewedding-display").innerHTML = preVenues.map(v => venueRow(v, wedding)).join(""); }
+      if (mainVenues.length > 0) {
         $("venues").hidden = false;
         const zone = wedding.time_zone || WSTime.DEFAULT_ZONE;
         const startMs = WSTime.weddingStart(wedding);
         $("venues-zone").textContent = "Times are shown in " + zone.replace(/_/g, " ") + (startMs != null ? " (" + WSTime.abbreviation(zone, startMs) + ")" : "") + ".";
-        $("venues-display").innerHTML = wedding.venues.map(v => {
-          const day = String(v.event_date || wedding.wedding_date || "").slice(0, 10);
-          const ms = day ? WSTime.zonedToUtc(day, v.event_time || "12:00:00", zone) : null;
-          const dateText = ms != null ? WSTime.formatDate(ms, zone) : "";
-          const timeText = v.event_time && ms != null ? WSTime.formatTime(ms, zone) : "";
-          return `<div class="sched-row venue-card">
-            <div class="sched-time">${timeText ? esc(timeText).replace(/\s?(AM|PM)$/i, " <small>$1</small>") : "&mdash;"}${dateText ? `<span class="sched-date">${esc(dateText)}</span>` : ""}</div>
-            <div class="sched-body">
-              <h3>${esc(v.name)}${v.is_main ? " <small>(main ceremony)</small>" : ""}</h3>
-              ${v.description ? `<p>${esc(v.description)}</p>` : ""}
-              ${safeUrl(v.map_link) ? `<a href="${esc(safeUrl(v.map_link))}" target="_blank" rel="noopener noreferrer" class="link">Get directions &#8599;</a>` : ""}
-            </div>
-          </div>`;
-        }).join("");
+        $("venues-display").innerHTML = mainVenues.map(v => venueRow(v, wedding)).join("");
       }
       // Attire & Dress Code
       if ((wedding.palette && wedding.palette.length) || wedding.attire_notes?.trim()) {
         $("attire").hidden = false;
-        $("attire-palette-preview").innerHTML = (wedding.palette || []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).map((c, i) => `<figure><span style="background: ${c};"></span><figcaption>Palette colour 0${i + 1}<small>${esc(c.toUpperCase())}</small></figcaption></figure>`).join("");
+        $("attire-palette-preview").innerHTML = paletteFigs(wedding);
         if (wedding.attire_notes?.trim()) {
           $("attire-notes-display").textContent = wedding.attire_notes;
         }
@@ -582,6 +584,36 @@
       console.error("Load failed:", err);
       notice("Network error loading wedding.", true);
     }
+  }
+
+  function paletteFigs(w) {
+    const names = w.palette_names || [];
+    return (w.palette || []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).map((c, i) => {
+      const name = String(names[i] || "").trim() || `Colour 0${i + 1}`;
+      return `<figure><span style="background: ${c};"></span><figcaption>${esc(name)} <small>(${esc(c.toUpperCase())})</small></figcaption></figure>`;
+    }).join("");
+  }
+  function directionsUrl(v) {
+    if (safeUrl(v.map_link)) return safeUrl(v.map_link);
+    const q = [v.name, v.address].filter(Boolean).join(", ");
+    return q ? "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(q) : "";
+  }
+  function venueRow(v, w) {
+    const zone = w.time_zone || WSTime.DEFAULT_ZONE;
+    const day = String(v.event_date || w.wedding_date || "").slice(0, 10);
+    const ms = day ? WSTime.zonedToUtc(day, v.event_time || "12:00:00", zone) : null;
+    const dateText = ms != null ? WSTime.formatDate(ms, zone) : "";
+    const timeText = v.event_time && ms != null ? WSTime.formatTime(ms, zone) : "";
+    const href = directionsUrl(v);
+    return `<div class="sched-row venue-card">
+      <div class="sched-time">${timeText ? esc(timeText).replace(/\s?(AM|PM)$/i, " <small>$1</small>") : "&mdash;"}${dateText ? `<span class="sched-date">${esc(dateText)}</span>` : ""}</div>
+      <div class="sched-body">
+        <h3>${esc(v.name)}${v.is_main ? " <small>(main ceremony)</small>" : ""}</h3>
+        ${v.address ? `<p class="venue-address">${esc(v.address)}</p>` : ""}
+        ${v.description ? `<p>${esc(v.description)}</p>` : ""}
+        ${href ? `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer" class="link">Get directions &#8599;</a>` : ""}
+      </div>
+    </div>`;
   }
 
   // Load fundraising data (tiers, VIP, sponsors)
@@ -776,7 +808,7 @@
     e.preventDefault();
     const out = $("seat-result");
     try {
-      const res = await fetch(`/api/guest?action=seating&slug=${encodeURIComponent(slug)}&email=${encodeURIComponent($("seat-email").value.trim())}`);
+      const res = await fetch(`/api/guest?action=seating&slug=${encodeURIComponent(slug)}&phone=${encodeURIComponent($("seat-phone").value.trim())}`);
       const data = await res.json();
       out.hidden = false;
       if (!res.ok) { out.textContent = data.error || "Not found."; toast(data.error || "Not found.", true); return; }
@@ -839,6 +871,37 @@
       $("pay-error").textContent = "Network error."; $("pay-error").hidden = false;
     } finally { $("pay-submit").disabled = false; }
   });
+  const feeMoney = (m) => (Number(m) / 100).toFixed(2) + " " + (wedding.currency || "");
+  function applyRsvpFees() {
+    const opts = (wedding.premium_diet_options || []).filter(Boolean);
+    const sel = $("dietary-preference");
+    if (opts.length && !sel.querySelector("[data-premium]")) {
+      const g = document.createElement("optgroup");
+      g.label = "Premium options (+ " + feeMoney(wedding.premium_diet_fee_minor || 0) + ")";
+      opts.forEach((o) => { const op = document.createElement("option"); op.value = o; op.textContent = o; op.dataset.premium = "1"; g.appendChild(op); });
+      sel.appendChild(g);
+    }
+    const bits = [];
+    if (Number(wedding.rsvp_fee_minor) > 0) bits.push("RSVP fee " + feeMoney(wedding.rsvp_fee_minor));
+    if (Number(wedding.extra_guest_fee_minor) > 0) bits.push(feeMoney(wedding.extra_guest_fee_minor) + " per extra guest");
+    if (opts.length && Number(wedding.premium_diet_fee_minor) > 0) bits.push("premium dietary choices " + feeMoney(wedding.premium_diet_fee_minor));
+    const note = $("rsvp-fee-note");
+    if (bits.length) { note.hidden = false; note.textContent = "Fees set by the couple: " + bits.join(" · ") + ". You will see the total and confirm before submitting. (Demo mode: no real money moves.)"; }
+  }
+  function confirmQuote(quote) {
+    return new Promise((resolve) => {
+      let d = $("rsvp-pay-dialog");
+      if (!d) { d = document.createElement("dialog"); d.id = "rsvp-pay-dialog"; document.body.appendChild(d); }
+      const money = (m) => (Number(m) / 100).toFixed(2) + " " + quote.currency;
+      d.innerHTML = `<form method="dialog"><h3>Confirm your RSVP fees</h3><ul>${quote.lines.map((l) => `<li>${l.label}: <strong>${money(l.amount_minor)}</strong></li>`).join("")}</ul>
+        <p><strong>Total: ${money(quote.totalMinor)}</strong></p><p class="fine">Demo mode: this is recorded as a test payment; no real money moves.</p>
+        <button value="ok">Confirm and RSVP</button> <button value="cancel" formnovalidate>Cancel</button></form>`;
+      d.addEventListener("close", () => resolve(d.returnValue === "ok"), { once: true });
+      d.returnValue = "";
+      d.showModal();
+    });
+  }
+
   // RSVP submit
   $("rsvp-form").addEventListener("submit", async e => {
     e.preventDefault();
@@ -870,10 +933,7 @@
     notice("");
 
     try {
-      const res = await fetch("/api/guest?action=rsvp", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const rsvpBody = {
           weddingSlug: slug,
           guestName: $("guest-name").value,
           guestEmail: $("guest-email").value,
@@ -884,16 +944,23 @@
           plusOnes: plusOnes,
           partyNames: $("party-names").value,
           ref: (() => { try { return localStorage.getItem("ws-ref:" + slug) || ""; } catch (_) { return ""; } })()
-        })
-      });
-      const data = await res.json();
+      };
+      const send = () => fetch("/api/guest?action=rsvp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rsvpBody) });
+      let res = await send();
+      let data = await res.json();
+      if (res.status === 402 && data.needsPayment) {
+        if (!(await confirmQuote(data.quote))) { notice("RSVP not submitted: fees not confirmed.", true); return; }
+        rsvpBody.payConfirmed = true;
+        res = await send();
+        data = await res.json();
+      }
       if (!res.ok) { toast(data.error || "Could not submit RSVP.", true); return notice(data.error || "Could not submit RSVP.", true); }
       notice("RSVP received! Thank you for confirming.");
       
       showPass(data.rsvpId, $("guest-name").value, data.status);
       document.dispatchEvent(new CustomEvent("ws:pass", { detail: { refCode: data.refCode || "" } }));
       try { localStorage.setItem("ws-pass:" + slug, JSON.stringify({ id: data.rsvpId, name: $("guest-name").value, status: data.status, refCode: data.refCode || "" })); } catch (_) {}
-      toast("We have noted your RSVP. Your pass is below.");
+      toast(data.chargedMinor > 0 ? "RSVP noted. Test payment of " + (data.chargedMinor / 100).toFixed(2) + " recorded. Your pass is below." : "We have noted your RSVP. Your pass is below.");
       $("rsvp-form").reset();
       if (window.WSFeedback) WSFeedback.scrollTo("ecard");
     } catch (err) {
@@ -1013,6 +1080,7 @@
     story: ["A little about us", "Our <em>story.</em>"],
     details: ["The details", "Everything <em>you need to know.</em>"],
     venues: ["The celebration", "A day made <em>of moments.</em>"],
+    prewedding: ["Before the wedding", "The road <em>to the day.</em>"],
     attire: ["The look", "Dress like the <em>joy of the day.</em>"],
     campaigns: ["A gift for our next chapter", "Celebrate us, <em>if you wish.</em>"],
     registry: ["The registry", "Gifts <em>with meaning.</em>"],

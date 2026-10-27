@@ -37,9 +37,25 @@ Status: built features are implemented; payments are test mode (no real money).
 | Guestbook with moderation | Approve / hide in Guest engagement | Wish form and approved wishes | `guest_wishes` (RLS: managers only; guests post through API) | Public sees approved only; couple/admins moderate |
 | Travel & FAQ | Editor "FAQ & travel info" | "Travel & FAQ" section | `weddings.faq`, `weddings.travel_info` | Public |
 | Organizer analytics | - | - | `wedding_analytics()` RPC: visitors, referred visitors, RSVPs, bids, wishes | Couple, admins, owner role |
-| Seating lookup | Guest list CSV import in editor (name, email, dietary, table) | "Find your seat": guest enters their invited email; only their own name and table return (rate limited, exact match) | `guests.table_number` | Couple (full list); guest sees own table only |
+| Seating lookup | Guest list CSV import in editor (header row; columns name, phone, email, dietary, table) | "Find your seat": guest enters the phone number they were invited with; only their own name and table return (rate limited, exact match) | `guests.table_number` | Couple (full list); guest sees own table only |
 | Group RSVP | - | Plus-ones count plus "names of the people coming with you" on the RSVP form | `guest_rsvps.plus_one_count`, `party_names` | Couple, admins (Guest RSVPs table: "Party of N: names") |
 | English / Swahili toggle | - | SW/EN button in the navbar; fixed interface text and section headings only (couple-written content is not translated); choice kept in the browser | `localStorage` only | Public |
 | Post-wedding thank-you | Automatic once the date passes | Memories/thank-you banner; guestbook still open | `is_past` | Public |
 
-Not built yet (recommended next): photo gallery/uploads with moderation (needs storage + size limits), PWA/offline pass, per-wedding Open Graph image, templates/themes, real WhatsApp/email delivery (needs credentials). Swahili covers the guest site only, not the organizer pages; seating lookup depends on the couple importing a guest list with emails.
+Not built yet (recommended next): photo gallery/uploads with moderation (needs storage + size limits), PWA/offline pass, per-wedding Open Graph image, templates/themes, real WhatsApp/email delivery (needs credentials). Swahili covers the guest site only, not the organizer pages; seating lookup depends on the couple importing a guest list with phone numbers.
+
+## Refinements batch
+
+| Feature | Configured (organizer / admin) | Shown (guest site) | Recorded | Who sees it |
+|---|---|---|---|---|
+| Phone as primary identifier | CSV import has a phone column | RSVP, pass lookup and seating use phone (email optional) | Digits-only `guest_rsvps.phone`, `guests.phone`; placeholder key email for phone-only RSVPs is hidden | Couple, admins |
+| DJ bids consolidated | - | One row per song (case-insensitive), totals add up, bid count; note says money goes to the wedding fundraiser, not the DJ | `get_dj_leaderboard` aggregates `dj_song_bids`. Bids are pledges: not ledgered or paid in demo mode | Public |
+| Extra-guest fee, base RSVP fee | Editor "RSVP fees" (major units) | Fee note, quote dialog with line items, confirm before submit (HTTP 402 quote then confirm) | `contributions` rows (RSVP fee, Extra guests, Premium dietary), provider `test-simulator` | Couple, admins (ledger) |
+| Premium dietary fee | Editor: premium options + fee; standard options stay free | Premium group in the dietary select | Ledger line | Couple, admins |
+| Palette names and hex | Editor palette: name each colour | "Wedding theme - colour palette" label, `Name (#HEX)` | `weddings.palette_names` | Public |
+| Pre-wedding events | Editor: event type "Before the wedding" plus street address | "Before the wedding" section, time, name, address, Get directions (Google Maps) | `venues.kind`, `venues.address` | Public |
+| The Celebration timeline | Editor: wedding-day events | Time, name, address, Get directions | `venues` | Public |
+| Admin fees in major units | Fees tab shows and saves 2-decimal major units, with a conversion note | - | Stored as minor units | Admin, owner |
+| Admin per-wedding metrics | "Metrics" button on each wedding | - | `admin_wedding_metrics()` | Admin, owner |
+| Pagination and search | Weddings, users, ledger, audit: search, 20 per page (10/20/50/100) | - | Client-side over newest 500 rows | Admin, owner |
+| Active admin tab | Highlighted tab, `aria-selected` | - | - | Admin, owner |

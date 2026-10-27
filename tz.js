@@ -60,7 +60,7 @@
   function formatDate(ms, tz) {
     return new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date(ms));
   }
-  function mainVenue(w) { var v = w.venues || []; return v.find(function (x) { return x.is_main; }) || v[0]; }
+  function mainVenue(w) { var v = (w.venues || []).filter(function (x) { return x.kind !== "pre"; }); return v.find(function (x) { return x.is_main; }) || v[0]; }
   /** Start of the wedding as UTC epoch ms using the wedding's zone and main venue time. */
   function weddingStart(w) {
     var dateStr = String(w.wedding_date || "").slice(0, 10);

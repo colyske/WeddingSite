@@ -8,10 +8,14 @@ const GET_ACTIONS = {
   overview: (t) => rpc("admin_overview", t),
   weddings: async (t) => ({ weddings: await rpc("admin_list_weddings", t) }),
   users: async (t, q) => ({ users: await rpc("admin_list_users", t, { p_search: q.search || null }) }),
-  ledger: async (t) => ({ ledger: await rpc("admin_ledger", t, { p_limit: 200 }) }),
+  ledger: async (t) => ({ ledger: await rpc("admin_ledger", t, { p_limit: 500 }) }),
   payouts: async (t) => ({ payouts: await rpc("admin_payouts", t) }),
-  audit: async (t) => ({ audit: await rpc("admin_audit", t, { p_limit: 200 }) }),
-  policies: async (t) => ({ policies: await rpc("admin_get_policies", t) })
+  audit: async (t) => ({ audit: await rpc("admin_audit", t, { p_limit: 500 }) }),
+  policies: async (t) => ({ policies: await rpc("admin_get_policies", t) }),
+  "wedding-metrics": async (t, q) => {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(q.weddingId || ""))) throw new Error("Invalid wedding.");
+    return { metrics: await rpc("admin_wedding_metrics", t, { p_wedding_id: q.weddingId }) };
+  }
 };
 
 const WEDDING_ACTIONS = new Set(["archive", "restore", "unpublish", "waive_fee"]);

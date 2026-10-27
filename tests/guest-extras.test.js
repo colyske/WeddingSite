@@ -92,7 +92,7 @@ test("guest site: share channels, OG tags, referral visit, personal link, guestb
   assert.equal(calls.wish.name, "Kamau");
 
   await page.fill("#guest-name", "Njeri");
-  await page.fill("#guest-email", "njeri@example.com");
+  await page.fill("#guest-phone", "0712345678");
   await page.selectOption("#attending", { index: 1 });
   await page.click("#rsvp-form button[type=submit]");
   await page.waitForSelector("#ecard:not([hidden])", { timeout: 10000 });

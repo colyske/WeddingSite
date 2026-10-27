@@ -8,8 +8,8 @@ test("RSVP captures phone, stores it privately and supports lookup", () => {
   const org = readFileSync("api/weddings.js", "utf8");
   assert.match(guest, /id="guest-phone"/);
   assert.match(guest, /guestPhone:/);
-  assert.match(api, /function normPhone/);
-  assert.match(api, /phone=eq\./);
+  assert.match(api, /normalizePhone/);
+  assert.match(api, /phoneIn\(/);
   assert.match(org, /guest_email,phone/);
   assert.doesNotMatch(api.split('action === "wedding"')[1] || "", /guest_phone/);
 });

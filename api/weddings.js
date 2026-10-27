@@ -1,11 +1,12 @@
 import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireAuth } from "../server/auth-middleware.js";
 import { paymentAdaptersFor } from "./checkout.js";
+import { normalizePhone, isPhoneKeyEmail } from "../server/phone.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,max_guest_capacity,palette,attire_notes,enabled_payment_methods,background_music_url,published_at,created_at,archived_at,unpublished_at,first_published_at";
+const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,enabled_payment_methods,background_music_url,published_at,created_at,archived_at,unpublished_at,first_published_at";
 const DEFAULT_ZONE = "Africa/Nairobi";
 const validZone = tz => {
   if (typeof tz !== "string" || !tz || tz.length > 64) return false;
@@ -47,7 +48,7 @@ const configuredPayoutMethods = currency => {
 // Load venues and payout info for a wedding
 const loadWeddingDetails = async (weddingId, opts) => {
   const [venues, payout, registry, tiers, vip] = await Promise.all([
-    supabaseRequest(`/rest/v1/venues?wedding_id=eq.${weddingId}&select=id,name,event_time,event_date,map_link,description,is_main,sort_order&order=sort_order.asc`, opts),
+    supabaseRequest(`/rest/v1/venues?wedding_id=eq.${weddingId}&select=id,name,event_time,event_date,map_link,description,is_main,kind,address,sort_order&order=sort_order.asc`, opts),
     supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${weddingId}&select=method,display_mask,verified`, opts),
     supabaseRequest(`/rest/v1/registry_items?wedding_id=eq.${weddingId}&select=id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts),
     supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}&select=id,name,min_amount_minor,perks,sort_order&order=sort_order.asc`, opts),
@@ -150,10 +151,12 @@ export default async function handler(req, res) {
             eventDate: validDate(v?.eventDate) ? v.eventDate : null,
             mapLink: String(v?.mapLink ?? v?.map ?? "").trim() || null,
             description: String(v?.description || "").trim().slice(0, 500) || null,
-            isMain: v?.isMain === true,
+            isMain: v?.isMain === true && v?.kind !== "pre",
+            kind: v?.kind === "pre" ? "pre" : "main",
+            address: String(v?.address || "").trim().slice(0, 200) || null,
             sortOrder
           })).filter(v => v.name);
-          if (!normalizedVenues.some(v => v.eventTime)) {
+          if (!normalizedVenues.some(v => v.eventTime && v.kind !== "pre")) {
             return sendJson(res, 400, { error: "The wedding time is required: at least one venue needs a start time." });
           }
           if (normalizedVenues.some(v => v.mapLink && !/^https?:\/\//i.test(v.mapLink))) {
@@ -219,6 +222,19 @@ export default async function handler(req, res) {
         }
         patch.palette = palette;
       }
+      if (body.paletteNames !== undefined) {
+        patch.palette_names = Array.isArray(body.paletteNames) ? body.paletteNames.slice(0, 4).map(n => String(n || "").trim().slice(0, 40)) : [];
+      }
+      for (const [key, col] of [["rsvpFee", "rsvp_fee_minor"], ["extraGuestFee", "extra_guest_fee_minor"], ["premiumDietFee", "premium_diet_fee_minor"]]) {
+        if (body[key] === undefined) continue;
+        const minor = Math.round(Number(body[key]) * 100);
+        if (!Number.isFinite(minor) || minor < 0 || minor > 100000000) return sendJson(res, 400, { error: "Fees must be between 0 and 1,000,000." });
+        patch[col] = minor;
+      }
+      if (body.premiumDietOptions !== undefined) {
+        const list = Array.isArray(body.premiumDietOptions) ? body.premiumDietOptions : String(body.premiumDietOptions).split(",");
+        patch.premium_diet_options = list.map(o => String(o).trim().slice(0, 40)).filter(Boolean).slice(0, 10);
+      }
       if (body.attireNotes !== undefined) {
         patch.attire_notes = String(body.attireNotes).slice(0, 300);
       }
@@ -250,6 +266,8 @@ export default async function handler(req, res) {
               map_link: v.mapLink || null,
               description: v.description || null,
               is_main: v.isMain || false,
+              kind: v.kind,
+              address: v.address,
               sort_order: i
             };
             if (v.id && existing.includes(v.id)) {
@@ -510,7 +528,7 @@ export default async function handler(req, res) {
         }
       }
       if (action === "guests-list") {
-        const rows = await supabaseRequest(`/rest/v1/guests?wedding_id=eq.${weddingId}&select=id,name,email,dietary_preference,table_number,rsvp_status&order=table_number,name&limit=2000`, opts);
+        const rows = await supabaseRequest(`/rest/v1/guests?wedding_id=eq.${weddingId}&select=id,name,email,phone,dietary_preference,table_number,rsvp_status&order=table_number,name&limit=2000`, opts);
         return sendJson(res, 200, { guests: rows || [] });
       }
       if (action === "guests-import") {
@@ -519,6 +537,7 @@ export default async function handler(req, res) {
           wedding_id: weddingId,
           name: String(g.name || "").trim().slice(0, 120),
           email: String(g.email || "").trim().toLowerCase().slice(0, 200) || null,
+          phone: normalizePhone(g.phone) || null,
           dietary_preference: String(g.dietary || "").trim().slice(0, 50) || null,
           table_number: String(g.table || "").trim().slice(0, 20) || null
         })).filter(g => g.name);
@@ -591,7 +610,7 @@ export default async function handler(req, res) {
       if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
       const rows = await supabaseRequest(
         `/rest/v1/guest_rsvps?wedding_id=eq.${req.query.weddingId}&select=id,guest_name,guest_email,phone,attendance_status,dietary_notes,plus_one_count,party_names,created_at,rsvped_at,checked_in_at&order=created_at.desc&limit=200`, opts);
-      return sendJson(res, 200, { rsvps: rows || [] });
+      return sendJson(res, 200, { rsvps: (rows || []).map(r => isPhoneKeyEmail(r.guest_email) ? { ...r, guest_email: "" } : r) });
     }
 
     if (action === "bids") {
