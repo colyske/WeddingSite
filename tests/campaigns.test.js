@@ -16,6 +16,9 @@ test("campaign migration is idempotent and keeps money rows safe", () => {
   }
   const paymentMigration = readFileSync("supabase/migrations/202610300002_verified_test_payments.sql", "utf8");
   assert.match(paymentMigration, /revoke all on function public\.record_test_campaign_pledge/);
+  assert.match(paymentMigration, /v_keep uuid\[\] := array\[\]::uuid\[\]/);
+  assert.match(paymentMigration, /v_mkeep := array\[\]::uuid\[\]/);
+  assert.match(paymentMigration, /grant execute on function public\.save_fundraising_campaigns\(uuid, jsonb\) to service_role/);
 });
 
 test("public campaign data exposes no donor details", () => {

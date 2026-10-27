@@ -82,6 +82,8 @@ test("back office: major-unit fees, pagination, drill-down and active tab", () =
   assert.match(paymentMigration, /provider_fee_holds_by_currency/);
   assert.match(paymentMigration, /create or replace function public\.admin_policy_history/);
   assert.match(paymentMigration, /current_platform_role\(\) is distinct from 'owner'/);
+  assert.match(paymentMigration, /Fixed commission currency must be an uppercase three-letter ISO code/);
+  assert.match(paymentMigration, /Minimum payout cannot exceed the maximum payout/);
   assert.match(read("backoffice.css"), /\.bo-nav button\.active/);
   assert.match(read("api/admin.js"), /wedding-metrics/);
 });

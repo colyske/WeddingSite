@@ -513,6 +513,68 @@ $$;
 revoke all on function public.get_public_campaigns(text) from public;
 grant execute on function public.get_public_campaigns(text) to anon, authenticated;
 
+create or replace function public.save_fundraising_campaigns(p_wedding_id uuid, p_payload jsonb)
+returns void language plpgsql security definer set search_path = ''
+as $$
+declare
+  w public.weddings;
+  c jsonb; m jsonb;
+  v_stream uuid;
+  v_keep uuid[] := array[]::uuid[];
+  v_mkeep uuid[];
+  v_mid uuid;
+  si integer := 0; mi integer;
+begin
+  if auth.role() <> 'service_role' then raise exception 'Service role required.'; end if;
+  select * into w from public.weddings where id = p_wedding_id;
+  if not found then raise exception 'Wedding not found.'; end if;
+  if jsonb_typeof(p_payload) <> 'array' then raise exception 'Invalid campaigns.'; end if;
+  if jsonb_array_length(p_payload) > 6 then raise exception 'At most 6 campaigns.'; end if;
+
+  for c in select * from jsonb_array_elements(p_payload) loop
+    v_stream := null;
+    if (c->>'id') ~* '^[0-9a-f-]{36}$' then
+      select id into v_stream from public.fundraising_streams where id = (c->>'id')::uuid and wedding_id = p_wedding_id;
+    end if;
+    if v_stream is null then
+      insert into public.fundraising_streams (wedding_id, name, purpose, goal_minor, currency, enabled, sort_order)
+      values (p_wedding_id, left(trim(c->>'name'), 100), left(coalesce(nullif(trim(c->>'purpose'), ''), trim(c->>'name')), 240),
+              (c->>'goal_minor')::bigint, w.currency, coalesce((c->>'enabled')::boolean, true), si)
+      returning id into v_stream;
+    else
+      update public.fundraising_streams set name = left(trim(c->>'name'), 100),
+        purpose = left(coalesce(nullif(trim(c->>'purpose'), ''), trim(c->>'name')), 240),
+        goal_minor = (c->>'goal_minor')::bigint, enabled = coalesce((c->>'enabled')::boolean, true), sort_order = si
+      where id = v_stream;
+    end if;
+    v_keep := v_keep || v_stream;
+    v_mkeep := array[]::uuid[]; mi := 0;
+    for m in select * from jsonb_array_elements(coalesce(c->'milestones', '[]'::jsonb)) loop
+      v_mid := null;
+      if (m->>'id') ~* '^[0-9a-f-]{36}$' then
+        select id into v_mid from public.fundraising_milestones where id = (m->>'id')::uuid and stream_id = v_stream;
+      end if;
+      if v_mid is null then
+        insert into public.fundraising_milestones (stream_id, wedding_id, name, description, target_minor, sort_order)
+        values (v_stream, p_wedding_id, left(trim(m->>'name'), 100), nullif(left(trim(coalesce(m->>'description', '')), 240), ''),
+                (m->>'target_minor')::bigint, mi) returning id into v_mid;
+      else
+        update public.fundraising_milestones set name = left(trim(m->>'name'), 100),
+          description = nullif(left(trim(coalesce(m->>'description', '')), 240), ''),
+          target_minor = (m->>'target_minor')::bigint, sort_order = mi where id = v_mid;
+      end if;
+      v_mkeep := v_mkeep || v_mid; mi := mi + 1;
+    end loop;
+    update public.contributions set milestone_id = null
+      where stream_id = v_stream and milestone_id is not null and not (milestone_id = any(v_mkeep));
+    delete from public.fundraising_milestones where stream_id = v_stream and not (id = any(v_mkeep));
+    si := si + 1;
+  end loop;
+  update public.fundraising_streams set enabled = false where wedding_id = p_wedding_id and not (id = any(v_keep));
+end $$;
+revoke all on function public.save_fundraising_campaigns(uuid, jsonb) from public, anon, authenticated;
+grant execute on function public.save_fundraising_campaigns(uuid, jsonb) to service_role;
+
 create or replace function public.get_registry_with_totals(p_wedding_id uuid)
 returns table (
   id uuid, name text, description text, category text, target_amount_minor bigint, notes text,
@@ -654,7 +716,32 @@ declare
   next_values jsonb;
 begin
   if public.current_platform_role() is distinct from 'owner' then raise exception 'Only the protected Owner can change platform financial policies.'; end if;
+  if jsonb_typeof(p_data) is distinct from 'object' then
+    raise exception 'Platform policy updates must be a JSON object.';
+  end if;
+  if p_data ? 'contribution_fee_basis_points'
+      and ((p_data->>'contribution_fee_basis_points')::integer not between 0 and 10000) then
+    raise exception 'Platform commission must be between 0% and 100%.';
+  end if;
+  if p_data ? 'contribution_fixed_fee_minor'
+      and ((p_data->>'contribution_fixed_fee_minor')::bigint not between 0 and 100000000) then
+    raise exception 'Fixed commission is outside the allowed limit.';
+  end if;
+  if p_data ? 'contribution_fixed_fee_currency'
+      and (p_data->>'contribution_fixed_fee_currency') !~ '^[A-Z]{3}$' then
+    raise exception 'Fixed commission currency must be an uppercase three-letter ISO code.';
+  end if;
+  if p_data ? 'min_payout_minor' and ((p_data->>'min_payout_minor')::bigint not between 0 and 100000000000) then
+    raise exception 'Minimum payout is outside the allowed limit.';
+  end if;
+  if p_data ? 'max_payout_minor' and ((p_data->>'max_payout_minor')::bigint not between 0 and 100000000000) then
+    raise exception 'Maximum payout is outside the allowed limit.';
+  end if;
   select * into current_policy from public.platform_policies where id for update;
+  if coalesce((p_data->>'min_payout_minor')::bigint, current_policy.min_payout_minor)
+      > coalesce((p_data->>'max_payout_minor')::bigint, current_policy.max_payout_minor) then
+    raise exception 'Minimum payout cannot exceed the maximum payout.';
+  end if;
   update public.platform_policies set
     publication_fee_minor = coalesce((p_data->>'publication_fee_minor')::bigint, publication_fee_minor),
     far_future_months = coalesce((p_data->>'far_future_months')::int, far_future_months),
