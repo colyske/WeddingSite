@@ -1024,7 +1024,7 @@
           const name = item.querySelector(".venue-name").value.trim();
           if (name) {
             venues.push({
-              id: item.querySelector(".venue-id").value || null,
+              id: item.querySelector(".venue-id")?.value || null,
               name: name,
               eventTime: item.querySelector(".venue-time").value || null,
               mapLink: item.querySelector(".venue-address").value || null,
