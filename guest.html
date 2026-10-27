@@ -149,6 +149,7 @@
       <li><a href="#sponsors">Sponsors</a></li>
     </ul>
     <div class="controls">
+      <button class="audio-toggle" id="lang-toggle" type="button" data-no-i18n title="Language / Lugha">SW</button>
       <button class="audio-toggle" id="audio-toggle" title="Toggle background music">🔊</button>
     </div>
   </nav>
@@ -251,6 +252,11 @@
 
         <label for="plus-ones">Plus-ones (if allowed)</label>
         <input id="plus-ones" type="number" min="0" value="0" max="5" style="width: 60px;">
+        <div id="party-wrap" hidden>
+          <label for="party-names">Names of the people coming with you</label>
+          <textarea id="party-names" maxlength="400" rows="2" placeholder="e.g. Jane Wanjiku, Peter Otieno"></textarea>
+          <p class="fine">Group RSVP: one form covers your whole party. Shared only with the couple.</p>
+        </div>
 
         <label for="dietary-preference">Dietary preference</label>
         <select id="dietary-preference">
@@ -358,6 +364,18 @@
       <h2>Our Sponsors</h2>
       <p class="fine">We're grateful to these organizations for their generous support.</p>
       <div id="sponsors-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;"></div>
+    </section>
+
+    <!-- Seating lookup -->
+    <section id="seating" class="card" hidden>
+      <h2>Find your seat</h2>
+      <p class="fine">Enter the email address the couple invited you with to see your table. Only your own table is shown.</p>
+      <form id="seat-form">
+        <label for="seat-email">Email</label>
+        <input id="seat-email" type="email" maxlength="254" required autocomplete="email">
+        <button type="submit">Find my table</button>
+      </form>
+      <p id="seat-result" class="notice" role="status" hidden></p>
     </section>
 
     <!-- Digital e-card pass -->
@@ -558,6 +576,7 @@
       loadBids();
       loadLedger();
       loadFundraising();
+      $("seating").hidden = false;
       if (!wedding.is_past) startCountdown();
     } catch (err) {
       console.error("Load failed:", err);
@@ -752,6 +771,20 @@
       if (saved && saved.id) showPass(saved.id, saved.name, saved.status);
     } catch (_) {}
   }
+  $("plus-ones").addEventListener("input", () => { $("party-wrap").hidden = !(parseInt($("plus-ones").value || 0, 10) > 0); });
+  $("seat-form").addEventListener("submit", async e => {
+    e.preventDefault();
+    const out = $("seat-result");
+    try {
+      const res = await fetch(`/api/guest?action=seating&slug=${encodeURIComponent(slug)}&email=${encodeURIComponent($("seat-email").value.trim())}`);
+      const data = await res.json();
+      out.hidden = false;
+      if (!res.ok) { out.textContent = data.error || "Not found."; toast(data.error || "Not found.", true); return; }
+      out.textContent = data.table ? `${data.name}, you are seated at table ${data.table}.` : `${data.name}, your table has not been assigned yet. Please check back closer to the day.`;
+      toast("Seating found.");
+      out.scrollIntoView({ behavior: "smooth", block: "center" });
+    } catch (_) { toast("Network error.", true); }
+  });
   $("lookup-form").addEventListener("submit", async e => {
     e.preventDefault();
     const v = $("lookup-value").value.trim();
@@ -799,7 +832,8 @@
       if (!res.ok) { $("pay-error").textContent = data.error || "Payment could not be recorded."; $("pay-error").hidden = false; return; }
       $("pay-dialog").close();
       toast("Thank you! Test payment recorded.");
-      loadFundraising(); loadLedger();
+      loadFundraising();
+      $("seating").hidden = false; loadLedger();
       if (window.WSFeedback) WSFeedback.scrollTo(buying && buying.kind === "fund" ? "campaigns" : "ledger");
     } catch (_) {
       $("pay-error").textContent = "Network error."; $("pay-error").hidden = false;
@@ -848,6 +882,7 @@
           dietaryPreference: $("dietary-preference").value,
           dietaryNotes: $("dietary-notes").value,
           plusOnes: plusOnes,
+          partyNames: $("party-names").value,
           ref: (() => { try { return localStorage.getItem("ws-ref:" + slug) || ""; } catch (_) { return ""; } })()
         })
       });
@@ -982,6 +1017,7 @@
     campaigns: ["A gift for our next chapter", "Celebrate us, <em>if you wish.</em>"],
     registry: ["The registry", "Gifts <em>with meaning.</em>"],
     rsvp: ["We hope you\u2019ll be there", "Will you <em>attend?</em>"],
+    seating: ["Seating", "Find <em>your seat.</em>"],
     ecard: ["Your digital invitation", "A little card <em>with a big welcome.</em>"],
     bids: ["The soundtrack", "Help choose <em>the playlist.</em>"],
     "sponsor-tiers": ["Sponsorship", "Stand with <em>us.</em>"],
@@ -995,17 +1031,23 @@
       const s = document.getElementById(id);
       if (!s || s.hidden) return;
       const h = s.querySelector(":scope > h2"); if (!h) return;
-      if (!s.dataset.ed) { h.innerHTML = MAP[id][1]; const p = document.createElement("p"); p.className = "sec-label"; s.insertBefore(p, h); s.dataset.ed = "1"; }
+      const m = (window.WSLang && window.WSLang.section(id)) || MAP[id];
+      if (!s.dataset.ed) { const p = document.createElement("p"); p.className = "sec-label"; s.insertBefore(p, h); s.dataset.ed = "1"; }
+      if (h.innerHTML !== m[1]) h.innerHTML = m[1];
+      s.dataset.label = m[0];
     });
     document.querySelectorAll("section[data-ed]").forEach(s => {
       if (s.hidden) return; n += 1;
-      const p = s.querySelector(":scope > .sec-label"); if (p) p.innerHTML = "<span>" + String(n).padStart(2, "0") + "</span> " + MAP[s.id][0];
+      const p = s.querySelector(":scope > .sec-label");
+      const html = "<span>" + String(n).padStart(2, "0") + "</span> " + s.dataset.label;
+      if (p && p.innerHTML !== html) p.innerHTML = html;
     });
   }
-  new MutationObserver(run).observe(document.body, { attributes: true, attributeFilter: ["hidden"], subtree: true });
+  document.addEventListener("wslang", run);  new MutationObserver(run).observe(document.body, { attributes: true, attributeFilter: ["hidden"], subtree: true });
   document.addEventListener("DOMContentLoaded", run);
 })();
-</script>  <script src="guest-extras.js"></script>
+</script>  <script src="i18n.js"></script>
+  <script src="guest-extras.js"></script>
   <script src="footer.js"></script>
 <script src="/feedback.js"></script>
 </body>

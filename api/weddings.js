@@ -590,7 +590,7 @@ export default async function handler(req, res) {
       if (!methodOnly(req, res, "GET")) return;
       if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
       const rows = await supabaseRequest(
-        `/rest/v1/guest_rsvps?wedding_id=eq.${req.query.weddingId}&select=id,guest_name,guest_email,phone,attendance_status,dietary_notes,plus_one_count,created_at,rsvped_at,checked_in_at&order=created_at.desc&limit=200`, opts);
+        `/rest/v1/guest_rsvps?wedding_id=eq.${req.query.weddingId}&select=id,guest_name,guest_email,phone,attendance_status,dietary_notes,plus_one_count,party_names,created_at,rsvped_at,checked_in_at&order=created_at.desc&limit=200`, opts);
       return sendJson(res, 200, { rsvps: rows || [] });
     }
 

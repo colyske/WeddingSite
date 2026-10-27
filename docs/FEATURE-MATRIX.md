@@ -37,6 +37,9 @@ Status: built features are implemented; payments are test mode (no real money).
 | Guestbook with moderation | Approve / hide in Guest engagement | Wish form and approved wishes | `guest_wishes` (RLS: managers only; guests post through API) | Public sees approved only; couple/admins moderate |
 | Travel & FAQ | Editor "FAQ & travel info" | "Travel & FAQ" section | `weddings.faq`, `weddings.travel_info` | Public |
 | Organizer analytics | - | - | `wedding_analytics()` RPC: visitors, referred visitors, RSVPs, bids, wishes | Couple, admins, owner role |
+| Seating lookup | Guest list CSV import in editor (name, email, dietary, table) | "Find your seat": guest enters their invited email; only their own name and table return (rate limited, exact match) | `guests.table_number` | Couple (full list); guest sees own table only |
+| Group RSVP | - | Plus-ones count plus "names of the people coming with you" on the RSVP form | `guest_rsvps.plus_one_count`, `party_names` | Couple, admins (Guest RSVPs table: "Party of N: names") |
+| English / Swahili toggle | - | SW/EN button in the navbar; fixed interface text and section headings only (couple-written content is not translated); choice kept in the browser | `localStorage` only | Public |
 | Post-wedding thank-you | Automatic once the date passes | Memories/thank-you banner; guestbook still open | `is_past` | Public |
 
-Not built yet (recommended next): photo gallery/uploads with moderation (needs storage + size limits), English/Swahili toggle, PWA/offline pass, seating-chart lookup, group RSVP, per-wedding Open Graph image, templates/themes, real WhatsApp/email delivery (needs credentials).
+Not built yet (recommended next): photo gallery/uploads with moderation (needs storage + size limits), PWA/offline pass, per-wedding Open Graph image, templates/themes, real WhatsApp/email delivery (needs credentials). Swahili covers the guest site only, not the organizer pages; seating lookup depends on the couple importing a guest list with emails.

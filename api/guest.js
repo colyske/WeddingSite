@@ -190,9 +190,11 @@ export default async function handler(req, res) {
             return sendJson(res, full ? 409 : 400, { error: rsvp?.message || "RSVP could not be saved." });
           }
           const phone = normPhone(body.guestPhone);
-          if (phone) {
-            try { await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvp.rsvp_id}`, { service: true, method: "PATCH", prefer: "return=minimal", body: { phone } }); }
-            catch (e) { console.error("rsvp phone save failed:", e.message); }
+          const partyNames = body.attending === true && Number(body.plusOnes) > 0 ? text(body.partyNames, 400) : "";
+          const extra = { ...(phone ? { phone } : {}), ...(partyNames ? { party_names: partyNames } : {}) };
+          if (Object.keys(extra).length) {
+            try { await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvp.rsvp_id}`, { service: true, method: "PATCH", prefer: "return=minimal", body: extra }); }
+            catch (e) { console.error("rsvp extras save failed:", e.message); }
           }
           let refCode = "";
           try {
@@ -292,6 +294,20 @@ export default async function handler(req, res) {
       } catch (error) {
         return sendJson(res, 403, { error: "Cannot retrieve guest data." });
       }
+    }
+
+    if (action === "seating") {
+      if (!methodOnly(req, res, "GET")) return;
+      const slug = String(req.query.slug || "").toLowerCase();
+      if (!/^[a-z0-9-]{3,80}$/.test(slug)) return sendJson(res, 404, { error: "Wedding not found." });
+      if (limited(`seat|${clientHash(req, slug)}`, 12, 10 * 60 * 1000)) return sendJson(res, 429, { error: "Too many lookups. Please try again in a few minutes." });
+      const email = String(req.query.email || "").trim().toLowerCase();
+      if (email.length < 5 || email.length > 254 || !email.includes("@")) return sendJson(res, 400, { error: "Enter the email address the couple has on their guest list." });
+      const weddingId = await resolveWeddingId(slug, rpc);
+      if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
+      const rows = await supabaseRequest(`/rest/v1/guests?wedding_id=eq.${weddingId}&email=eq.${encodeURIComponent(email)}&select=name,table_number&limit=1`, { service: true });
+      if (!rows?.length) return sendJson(res, 404, { error: "We could not find that email on the guest list. Try the email the couple invited, or ask them." });
+      return sendJson(res, 200, { name: rows[0].name, table: rows[0].table_number || null });
     }
 
     if (action === "pass-lookup") {
