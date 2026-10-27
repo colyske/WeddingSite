@@ -128,3 +128,5 @@ nav.sticky-nav a:hover { color: var(--gold, #bd9954) !important; }
 .hero, .countdown-band { width: 100vw !important; max-width: none !important; position: relative; left: 0; margin-left: calc(50% - 50vw) !important; margin-right: calc(50% - 50vw) !important; box-sizing: border-box; }
 .wrap { overflow-x: clip; }
 .hero .eyebrow { color: #e1cf9f !important; } .countdown-intro .eyebrow { color: #d6c69f !important; }
+
+[hidden] { display: none !important; }
