@@ -302,11 +302,15 @@ export default async function handler(req, res) {
       const weddingId = await resolveWeddingId(slug, rpc);
       if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
       
-      const [result, campaigns] = await Promise.all([
+      const [result, campaigns, sponsorAuction] = await Promise.all([
         rpc("get_public_fundraising", { p_slug: slug }),
-        rpc("get_public_campaigns", { p_slug: slug }).catch(() => [])
+        rpc("get_public_campaigns", { p_slug: slug }).catch(() => []),
+        rpc("get_public_sponsor_auction", { p_slug: slug }).catch(() => ({ enabled: false }))
       ]);
-      return sendJson(res, 200, { ...(result || { tiers: [], vip: null, sponsors: [] }), campaigns: campaigns || [] });
+      return sendJson(res, 200, {
+        ...(result || { tiers: [], vip: null, sponsors: [] }),
+        campaigns: campaigns || [], sponsorAuction: sponsorAuction || { enabled: false }
+      });
     }
 
     if (action === "browse") {

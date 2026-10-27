@@ -167,7 +167,7 @@ async function handleCheckout(req, res) {
   const visibility = body.visibility || "hidden";
   if (!isUuid(weddingId) || !/^[A-Z0-9_-]{2,12}$/.test(market) || !/^[A-Z]{3}$/.test(currency) ||
       !isUuid(idempotencyKey) || !["stripe", "paystack"].includes(body.provider) ||
-      !["rsvp", "song_bid", "vip", "sponsor", "fundraiser", "registry"].includes(purchaseAction) ||
+      !["rsvp", "song_bid", "vip", "sponsor", "fundraiser", "registry", "sponsor_featured_bid"].includes(purchaseAction) ||
       !["name", "anonymous", "hidden"].includes(visibility) ||
       (visibility !== "hidden" && body.publicConsent !== true) ||
       (visibility === "hidden" && body.publicConsent === true) ||
@@ -291,6 +291,27 @@ async function handleCheckout(req, res) {
         offer: String(body.offer || "").trim().slice(0, 360), publicContact: body.publicContact === true
       };
       if (!purchaseData.companyName) return sendJson(res, 400, { error: "Enter the sponsor's organization name." });
+    } else if (purchaseAction === "sponsor_featured_bid") {
+      const auction = await supabaseRequest("/rest/v1/rpc/get_public_sponsor_auction", {
+        service: true, method: "POST", body: { p_slug: wedding.slug }
+      });
+      if (!auction?.enabled || auction.status !== "open") {
+        return sendJson(res, 409, { error: "Featured sponsor bidding is not currently open." });
+      }
+      if (!Number.isSafeInteger(body.amountMinor) || requestedAmount < Number(auction.next_bid_minor)) {
+        return sendJson(res, 409, { error: `The next eligible paid bid is ${Number(auction.next_bid_minor) / 100} ${currency}.` });
+      }
+      amountMinor = requestedAmount;
+      streamName = "Featured sponsor bid";
+      purchaseData = {
+        minimumBidAtCheckout: Number(auction.next_bid_minor),
+        companyName: String(body.companyName || body.guestName || "").trim().slice(0, 100),
+        email: String(body.email || "").trim().slice(0, 200), phone: String(body.phone || "").trim().slice(0, 30),
+        website: String(body.website || "").trim().slice(0, 300),
+        location: String(body.location || "").trim().slice(0, 160),
+        offer: String(body.offer || "").trim().slice(0, 360), publicContact: body.publicContact === true
+      };
+      if (!purchaseData.companyName) return sendJson(res, 400, { error: "Enter the sponsor's organization name." });
     } else if (purchaseAction === "song_bid") {
       const songTitle = String(body.songTitle || "").trim().slice(0, 160);
       const artist = String(body.artist || "").trim().slice(0, 100);
@@ -404,7 +425,8 @@ async function handleStatus(req, res) {
             p_provider: payment.provider, p_provider_event_id: payment.eventId,
             p_contribution_id: row.id, p_amount_minor: payment.amountMinor,
             p_currency: payment.currency, p_provider_reference: payment.reference,
-            p_provider_fee_minor: payment.providerFeeMinor
+            p_provider_fee_minor: payment.providerFeeMinor,
+            p_provider_paid_at: payment.providerPaidAt
           }
         });
         rows = await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&select=id,payment_status,purchase_action,action_result,action_completed_at,provider_fee_pending`, { service: true });

@@ -28,6 +28,12 @@ test("campaign migration is idempotent and keeps money rows safe", () => {
   assert.match(paymentMigration, /v_keep uuid\[\] := array\[\]::uuid\[\]/);
   assert.match(paymentMigration, /v_mkeep := array\[\]::uuid\[\]/);
   assert.match(paymentMigration, /grant execute on function public\.save_fundraising_campaigns\(uuid, jsonb\) to service_role/);
+  const featured = readFileSync("supabase/migrations/202610300003_featured_sponsor_campaigns.sql", "utf8");
+  assert.match(featured, /create table if not exists public\.sponsor_featured_campaigns/);
+  assert.match(featured, /create table if not exists public\.sponsor_featured_bids/);
+  assert.match(featured, /c\.verified_provider_payment/);
+  assert.match(featured, /campaign terms cannot change after a paid bid/i);
+  assert.match(featured, /create or replace function public\.finalize_featured_sponsor_bid/);
 });
 
 test("public campaign data exposes no donor details", () => {
@@ -38,6 +44,8 @@ test("public campaign data exposes no donor details", () => {
 test("organizer, guest and payment APIs are wired for campaigns", () => {
   assert.match(readFileSync("api/weddings.js", "utf8"), /action === "campaigns-save"/);
   assert.match(readFileSync("api/guest.js", "utf8"), /get_public_campaigns/);
+  assert.match(readFileSync("api/guest.js", "utf8"), /get_public_sponsor_auction/);
+  assert.match(readFileSync("api/checkout.js", "utf8"), /purchaseAction === "sponsor_featured_bid"/);
   assert.match(readFileSync("api/testpay.js", "utf8"), /Simulated payments are disabled/);
   const guest = readFileSync("guest.html", "utf8");
   assert.match(guest, /id="campaigns-display"/);

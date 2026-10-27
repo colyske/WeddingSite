@@ -361,6 +361,7 @@
     <section id="sponsors" class="card">
       <h2>Our Sponsors</h2>
       <p class="fine">Thank you to the organizations supporting this celebration. Paid sponsor cards follow verified payment; free/in-kind support is labeled and appears only after organizer approval.</p>
+      <div id="sponsor-auction" class="card" hidden></div>
       <div id="sponsors-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
         <article style="border: 2px dashed var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
           <h3>Your advert could be here</h3>
@@ -476,6 +477,7 @@
   let audioEnabled = false;
   let sponsorEnquiryEnabled = false;
   let sponsorPackageCount = 0;
+  let sponsorAuctionOpen = false;
 
   // Load wedding data
   async function loadWedding() {
@@ -710,8 +712,16 @@
       }
 
       // Display corporate sponsors
+      const auction = data.sponsorAuction;
+      const featuredLabel = auction?.status === "closed" ? "Featured sponsor" : "Current leading bid";
+      const auctionTime = value => new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium", timeStyle: "short", timeZone: wedding.time_zone || "UTC"
+      }).format(new Date(value));
+      const featuredNames = new Set((auction?.leaders || []).slice(0, Number(auction?.slot_count) || 0)
+        .map(row => String(row.company_name || "").trim().toLowerCase()));
       const sponsorCards = (data.sponsors || []).map(sponsor => `
           <div style="border: 1px solid #d0d5cc; border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
+            ${featuredNames.has(String(sponsor.company_name || "").trim().toLowerCase()) ? `<p class="fine"><strong>${featuredLabel}</strong></p>` : ""}
             <h4 style="margin: 0 0 0.5rem; color: var(--green);">${esc(sponsor.company_name)}</h4>
             <p style="margin: 0 0 1rem; color: var(--gold); font-weight: 600;">${sponsor.in_kind ? "Approved in-kind supporter" : WS.money(sponsor.amount_minor, wedding.currency || "USD", false)}</p>
             ${sponsor.location ? `<p>${esc(sponsor.location)}</p>` : ""}
@@ -727,6 +737,17 @@
         <button type="button" class="buy-btn" id="sponsor-cta" ${wedding.is_past ? "disabled" : ""}>Become a sponsor</button>
       </article>`;
       $("sponsors-display").innerHTML = sponsorCards + placeholder;
+      sponsorAuctionOpen = auction?.enabled === true && auction.status === "open";
+      const auctionPanel = $("sponsor-auction");
+      auctionPanel.hidden = !auction?.enabled;
+      if (auction?.enabled) {
+        const leaders = (auction.leaders || []).slice(0, Math.max(1, Number(auction.slot_count) || 1));
+        auctionPanel.innerHTML = `<h3>Featured sponsor campaign</h3>
+          <p>${auction.status === "open" ? "Open for paid bids until " + esc(auctionTime(auction.closes_at)) : auction.status === "scheduled" ? "Bidding opens " + esc(auctionTime(auction.starts_at)) : "Bidding has closed. Final placements are ranked by verified paid bids."}</p>
+          <p class="fine">${Number(auction.slot_count)} featured slots · bids are charged immediately and support the wedding fund.</p>
+          ${leaders.length ? `<ol>${leaders.map(item => `<li>${esc(item.company_name)} — ${WS.money(item.total_minor, item.currency, false)}</li>`).join("")}</ol>` : "<p>No verified featured bids yet.</p>"}
+          ${auction.status === "open" && !wedding.is_past ? `<p>Next eligible bid: <strong>${WS.money(auction.next_bid_minor, wedding.currency || "USD", false)}</strong></p><button type="button" class="buy-btn" data-buy="sponsor_featured_bid" data-min="${Number(auction.next_bid_minor)}" data-exact="1" data-label="Featured sponsor bid">Bid for featured placement</button>` : ""}`;
+      }
     } catch (err) {
       console.warn("Could not load fundraising data:", err);
     }
@@ -739,7 +760,13 @@
       $("tiers-display").querySelector("button")?.focus({ preventScroll: true });
       return;
     }
-    $("sponsor-enquiry-dialog").showModal();
+    if (sponsorAuctionOpen) {
+      $("sponsor-auction").scrollIntoView({ behavior: "smooth", block: "center" });
+      $("sponsor-auction").querySelector('[data-buy="sponsor_featured_bid"]')?.focus({ preventScroll: true });
+      return;
+    }
+    if (sponsorEnquiryEnabled) $("sponsor-enquiry-dialog").showModal();
+    else if (window.WSFeedback) window.WSFeedback.toast("No sponsor package or enquiry is available at the moment.", true);
   });
   $("sponsor-enquiry-link").addEventListener("click", () => $("sponsor-enquiry-dialog").showModal());
   $("sponsor-enquiry-close").addEventListener("click", () => $("sponsor-enquiry-dialog").close());
@@ -996,7 +1023,7 @@
     $("pay-website").value = "";
     $("pay-location").value = "";
     $("pay-offer").value = "";
-    $("pay-sponsor-fields").hidden = next.action !== "sponsor";
+    $("pay-sponsor-fields").hidden = !["sponsor", "sponsor_featured_bid"].includes(next.action);
     $("pay-amount").value = next.amountMinor ? String(next.amountMinor / 100) : "";
     $("pay-amount").readOnly = next.exact === true;
     $("pay-error").hidden = true;
@@ -1056,8 +1083,8 @@
     e.preventDefault();
     if (!buying) return;
     const name = $("pay-name").value.trim();
-    if ((buying.action === "vip" || buying.action === "sponsor") && !name) {
-      $("pay-error").textContent = buying.action === "sponsor" ? "Please enter your organization's name." : "Please enter your name for the reservation.";
+    if ((buying.action === "vip" || buying.action === "sponsor" || buying.action === "sponsor_featured_bid") && !name) {
+      $("pay-error").textContent = buying.action === "vip" ? "Please enter your name for the reservation." : "Please enter your organization's name.";
       $("pay-error").hidden = false;
       return;
     }

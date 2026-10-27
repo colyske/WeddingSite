@@ -139,17 +139,20 @@ test("Paystack webhook signature is checked using SHA-512 over the raw body", ()
 test("Payment adapters normalize only paid, well-formed events", () => {
   const stripe = normalizeStripePayment({
     id: "evt_123",
+    created: 1793149600,
     type: "checkout.session.completed",
     data: { object: { id: "cs_123", mode: "payment", payment_status: "paid", amount_total: 2500, currency: "usd", client_reference_id: "contribution-id" } }
   });
   assert.equal(stripe.provider, "stripe");
   assert.equal(stripe.amountMinor, 2500);
+  assert.equal(stripe.providerPaidAt, "2026-10-28T01:06:40.000Z");
   assert.equal(normalizeStripePayment({ id: "evt_124", type: "checkout.session.completed", data: { object: { mode: "payment", payment_status: "unpaid" } } }), null);
   const paystack = normalizePaystackPayment({
     event: "charge.success",
-    data: { id: 123, reference: "ref-123", status: "success", amount: 2500, currency: "USD", metadata: { contribution_id: "contribution-id" } }
+    data: { id: 123, reference: "ref-123", status: "success", amount: 2500, currency: "USD", paid_at: "2026-10-28T01:06:40.000Z", metadata: { contribution_id: "contribution-id" } }
   });
   assert.equal(paystack.provider, "paystack");
   assert.equal(paystack.eventId, "123");
+  assert.equal(paystack.providerPaidAt, "2026-10-28T01:06:40.000Z");
   assert.equal(normalizePaystackPayment({ event: "charge.failed", data: {} }), null);
 });

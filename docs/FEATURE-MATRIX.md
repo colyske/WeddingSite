@@ -59,3 +59,13 @@ Not built yet (recommended next): photo gallery/uploads with moderation (needs s
 | Admin per-wedding metrics | "Metrics" button on each wedding | - | `admin_wedding_metrics()` | Admin, owner |
 | Pagination and search | Weddings, users, ledger, audit: search, 20 per page (10/20/50/100) | - | Client-side over newest 500 rows | Admin, owner |
 | Active admin tab | Highlighted tab, `aria-selected` | - | - | Admin, owner |
+
+## Paid featured sponsor campaign
+
+| Feature | Configured (organizer) | Shown (guest site) | Recorded | Who sees it |
+|---|---|---|---|---|
+| Fixed sponsor packages plus optional featured slots | Wedding editor sets the opening/closing instants, slot count, minimum paid bid, and increment; campaign terms lock after the first paid bid | Campaign state, current leaders, next eligible bid, and a bid action; closed-window leaders are the featured slots | `sponsor_featured_campaigns`, `sponsor_featured_bids`, paid `contributions`, and sponsor advert cards | Public sees company names and verified totals; wedding organizers see sponsor records |
+
+Featured bids are charged through the configured test checkout. Only a provider-verified payment created during the campaign window can be counted; if campaign terms/capacity no longer permit finalization, the payment is routed to review and is not shown as a completed bid. The browser redirect alone is not confirmation. The new migration must be replayed and safely deployed before this feature is available in Production.
+
+Refunds, chargebacks and disputes are not yet integrated with provider webhooks or payout-balance reversals. Do not treat this feature branch as a complete financial production release; those flows require explicit provider-fee allocation policy and test-mode provider verification.

@@ -1,6 +1,12 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const providerHealthCache = new Map();
+const isoFromSeconds = value => {
+  const seconds = Number(value);
+  if (!Number.isSafeInteger(seconds) || seconds < 1) return null;
+  const date = new Date(seconds * 1000);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+};
 
 export function isSecurePublicOrigin(value) {
   try {
@@ -80,6 +86,7 @@ export function normalizeStripePayment(event) {
   return {
     provider: "stripe", eventId: String(event.id), contributionId, amountMinor, currency,
     reference: String(checkout.id || ""),
+    providerPaidAt: isoFromSeconds(event.created),
     providerFeeMinor: Number.isSafeInteger(Number(fee)) && Number(fee) >= 0 ? Number(fee) : null
   };
 }
@@ -98,6 +105,8 @@ export function normalizePaystackPayment(event) {
     amountMinor,
     currency,
     reference: String(transaction.reference),
+    providerPaidAt: typeof transaction.paid_at === "string" && Number.isFinite(Date.parse(transaction.paid_at))
+      ? new Date(transaction.paid_at).toISOString() : null,
     providerFeeMinor: Number.isSafeInteger(Number(transaction.fees)) && Number(transaction.fees) >= 0 ? Number(transaction.fees) : null
   };
 }
@@ -136,6 +145,7 @@ export async function verifyProviderPayment(provider, reference, contributionId)
     return {
       verified: true, provider, eventId: `verified:${checkout.id}`,
       amountMinor, currency, reference: String(checkout.id),
+      providerPaidAt: isoFromSeconds(checkout.payment_intent?.latest_charge?.created),
       providerFeeMinor: Number.isSafeInteger(Number(fee)) && Number(fee) >= 0 ? Number(fee) : null
     };
   }
@@ -152,6 +162,8 @@ export async function verifyProviderPayment(provider, reference, contributionId)
   return {
     verified: true, provider, eventId: `verified:${transaction.id || transaction.reference}`,
     amountMinor, currency, reference: String(transaction.reference),
+    providerPaidAt: typeof transaction.paid_at === "string" && Number.isFinite(Date.parse(transaction.paid_at))
+      ? new Date(transaction.paid_at).toISOString() : null,
     providerFeeMinor: Number.isSafeInteger(Number(transaction.fees)) && Number(transaction.fees) >= 0 ? Number(transaction.fees) : null
   };
 }

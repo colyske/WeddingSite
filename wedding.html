@@ -175,6 +175,21 @@
             <button type="button" class="link" id="add-tier-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add tier</button>
           </label>
           <div id="tiers-list" style="margin-bottom: 1.5rem;"></div>
+          <fieldset style="border:1px solid #d0d5cc;border-radius:6px;padding:1rem;margin:0 0 1.5rem;">
+            <legend>Optional featured sponsor campaign</legend>
+            <p class="fine">Fixed packages are the reliable base. This optional, time-limited campaign ranks sponsors by verified paid bids; bids support the wedding fund and do not guarantee placement before payment and campaign close. Enter dates in your local time.</p>
+            <label style="display:flex;align-items:flex-start;gap:.6rem;">
+              <input id="featured-sponsor-enabled" type="checkbox">
+              <span>Enable featured sponsor bidding</span>
+            </label>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;">
+              <label>Starts<input id="featured-sponsor-starts" type="datetime-local"></label>
+              <label>Closes<input id="featured-sponsor-closes" type="datetime-local"></label>
+              <label>Featured slots<input id="featured-sponsor-slots" type="number" min="1" max="20" value="3"></label>
+              <label>Minimum bid (wedding currency)<input id="featured-sponsor-minimum" type="number" min="0.01" step="0.01" value="25"></label>
+              <label>Minimum increment (wedding currency)<input id="featured-sponsor-increment" type="number" min="0.01" step="0.01" value="5"></label>
+            </div>
+          </fieldset>
           <label style="display:flex;align-items:flex-start;gap:.6rem;margin:0 0 1rem;">
             <input id="allow-in-kind-sponsorship" type="checkbox">
             <span>Accept free / in-kind sponsor enquiries. These remain pending until an organizer reviews and approves them.</span>
@@ -436,7 +451,18 @@
       }
       target?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
     };
+    const featuredFields = ["featured-sponsor-starts", "featured-sponsor-closes", "featured-sponsor-slots",
+      "featured-sponsor-minimum", "featured-sponsor-increment"];
+    const syncFeaturedRequirements = () => featuredFields.forEach(id => {
+      $(id).required = $("featured-sponsor-enabled").checked;
+    });
+    $("featured-sponsor-enabled").addEventListener("change", syncFeaturedRequirements);
+    syncFeaturedRequirements();
     const params = new URLSearchParams(location.search);
+    const toLocalDateTimeValue = value => {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? "" : new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    };
     const weddingId = params.get("id");
     const setGuestSiteLink = (slug, published) => {
       const guestUrl = `${location.origin}/guest.html?slug=${encodeURIComponent(slug || "")}`;
@@ -971,6 +997,16 @@
         $("premium-diet-options").value = (w.premium_diet_options || []).join(", ");
         $("attire-notes").value = w.attire_notes || "";
         $("allow-in-kind-sponsorship").checked = w.allow_in_kind_sponsorship === true;
+        const featuredCampaign = w.featuredSponsorCampaign || {};
+        $("featured-sponsor-enabled").checked = featuredCampaign.enabled === true;
+        $("featured-sponsor-starts").value = featuredCampaign.starts_at ? toLocalDateTimeValue(featuredCampaign.starts_at) : "";
+        $("featured-sponsor-closes").value = featuredCampaign.closes_at ? toLocalDateTimeValue(featuredCampaign.closes_at) : "";
+        $("featured-sponsor-slots").value = featuredCampaign.slot_count || 3;
+        $("featured-sponsor-minimum").value = featuredCampaign.minimum_bid_minor
+          ? (featuredCampaign.minimum_bid_minor / 100).toFixed(2) : "25.00";
+        $("featured-sponsor-increment").value = featuredCampaign.bid_increment_minor
+          ? (featuredCampaign.bid_increment_minor / 100).toFixed(2) : "5.00";
+        syncFeaturedRequirements();
 
         // Load venues
         if (w.venues && Array.isArray(w.venues)) {
@@ -1159,6 +1195,19 @@
     $("edit-form").addEventListener("submit", async e => {
       e.preventDefault();
       if ($("edit-form").dataset.submitting) return;
+      if ($("featured-sponsor-enabled").checked) {
+        const invalid = featuredFields.map(id => $(id)).find(input => !input.checkValidity());
+        if (invalid) {
+          focusInvalidField(invalid.id);
+          notice("Complete the required featured sponsor campaign settings before saving.", true);
+          return;
+        }
+        if (new Date($("featured-sponsor-closes").value) <= new Date($("featured-sponsor-starts").value)) {
+          focusInvalidField("featured-sponsor-closes");
+          notice("The campaign must close after it opens.", true);
+          return;
+        }
+      }
       $("edit-form").dataset.submitting = "true";
       notice("");
       try {
@@ -1278,6 +1327,16 @@
             premiumDietFee: Number($("premium-diet-fee").value || 0),
             premiumDietOptions: $("premium-diet-options").value,
             allowInKindSponsorship: $("allow-in-kind-sponsorship").checked,
+            featuredSponsorCampaign: {
+              enabled: $("featured-sponsor-enabled").checked,
+              startsAt: $("featured-sponsor-starts").value
+                ? new Date($("featured-sponsor-starts").value).toISOString() : "",
+              closesAt: $("featured-sponsor-closes").value
+                ? new Date($("featured-sponsor-closes").value).toISOString() : "",
+              slotCount: Number($("featured-sponsor-slots").value),
+              minimumBid: Number($("featured-sponsor-minimum").value),
+              bidIncrement: Number($("featured-sponsor-increment").value)
+            },
             registry: registry,
             tiers: tiers,
             vip: vip,

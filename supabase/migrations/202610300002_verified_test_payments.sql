@@ -809,10 +809,11 @@ begin
 end $$;
 
 drop function if exists public.record_verified_payment(text, text, uuid, bigint, text, text);
+drop function if exists public.record_verified_payment(text, text, uuid, bigint, text, text, bigint);
 create function public.record_verified_payment(
   p_provider text, p_provider_event_id text, p_contribution_id uuid,
   p_amount_minor bigint, p_currency text, p_provider_reference text,
-  p_provider_fee_minor bigint default null
+  p_provider_fee_minor bigint default null, p_provider_paid_at timestamptz default null
 ) returns boolean language plpgsql security definer set search_path = '' set row_security = off
 as $$
 declare
@@ -867,13 +868,13 @@ begin
     provider_fee_pending = p_provider_fee_minor is null or p_provider_fee_minor > p_amount_minor - fee,
     provider_name = p_provider,
     provider_reference = left(p_provider_reference, 160),
-    paid_at = now(),
-    funds_available_at = now() + make_interval(days => coalesce(hold_days, 3))
+    paid_at = coalesce(p_provider_paid_at, now()),
+    funds_available_at = coalesce(p_provider_paid_at, now()) + make_interval(days => coalesce(hold_days, 3))
   where id = c.id;
   return true;
 end $$;
-revoke all on function public.record_verified_payment(text, text, uuid, bigint, text, text, bigint) from public, anon, authenticated;
-grant execute on function public.record_verified_payment(text, text, uuid, bigint, text, text, bigint) to service_role;
+revoke all on function public.record_verified_payment(text, text, uuid, bigint, text, text, bigint, timestamptz) from public, anon, authenticated;
+grant execute on function public.record_verified_payment(text, text, uuid, bigint, text, text, bigint, timestamptz) to service_role;
 
 create table if not exists public.payment_action_reviews (
   id bigint generated always as identity primary key,

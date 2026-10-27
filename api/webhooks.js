@@ -30,7 +30,8 @@ async function handleStripeWebhook(req, res) {
         p_amount_minor: payment.amountMinor,
         p_currency: payment.currency,
         p_provider_reference: payment.reference,
-        p_provider_fee_minor: payment.providerFeeMinor
+        p_provider_fee_minor: payment.providerFeeMinor,
+        p_provider_paid_at: payment.providerPaidAt
       }
     });
     return sendJson(res, 200, { received: true, processed: Boolean(result) });
@@ -62,7 +63,8 @@ async function handlePaystackWebhook(req, res) {
         p_amount_minor: payment.amountMinor,
         p_currency: payment.currency,
         p_provider_reference: payment.reference,
-        p_provider_fee_minor: payment.providerFeeMinor
+        p_provider_fee_minor: payment.providerFeeMinor,
+        p_provider_paid_at: payment.providerPaidAt
       }
     });
     return sendJson(res, 200, { received: true, processed: Boolean(result) });

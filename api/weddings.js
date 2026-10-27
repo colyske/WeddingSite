@@ -75,7 +75,7 @@ const loadWeddingDetails = async (weddings, opts) => {
   if (!rows.length) return [];
   const ids = rows.map(row => row.id);
   const inFilter = `in.(${ids.map(encodeURIComponent).join(",")})`;
-  const [venues, payouts, registry, tiers, vip, siteContent, campaigns, paymentConfigs, setupStatuses] = await Promise.all([
+  const [venues, payouts, registry, tiers, vip, siteContent, campaigns, paymentConfigs, setupStatuses, featuredCampaigns] = await Promise.all([
     supabaseRequest(`/rest/v1/venues?wedding_id=${inFilter}&select=id,wedding_id,name,event_time,event_date,map_link,description,is_main,kind,address,sort_order&order=sort_order.asc`, opts),
     supabaseRequest(`/rest/v1/payout_preferences?wedding_id=${inFilter}&select=wedding_id,method,display_mask,verified`, opts),
     supabaseRequest(`/rest/v1/registry_items?wedding_id=${inFilter}&select=id,wedding_id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts),
@@ -86,7 +86,8 @@ const loadWeddingDetails = async (weddings, opts) => {
     supabaseRequest(`/rest/v1/payment_provider_configs?wedding_id=${inFilter}&select=wedding_id,provider,enabled`, opts),
     supabaseRequest("/rest/v1/rpc/get_wedding_setup_status", {
       ...opts, method: "POST", body: { p_wedding_ids: ids }
-    })
+    }),
+    supabaseRequest(`/rest/v1/sponsor_featured_campaigns?wedding_id=${inFilter}&select=wedding_id,enabled,starts_at,closes_at,slot_count,minimum_bid_minor,bid_increment_minor`, { service: true })
   ]);
   return rows.map(row => ({
     ...row,
@@ -98,6 +99,7 @@ const loadWeddingDetails = async (weddings, opts) => {
     siteContent: (siteContent || []).find(item => item.wedding_id === row.id) || {},
     campaigns: (campaigns || []).filter(item => item.wedding_id === row.id),
     paymentConfigured: (paymentConfigs || []).some(item => item.wedding_id === row.id && item.enabled),
+    featuredSponsorCampaign: (featuredCampaigns || []).find(item => item.wedding_id === row.id) || null,
     kyc_submitted: (setupStatuses || []).some(item => item.wedding_id === row.id && item.kyc_submitted === true)
   }));
 };
@@ -383,6 +385,7 @@ export default async function handler(req, res) {
           for (const id of toDelete) {
             await supabaseRequest(`/rest/v1/sponsor_tiers?id=eq.${id}`, { ...opts, method: "DELETE" });
           }
+
           for (let i = 0; i < body.tiers.length; i++) {
             const t = body.tiers[i];
             if (!t.name || !t.minAmount) continue;
@@ -399,6 +402,31 @@ export default async function handler(req, res) {
             }
           }
         } catch (e) { console.error("Tier update failed:", e.message); throw e; }
+      }
+
+      if (body.featuredSponsorCampaign) {
+        const campaign = body.featuredSponsorCampaign;
+        const positiveMoney = value => Number.isFinite(Number(value)) && Number(value) > 0 && Number(value) <= 1000000000;
+        const slotCount = Number(campaign.slotCount);
+        const startsAt = typeof campaign.startsAt === "string" && campaign.startsAt ? new Date(campaign.startsAt) : null;
+        const closesAt = typeof campaign.closesAt === "string" && campaign.closesAt ? new Date(campaign.closesAt) : null;
+        if (campaign.enabled === true && (!startsAt || !closesAt || !Number.isFinite(startsAt.getTime()) ||
+            !Number.isFinite(closesAt.getTime()) || closesAt <= startsAt ||
+            !Number.isSafeInteger(slotCount) || slotCount < 1 || slotCount > 20 ||
+            !positiveMoney(campaign.minimumBid) || Math.round(Number(campaign.minimumBid) * 100) < 1 ||
+            !positiveMoney(campaign.bidIncrement) || Math.round(Number(campaign.bidIncrement) * 100) < 1)) {
+          return sendJson(res, 400, { error: "Enter a valid campaign window, 1–20 slots, minimum bid and bid increment." });
+        }
+        await supabaseRequest("/rest/v1/rpc/save_sponsor_featured_campaign", {
+          ...opts, method: "POST", body: { p_wedding_id: body.weddingId, p_data: {
+            enabled: campaign.enabled === true,
+            starts_at: startsAt?.toISOString() || null,
+            closes_at: closesAt?.toISOString() || null,
+            slot_count: slotCount,
+            minimum_bid_minor: positiveMoney(campaign.minimumBid) ? Math.round(Number(campaign.minimumBid) * 100) : null,
+            bid_increment_minor: positiveMoney(campaign.bidIncrement) ? Math.round(Number(campaign.bidIncrement) * 100) : null
+          } }
+        });
       }
 
       // Update VIP offer if provided
