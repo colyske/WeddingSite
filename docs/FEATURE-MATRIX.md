@@ -4,6 +4,7 @@ Status: built features are implemented; payments are test mode (no real money).
 
 | Feature | Configured (organizer) | Shown (guest site) | Recorded | Who sees it |
 |---|---|---|---|---|
+| Fundraising campaigns with milestones (separate from the gift registry) | Editor → "Fundraising campaigns": named campaigns, goal, ordered milestones, visibility | "A gift for our next chapter": progress bar, ticked milestones, 10/25/50/Other (test mode) | `fundraising_streams`, `fundraising_milestones`, `contributions.stream_id/milestone_id` | Guests see totals only; organizer sees ledger by campaign (guest, amount, campaign, milestone, status); Owner ledger |
 | Wedding date, time, time zone (mandatory) | Editor | Hero, venue cards, countdown, .ics | `weddings`, `venues` | Public |
 | Past / Completed state | Automatic from date in the wedding zone | "Completed" banner; RSVP, bids, pledges closed | `is_past` (RPC) | Public |
 | Unpublish / archive (no delete) | Editor buttons (confirm) | Site hidden | `unpublished_at`, `archived_at`; delete blocked by trigger and API 405 | Wedding owner, admins |
