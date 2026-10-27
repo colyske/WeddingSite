@@ -248,8 +248,11 @@ export default async function handler(req, res) {
       const weddingId = await resolveWeddingId(slug, rpc);
       if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
       
-      const result = await rpc("get_public_fundraising", { p_slug: slug });
-      return sendJson(res, 200, result || { tiers: [], vip: null, sponsors: [] });
+      const [result, campaigns] = await Promise.all([
+        rpc("get_public_fundraising", { p_slug: slug }),
+        rpc("get_public_campaigns", { p_slug: slug }).catch(() => [])
+      ]);
+      return sendJson(res, 200, { ...(result || { tiers: [], vip: null, sponsors: [] }), campaigns: campaigns || [] });
     }
 
     if (action === "browse") {
