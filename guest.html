@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#203a31">
   <title>WeddingSite — Wedding</title>
-  <link rel="stylesheet" href="app-shell.css">
+  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><script src="ornaments.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
     /* Sticky navbar with glassmorphism */
@@ -231,6 +231,7 @@
     <!-- Hero with countdown -->
     <section class="hero">
       <div class="hero-content">
+        <div data-orn="rings" style="text-align:center"></div>
         <h1 id="couple-names">Wedding</h1>
         <p class="subtitle" id="wedding-date-display">Coming soon…</p>
         <p class="subtitle" id="countdown-state" hidden aria-live="polite"></p>
@@ -477,6 +478,11 @@
       $("monogram").textContent = names;
       const palette = wedding.palette || ["#244b3a"];
       $("monogram").style.background = palette[0];
+      const hex = c => /^#[0-9a-f]{6}$/i.test(c || "");
+      const root = document.documentElement.style;
+      if (hex(palette[0])) root.setProperty("--green", palette[0]);
+      if (hex(palette[1])) root.setProperty("--gold", palette[1]);
+      if (hex(palette[2])) root.setProperty("--sage", palette[2]);
 
       // Set background music if available
       if (wedding.background_music_url) {

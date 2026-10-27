@@ -1,0 +1,84 @@
+/* WeddingSite shared theme: glassmorphism, elegant type, gold / forest-green polish + wedding ornaments. */
+:root { --glass: rgba(255,255,255,.62); --glass-line: rgba(190,155,82,.35); --shadow-lg: 0 18px 50px rgba(32,58,49,.16); }
+
+body {
+  background:
+    radial-gradient(900px 500px at 10% -10%, rgba(169,181,162,.45), transparent 60%),
+    radial-gradient(800px 500px at 100% 0%, rgba(190,155,82,.22), transparent 55%),
+    radial-gradient(900px 600px at 50% 120%, rgba(32,58,49,.16), transparent 60%),
+    linear-gradient(135deg, var(--ivory,#f6f1e4), #faf6ec);
+  background-attachment: fixed;
+  position: relative;
+}
+body > *:not(.orn-layer) { position: relative; z-index: 1; }
+
+h1, h2 { font-family: var(--serif); }
+h1 { background: linear-gradient(120deg, var(--green,#203a31), #3b6a55 55%, var(--gold,#be9b52)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero h1, [data-no-divider] h1 { background: none; color: var(--green,#203a31); }
+h2::before { content: "\2766"; color: var(--gold,#be9b52); margin-right: .45em; font-size: .8em; }
+
+/* glass surfaces */
+.card, section.card, .panel, header, nav, .sticky-nav {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  backdrop-filter: blur(14px) saturate(1.3);
+  border: 1px solid var(--glass-line);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,.8);
+}
+nav, .sticky-nav, header.top { position: sticky; top: 0; z-index: 40; }
+.card { border-radius: 24px; position: relative; overflow: hidden; }
+.card::after {
+  content: ""; position: absolute; inset: 6px; border: 1px solid rgba(190,155,82,.28);
+  border-radius: 19px; pointer-events: none;
+}
+
+/* buttons */
+button, .btn, a.button, .cta-btn {
+  border-radius: 999px;
+  transition: transform .2s, box-shadow .2s, background .2s;
+}
+button:not(.secondary):not([disabled]), .btn.primary, .cta-btn {
+  background: linear-gradient(135deg, var(--green,#203a31), #2f5a47);
+  color: #fff; border: 1px solid var(--gold,#be9b52);
+  box-shadow: 0 6px 18px rgba(32,58,49,.28);
+}
+button:not(.secondary):not([disabled]):hover, .cta-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 26px rgba(32,58,49,.34); }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 3px solid rgba(190,155,82,.65); outline-offset: 2px;
+}
+input, select, textarea { border-radius: 12px; background: rgba(255,255,255,.85); border-color: rgba(190,155,82,.4); }
+.cta-section { background: linear-gradient(135deg, #203a31, #2f5a47) !important; border: 1px solid var(--gold,#be9b52); border-radius: 24px !important; position: relative; overflow: hidden; }
+.feature-card, .wedding-card { border-radius: 20px !important; background: var(--glass) !important; backdrop-filter: blur(10px); border: 1px solid var(--glass-line); }
+
+/* ornaments */
+.orn-layer { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.orn svg { width: 100%; height: 100%; display: block; }
+.orn-corner { position: absolute; width: clamp(80px, 14vw, 170px); height: clamp(80px, 14vw, 170px); opacity: .55; }
+.orn-tl { top: 0; left: 0; }
+.orn-br { bottom: 0; right: 0; transform: rotate(180deg); }
+.orn-petal { position: absolute; top: -40px; width: 14px; height: 20px; opacity: .55; animation: petal-fall linear infinite; will-change: transform; }
+@keyframes petal-fall {
+  0% { transform: translate3d(0,-5vh,0) rotate(0); }
+  50% { transform: translate3d(40px,55vh,0) rotate(180deg); }
+  100% { transform: translate3d(-20px,110vh,0) rotate(360deg); }
+}
+.orn-inline { display: inline-block; width: 64px; height: 38px; vertical-align: middle; }
+.orn-balloon { display: inline-block; width: 38px; height: 76px; animation: balloon-bob 5s ease-in-out infinite; }
+@keyframes balloon-bob { 0%,100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-12px) rotate(3deg); } }
+[data-balloons] { display: flex; gap: .6rem; justify-content: center; align-items: flex-end; margin: .5rem 0; }
+.orn-divider { display: flex; align-items: center; justify-content: center; gap: .8rem; margin: .2rem auto 1.2rem; max-width: 320px; }
+.orn-divider i { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--gold,#be9b52), transparent); }
+.orn-divider svg { flex: none; }
+.ribbon { display: inline-block; position: relative; padding: .35rem 1.6rem; background: var(--gold,#be9b52); color: #fff; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: .75rem; clip-path: polygon(0 0,100% 0,calc(100% - 12px) 50%,100% 100%,0 100%,12px 50%); }
+
+@media (max-width: 640px) {
+  .orn-petal:nth-child(n+6) { display: none; }
+  .orn-corner { opacity: .35; }
+  .card { border-radius: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orn-petal, .orn-balloon { animation: none !important; }
+  .orn-petal { display: none; }
+  * { scroll-behavior: auto !important; transition-duration: .01ms !important; }
+}
+@media print { .orn-layer { display: none; } }
