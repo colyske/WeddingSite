@@ -122,15 +122,18 @@
       }
 
       nav.sticky-nav .nav-links {
-        gap: 1rem;
+        gap: .5rem 1rem;
         font-size: 0.85rem;
+        flex-wrap: wrap;
+        justify-content: center;
+        max-width: 100%;
       }
 
 
     }
   </style>
 </head>
-<body>
+<body class="guest-page">
   <!-- Sticky navbar with glassmorphism -->
   <nav class="sticky-nav">
     <div class="logo-section">
@@ -435,7 +438,7 @@
 
       // Couple monogram
       const names = wedding.couple_names?.split(/[&,]|and/).map(n => n.trim().charAt(0).toUpperCase()).join("").slice(0, 3) || "WS";
-      $("monogram").textContent = names;
+      $("monogram").textContent = names; if ($("footer-monogram")) $("footer-monogram").textContent = names;
       const palette = wedding.palette || ["#244b3a"];
       $("monogram").style.background = palette[0];
       const hex = c => /^#[0-9a-f]{6}$/i.test(c || "");
@@ -489,21 +492,20 @@
           const ms = day ? WSTime.zonedToUtc(day, v.event_time || "12:00:00", zone) : null;
           const dateText = ms != null ? WSTime.formatDate(ms, zone) : "";
           const timeText = v.event_time && ms != null ? WSTime.formatTime(ms, zone) : "";
-          return `<div class="venue-card" style="border-left: 4px solid var(--sage); padding: 1rem; background: #f8f9f7; border-radius: 4px;">
-            <h3 style="margin: 0 0 0.5rem; color: var(--green);">${esc(v.name)}${v.is_main ? " <small>(main ceremony)</small>" : ""}</h3>
-            <dl>
-              ${dateText ? `<dt>Date</dt><dd>${esc(dateText)}</dd>` : ""}
-              ${timeText ? `<dt>Time</dt><dd>${esc(timeText)}</dd>` : ""}
-              ${v.description ? `<dt>Address &amp; notes</dt><dd>${esc(v.description)}</dd>` : ""}
-              ${safeUrl(v.map_link) ? `<dt>Map</dt><dd><a href="${esc(safeUrl(v.map_link))}" target="_blank" rel="noopener noreferrer" class="link">Open map &amp; directions</a></dd>` : ""}
-            </dl>
+          return `<div class="sched-row venue-card">
+            <div class="sched-time">${timeText ? esc(timeText).replace(/\s?(AM|PM)$/i, " <small>$1</small>") : "&mdash;"}${dateText ? `<span class="sched-date">${esc(dateText)}</span>` : ""}</div>
+            <div class="sched-body">
+              <h3>${esc(v.name)}${v.is_main ? " <small>(main ceremony)</small>" : ""}</h3>
+              ${v.description ? `<p>${esc(v.description)}</p>` : ""}
+              ${safeUrl(v.map_link) ? `<a href="${esc(safeUrl(v.map_link))}" target="_blank" rel="noopener noreferrer" class="link">Get directions &#8599;</a>` : ""}
+            </div>
           </div>`;
         }).join("");
       }
       // Attire & Dress Code
       if ((wedding.palette && wedding.palette.length) || wedding.attire_notes?.trim()) {
         $("attire").hidden = false;
-        $("attire-palette-preview").innerHTML = (wedding.palette || []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).map(c => `<span style="background: ${c};" title="${esc(c)}"></span>`).join("");
+        $("attire-palette-preview").innerHTML = (wedding.palette || []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).map((c, i) => `<figure><span style="background: ${c};"></span><figcaption>Palette colour 0${i + 1}<small>${esc(c.toUpperCase())}</small></figcaption></figure>`).join("");
         if (wedding.attire_notes?.trim()) {
           $("attire-notes-display").textContent = wedding.attire_notes;
         }
@@ -969,8 +971,41 @@
 })();
   </script>
   <div class="prop-row" data-props="ringsLine,cake,bouquet,dove,bell2" style="background:var(--green-deep);margin:0;padding:1.6rem 0 0;color:#e1cf9f"></div>
-<footer class="ws-promo"><span>Planning your own wedding? <a href="/signin.html">Create your wedding site with WeddingSite</a></span><span class="credit">Made with <a href="/">WeddingSite</a></span></footer>
-  <script src="guest-extras.js"></script>
+<footer class="ws-promo"><div class="foot-top"><span class="foot-mono" id="footer-monogram">W</span><a href="#top" class="foot-up">Back to top &#8593;</a></div><span>Planning your own wedding? <a href="/signin.html">Create your wedding site with WeddingSite</a></span><span class="credit">Made with love on <a href="/">WeddingSite</a></span></footer>
+  <script>
+(function () {
+  const MAP = {
+    story: ["A little about us", "Our <em>story.</em>"],
+    details: ["The details", "Everything <em>you need to know.</em>"],
+    venues: ["The celebration", "A day made <em>of moments.</em>"],
+    attire: ["The look", "Dress like the <em>joy of the day.</em>"],
+    campaigns: ["A gift for our next chapter", "Celebrate us, <em>if you wish.</em>"],
+    registry: ["The registry", "Gifts <em>with meaning.</em>"],
+    rsvp: ["We hope you\u2019ll be there", "Will you <em>attend?</em>"],
+    ecard: ["Your digital invitation", "A little card <em>with a big welcome.</em>"],
+    bids: ["The soundtrack", "Help choose <em>the playlist.</em>"],
+    "sponsor-tiers": ["Sponsorship", "Stand with <em>us.</em>"],
+    "vip-section": ["VIP seating", "Sit a little <em>closer.</em>"],
+    sponsors: ["With gratitude", "Our <em>sponsors.</em>"],
+    ledger: ["With thanks", "Our generous <em>guests.</em>"]
+  };
+  function run() {
+    let n = 0;
+    Object.keys(MAP).forEach(id => {
+      const s = document.getElementById(id);
+      if (!s || s.hidden) return;
+      const h = s.querySelector(":scope > h2"); if (!h) return;
+      if (!s.dataset.ed) { h.innerHTML = MAP[id][1]; const p = document.createElement("p"); p.className = "sec-label"; s.insertBefore(p, h); s.dataset.ed = "1"; }
+    });
+    document.querySelectorAll("section[data-ed]").forEach(s => {
+      if (s.hidden) return; n += 1;
+      const p = s.querySelector(":scope > .sec-label"); if (p) p.innerHTML = "<span>" + String(n).padStart(2, "0") + "</span> " + MAP[s.id][0];
+    });
+  }
+  new MutationObserver(run).observe(document.body, { attributes: true, attributeFilter: ["hidden"], subtree: true });
+  document.addEventListener("DOMContentLoaded", run);
+})();
+</script>  <script src="guest-extras.js"></script>
   <script src="footer.js"></script>
 <script src="/feedback.js"></script>
 </body>

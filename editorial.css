@@ -144,3 +144,42 @@ nav.sticky-nav a:hover { color: var(--gold, #bd9954) !important; }
 .camp-give { display: flex; flex-wrap: wrap; gap: .5rem; }
 .camp-give .buy-btn { margin: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ===== Guest site: editorial bands (demo look) ===== */
+body.guest-page .wrap { max-width: none !important; width: 100%; padding-left: 0 !important; padding-right: 0 !important; overflow-x: clip; }
+body.guest-page #notice { margin: 1rem auto; max-width: 1080px; }
+body.guest-page section.card {
+  margin: 0 !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; background: #fbfaf6 !important;
+  padding: clamp(3.5rem, 8vw, 6rem) max(1.25rem, calc((100% - 1080px) / 2)) !important;
+}
+body.guest-page section.card::before, body.guest-page section.card::after { display: none !important; }
+body.guest-page #story, body.guest-page #campaigns, body.guest-page #bids, body.guest-page #vip-section, body.guest-page #ledger, body.guest-page #share-section { background: #f6f3ec !important; }
+body.guest-page #rsvp { background: #ebe7da !important; }
+body.guest-page #venues { background: var(--green-deep) !important; color: #e8eadf; }
+body.guest-page #venues h2, body.guest-page #venues h3 { color: #fff !important; }
+body.guest-page #venues h2 em { color: #d9c58f; }
+body.guest-page #venues .fine { color: rgba(255,255,255,.7); }
+body.guest-page section.card > h2 { font-size: clamp(2.2rem, 6vw, 3.6rem); line-height: 1.05; letter-spacing: -.02em; margin: 0 0 1.4rem; }
+body.guest-page section.card > h2 em { display: block; color: var(--green, #244b3a); font-style: italic; }
+body.guest-page #venues h2 em { color: #d9c58f; }
+.sec-label { margin: 0 0 1.4rem; font-size: .72rem; letter-spacing: .2em; text-transform: uppercase; color: #6d7168; }
+.sec-label span { color: var(--gold, #be9b52); margin-right: .9rem; }
+#venues .sec-label { color: rgba(255,255,255,.72); }
+.sched-row { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; gap: 1.5rem; padding: 1.6rem 0; border-top: 1px solid rgba(255,255,255,.2); background: none !important; border-left: 0 !important; border-radius: 0 !important; }
+.sched-row:last-child { border-bottom: 1px solid rgba(255,255,255,.2); }
+.sched-time { font: 400 clamp(1.7rem, 4vw, 2.3rem)/1.1 var(--serif, "Playfair Display", serif); color: #d9c58f; }
+.sched-time small { font: 500 .8rem var(--sans, "DM Sans", sans-serif); letter-spacing: .1em; }
+.sched-date { display: block; margin-top: .4rem; font: 400 .72rem var(--sans, "DM Sans", sans-serif); letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.65); }
+.sched-body h3 { margin: 0 0 .3rem; font-size: 1.5rem; }
+.sched-body p { margin: 0 0 .7rem; color: rgba(255,255,255,.82); }
+.sched-body a { color: #d9c58f !important; font-size: .95rem; text-decoration: none; }
+@media (max-width: 560px) { .sched-row { grid-template-columns: 1fr; gap: .6rem; } }
+#attire-palette-preview { display: grid !important; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1.6rem; margin: 1.6rem 0; }
+#attire-palette-preview figure { margin: 0; }
+#attire-palette-preview figure span { display: block !important; width: auto !important; height: auto !important; aspect-ratio: 3 / 2; border: 1px solid rgba(0,0,0,.08); }
+#attire-palette-preview figcaption { margin-top: .8rem; font-size: .72rem; letter-spacing: .16em; text-transform: uppercase; color: #252923; }
+#attire-palette-preview figcaption small { display: block; margin-top: .3rem; letter-spacing: .08em; color: #8a8f85; }
+body.guest-page #ecard > div, body.guest-page #ecard .ecard { box-shadow: 10px 10px 0 rgba(190,155,82,.55); }
+.ws-promo .foot-top { display: flex; justify-content: space-between; align-items: center; max-width: 1080px; margin: 0 auto 1.2rem; padding: 0 1.25rem; }
+.foot-mono { font: 400 1.4rem var(--serif, serif); color: #fff; border: 1px solid rgba(255,255,255,.35); padding: .35rem .8rem; }
+.foot-up { font-size: .72rem; letter-spacing: .16em; text-transform: uppercase; }
