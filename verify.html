@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#203a31">
+  <title>WeddingSite — Pass verification</title>
+  <link rel="stylesheet" href="app-shell.css">
+  <style>
+    main { max-width: 38rem; margin: 3rem auto; }
+    .status { padding: 1rem; border-radius: 0.5rem; background: #f3faf3; }
+    .actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.25rem; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <a class="brand" href="/">WeddingSite</a>
+    <h1>Guest pass verification</h1>
+    <p id="message" class="notice" role="status">Loading pass…</p>
+    <section id="guest-details" class="status" hidden>
+      <p><strong>Wedding:</strong> <span id="couple-names"></span></p>
+      <p><strong>Guest:</strong> <span id="guest-name"></span></p>
+      <p><strong>RSVP status:</strong> <span id="attendance-status"></span></p>
+      <p id="checkin-status" hidden></p>
+      <div class="actions">
+        <button id="check-in" type="button" hidden>Confirm check-in</button>
+        <a id="sign-in" href="/signin.html" hidden>Sign in as wedding organizer</a>
+        <a id="guest-site" class="link" hidden>View wedding site</a>
+      </div>
+    </section>
+  </main>
+  <script src="auth-client.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const code = new URLSearchParams(location.search).get("code") || "";
+    let guest = null;
+    const showMessage = (text, error = false) => {
+      $("message").textContent = text;
+      $("message").className = error ? "notice bad" : "notice";
+      $("message").hidden = false;
+    };
+    const displayGuest = item => {
+      guest = item;
+      $("guest-details").hidden = false;
+      $("couple-names").textContent = item.couple_names || "Wedding";
+      $("guest-name").textContent = item.guest_name || "Guest";
+      $("attendance-status").textContent = item.attendance_status === "yes"
+        ? "Attending" : item.attendance_status === "no" ? "Not attending" : item.attendance_status || "Unknown";
+      $("guest-site").href = `/guest.html?slug=${encodeURIComponent(item.slug)}`;
+      $("guest-site").hidden = !item.slug;
+      const checkedIn = Boolean(item.checked_in_at);
+      $("checkin-status").hidden = !checkedIn;
+      $("checkin-status").textContent = checkedIn ? `Checked in at ${new Date(item.checked_in_at).toLocaleString()}` : "";
+      $("check-in").hidden = checkedIn || item.attendance_status !== "yes" || !WS.token();
+      $("sign-in").hidden = Boolean(WS.token()) || checkedIn || item.attendance_status !== "yes";
+      if (checkedIn) showMessage("This pass has already been checked in.");
+      else showMessage("Pass found. Check the guest details before taking action.");
+    };
+    async function loadPass() {
+      if (!/^[0-9a-f-]{36}$/i.test(code)) return showMessage("This pass code is invalid.", true);
+      try {
+        const response = await fetch(`/api/guest?action=verify-qr&code=${encodeURIComponent(code)}`);
+        const data = await response.json();
+        if (!response.ok) return showMessage(data.error || "Pass could not be verified.", true);
+        displayGuest(data.guest);
+      } catch (error) {
+        showMessage("Pass verification is temporarily unavailable.", true);
+      }
+    }
+    $("check-in").addEventListener("click", async () => {
+      if (!guest || !confirm(`Confirm check-in for ${guest.guest_name}?`)) return;
+      $("check-in").disabled = true;
+      try {
+        const response = await WS.api("/api/guest?action=verify-qr", {
+          method: "POST",
+          body: JSON.stringify({ code })
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          showMessage(data.error || "Could not check in this guest.", true);
+          return;
+        }
+        displayGuest(data.guest);
+        showMessage("Guest checked in.");
+      } catch {
+        showMessage("Check-in could not be completed.", true);
+      } finally {
+        $("check-in").disabled = false;
+      }
+    });
+    loadPass();
+  </script>
+</body>
+</html>

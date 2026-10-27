@@ -231,28 +231,28 @@
         weddingData = await wRes.json();
         if (!wRes.ok) throw new Error(weddingData.error || "Could not load wedding");
 
-        $("couple-names").textContent = esc(weddingData.names);
+        $("couple-names").textContent = weddingData.couple_names || "Wedding";
         $("event-date").textContent = weddingData.wedding_date 
           ? new Date(weddingData.wedding_date).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })
           : "Date TBA";
 
-        // Load guest RSVP data (private, needs verification)
-        const gRes = await fetch(`/api/guest?action=guest-pass&slug=${encodeURIComponent(slug)}&guest_id=${encodeURIComponent(guestId)}`);
-        guestData = await gRes.json();
-        if (!gRes.ok) throw new Error(guestData.error || "Could not load guest data");
+        const gRes = await fetch(`/api/guest?action=verify-qr&code=${encodeURIComponent(guestId)}`);
+        const verification = await gRes.json();
+        if (!gRes.ok) throw new Error(verification.error || "Could not load guest data");
+        guestData = verification.guest;
 
         // Display guest info
         $("guest-info").hidden = false;
-        $("guest-name").textContent = esc(guestData.name);
+        $("guest-name").textContent = guestData.guest_name;
 
-        const status = (guestData.attending || "").toLowerCase();
+        const status = (guestData.attendance_status || "").toLowerCase();
         const statusEl = $("attending-badge");
         statusEl.textContent = status === "yes" ? "✓ Yes, attending" : status === "no" ? "✗ Not attending" : "❓ Maybe";
         statusEl.className = `rsvp-status ${status || "maybe"}`;
 
         if (guestData.dietary_needs) {
           $("dietary-row").hidden = false;
-          $("dietary-needs").textContent = esc(guestData.dietary_needs);
+          $("dietary-needs").textContent = guestData.dietary_needs;
         }
 
         if (guestData.num_plus_ones && parseInt(guestData.num_plus_ones) > 0) {
@@ -260,21 +260,15 @@
           $("plus-ones").textContent = guestData.num_plus_ones;
         }
 
-        // Generate QR code encoding guest_id + slug + verification timestamp
-        const qrData = JSON.stringify({
-          slug,
-          guest_id: guestData.guest_id,
-          name: guestData.name,
-          attending: status,
-          generated_at: new Date().toISOString()
-        });
+        const qrData = new URL("/verify.html", location.origin);
+        qrData.searchParams.set("code", guestId);
 
         // Clear any existing QR
         $("qr-code").innerHTML = "";
 
         // Generate QR code
         new QRCode($("qr-code"), {
-          text: qrData,
+          text: qrData.toString(),
           width: 300,
           height: 300,
           colorDark: "#203a31",
@@ -300,8 +294,8 @@
       if (navigator.share) {
         try {
           await navigator.share({
-            title: `${weddingData.names} — Wedding Pass`,
-            text: `Here's my pass for ${weddingData.names}'s wedding`,
+            title: `${weddingData.couple_names} — Wedding Pass`,
+            text: `Here's my pass for ${weddingData.couple_names}'s wedding`,
             url: shareUrl
           });
         } catch (err) {

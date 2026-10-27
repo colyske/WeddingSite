@@ -1,39 +1,48 @@
 import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireAuth } from "../server/auth-middleware.js";
+import { paymentAdaptersFor } from "./checkout.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
 const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,public_location,currency,max_guest_capacity,palette,attire_notes,enabled_payment_methods,background_music_url,published_at,created_at";
+const parseVenueTime = value => {
+  const input = String(value || "").trim();
+  if (!input) return null;
+  const match = input.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+  if (!match) throw new Error("Enter venue times as HH:MM or h:MM AM/PM.");
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const seconds = Number(match[3] || 0);
+  const meridiem = match[4]?.toUpperCase();
+  if (minutes > 59 || seconds > 59 || (meridiem ? hours < 1 || hours > 12 : hours > 23)) {
+    throw new Error("Enter a valid venue time.");
+  }
+  if (meridiem) hours = hours % 12 + (meridiem === "PM" ? 12 : 0);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+};
+const configuredPayoutMethods = currency => {
+  const markets = new Set([
+    ...String(process.env.STRIPE_SUPPORTED_MARKETS || "").split(","),
+    ...String(process.env.PAYSTACK_SUPPORTED_MARKETS || "").split(",")
+  ].map(market => market.trim().toUpperCase()).filter(Boolean));
+  const methods = new Map();
+  for (const market of markets) {
+    for (const adapter of paymentAdaptersFor(currency, market)) methods.set(adapter.id, adapter.name);
+  }
+  return [...methods].map(([id, name]) => ({ id, name }));
+};
 
 // Load venues and payout info for a wedding
 const loadWeddingDetails = async (weddingId, opts) => {
-  try {
-    const venues = await supabaseRequest(`/rest/v1/venues?wedding_id=eq.${weddingId}&select=id,name,event_time,map_link,description,is_main,sort_order&order=sort_order.asc`, opts).catch((e) => {
-      console.warn("Failed to load venues:", e.message);
-      return [];
-    });
-    const payout = await supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${weddingId}`, opts).catch((e) => {
-      console.warn("Failed to load payout preferences:", e.message);
-      return null;
-    });
-    const registry = await supabaseRequest(`/rest/v1/registry_items?wedding_id=eq.${weddingId}&select=id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts).catch((e) => {
-      console.warn("Failed to load registry items:", e.message);
-      return [];
-    });
-    const tiers = await supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}&select=id,name,min_amount_minor,perks,sort_order&order=sort_order.asc`, opts).catch((e) => {
-      console.warn("Failed to load sponsor tiers:", e.message);
-      return [];
-    });
-    const vip = await supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${weddingId}&select=id,title,description,seats_total,seats_sold,price_minor&limit=1`, opts).catch((e) => {
-      console.warn("Failed to load VIP offers:", e.message);
-      return [];
-    });
-    return { venues: venues || [], payout, registry: registry || [], tiers: tiers || [], vip: vip?.[0] || null };
-  } catch (e) {
-    console.error("loadWeddingDetails caught unexpected error:", e.message);
-    throw e;
-  }
+  const [venues, payout, registry, tiers, vip] = await Promise.all([
+    supabaseRequest(`/rest/v1/venues?wedding_id=eq.${weddingId}&select=id,name,event_time,map_link,description,is_main,sort_order&order=sort_order.asc`, opts),
+    supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${weddingId}&select=method,display_mask,verified`, opts),
+    supabaseRequest(`/rest/v1/registry_items?wedding_id=eq.${weddingId}&select=id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts),
+    supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}&select=id,name,min_amount_minor,perks,sort_order&order=sort_order.asc`, opts),
+    supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${weddingId}&select=id,title,description,seats_total,seats_sold,price_minor&limit=1`, opts)
+  ]);
+  return { venues: venues || [], payout: payout?.[0] || null, registry: registry || [], tiers: tiers || [], vip: vip?.[0] || null };
 };
 
 // Authenticated Client workspace API. All reads/writes run as the signed-in user so RLS applies.
@@ -66,20 +75,38 @@ export default async function handler(req, res) {
       if (!methodOnly(req, res, "POST")) return;
       const names = String(body.coupleNames || "").trim();
       const location = String(body.location || "").trim();
-      const palette = Array.isArray(body.palette) && body.palette.length ? body.palette : ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"];
+      const palette = Array.isArray(body.palette) && body.palette.length
+        ? body.palette.map(color => typeof color === "string" ? color.trim().toLowerCase() : "")
+        : ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"];
       const capacity = Number(body.maxCapacity ?? 150);
       const currency = String(body.currency || "USD").toUpperCase();
+      let venues;
+      try {
+        venues = (Array.isArray(body.venues) ? body.venues : []).slice(0, 30).map((venue, sortOrder) => ({
+          name: String(venue?.name || "").trim().slice(0, 100),
+          eventTime: parseVenueTime(venue?.eventTime ?? venue?.time),
+          mapLink: String(venue?.mapLink ?? venue?.map ?? "").trim() || null,
+          description: String(venue?.description || "").trim().slice(0, 500) || null,
+          isMain: venue?.isMain === true,
+          sortOrder
+        })).filter(venue => venue.name);
+      } catch (error) {
+        return sendJson(res, 400, { error: error.message || "Check the venue details." });
+      }
+      if (venues.some(venue => venue.mapLink && !/^https?:\/\//i.test(venue.mapLink))) {
+        return sendJson(res, 400, { error: "Venue map links must use HTTP or HTTPS." });
+      }
       if (names.length < 1 || names.length > 120 || location.length < 1 || location.length > 120 || !/^[A-Z]{3}$/.test(currency) ||
-          !Number.isInteger(capacity) || capacity < 1 || palette.length > 4 || !palette.every(c => COLOR.test(c))) {
+          !Number.isInteger(capacity) || capacity < 1 || palette.length < 1 || palette.length > 4 || !palette.every(c => COLOR.test(c))) {
         return sendJson(res, 400, { error: "Check the couple names, location, currency, guest capacity and up to four hex colors." });
       }
       const base = toSlug(names) || "wedding";
       for (const suffix of ["", `-${Math.random().toString(36).slice(2, 6)}`, `-${Math.random().toString(36).slice(2, 8)}`]) {
         try {
-          const id = await supabaseRequest("/rest/v1/rpc/create_wedding", { ...opts, method: "POST", body: {
+          const id = await supabaseRequest("/rest/v1/rpc/create_wedding_with_venues", { ...opts, method: "POST", body: {
             p_slug: `${base}${suffix}`.slice(0, 80).padEnd(3, "x"), p_couple_names: names,
             p_wedding_date: body.weddingDate || null, p_location: location.slice(0, 120),
-            p_currency: currency, p_capacity: capacity, p_palette: palette } });
+            p_currency: currency, p_capacity: capacity, p_palette: palette, p_venues: venues } });
           return sendJson(res, 201, { weddingId: id, slug: `${base}${suffix}` });
         } catch (error) {
           if (!/duplicate|unique/i.test(error.message)) throw error;
@@ -92,6 +119,25 @@ export default async function handler(req, res) {
       if (!methodOnly(req, res, "POST")) return;
       if (!UUID.test(String(body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
       const patch = {};
+      let normalizedVenues = null;
+      if (Array.isArray(body.venues)) {
+        try {
+          normalizedVenues = body.venues.slice(0, 30).map((v, sortOrder) => ({
+            id: v?.id || null,
+            name: String(v?.name || "").trim().slice(0, 100),
+            eventTime: parseVenueTime(v?.eventTime ?? v?.time),
+            mapLink: String(v?.mapLink ?? v?.map ?? "").trim() || null,
+            description: String(v?.description || "").trim().slice(0, 500) || null,
+            isMain: v?.isMain === true,
+            sortOrder
+          })).filter(v => v.name);
+          if (normalizedVenues.some(v => v.mapLink && !/^https?:\/\//i.test(v.mapLink))) {
+            return sendJson(res, 400, { error: "Venue map links must use HTTP or HTTPS." });
+          }
+        } catch (error) {
+          return sendJson(res, 400, { error: error.message || "Check the venue details." });
+        }
+      }
       
       // Handle slug updates with uniqueness validation
       if (body.slug !== undefined) {
@@ -127,19 +173,22 @@ export default async function handler(req, res) {
         if (!Number.isInteger(capacity) || capacity < 1) return sendJson(res, 400, { error: "Capacity must be a whole number." });
         patch.max_guest_capacity = capacity;
       }
+      if (body.currency !== undefined) {
+        const currency = String(body.currency).toUpperCase();
+        if (!/^[A-Z]{3}$/.test(currency)) return sendJson(res, 400, { error: "Choose a valid currency." });
+        patch.currency = currency;
+      }
       if (body.palette !== undefined) {
-        if (!Array.isArray(body.palette) || body.palette.length < 1 || body.palette.length > 4 || !body.palette.every(c => COLOR.test(c))) {
+        const palette = Array.isArray(body.palette)
+          ? body.palette.map(color => typeof color === "string" ? color.trim().toLowerCase() : "")
+          : null;
+        if (!palette || palette.length < 1 || palette.length > 4 || !palette.every(c => COLOR.test(c))) {
           return sendJson(res, 400, { error: "Choose one to four hex colors." });
         }
-        patch.palette = body.palette;
+        patch.palette = palette;
       }
       if (body.attireNotes !== undefined) {
         patch.attire_notes = String(body.attireNotes).slice(0, 300);
-      }
-      if (body.enabledPaymentMethods !== undefined) {
-        if (Array.isArray(body.enabledPaymentMethods) && body.enabledPaymentMethods.every(m => typeof m === "string")) {
-          patch.enabled_payment_methods = body.enabledPaymentMethods;
-        }
       }
       if (body.backgroundMusicUrl !== undefined) {
         const url = String(body.backgroundMusicUrl).trim();
@@ -154,29 +203,32 @@ export default async function handler(req, res) {
       if (Array.isArray(body.venues)) {
         try {
           const existing = (await supabaseRequest(`/rest/v1/venues?wedding_id=eq.${body.weddingId}&select=id`, opts) || []).map(v => v.id);
-          const incoming = body.venues.filter(v => v && v.id).map(v => v.id);
+          const incoming = normalizedVenues.filter(v => v.id).map(v => v.id);
           const toDelete = existing.filter(id => !incoming.includes(id));
           for (const id of toDelete) {
-            await supabaseRequest(`/rest/v1/venues?id=eq.${id}`, { ...opts, method: "DELETE" }).catch(() => null);
+            await supabaseRequest(`/rest/v1/venues?id=eq.${id}`, { ...opts, method: "DELETE" });
           }
-          for (let i = 0; i < body.venues.length; i++) {
-            const v = body.venues[i];
-            if (!v.name || !v.name.trim()) continue;
+          for (let i = 0; i < normalizedVenues.length; i++) {
+            const v = normalizedVenues[i];
+            if (!v.name) continue;
             const venue = {
-              name: v.name.trim().slice(0, 100),
-              event_time: v.eventTime || null,
+              name: v.name,
+              event_time: v.eventTime,
               map_link: v.mapLink || null,
               description: v.description || null,
               is_main: v.isMain || false,
               sort_order: i
             };
             if (v.id && existing.includes(v.id)) {
-              await supabaseRequest(`/rest/v1/venues?id=eq.${v.id}`, { ...opts, method: "PATCH", body: venue }).catch(() => null);
+              await supabaseRequest(`/rest/v1/venues?id=eq.${v.id}`, { ...opts, method: "PATCH", body: venue });
             } else if (!v.id) {
-              await supabaseRequest("/rest/v1/venues", { ...opts, method: "POST", body: { wedding_id: body.weddingId, ...venue } }).catch(() => null);
+              await supabaseRequest("/rest/v1/venues", { ...opts, method: "POST", body: { wedding_id: body.weddingId, ...venue } });
             }
           }
-        } catch (e) { console.warn("Venue update failed:", e.message); }
+        } catch (e) {
+          console.error("Venue update failed:", e.message);
+          throw e;
+        }
       }
 
       // Update registry items if provided
@@ -186,7 +238,7 @@ export default async function handler(req, res) {
           const incoming = body.registry.filter(r => r && r.id).map(r => r.id);
           const toDelete = existing.filter(id => !incoming.includes(id));
           for (const id of toDelete) {
-            await supabaseRequest(`/rest/v1/registry_items?id=eq.${id}`, { ...opts, method: "DELETE" }).catch(() => null);
+            await supabaseRequest(`/rest/v1/registry_items?id=eq.${id}`, { ...opts, method: "DELETE" });
           }
           for (let i = 0; i < body.registry.length; i++) {
             const r = body.registry[i];
@@ -200,12 +252,12 @@ export default async function handler(req, res) {
               sort_order: i
             };
             if (r.id && existing.includes(r.id)) {
-              await supabaseRequest(`/rest/v1/registry_items?id=eq.${r.id}`, { ...opts, method: "PATCH", body: item }).catch(() => null);
+              await supabaseRequest(`/rest/v1/registry_items?id=eq.${r.id}`, { ...opts, method: "PATCH", body: item });
             } else if (!r.id) {
-              await supabaseRequest("/rest/v1/registry_items", { ...opts, method: "POST", body: { wedding_id: body.weddingId, ...item } }).catch(() => null);
+              await supabaseRequest("/rest/v1/registry_items", { ...opts, method: "POST", body: { wedding_id: body.weddingId, ...item } });
             }
           }
-        } catch (e) { console.warn("Registry update failed:", e.message); }
+        } catch (e) { console.error("Registry update failed:", e.message); throw e; }
       }
 
       // Update sponsor tiers if provided
@@ -215,7 +267,7 @@ export default async function handler(req, res) {
           const incoming = body.tiers.filter(t => t && t.id).map(t => t.id);
           const toDelete = existing.filter(id => !incoming.includes(id));
           for (const id of toDelete) {
-            await supabaseRequest(`/rest/v1/sponsor_tiers?id=eq.${id}`, { ...opts, method: "DELETE" }).catch(() => null);
+            await supabaseRequest(`/rest/v1/sponsor_tiers?id=eq.${id}`, { ...opts, method: "DELETE" });
           }
           for (let i = 0; i < body.tiers.length; i++) {
             const t = body.tiers[i];
@@ -227,20 +279,19 @@ export default async function handler(req, res) {
               sort_order: i
             };
             if (t.id && existing.includes(t.id)) {
-              await supabaseRequest(`/rest/v1/sponsor_tiers?id=eq.${t.id}`, { ...opts, method: "PATCH", body: tier }).catch(() => null);
+              await supabaseRequest(`/rest/v1/sponsor_tiers?id=eq.${t.id}`, { ...opts, method: "PATCH", body: tier });
             } else if (!t.id) {
-              await supabaseRequest("/rest/v1/sponsor_tiers", { ...opts, method: "POST", body: { wedding_id: body.weddingId, ...tier } }).catch(() => null);
+              await supabaseRequest("/rest/v1/sponsor_tiers", { ...opts, method: "POST", body: { wedding_id: body.weddingId, ...tier } });
             }
           }
-        } catch (e) { console.warn("Tier update failed:", e.message); }
+        } catch (e) { console.error("Tier update failed:", e.message); throw e; }
       }
 
       // Update VIP offer if provided
       if (body.vip) {
         try {
           const v = body.vip;
-          const existing = await supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${body.weddingId}&select=id`, opts).catch(() => []);
-          await supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${body.weddingId}`, { ...opts, method: "DELETE", prefer: "return=minimal" }).catch(() => null);
+          await supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${body.weddingId}`, { ...opts, method: "DELETE", prefer: "return=minimal" });
           if (v.price > 0 && v.seats > 0) {
             await supabaseRequest("/rest/v1/vip_offers", { ...opts, method: "POST", prefer: "return=minimal", body: {
               wedding_id: body.weddingId,
@@ -248,38 +299,51 @@ export default async function handler(req, res) {
               description: String(v.description || "").slice(0, 240),
               seats_total: Math.min(Math.floor(Number(v.seats)), 500),
               price_minor: Math.round(Number(v.price) * 100)
-            }}).catch(() => null);
+            }});
           }
-        } catch (e) { console.warn("VIP offer update failed:", e.message); }
+        } catch (e) { console.error("VIP offer update failed:", e.message); throw e; }
       }
 
       // Update payout preferences if provided
-      if (body.payoutDetails) {
+      if (Object.hasOwn(body, "payoutDetails")) {
         try {
           const details = body.payoutDetails;
+          if (!details) {
+            await supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${body.weddingId}`, { ...opts, method: "DELETE" });
+          } else {
           const method = String(details.method || "").toLowerCase();
-          const validMethods = ["mpesa", "bank_transfer", "stripe", "paystack", "other"];
-          if (validMethods.includes(method)) {
+          const currency = String(body.currency || rows[0].currency || "USD").toUpperCase();
+          const validMethods = configuredPayoutMethods(currency).map(item => item.id);
+          if (!validMethods.includes(method)) {
+            return sendJson(res, 400, { error: "Choose a payout method currently configured by WeddingSite." });
+          } else {
             // Encrypt details: simple approach (in production, use actual encryption)
             const fieldsJson = JSON.stringify(details.fields || {});
             const payout = {
               wedding_id: body.weddingId,
               method: method,
               details_encrypted: fieldsJson,
-              verified: details.verified || false
+              verified: false
             };
-            const existing = await supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${body.weddingId}`, opts).catch(() => []);
-            if (existing && existing.length > 0) {
-              await supabaseRequest(`/rest/v1/payout_preferences?id=eq.${existing[0].id}`, { ...opts, method: "PATCH", body: payout }).catch(() => null);
-            } else {
-              await supabaseRequest("/rest/v1/payout_preferences", { ...opts, method: "POST", body: payout }).catch(() => null);
-            }
+            await supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${body.weddingId}&on_conflict=wedding_id`, {
+              ...opts, method: "POST", body: payout, prefer: "resolution=merge-duplicates,return=minimal"
+            });
           }
-        } catch (e) { console.warn("Payout update failed:", e.message); }
+          }
+        } catch (e) { console.error("Payout update failed:", e.message); throw e; }
       }
       
       const details = await loadWeddingDetails(rows[0].id, opts);
       return sendJson(res, 200, { wedding: { ...rows[0], ...details } });
+    }
+
+    if (action === "payout-methods") {
+      if (!methodOnly(req, res, "GET")) return;
+      if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+      const rows = await supabaseRequest(
+        `/rest/v1/weddings?id=eq.${req.query.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=currency`, opts);
+      if (!rows?.length) return sendJson(res, 404, { error: "Wedding not found." });
+      return sendJson(res, 200, { methods: configuredPayoutMethods(rows[0].currency) });
     }
 
     if (action === "publish") {
@@ -415,7 +479,7 @@ export default async function handler(req, res) {
       if (!methodOnly(req, res, "GET")) return;
       if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
       const rows = await supabaseRequest(
-        `/rest/v1/guest_rsvps?wedding_id=eq.${req.query.weddingId}&select=id,guest_name,guest_email,attending,dietary_notes,created_at&order=created_at.desc&limit=200`, opts);
+        `/rest/v1/guest_rsvps?wedding_id=eq.${req.query.weddingId}&select=id,guest_name,guest_email,attendance_status,dietary_notes,plus_one_count,created_at,rsvped_at,checked_in_at&order=created_at.desc&limit=200`, opts);
       return sendJson(res, 200, { rsvps: rows || [] });
     }
 
@@ -423,7 +487,7 @@ export default async function handler(req, res) {
       if (!methodOnly(req, res, "GET")) return;
       if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
       const rows = await supabaseRequest(
-        `/rest/v1/dj_song_bids?wedding_id=eq.${req.query.weddingId}&select=id,song_title,artist,bid_amount_minor,guest_name,created_at&order=created_at.desc&limit=200`, opts);
+        `/rest/v1/dj_song_bids?wedding_id=eq.${req.query.weddingId}&select=id,song_title,artist_name,bid_amount_minor,bidder_name,currency,rank_position,created_at&order=bid_amount_minor.desc,created_at.asc&limit=200`, opts);
       return sendJson(res, 200, { bids: rows || [] });
     }
 

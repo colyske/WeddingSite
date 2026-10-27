@@ -87,7 +87,7 @@
       <h2>Multi-Factor Authentication (MFA)</h2>
       <div class="mfa-status">
         <strong>Status:</strong> <span id="mfa-status">Not enabled</span>
-        <p style="margin-top: 0.5rem; margin-bottom: 0;">Multi-factor authentication adds an extra layer of security to your account. Guidance coming soon.</p>
+        <p style="margin-top: 0.5rem; margin-bottom: 0;">MFA enrollment is not available in WeddingSite yet. Keep your email account protected with a unique password, and never share sign-in codes or recovery codes.</p>
       </div>
     </div>
 
@@ -111,6 +111,7 @@
     <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
   </div>
 
+  <script src="auth-client.js"></script>
   <script type="module">
     const $ = id => document.getElementById(id);
     const setNotice = (msg, type = "info", duration = 5000) => {
@@ -194,14 +195,20 @@
       }
 
       try {
-        // TODO: Call API to update profile name
-        setNotice("Profile updated successfully.", "good");
+        const response = await WS.api("/api/auth?action=update-profile", {
+          method: "POST",
+          body: JSON.stringify({ displayName: name })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not save profile changes.");
         $("profile-name").textContent = name;
+        WS.setName(name);
         $("edit-profile-form").style.display = "none";
         $("edit-profile-btn").style.display = "block";
+        setNotice("Profile updated successfully.", "good");
       } catch (error) {
         console.error("Error saving profile:", error);
-        setNotice("Could not save profile changes.", "bad");
+        setNotice(error.message || "Could not save profile changes.", "bad");
       }
     });
 
@@ -218,19 +225,24 @@
         setNotice("Passwords do not match.", "bad");
         return;
       }
-      if (pwd.length < 8) {
-        setNotice("Password must be at least 8 characters.", "bad");
+      if (pwd.length < 12 || pwd.length > 128) {
+        setNotice("Use a password of 12 to 128 characters.", "bad");
         return;
       }
 
       try {
-        // TODO: Call API to change password
+        const response = await WS.api("/api/auth?action=set-password", {
+          method: "POST",
+          body: JSON.stringify({ password: pwd })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not update password.");
         setNotice("Password updated successfully.", "good");
         $("input-password").value = "";
         $("input-password-confirm").value = "";
       } catch (error) {
         console.error("Error changing password:", error);
-        setNotice("Could not update password.", "bad");
+        setNotice(error.message || "Could not update password.", "bad");
       }
     });
 

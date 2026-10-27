@@ -102,7 +102,7 @@
         <label for="max-capacity">Maximum guests <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="max-capacity" type="number" min="1" required aria-required="true">
 
-        <label>Wedding colours</label>
+        <label>Wedding theme palette</label>
         <div class="swatches" id="palette-preview"></div>
 
         <label for="venues-section">Venues & Itinerary
@@ -110,11 +110,11 @@
         </label>
         <div id="venues-list" style="margin-bottom: 1.5rem;"></div>
 
-        <label>Attire Lookbook
+        <label>Wedding theme palette
           <button type="button" class="link" id="edit-colors-btn" style="margin-left: 0.5rem; font-weight: normal;">🎨 Edit colours</button>
         </label>
         <div id="attire-editor" style="display: none; border: 2px dashed #d0d5cc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: #fafbf9;">
-          <p style="margin: 0 0 1rem; font-weight: 500;">Add up to 4 colours for your wedding palette. Click on the colour box to edit.</p>
+          <p style="margin: 0 0 1rem; font-weight: 500;">Edit the single wedding palette used throughout your site and lookbook. Add one to four hex colours.</p>
           <div id="color-inputs" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
             <div style="display: flex; align-items: center; gap: 0.5rem;">
               <input type="color" class="palette-color" value="#244b3a" style="width: 60px; height: 60px; border: none; border-radius: 4px; cursor: pointer;">
@@ -128,6 +128,7 @@
 
         <div id="attire-description">
           <label for="attire-notes">Attire notes & dress code</label>
+          <p class="fine">Suggested outfit colours use the wedding theme palette shown above. Add any dress-code guidance here.</p>
           <textarea id="attire-notes" maxlength="300" rows="3" placeholder="E.g. Forest Green, Eucalyptus Sage, Royal Gold, Ivory palette. Formal African elegance encouraged."></textarea>
         </div>
 
@@ -136,38 +137,13 @@
         </label>
         <div id="registry-list" style="margin-bottom: 1.5rem;"></div>
 
-        <label style="display: block; margin-bottom: 0.5rem;">Payment methods guests can use</label>
-        <div style="margin-bottom: 1.5rem; padding: 1rem; background: #f8f9f7; border: 1px solid #d0d5cc; border-radius: 8px;">
-          <p style="margin: 0 0 1rem; font-size: 0.9rem; color: #5a5f5a;">Select which payment options you want to enable for contributions and pledges.</p>
-          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-            <label style="font-weight: normal; margin: 0;"><input type="checkbox" id="payment-mpesa" class="payment-method-checkbox" value="mpesa"> M-Pesa Mobile Money</label>
-            <label style="font-weight: normal; margin: 0;"><input type="checkbox" id="payment-stripe" class="payment-method-checkbox" value="stripe"> Stripe (Credit/Debit Card)</label>
-            <label style="font-weight: normal; margin: 0;"><input type="checkbox" id="payment-paystack" class="payment-method-checkbox" value="paystack"> Paystack (Card, Mobile Money, Bank Transfer)</label>
-            <label style="font-weight: normal; margin: 0;"><input type="checkbox" id="payment-manual" class="payment-method-checkbox" value="manual"> Manual Bank Transfer</label>
-          </div>
-          <p style="margin: 1rem 0 0; font-size: 0.85rem; color: #5a5f5a; font-style: italic;">Note: Configured payment providers shown to guests; all require credentials to be added by you.</p>
-        </div>
+        <p class="fine">Contribution payment methods are configured by WeddingSite. Guests choose among available methods at checkout.</p>
 
         <label for="payout-method">How would you like to receive funds?</label>
-        <select id="payout-method">
+        <select id="payout-method" aria-describedby="payout-method-help">
           <option value="">Choose payment method…</option>
-          <option value="mpesa">M-Pesa (Mobile Money)</option>
-          <option value="bank_transfer">Bank Transfer</option>
-          <option value="stripe">Stripe Payout Account</option>
-          <option value="paystack">Paystack Transfer</option>
-          <option value="other">Other (please specify)</option>
         </select>
-
-        <div id="payout-details-section" style="display: none; border: 2px dashed #d0d5cc; border-radius: 8px; padding: 1rem; margin: 1rem 0 1.5rem; background: #fafbf9;">
-          <p style="margin: 0 0 1rem; font-size: 0.9rem; color: #5a5f5a;"><strong>📋 Account Details</strong> (stored securely, never shown to guests)</p>
-          <div id="payout-account-fields"></div>
-          <div style="margin-top: 1rem;">
-            <label for="payout-confirm-verify">
-              <input type="checkbox" id="payout-confirm-verify">
-              I confirm this is the correct account for receiving funds
-            </label>
-          </div>
-        </div>
+        <p class="fine" id="payout-method-help">Only currently configured payment services are shown. Payout account details and live disbursements are not enabled in this demo.</p>
 
           <hr style="margin: 2rem 0; border: none; border-top: 2px solid #d0d5cc;">
 
@@ -227,7 +203,7 @@
       <p id="guest-site-url" class="fine"></p>
       <p id="guest-qr-code" class="fine">Guests can scan QR code or click the link to RSVP.</p>
       <div class="row">
-        <a id="view-guest-site" class="btn" target="_blank">View guest site</a>
+        <a id="view-guest-site" class="btn" target="_blank" rel="noopener noreferrer">View guest site</a>
       </div>
     </div>
 
@@ -348,6 +324,11 @@
     };
     const params = new URLSearchParams(location.search);
     const weddingId = params.get("id");
+    const setGuestSiteLink = slug => {
+      const guestUrl = `${location.origin}/guest.html?slug=${encodeURIComponent(slug || "")}`;
+      $("guest-site-url").textContent = `Guest site: ${guestUrl}`;
+      $("view-guest-site").href = guestUrl;
+    };
 
     if (!WS.token()) return location.replace("/signin.html");
     if (!weddingId) return notice("Wedding ID missing.", true);
@@ -361,12 +342,23 @@
     // Account menu
     $("account-menu-btn").addEventListener("click", (e) => {
       const menu = $("account-menu");
-      menu.style.display = menu.style.display === "none" ? "block" : "none";
+      const open = menu.style.display === "none";
+      menu.style.display = open ? "block" : "none";
+      $("account-menu-btn").setAttribute("aria-expanded", String(open));
       e.stopPropagation();
     });
 
-    document.addEventListener("click", () => {
-      $("account-menu").style.display = "none";
+    document.addEventListener("click", (e) => {
+      if (!$("account-menu").contains(e.target) && e.target !== $("account-menu-btn")) {
+        $("account-menu").style.display = "none";
+        $("account-menu-btn").setAttribute("aria-expanded", "false");
+      }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        $("account-menu").style.display = "none";
+        $("account-menu-btn").setAttribute("aria-expanded", "false");
+      }
     });
 
     $("change-password").addEventListener("click", async (e) => {
@@ -484,17 +476,18 @@
 
     function renderColorInputs() {
       const container = $("color-inputs");
-      const inputs = container.querySelectorAll(".palette-color");
-      if (inputs.length === 0) {
-        // Initialize with current palette or defaults
-        const palette = $("palette-preview").innerHTML 
-          ? Array.from($("palette-preview").querySelectorAll("span")).map(s => s.style.background || "#244b3a")
-          : ["#244b3a"];
-        container.innerHTML = "";
-        palette.slice(0, 4).forEach((color, idx) => {
-          addColorInput(color);
-        });
+      let palette;
+      try {
+        palette = JSON.parse($("palette-preview").dataset.palette || "[]");
+      } catch {
+        palette = [];
       }
+      palette = Array.isArray(palette)
+        ? palette.filter(color => typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color)).slice(0, 4)
+        : [];
+      if (!palette.length) palette = ["#244b3a"];
+      container.replaceChildren();
+      palette.forEach(color => addColorInput(color));
     }
 
     function addColorInput(color = "#244b3a") {
@@ -540,7 +533,17 @@
     $("apply-colors-btn").addEventListener("click", e => {
       e.preventDefault();
       const colors = Array.from($("color-inputs").querySelectorAll(".palette-color")).map(c => c.value);
-      $("palette-preview").innerHTML = colors.map(c => `<span style="background: ${c};"></span>`).join("");
+      
+      // Validate colors
+      const COLOR_REGEX = /^#[0-9a-f]{6}$/i;
+      if (!colors.length || colors.length > 4 || !colors.every(c => COLOR_REGEX.test(c))) {
+        alert("Please enter valid hex colors (e.g. #244b3a)");
+        return;
+      }
+      
+      // Store palette both as data attribute and visual spans
+      $("palette-preview").dataset.palette = JSON.stringify(colors);
+      $("palette-preview").innerHTML = colors.map(c => `<span style="background: ${c};" data-color="${c}"></span>`).join("");
       colorEditorOpen = false;
       $("attire-editor").style.display = "none";
     });
@@ -682,48 +685,18 @@
       e.target.value = ""; // Reset for next upload
     });
 
-    // Payout method selection
-    const payoutFieldsConfig = {
-      mpesa: [
-        { label: "M-Pesa Phone Number", placeholder: "+254...", required: true },
-        { label: "Account Name", placeholder: "Name on M-Pesa account", required: true }
-      ],
-      bank_transfer: [
-        { label: "Bank Name", placeholder: "e.g. Kenya Commercial Bank", required: true },
-        { label: "Account Holder Name", placeholder: "Full name", required: true },
-        { label: "Account Number", placeholder: "e.g. 0012345678", required: true },
-        { label: "SWIFT Code / Bank Code", placeholder: "e.g. KCBLKENA", required: false }
-      ],
-      stripe: [
-        { label: "Stripe Account Email", placeholder: "Your Stripe login email", required: true }
-      ],
-      paystack: [
-        { label: "Paystack Account Email", placeholder: "Your Paystack login email", required: true }
-      ],
-      other: [
-        { label: "Description", placeholder: "How should we send your funds?", required: true }
-      ]
-    };
-
-    $("payout-method").addEventListener("change", e => {
-      const method = e.target.value;
-      const section = $("payout-details-section");
-      const fieldsDiv = $("payout-account-fields");
-      
-      if (!method) {
-        section.style.display = "none";
-        return;
-      }
-
-      section.style.display = "block";
-      const fields = payoutFieldsConfig[method] || [];
-      fieldsDiv.innerHTML = fields.map((f, idx) => `
-        <div style="margin-bottom: 1rem;">
-          <label for="payout-field-${idx}" style="display: block; margin-bottom: 0.25rem; font-size: 0.9rem; font-weight: 500;">${f.label}${f.required ? " *" : ""}</label>
-          <input type="text" id="payout-field-${idx}" class="payout-field" placeholder="${f.placeholder}" maxlength="200" data-required="${f.required}" style="display: block; width: 100%; padding: 0.75rem; border: 1px solid #d0d5cc; border-radius: 6px; font-family: inherit; box-sizing: border-box;">
-        </div>
-      `).join("");
-    });
+    async function loadPayoutMethods() {
+      const select = $("payout-method");
+      const res = await WS.api(`/api/weddings?action=payout-methods&weddingId=${encodeURIComponent(weddingId)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not load payout methods.");
+      select.replaceChildren(new Option("Choose payout method…", ""));
+      for (const method of data.methods || []) select.add(new Option(method.name, method.id));
+      select.disabled = !(data.methods || []).length;
+      $("payout-method-help").textContent = (data.methods || []).length
+        ? "Only currently configured payment services are shown. Payout account details and live disbursements are not enabled in this demo."
+        : "No payout service is currently configured for this wedding's currency. No account details are collected.";
+    }
 
     // Load wedding
     async function loadWedding() {
@@ -733,7 +706,7 @@
         if (!res.ok) return notice(data.error || "Could not load wedding.", true);
 
         const w = data.wedding;
-        document.title = `${esc(w.couple_names)} — Wedding`;
+        document.title = `${w.couple_names || "Wedding"} — Wedding`;
         $("title").textContent = document.title;
         $("couple-names").value = w.couple_names || "";
         $("wedding-slug").value = w.slug || "";
@@ -744,7 +717,11 @@
         $("background-music-url").value = w.background_music_url || "";
         $("currency").value = w.currency || "USD";
         $("max-capacity").value = w.max_guest_capacity || 150;
-        $("palette-preview").innerHTML = (w.palette || []).map(c => `<span style="background: ${esc(c)};"></span>`).join("");
+        
+        // Load palette: store as data attribute and render as spans
+        const palette = w.palette || ["#244b3a"];
+        $("palette-preview").dataset.palette = JSON.stringify(palette);
+        $("palette-preview").innerHTML = palette.map(c => `<span style="background: ${c};" data-color="${c}"></span>`).join("");
         $("attire-notes").value = w.attire_notes || "";
 
         // Load venues
@@ -870,47 +847,19 @@
           $("vip-seats").value = "20";
           $("vip-description").value = "";
         }
-        if (w.enabled_payment_methods && Array.isArray(w.enabled_payment_methods)) {
-          document.querySelectorAll(".payment-method-checkbox").forEach(cb => {
-            cb.checked = w.enabled_payment_methods.includes(cb.value);
-          });
-        } else {
-          // Set defaults if not specified
-          $("payment-mpesa").checked = true;
-          $("payment-stripe").checked = true;
-          $("payment-paystack").checked = true;
-        }
+        await loadPayoutMethods(w.currency);
 
         // Load payout preferences
         if (w.payout) {
           const p = w.payout;
           $("payout-method").value = p.method || "";
-          if (p.method) {
-            // Trigger change to show fields
-            const event = new Event("change", { bubbles: true });
-            $("payout-method").dispatchEvent(event);
-            
-            // Parse and populate payout fields
-            try {
-              const fields = JSON.parse(p.details_encrypted || "{}");
-              $("payout-account-fields").querySelectorAll(".payout-field").forEach((input, idx) => {
-                input.value = fields[`field_${idx}`] || "";
-              });
-            } catch (e) {
-              console.warn("Could not parse payout details:", e);
-            }
-            
-            $("payout-confirm-verify").checked = p.verified || false;
-          }
         }
 
         $("edit-section").hidden = false;
 
         if (w.published_at) {
           $("published-section").hidden = false;
-          const guestUrl = `${location.origin}/guest.html?slug=${encodeURIComponent(w.slug)}`;
-          $("guest-site-url").textContent = `Guest site: ${guestUrl}`;
-          $("view-guest-site").href = guestUrl;
+          setGuestSiteLink(w.slug);
           $("rsvps-section").hidden = false;
           $("bids-section").hidden = false;
           $("seating-section").hidden = false;
@@ -979,9 +928,35 @@
           }
         });
 
-        // Collect palette colors
-        const paletteSpans = $("palette-preview").querySelectorAll("span");
-        const palette = Array.from(paletteSpans).map(s => s.style.background).filter(Boolean);
+        // Collect palette colors: extract from data-palette attribute on preview or from visible color picker inputs
+        // If color editor is open, use active color inputs; otherwise use stored data
+        let palette;
+        const dataAttr = $("palette-preview").dataset.palette;
+        if (dataAttr) {
+          palette = JSON.parse(dataAttr);
+        } else {
+          // Try to reconstruct from preview spans (convert RGB to hex if needed)
+          const paletteSpans = $("palette-preview").querySelectorAll("span");
+          palette = Array.from(paletteSpans).map(s => {
+            const bg = s.style.background || s.getAttribute("data-color") || "";
+            // Try to extract hex from data-color first, or convert RGB to hex
+            if (bg.startsWith("#")) return bg;
+            if (bg.startsWith("rgb")) {
+              const match = bg.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+              if (match) {
+                const hex = "#" + [parseInt(match[1]), parseInt(match[2]), parseInt(match[3])].map(x => x.toString(16).padStart(2, "0")).join("").toUpperCase();
+                return hex.toLowerCase();
+              }
+            }
+            return "";
+          }).filter(Boolean);
+        }
+        
+        // Validate palette
+        const COLOR_REGEX = /^#[0-9a-f]{6}$/i;
+        if (!palette.length || palette.length > 4 || !palette.every(c => COLOR_REGEX.test(c))) {
+          throw new Error("Choose one to four hex colors for your wedding palette.");
+        }
 
         // Collect registry items
         const registry = [];
@@ -1025,21 +1000,9 @@
 
         // Collect payout details
         const payoutMethod = $("payout-method").value;
-        let payoutDetails = null;
-        if (payoutMethod) {
-          const fields = {};
-          $("payout-account-fields").querySelectorAll(".payout-field").forEach((input, idx) => {
-            fields[`field_${idx}`] = input.value.trim();
-          });
-          payoutDetails = {
-            method: payoutMethod,
-            fields: fields,
-            verified: $("payout-confirm-verify").checked
-          };
-        }
-
-        // Collect enabled payment methods
-        const enabledPaymentMethods = Array.from(document.querySelectorAll(".payment-method-checkbox:checked")).map(cb => cb.value);
+        const payoutDetails = $("payout-method").disabled
+          ? undefined
+          : payoutMethod ? { method: payoutMethod, fields: {}, verified: false } : null;
 
         const res = await WS.api("/api/weddings?action=update", {
           method: "POST",
@@ -1059,12 +1022,12 @@
             tiers: tiers,
             vip: vip,
             payoutDetails: payoutDetails,
-            enabledPaymentMethods: enabledPaymentMethods,
             backgroundMusicUrl: $("background-music-url").value
           })
         });
         const data = await res.json();
         if (!res.ok) return notice(data.error || "Could not save wedding.", true);
+        if (data.wedding?.published_at) setGuestSiteLink(data.wedding.slug);
         notice("Changes saved.");
       } catch (err) {
         console.error("Save failed:", err);
@@ -1110,6 +1073,7 @@
         $("seating-section").hidden = false;
         $("withdrawals-section").hidden = false;
         $("publish-btn").hidden = true;
+        setGuestSiteLink(data.wedding?.slug || $("wedding-slug").value);
         notice("Wedding published successfully!");
         loadRsvps();
         loadBids();
@@ -1131,15 +1095,19 @@
         if (!res.ok) return;
         
         const rsvps = data.rsvps || [];
-        if (rsvps.length === 0) return;
+        if (rsvps.length === 0) {
+          $("rsvps-body").replaceChildren();
+          $("no-rsvps").hidden = false;
+          return;
+        }
         
         $("rsvps-body").innerHTML = rsvps.map(r => `
           <tr>
             <td>${esc(r.guest_name)}</td>
             <td>${esc(r.guest_email)}</td>
-            <td>${r.attending ? "✓ Yes" : "✗ No"}</td>
+            <td>${r.attendance_status === "yes" ? "✓ Yes" : r.attendance_status === "no" ? "✗ No" : esc(r.attendance_status || "Pending")}</td>
             <td>${esc(r.dietary_notes || "—")}</td>
-            <td>${new Date(r.created_at).toLocaleDateString()}</td>
+            <td>${new Date(r.rsvped_at || r.created_at).toLocaleDateString()}${r.checked_in_at ? " · Checked in" : ""}</td>
           </tr>
         `).join("");
         $("no-rsvps").hidden = true;
@@ -1156,14 +1124,18 @@
         if (!res.ok) return;
         
         const bids = data.bids || [];
-        if (bids.length === 0) return;
+        if (bids.length === 0) {
+          $("bids-body").replaceChildren();
+          $("no-bids").hidden = false;
+          return;
+        }
         
         $("bids-body").innerHTML = bids.map(b => `
           <tr>
             <td>${esc(b.song_title)}</td>
-            <td>${esc(b.artist || "—")}</td>
-            <td>${WS.money(b.bid_amount_minor, b.wedding_currency)}</td>
-            <td>${esc(b.guest_name || "Anonymous")}</td>
+            <td>${esc(b.artist_name || "—")}</td>
+            <td>${WS.money(b.bid_amount_minor, b.currency || "USD")}</td>
+            <td>${esc(b.bidder_name || "Anonymous")}</td>
             <td>${new Date(b.created_at).toLocaleDateString()}</td>
           </tr>
         `).join("");
@@ -1236,17 +1208,6 @@
       } finally {
         $("request-withdrawal-btn").disabled = false;
       }
-    });
-
-    // Account menu
-    $("account-menu-btn").addEventListener("click", (e) => {
-      const menu = $("account-menu");
-      menu.style.display = menu.style.display === "none" ? "block" : "none";
-      e.stopPropagation();
-    });
-
-    document.addEventListener("click", () => {
-      $("account-menu").style.display = "none";
     });
 
     $("change-password").addEventListener("click", async (e) => {

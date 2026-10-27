@@ -3,7 +3,7 @@
  * Run: node tests/navigation-fixes.test.js
  */
 
-import test from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { readFile } from "node:fs/promises";
@@ -93,13 +93,47 @@ test("Account Settings link is accessible from dashboard", { skip }, async () =>
   // Click it and verify navigation
   await accountSettingsLink.click();
   await page.waitForURL("**/account.html");
-  assert.ok(page.url().includes("account.html"), "Should navigate to account.html");
+  assert.ok(page.url().includes("account.html"), `Should navigate to account.html (got ${page.url()})`);
   
   // Verify page has expected content
   const pageTitle = await page.locator("h1");
   assert.match(await pageTitle.textContent(), /Account Settings/i, "Page should have Account Settings title");
   
   await close();
+});
+
+test("Account profile and password changes use authenticated API actions", { skip }, async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const requests = [];
+  await page.addInitScript(() => {
+    sessionStorage.setItem("ws-session", JSON.stringify({
+      a: "test-token", role: "client", n: "Test User", e: "test@example.com"
+    }));
+  });
+  await page.route("**/api/auth**", async route => {
+    const url = new URL(route.request().url());
+    const action = url.searchParams.get("action");
+    requests.push({ action, body: route.request().postDataJSON() });
+    const payload = action === "update-profile" ? { displayName: "Updated User" } : { passwordSet: true };
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) });
+  });
+
+  await page.goto(`${base}/account.html`);
+  assert.equal(await page.locator("#profile-name").textContent(), "Test User");
+  assert.equal(await page.locator("#profile-email").textContent(), "test@example.com");
+  assert.equal(await page.locator("#profile-role").textContent(), "Client");
+  await page.click("#edit-profile-btn");
+  await page.fill("#input-name", "Updated User");
+  await page.click("#save-profile-btn");
+  await page.waitForFunction(() => document.querySelector("#profile-name").textContent === "Updated User");
+  await page.fill("#input-password", "a-strong-test-password");
+  await page.fill("#input-password-confirm", "a-strong-test-password");
+  await page.click("#change-password-btn");
+  await page.waitForFunction(() => document.querySelector("#notice").textContent.includes("Password updated"));
+  assert.deepEqual(requests.map(request => request.action), ["update-profile", "set-password"]);
+  assert.equal(requests[0].body.displayName, "Updated User");
+  await context.close();
 });
 
 test("Account Settings link is accessible from wedding editor", { skip }, async () => {
@@ -208,3 +242,8 @@ test("Improved error messages for API failures", { skip }, async () => {
 console.log(`\n✓ Navigation and auto-navigate tests configured`);
 console.log(`  Base URL: ${base}`);
 console.log(`  Browser: ${browser ? "Available" : "Not available"}`);
+
+after(async () => {
+  if (browser) await browser.close();
+  await new Promise(resolve => server.close(resolve));
+});
