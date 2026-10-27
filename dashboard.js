@@ -27,7 +27,7 @@
 
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const safeColor = (c) => (HEX.test(c) ? c : "#cccccc");
-  const setNotice = (text, kind) => { state.notice = text ? { text, bad: kind === "bad" } : null; renderNotice(); };
+  const setNotice = (text, kind) => { state.notice = text ? { text, bad: kind === "bad" } : null; renderNotice(); if (text && window.WSFeedback) { WSFeedback.toast(text, kind === "bad"); WSFeedback.scrollTo(kind === "bad" ? "notice" : "created"); } };
 
   function renderNotice() {
     const el = $("notice");

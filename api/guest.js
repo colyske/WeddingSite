@@ -22,6 +22,13 @@ const clientHash = (req, slug) => {
   return createHmac("sha256", key).update(`${slug}|${ip}|${req.headers["user-agent"] || ""}`).digest("hex").slice(0, 32);
 };
 const REF = /^[a-f0-9]{8}$/;
+function normPhone(v) {
+  const s = String(v || "").trim();
+  if (!s) return "";
+  const n = (s.startsWith("+") ? "+" : "") + s.replace(/\D/g, "");
+  return /^\+?[0-9]{7,15}$/.test(n) ? n : "";
+}
+
 const refFor = async (weddingId, rsvpId) => {
   try {
     const r = await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvpId}&wedding_id=eq.${weddingId}&select=ref_code`, { service: true });
@@ -182,6 +189,11 @@ export default async function handler(req, res) {
             const full = rsvp?.status === "full";
             return sendJson(res, full ? 409 : 400, { error: rsvp?.message || "RSVP could not be saved." });
           }
+          const phone = normPhone(body.guestPhone);
+          if (phone) {
+            try { await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvp.rsvp_id}`, { service: true, method: "PATCH", prefer: "return=minimal", body: { phone } }); }
+            catch (e) { console.error("rsvp phone save failed:", e.message); }
+          }
           let refCode = "";
           try {
             const mine = await supabaseRequest(`/rest/v1/guest_rsvps?id=eq.${rsvp.rsvp_id}&select=ref_code,referred_by_code`, { service: true });
@@ -297,7 +309,13 @@ export default async function handler(req, res) {
         if (!rows?.length) return sendJson(res, 404, { error: "No pass found for that email." });
         return sendJson(res, 200, { rsvpId: rows[0].rsvp_id, guestName: rows[0].guest_name, refCode: await refFor(weddingId, rows[0].rsvp_id) });
       }
-      return sendJson(res, 400, { error: "Enter the email you used to RSVP, or your pass code." });
+      const phone = normPhone(req.query.phone);
+      if (phone) {
+        const rows = await supabaseRequest(`/rest/v1/guest_rsvps?wedding_id=eq.${weddingId}&phone=eq.${encodeURIComponent(phone)}&select=id,guest_name&order=created_at.desc&limit=1`, { service: true });
+        if (!rows?.length) return sendJson(res, 404, { error: "No pass found for that phone number." });
+        return sendJson(res, 200, { rsvpId: rows[0].id, guestName: rows[0].guest_name, refCode: await refFor(weddingId, rows[0].id) });
+      }
+      return sendJson(res, 400, { error: "Enter the email or phone number you used to RSVP, or your pass code." });
     }
 
     if (action === "verify-qr") {
