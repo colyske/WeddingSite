@@ -22,7 +22,7 @@ test("RSVP requires a phone number and quotes fees before charging", () => {
   assert.match(src, /extra_guest_fee_minor/);
   assert.match(src, /premium_diet_fee_minor/);
   assert.doesNotMatch(src, /record_test_rsvp_fees/);
-  assert.match(read("supabase/migrations/202610300002_verified_test_payments.sql"), /revoke all on function public\.record_test_rsvp_fees/);
+  assert.match(read("supabase/migrations/202610300002_verified_test_payments.sql"), /drop function if exists public\.record_test_rsvp_fees/);
 });
 
 test("seating lookup is by phone", async () => {

@@ -23,8 +23,8 @@ alter table public.contributions add constraint amount_consistency check (
 );
 update public.contributions set provider_fee_pending = true
   where payment_status = 'paid' and provider_fee_minor is null;
-revoke all on function public.record_test_rsvp_fees(uuid, text, jsonb) from public, anon, authenticated, service_role;
-revoke all on function public.record_test_campaign_pledge(uuid, uuid, uuid, text, bigint, text) from public, anon, authenticated, service_role;
+drop function if exists public.record_test_rsvp_fees(uuid, text, jsonb);
+drop function if exists public.record_test_campaign_pledge(uuid, uuid, uuid, text, bigint, text);
 alter table public.vip_reservations add column if not exists payment_status text not null default 'paid'
   check (payment_status in ('pending', 'paid', 'cancelled'));
 alter table public.vip_reservations add column if not exists expires_at timestamptz;
@@ -1106,13 +1106,15 @@ $$;
 revoke all on function public.place_dj_bid(uuid, text, text, bigint, text) from public, anon, authenticated;
 grant execute on function public.place_dj_bid(uuid, text, text, bigint, text) to service_role;
 
-create or replace function public.get_dj_leaderboard(p_wedding_id uuid)
-returns table (rank_position integer, song_title text, artist_name text, bid_amount_minor bigint, currency char(3))
+drop function if exists public.get_dj_leaderboard(uuid);
+create function public.get_dj_leaderboard(p_wedding_id uuid)
+returns table (rank_position integer, song_title text, artist_name text, bid_amount_minor bigint, bid_count bigint, currency char(3))
 language sql stable security definer set search_path = '' set row_security = off
 as $$
   with totals as (
     select min(b.song_title) as song_title, min(b.artist_name) as artist_name,
       sum(b.bid_amount_minor)::bigint as bid_amount_minor, min(b.currency) as currency,
+      count(*)::bigint as bid_count,
       lower(trim(b.song_title)) as title_key, lower(trim(b.artist_name)) as artist_key
     from public.dj_song_bids b
     where b.wedding_id = p_wedding_id and b.payment_status = 'paid'
@@ -1120,7 +1122,7 @@ as $$
     group by lower(trim(b.song_title)), lower(trim(b.artist_name))
   )
   select row_number() over (order by t.bid_amount_minor desc, t.title_key, t.artist_key)::integer,
-    t.song_title, t.artist_name, t.bid_amount_minor, t.currency
+    t.song_title, t.artist_name, t.bid_amount_minor, t.bid_count, t.currency
   from totals t order by t.bid_amount_minor desc, t.title_key, t.artist_key limit 25;
 $$;
 revoke all on function public.get_dj_leaderboard(uuid) from public;
