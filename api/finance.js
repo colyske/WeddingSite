@@ -55,19 +55,9 @@ const financeActions = {
       p_planned_minor: body.plannedMinor, p_actual_minor: body.actualMinor,
       p_currency: body.currency, p_confirmed: body.confirmed
     })
-  },
-  payment_provider: {
-    rpc: "configure_payment_provider",
-    validate: body => isId(body.weddingId) && ["stripe", "paystack"].includes(body.provider) &&
-      typeof body.enabled === "boolean" && Array.isArray(body.marketCodes) && body.marketCodes.length <= 40 &&
-      body.marketCodes.every(code => typeof code === "string" && /^[A-Z0-9_-]{2,12}$/.test(code)) &&
-      Array.isArray(body.currencies) && body.currencies.length <= 30 &&
-      body.currencies.every(code => typeof code === "string" && /^[A-Z]{3}$/.test(code)) && body.confirmed === true,
-    args: body => ({
-      p_wedding_id: body.weddingId, p_provider: body.provider, p_enabled: body.enabled,
-      p_market_codes: body.marketCodes, p_currencies: body.currencies, p_confirmed: body.confirmed
-    })
   }
+  // Payment processors are not organizer-selectable: availability is derived server-side
+  // from platform provider configuration (see api/checkout.js availableProviderMarkets).
 };
 
 async function handleReportQuery(req, res) {
@@ -143,7 +133,7 @@ async function handleAction(req, res) {
       token: session.token,
       body: action.args(body)
     });
-    const statuses = { payout_request: "requested", reconciliation: "pending_review", expense: "proposed", budget: "saved", payment_provider: "configured" };
+    const statuses = { payout_request: "requested", reconciliation: "pending_review", expense: "proposed", budget: "saved" };
     return sendJson(res, 201, { recordId, status: statuses[body.action] });
   } catch (error) {
     console.error("finance action failed", error.message);

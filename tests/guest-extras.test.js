@@ -70,7 +70,7 @@ test("guest site: share channels, OG tags, referral visit, personal link, guestb
   await page.waitForSelector("#share-main");
   assert.equal(await page.getAttribute('meta[property="og:title"]', "content"), "Atieno & Otieno are getting married");
   assert.equal(await page.getAttribute('meta[name="twitter:card"]', "content"), "summary_large_image");
-  assert.match(await page.getAttribute('meta[property="og:url"]', "content"), /\/w\/a-and-o$/);
+  assert.match(await page.getAttribute('meta[property="og:url"]', "content"), /\/guest\.html\?slug=a-and-o$/);
   const hrefs = await page.$$eval("#share-main a", as => as.map(a => a.href));
   for (const k of ["wa.me", "facebook.com/sharer", "twitter.com/intent/tweet", "mailto:", "sms:", "calendar.google.com/calendar/render"]) assert.ok(hrefs.some(h => h.includes(k)), "missing " + k);
   assert.ok(await page.$("#share-main [data-ws-copy]"));
@@ -99,7 +99,7 @@ test("guest site: share channels, OG tags, referral visit, personal link, guestb
   await page.waitForFunction(() => document.querySelector("#share-pass [data-ws-copy]")?.dataset.wsCopy.includes("abcdef12"), null, { timeout: 10000 });
   assert.equal(calls.rsvp.ref, "0a1b2c3d");
   const personal = await page.$$eval("#share-pass [data-ws-copy]", b => b.map(x => x.dataset.wsCopy));
-  assert.ok(personal[0].endsWith("/w/a-and-o?ref=abcdef12"));
+  assert.ok(personal[0].endsWith("/guest.html?slug=a-and-o&ref=abcdef12"));
   assert.match(await page.textContent("#share-pass .fine"), /personal invite link/);
   await context.close();
 });

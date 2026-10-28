@@ -140,8 +140,8 @@ test("guest site shows zone-labelled time, promo footer; calendar download is UT
   await page.goto(`${base}/guest.html?slug=a-and-o`);
   await page.waitForFunction(() => /2:00 PM EAT/.test(document.getElementById("wedding-date-display").textContent), null, { timeout: 15000 });
   assert.match(await page.textContent("#wedding-date-display"), /Saturday, December 12, 2099 · 2:00 PM EAT/);
-  assert.match(await page.textContent("footer.ws-promo"), /Create your wedding site with WeddingSite/);
-  assert.match(await page.textContent("footer.ws-promo"), /Made with (love on )?WeddingSite/);
+  assert.match(await page.textContent("footer.ws-promo"), /Create your wedding site at joinourwedding\.site/);
+  assert.match(await page.textContent("footer.ws-promo"), /Made with (love on )?Join Our Wedding/);
   const [download] = await Promise.all([page.waitForEvent("download"), page.click("#ics-download")]);
   const content = await readFile(await download.path(), "utf8");
   assert.match(content, /DTSTART:20991212T110000Z/);

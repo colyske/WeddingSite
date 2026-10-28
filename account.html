@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#203a31">
-  <title>WeddingSite — Account Settings</title>
+  <title>Join Our Wedding — Account Settings</title>
   <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><script src="ornaments.js" defer></script>
   <style>
     .account-section { margin-bottom: 2rem; padding-bottom: 2rem; border-bottom: 1px solid #e0e5df; }
@@ -33,7 +33,7 @@
 <body>
   <div class="wrap">
     <div class="top">
-      <a class="brand" href="/">WeddingSite</a>
+      <a class="brand" href="/">Join Our Wedding</a>
       <div style="display: flex; gap: 1rem; align-items: center;">
         <a href="/dashboard.html" class="link">← Back to Dashboard</a>
       </div>
@@ -87,7 +87,7 @@
       <h2>Multi-Factor Authentication (MFA)</h2>
       <div class="mfa-status">
         <strong>Status:</strong> <span id="mfa-status">Not enabled</span>
-        <p style="margin-top: 0.5rem; margin-bottom: 0;">MFA enrollment is not available in WeddingSite yet. Keep your email account protected with a unique password, and never share sign-in codes or recovery codes.</p>
+        <p style="margin-top: 0.5rem; margin-bottom: 0;">MFA enrollment is not available in Join Our Wedding yet. Keep your email account protected with a unique password, and never share sign-in codes or recovery codes.</p>
       </div>
     </div>
 
@@ -102,7 +102,7 @@
     <!-- Session Management -->
     <div class="account-section">
       <h2>Session Management</h2>
-      <p class="fine">You are currently signed in to WeddingSite.</p>
+      <p class="fine">You are currently signed in to Join Our Wedding.</p>
       <div class="btn-group">
         <button type="button" class="btn-danger" id="sign-out-btn">Sign Out</button>
       </div>
@@ -127,7 +127,7 @@
       try {
         const email = window.WS?.email?.() || "—";
         const role = window.WS?.role?.() || "client";
-        const name = window.WS?.name?.() || "WeddingSite member";
+        const name = window.WS?.name?.() || "Join Our Wedding member";
 
         $("profile-email").textContent = email;
         $("profile-name").textContent = name;

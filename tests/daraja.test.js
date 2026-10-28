@@ -1,7 +1,7 @@
-import test, { afterEach } from "node:test";
+﻿import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { paymentAdaptersFor } from "../api/checkout.js";
+import checkoutHandler, { paymentAdaptersFor } from "../api/checkout.js";
 import webhooks from "../api/webhooks.js";
 import {
   darajaPassword, darajaTimestamp, initiateDarajaStkPush, verifyProviderPayment
@@ -233,4 +233,66 @@ test("Daraja migration preserves the nine-argument idempotent settlement RPC", a
   assert.match(sql, /p_market_codes is distinct from array\['KE'\]::text\[\]/);
   assert.match(sql, /create or replace function public\.record_verified_payment\([\s\S]*?p_provider_payment_reference text[\s\S]*?p_provider not in \('stripe', 'paystack', 'daraja'\)/);
   assert.match(sql, /grant execute on function public\.record_verified_payment\(text, text, uuid, bigint, text, text, bigint, timestamptz, text\) to service_role/);
+});
+
+test("Daraja callback whose metadata amount disagrees with the stored amount confirms nothing", async () => {
+  useSandbox();
+  process.env.SUPABASE_URL = "https://supabase.example";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role";
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.startsWith(process.env.SUPABASE_URL) && new URL(url).pathname === "/rest/v1/contributions") {
+      return response([{ id: "f8e5022e-fad8-4dc7-b222-c55e4f6ce190", pledged_amount_minor: 12500, currency: "KES", payment_status: "pending" }]);
+    }
+    throw new Error("Unexpected network request.");
+  };
+  const req = {
+    method: "POST", query: { provider: "daraja" }, headers: {},
+    async *[Symbol.asyncIterator]() {
+      yield Buffer.from(JSON.stringify({ Body: { stkCallback: {
+        CheckoutRequestID: "ws_STK_001", ResultCode: 0,
+        CallbackMetadata: { Item: [{ Name: "Amount", Value: 1 }, { Name: "MpesaReceiptNumber", Value: "X" }] }
+      } } }));
+    }
+  };
+  const res = { headers: {}, status(code) { this.statusCode = code; return this; }, setHeader() {}, end(body) { this.body = body; } };
+  await webhooks(req, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(JSON.parse(res.body).processed, false);
+  assert.ok(!calls.some(url => url.includes("stkpushquery") || url.includes("record_verified_payment")));
+});
+
+test("KES payment options are system-derived without per-wedding setup or the live flag", async () => {
+  useSandbox();
+  const saved = { live: process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED, ts: process.env.TURNSTILE_SECRET_KEY, tk: process.env.TURNSTILE_SITE_KEY };
+  process.env.SUPABASE_URL = "https://supabase.example";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role";
+  process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED = "false";
+  process.env.TURNSTILE_SECRET_KEY = "turnstile-test-secret";
+  process.env.TURNSTILE_SITE_KEY = "turnstile-test-site";
+  const paths = [];
+  globalThis.fetch = async input => {
+    const url = String(input);
+    if (url.includes("/oauth/")) return response({ access_token: "sandbox-token", expires_in: "3599" });
+    if (url.startsWith(process.env.SUPABASE_URL)) {
+      paths.push(new URL(url).pathname);
+      return response([{ id: "7c1b33e8-6b41-4f66-9169-54197263db7f", currency: "KES" }]);
+    }
+    throw new Error("Unexpected network request.");
+  };
+  try {
+    const res = { headers: {}, statusCode: 200, status(code) { this.statusCode = code; return this; }, setHeader() {}, end(body) { this.body = body; } };
+    await checkoutHandler({ method: "GET", query: { action: "options", weddingId: "7c1b33e8-6b41-4f66-9169-54197263db7f", currency: "KES" } }, res);
+    const body = JSON.parse(res.body);
+    assert.equal(res.statusCode, 200);
+    assert.equal(body.paymentAvailable, true);
+    assert.deepEqual(body.providers.map(item => [item.id, item.market]), [["daraja", "KE"]]);
+    assert.deepEqual(paths, ["/rest/v1/weddings"]);
+  } finally {
+    for (const [key, name] of [["live", "WEDDINGSITE_LIVE_PAYMENTS_ENABLED"], ["ts", "TURNSTILE_SECRET_KEY"], ["tk", "TURNSTILE_SITE_KEY"]]) {
+      if (saved[key] === undefined) delete process.env[name]; else process.env[name] = saved[key];
+    }
+  }
 });

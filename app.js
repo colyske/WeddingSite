@@ -97,7 +97,7 @@ function applyApprovedWeddingDetails() {
   const rsvpDeadline = new Date(event);
   rsvpDeadline.setDate(rsvpDeadline.getDate() - 27);
   document.querySelector("#rsvp-deadline").textContent = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "long", year: "numeric" }).format(rsvpDeadline);
-  document.title = `${couple} — WeddingSite`;
+  document.title = `${couple} — Join Our Wedding`;
   document.querySelector('meta[name="description"]').content = `A thoughtful home for the wedding of ${couple}: plans, music, memories and the people who make it special.`;
 }
 applyApprovedWeddingDetails();
@@ -126,7 +126,7 @@ document.querySelector("#calendar-link").addEventListener("click", event => {
   const format = date => date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const escape = text => text.replace(/[,;\\]/g, character => `\\${character}`).replace(/\n/g, "\\n");
   const calendar = [
-    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//WeddingSite//Wedding//EN", "BEGIN:VEVENT",
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Join Our Wedding//Wedding//EN", "BEGIN:VEVENT",
     `DTSTART:${format(start)}`, `DTEND:${format(end)}`, `SUMMARY:${escape(`${wedding.couple} — Wedding celebration`)}`,
     `LOCATION:${escape(wedding.venue)}`, "DESCRIPTION:Sample wedding details. Please confirm venue and schedule with the couple.",
     "END:VEVENT", "END:VCALENDAR"

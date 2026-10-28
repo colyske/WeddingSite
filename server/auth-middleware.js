@@ -42,7 +42,7 @@ export async function requireRole(req, res, requiredRoles = []) {
     );
     const profile = profiles?.[0];
     if (!profile) {
-      res.status(403).json({ error: "No WeddingSite profile. Ask an Owner to provision access." });
+      res.status(403).json({ error: "No Join Our Wedding profile. Ask an Owner to provision access." });
       return null;
     }
     if (requiredRoles.length > 0 && !requiredRoles.includes(profile.platform_role)) {

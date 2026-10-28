@@ -1,4 +1,4 @@
-/* WeddingSite editorial theme: restores the original demo look (Playfair + DM Sans, forest green / ivory / gold).
+/* Join Our Wedding editorial theme: restores the original demo look (Playfair + DM Sans, forest green / ivory / gold).
    Loaded last on every page. Colours come from --green / --gold / --sage so the guest site follows the couple's palette. */
 :root {
   --green-deep: color-mix(in srgb, var(--green, #243f35) 80%, #000);

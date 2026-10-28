@@ -1,7 +1,8 @@
 import { methodOnly, sendJson, supabaseConfig, supabaseRequest } from "../server/supabase.js";
 import { requireAuth } from "../server/auth-middleware.js";
+import { platformOrigins } from "../server/site-hosts.js";
 
-const GENERIC_LINK_MESSAGE = "If that email belongs to a WeddingSite account, a sign-in link is on its way.";
+const GENERIC_LINK_MESSAGE = "If that email belongs to a Join Our Wedding account, a sign-in link is on its way.";
 const isEmail = value => typeof value === "string" && value.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
 
 function siteOrigin(req) {
@@ -24,7 +25,7 @@ function validOAuthOrigin(value) {
 function requestOAuthOrigin(req) {
   const origin = String(req.headers.origin || "");
   const configured = process.env.WEDDINGSITE_PUBLIC_ORIGIN?.replace(/\/+$/, "");
-  if (!validOAuthOrigin(origin) || (configured && origin !== configured)) return null;
+  if (!validOAuthOrigin(origin) || (configured && origin !== configured && !platformOrigins().includes(origin))) return null;
   return origin;
 }
 
@@ -101,7 +102,7 @@ async function exchangeGoogleCode(req, res, body) {
     }
     const { access_token: accessToken, refresh_token: refreshToken, user } = result.data;
     const role = await roleFor(user.id, accessToken);
-    if (!role) return sendJson(res, 503, { error: "Your WeddingSite profile is not ready yet. Try again or contact support." });
+    if (!role) return sendJson(res, 503, { error: "Your Join Our Wedding profile is not ready yet. Try again or contact support." });
     const userData = user.user_metadata || {};
     return sendJson(res, 200, {
       accessToken,

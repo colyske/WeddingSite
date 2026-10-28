@@ -4,7 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   var params = new URLSearchParams(location.search);
-  var slug = params.get("slug");
+  var slug = window.WSSite ? WSSite.currentSlug() : params.get("slug");
   var REF = /^[a-f0-9]{8}$/;
   var wedding = null, myRef = "", state = { shared: false };
 
@@ -17,8 +17,14 @@
 
   function toast(t, bad) { if (window.WSShare) window.WSShare.toast(t); else alert(t); }
 
+  function canonicalUrl(extra) {
+    if (window.WSSite) return WSSite.weddingUrl(slug, extra);
+    var u = new URL("/w/" + encodeURIComponent(slug), location.origin);
+    Object.keys(extra || {}).forEach(function (k) { if (extra[k]) u.searchParams.set(k, extra[k]); });
+    return u.toString();
+  }
   function shareUrl() {
-    return location.origin + "/w/" + encodeURIComponent(slug) + (myRef ? "?ref=" + myRef : "");
+    return canonicalUrl({ ref: myRef });
   }
   function names() { return (wedding && wedding.couple_names) || "our wedding"; }
   function when() {
@@ -32,7 +38,7 @@
     var ms = window.WSTime && WSTime.weddingStart(wedding);
     if (ms == null) return "";
     var f = function (t) { return new Date(t).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, ""); };
-    var q = new URLSearchParams({ action: "TEMPLATE", text: names() + " - Wedding", dates: f(ms) + "/" + f(ms + 4 * 3600 * 1000), details: "RSVP and details: " + location.origin + "/w/" + slug, location: wedding.public_location || "" });
+    var q = new URLSearchParams({ action: "TEMPLATE", text: names() + " - Wedding", dates: f(ms) + "/" + f(ms + 4 * 3600 * 1000), details: "RSVP and details: " + canonicalUrl(), location: wedding.public_location || "" });
     return "https://calendar.google.com/calendar/render?" + q.toString();
   }
 
@@ -107,7 +113,7 @@
     var t = names() + " are getting married";
     var d = "You are invited" + (when() ? " - " + when() : "") + ". RSVP, send wishes and save the date.";
     var img = "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1200&q=80";
-    [["property", "og:title", t], ["property", "og:description", d], ["property", "og:image", img], ["property", "og:url", location.origin + "/w/" + slug], ["property", "og:type", "website"],
+    [["property", "og:title", t], ["property", "og:description", d], ["property", "og:image", img], ["property", "og:url", canonicalUrl()], ["property", "og:type", "website"],
      ["name", "twitter:card", "summary_large_image"], ["name", "twitter:title", t], ["name", "twitter:description", d], ["name", "twitter:image", img], ["name", "description", d]]
       .forEach(function (x) { setMeta("meta[" + x[0] + '="' + x[1] + '"]', x[0], x[2]); });
   }
