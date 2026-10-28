@@ -110,3 +110,13 @@ Google OAuth is implemented in the app but not end-to-end verified in Production
 | Reserved slugs | New weddings and slug edits cannot take reserved labels. | Implemented |
 | Branding | User-facing name is "Join Our Wedding" with the literal domain `joinourwedding.site`; internal identifiers (`WEDDINGSITE_*`, storage keys, migrations, repo/Vercel/Supabase names) are unchanged. | Implemented |
 | Manual console items | Add `joinourwedding.site` to the Cloudflare Turnstile widget hostnames; optionally point the Paystack test webhook to the new origin; the Google provider redirect stays `https://lvvtgxspwvmdhqyoyqyy.supabase.co/auth/v1/callback`. | Requires account owner |
+
+## Legal pages, Google sign-in and Production status (latest)
+
+| Item | Status |
+| --- | --- |
+| Privacy Policy `/privacy.html`, Terms `/terms.html` | Live on www, root (via www redirect) and vercel.app; linked from shared footer (platform root on wedding subdomains), sign-in/sign-up and guest promo footer. Operator identity, contact, governing law, fee rates and retention periods are marked `[to be confirmed]`; no compliance claims. |
+| Published wedding subdomain | `atieno-and-otieno.joinourwedding.site` 200 with canonical/OG meta; unknown slug 404; reserved label 308 to root. |
+| Google OAuth | Supabase `external.google` enabled; app start leg verified to Supabase authorize then `accounts.google.com` sign-in page with Supabase callback. Return leg/session exchange not verified until a real Google login completes. |
+| Daraja sandbox (KES/KE) | Options report Daraja available and sandbox OAuth health check passing after `WEDDINGSITE_PUBLIC_ORIGIN` was reset to an exact origin. STK initiation/callback QA pending a QA-designated KES wedding. |
+| Paystack test | Not offered: `PAYSTACK_SUPPORTED_CURRENCIES` / `PAYSTACK_SUPPORTED_MARKETS` not set (must match the Paystack account's actual currencies). |
