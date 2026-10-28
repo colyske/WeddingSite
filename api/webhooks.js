@@ -1,5 +1,9 @@
+import { createHash } from "node:crypto";
 import { sendJson, supabaseRequest } from "../server/supabase.js";
-import { normalizeStripePayment, verifyStripeSignature, normalizePaystackPayment, verifyPaystackSignature } from "../server/payment-adapters.js";
+import {
+  normalizeStripeAdjustment, normalizeStripePayment, verifyStripeSignature,
+  normalizePaystackAdjustment, normalizePaystackPayment, verifyPaystackSignature
+} from "../server/payment-adapters.js";
 
 export const config = { api: { bodyParser: false } };
 
@@ -9,13 +13,40 @@ async function rawBody(req) {
   return Buffer.concat(chunks);
 }
 
+async function recordAdjustment(adjustment) {
+  return supabaseRequest("/rest/v1/rpc/record_provider_adjustment", {
+    service: true,
+    method: "POST",
+    body: {
+      p_provider: adjustment.provider,
+      p_provider_event_id: adjustment.eventId,
+      p_event_type: adjustment.eventType,
+      p_adjustment_id: adjustment.adjustmentId,
+      p_payment_reference: adjustment.paymentReference,
+      p_amount_minor: adjustment.amountMinor,
+      p_currency: adjustment.currency,
+      p_state: adjustment.state,
+      p_occurred_at: adjustment.occurredAt
+    }
+  });
+}
+
 async function handleStripeWebhook(req, res) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) return sendJson(res, 503, { error: "Payment webhooks are disabled until separately approved and configured." });
+  if (process.env.WEDDINGSITE_PAYMENT_MODE !== "test" ||
+      !process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_") || !secret) {
+    return sendJson(res, 503, { error: "Test payment webhooks are unavailable until a test-mode provider and webhook secret are configured." });
+  }
   try {
     const raw = await rawBody(req);
     if (!verifyStripeSignature(raw, req.headers["stripe-signature"], secret)) return sendJson(res, 400, { error: "Invalid or expired provider signature." });
-    const payment = normalizeStripePayment(JSON.parse(raw.toString("utf8")));
+    const event = JSON.parse(raw.toString("utf8"));
+    const adjustment = normalizeStripeAdjustment(event);
+    if (adjustment) {
+      const result = await recordAdjustment(adjustment);
+      return sendJson(res, 200, { received: true, processed: Boolean(result) });
+    }
+    const payment = normalizeStripePayment(event);
     if (!payment) return sendJson(res, 200, { received: true, processed: false });
     const result = await supabaseRequest("/rest/v1/rpc/record_verified_payment", {
       service: true,
@@ -26,7 +57,10 @@ async function handleStripeWebhook(req, res) {
         p_contribution_id: payment.contributionId,
         p_amount_minor: payment.amountMinor,
         p_currency: payment.currency,
-        p_provider_reference: payment.reference
+        p_provider_reference: payment.reference,
+        p_provider_fee_minor: payment.providerFeeMinor,
+        p_provider_paid_at: payment.providerPaidAt,
+        p_provider_payment_reference: payment.providerPaymentReference
       }
     });
     return sendJson(res, 200, { received: true, processed: Boolean(result) });
@@ -38,13 +72,22 @@ async function handleStripeWebhook(req, res) {
 
 async function handlePaystackWebhook(req, res) {
   const secret = process.env.PAYSTACK_SECRET_KEY;
-  if (!secret) return sendJson(res, 503, { error: "Paystack webhooks are disabled until separately approved and configured." });
+  if (process.env.WEDDINGSITE_PAYMENT_MODE !== "test" || !secret?.startsWith("sk_test_")) {
+    return sendJson(res, 503, { error: "Test payment webhooks are unavailable until Paystack test mode is configured." });
+  }
   try {
     const raw = await rawBody(req);
     if (!verifyPaystackSignature(raw, req.headers["x-paystack-signature"], secret)) {
       return sendJson(res, 400, { error: "Invalid Paystack signature." });
     }
-    const payment = normalizePaystackPayment(JSON.parse(raw.toString("utf8")));
+    const event = JSON.parse(raw.toString("utf8"));
+    const digest = createHash("sha256").update(raw).digest("hex");
+    const adjustment = normalizePaystackAdjustment(event, digest);
+    if (adjustment) {
+      const result = await recordAdjustment(adjustment);
+      return sendJson(res, 200, { received: true, processed: Boolean(result) });
+    }
+    const payment = normalizePaystackPayment(event);
     if (!payment) return sendJson(res, 200, { received: true, processed: false });
     const result = await supabaseRequest("/rest/v1/rpc/record_verified_payment", {
       service: true,
@@ -55,7 +98,10 @@ async function handlePaystackWebhook(req, res) {
         p_contribution_id: payment.contributionId,
         p_amount_minor: payment.amountMinor,
         p_currency: payment.currency,
-        p_provider_reference: payment.reference
+        p_provider_reference: payment.reference,
+        p_provider_fee_minor: payment.providerFeeMinor,
+        p_provider_paid_at: payment.providerPaidAt,
+        p_provider_payment_reference: payment.providerPaymentReference
       }
     });
     return sendJson(res, 200, { received: true, processed: Boolean(result) });

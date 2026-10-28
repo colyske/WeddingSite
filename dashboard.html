@@ -55,8 +55,8 @@
         <label for="couple-names">👰 Couple names <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="couple-names" type="text" maxlength="120" placeholder="e.g. Sarah &amp; John" autocomplete="off" required aria-required="true">
 
-        <label for="wedding-date">📅 Wedding date (optional)</label>
-        <input id="wedding-date" type="date">
+        <label for="wedding-date">📅 Wedding date <span class="required-mark" aria-hidden="true">*</span></label>
+        <input id="wedding-date" type="date" required>
         <label for="wedding-timezone">🌍 Time zone <span class="fine">(venue times, countdown and calendar use this zone)</span></label>
         <select id="wedding-timezone"></select>
 
@@ -115,6 +115,7 @@
   <script src="auth-client.js"></script>
   <script src="tz.js"></script>
   <script src="share.js"></script>
+  <script src="setup-progress.js"></script>
   <script src="dashboard.js"></script>
   <script src="footer.js"></script>
 <script src="/feedback.js"></script>

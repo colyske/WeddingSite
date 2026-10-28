@@ -11,9 +11,29 @@ test("campaign migration is idempotent and keeps money rows safe", () => {
   assert.match(sql, /add column if not exists milestone_id/);
   assert.match(sql, /enabled = false where wedding_id/); // removed campaigns are disabled, not deleted
   assert.doesNotMatch(sql, /delete from public\.(fundraising_streams|contributions)/);
-  for (const fn of ["save_fundraising_campaigns", "get_campaign_ledger", "record_test_campaign_pledge"]) {
+  for (const fn of ["save_fundraising_campaigns", "get_campaign_ledger"]) {
     assert.match(sql, new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\) to service_role`));
   }
+  const paymentMigration = readFileSync("supabase/migrations/202610300002_verified_test_payments.sql", "utf8");
+  const campaignLedger = paymentMigration.split("create or replace function public.get_campaign_ledger")[1]
+    .split("revoke all on function public.get_campaign_ledger")[0];
+  assert.match(campaignLedger, /from public\.weddings w\s+where w\.id = p_wedding_id/i);
+  assert.match(paymentMigration, /drop function if exists public\.record_test_campaign_pledge/);
+  assert.match(paymentMigration, /drop function if exists public\.get_dj_leaderboard\(uuid\)/);
+  assert.match(paymentMigration, /bid_count bigint, currency char\(3\)/);
+  assert.ok(paymentMigration.indexOf("drop view if exists public.finance_summary;") < paymentMigration.indexOf("alter column payment_status type text"));
+  assert.ok(paymentMigration.indexOf("drop view if exists public.public_contribution_ledger;") < paymentMigration.indexOf("alter column payment_status type text"));
+  assert.match(paymentMigration, /grant select on public\.public_contribution_ledger to anon, authenticated/);
+  assert.match(paymentMigration, /grant select on public\.finance_summary to authenticated/);
+  assert.match(paymentMigration, /v_keep uuid\[\] := array\[\]::uuid\[\]/);
+  assert.match(paymentMigration, /v_mkeep := array\[\]::uuid\[\]/);
+  assert.match(paymentMigration, /grant execute on function public\.save_fundraising_campaigns\(uuid, jsonb\) to service_role/);
+  const featured = readFileSync("supabase/migrations/202610300003_featured_sponsor_campaigns.sql", "utf8");
+  assert.match(featured, /create table if not exists public\.sponsor_featured_campaigns/);
+  assert.match(featured, /create table if not exists public\.sponsor_featured_bids/);
+  assert.match(featured, /c\.verified_provider_payment/);
+  assert.match(featured, /campaign terms cannot change after a paid bid/i);
+  assert.match(featured, /create or replace function public\.finalize_featured_sponsor_bid/);
 });
 
 test("public campaign data exposes no donor details", () => {
@@ -24,7 +44,9 @@ test("public campaign data exposes no donor details", () => {
 test("organizer, guest and payment APIs are wired for campaigns", () => {
   assert.match(readFileSync("api/weddings.js", "utf8"), /action === "campaigns-save"/);
   assert.match(readFileSync("api/guest.js", "utf8"), /get_public_campaigns/);
-  assert.match(readFileSync("api/testpay.js", "utf8"), /record_test_campaign_pledge/);
+  assert.match(readFileSync("api/guest.js", "utf8"), /get_public_sponsor_auction/);
+  assert.match(readFileSync("api/checkout.js", "utf8"), /purchaseAction === "sponsor_featured_bid"/);
+  assert.match(readFileSync("api/testpay.js", "utf8"), /Simulated payments are disabled/);
   const guest = readFileSync("guest.html", "utf8");
   assert.match(guest, /id="campaigns-display"/);
   assert.match(guest, /data-buy="fund"/);

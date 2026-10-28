@@ -176,6 +176,11 @@ test("Create wedding auto-navigates after success", { skip }, async () => {
   // Fill in the form
   await page.fill("#couple-names", "Sarah & John");
   await page.fill("#location", "Nairobi");
+  await page.fill("#wedding-date", "2027-06-12");
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-venue-field="eventDate"]')].every(input => input.value === "2027-06-12"));
+  await page.locator("[data-venue-field=name]").first().fill("Church");
+  await page.locator("[data-venue-field=time]").first().fill("10:00");
+  await page.locator("[data-venue-field=address]").first().fill("Nairobi Cathedral");
   
   // Wait for the create button to be ready
   await page.waitForSelector("#create-submit");

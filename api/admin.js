@@ -5,13 +5,28 @@ const rpc = (name, token, body = {}) =>
   supabaseRequest(`/rest/v1/rpc/${name}`, { token, method: "POST", body });
 
 const GET_ACTIONS = {
-  overview: (t) => rpc("admin_overview", t),
+  overview: async (t) => {
+    const [overview, settlement] = await Promise.all([
+      rpc("admin_overview", t),
+      rpc("admin_settlement_overview", t)
+    ]);
+    return { ...overview, settlement };
+  },
   weddings: async (t) => ({ weddings: await rpc("admin_list_weddings", t) }),
   users: async (t, q) => ({ users: await rpc("admin_list_users", t, { p_search: q.search || null }) }),
   ledger: async (t) => ({ ledger: await rpc("admin_ledger", t, { p_limit: 500 }) }),
   payouts: async (t) => ({ payouts: await rpc("admin_payouts", t) }),
   audit: async (t) => ({ audit: await rpc("admin_audit", t, { p_limit: 500 }) }),
+  operations: async (t) => {
+    const [queue, adjustments] = await Promise.all([
+      rpc("admin_operations_queue", t),
+      rpc("admin_provider_adjustment_queue", t)
+    ]);
+    return { queue, adjustments };
+  },
   policies: async (t) => ({ policies: await rpc("admin_get_policies", t) }),
+  "refund-policy": async (t) => ({ allocation: await rpc("admin_get_refund_policy", t) }),
+  "policy-history": async (t) => ({ history: await rpc("admin_policy_history", t, { p_limit: 50 }) }),
   "wedding-metrics": async (t, q) => {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(q.weddingId || ""))) throw new Error("Invalid wedding.");
     return { metrics: await rpc("admin_wedding_metrics", t, { p_wedding_id: q.weddingId }) };
@@ -50,7 +65,7 @@ export default async function handler(req, res) {
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
 
     if (action === "set-role") {
-      if (!["owner", "superadmin"].includes(role)) return sendJson(res, 403, { error: "Only the Owner or a SuperAdmin can change roles." });
+      if (role !== "owner") return sendJson(res, 403, { error: "Only the protected Owner can change platform roles." });
       if (!ROLES.has(body.role) || !body.user_id) return sendJson(res, 400, { error: "Choose a user and a valid role." });
       await rpc("admin_set_role", token, { p_user_id: body.user_id, p_role: body.role });
       return sendJson(res, 200, { ok: true });
@@ -63,6 +78,34 @@ export default async function handler(req, res) {
     if (action === "policies-save") {
       await rpc("admin_save_policies", token, { p_data: body.policies || {} });
       return sendJson(res, 200, { ok: true, policies: await rpc("admin_get_policies", token) });
+    }
+    if (action === "refund-policy-save") {
+      if (!["manual_review", "couple", "platform"].includes(body.allocation) || body.confirmed !== true) {
+        return sendJson(res, 400, { error: "Choose a refund allocation and confirm the policy change." });
+      }
+      await rpc("admin_set_refund_policy", token, { p_allocation: body.allocation, p_confirmed: true });
+      return sendJson(res, 200, { ok: true, allocation: await rpc("admin_get_refund_policy", token) });
+    }
+    if (action === "refund-resolution") {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(body.adjustment_id || "")) ||
+          !["couple", "platform"].includes(body.allocation) || body.confirmed !== true) {
+        return sendJson(res, 400, { error: "Choose a refund allocation and confirm the resolution." });
+      }
+      await rpc("admin_resolve_provider_refund", token, {
+        p_adjustment_id: body.adjustment_id, p_allocation: body.allocation, p_confirmed: true
+      });
+      return sendJson(res, 200, { ok: true });
+    }
+    if (action === "refund-match") {
+      if (!Number.isSafeInteger(body.event_id) || body.event_id < 1 ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(body.contribution_id || "")) ||
+          body.confirmed !== true) {
+        return sendJson(res, 400, { error: "Select a valid contribution and explicitly confirm the match." });
+      }
+      await rpc("admin_match_unresolved_refund", token, {
+        p_event_id: body.event_id, p_contribution_id: body.contribution_id, p_confirmed: true
+      });
+      return sendJson(res, 200, { ok: true });
     }
     if (action === "wedding-action") {
       if (!WEDDING_ACTIONS.has(body.action) || !body.wedding_id) return sendJson(res, 400, { error: "Invalid wedding action." });

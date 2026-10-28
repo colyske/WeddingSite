@@ -32,20 +32,22 @@ const skip = browser ? false : "No Chromium/Edge is installed.";
 const couple = "Atieno & Otieno";
 const rsvpId = "45e4afbe-fc9f-4d14-aac9-98e84d9e54ea";
 const weddingId = "550e8400-e29b-41d4-a716-446655440000";
-const tomorrow = new Date();
-tomorrow.setDate(tomorrow.getDate() + 1);
+const futureDate = "2099-12-12";
 const wedding = {
   id: weddingId,
   slug: "atieno-and-otieno",
   couple_names: couple,
   welcome_story: "Love, family & friendship <together>.",
-  wedding_date: `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`,
+  wedding_date: futureDate,
   public_location: "Nairobi",
   currency: "KES",
   max_guest_capacity: 150,
   palette: ["#244b3a", "#a9b5a2"],
   attire_notes: "Formal African elegance",
-  venues: [{ id: "venue-id", name: "Garden & Hall", event_time: "12:30:00", map_link: "https://maps.example.test/venue", description: "Church & reception", is_main: true }],
+  venues: [
+    { id: "venue-id", name: "Garden & Hall", event_date: futureDate, event_time: "12:30:00", address: "Garden Hall, Nairobi", map_link: "https://maps.example.test/venue", description: "Church & reception", is_main: true },
+    { id: "pre-venue-id", name: "Welcome gathering", event_date: "2099-12-10", event_time: "18:00:00", address: "Westlands, Nairobi", map_link: "https://maps.example.test/pre", kind: "pre", is_main: false }
+  ],
   registry: [{ id: "registry-id", name: "Home & Honeymoon", category: "Travel", description: "Start our life together", target_amount_minor: 500000, notes: "Thank you", amount_raised_minor: 20000 }],
   tiers: [{ id: "tier-id", name: "Gold & Friends", min_amount_minor: 500000, perks: "Brand recognition" }],
   vip: { id: "vip-id", title: "VIP seating", description: "Reserved section", price_minor: 250000, seats_total: 12, seats_sold: 2 },
@@ -72,6 +74,8 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     const context = await browser.newContext();
     const page = await context.newPage();
     const apiCalls = [];
+    const consoleErrors = [];
+    page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
     await installQrStub(page);
     await page.route("**/api/guest**", async route => {
       const url = new URL(route.request().url());
@@ -94,19 +98,35 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
       }
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) });
     });
+    await page.route("**/api/checkout**", route => route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ providers: [], paymentAvailable: false, message: "Payments are not available yet." })
+    }));
 
     await page.goto(`${base}/guest.html?slug=${wedding.slug}`);
     await page.waitForFunction(() => document.querySelector("#couple-names")?.textContent === "Atieno & Otieno");
     assert.equal(await page.title(), `${couple} — Wedding`);
     assert.equal(await page.locator("#welcome-story").textContent(), wedding.welcome_story);
     assert.equal(await page.locator("#countdown").isVisible(), true);
-    assert.ok(await page.locator("#countdown").evaluate(el =>
-      [...el.querySelectorAll(".countdown-value")].reduce((sum, node) => sum * 60 + Number(node.textContent), 0) > 0
-    ));
+    const countdownDebug = await page.evaluate(() => ({
+      values: [...document.querySelectorAll("#countdown .countdown-value")].map(node => node.textContent),
+      dateText: document.querySelector("#wedding-date-display")?.textContent,
+      notice: document.querySelector("#notice")?.textContent,
+      start: window.WSTime?.weddingStart({ wedding_date: "2099-12-12", venues: [{ event_time: "12:30:00", is_main: true }] })
+    }));
+    assert.ok(countdownDebug.values.some(value => Number(value) > 0), `Expected a running countdown, got ${JSON.stringify({ ...countdownDebug, consoleErrors })}`);
     assert.match(await page.locator("#leaderboard-body").textContent(), /Artist <One>/);
     assert.match(await page.locator("#tiers-display").textContent(), /Gold & Friends/);
     assert.match(await page.locator("#vip-display").textContent(), /VIP seating/);
+    await page.waitForFunction(() => document.querySelector("#sponsors-display")?.textContent.includes("Acme & Co"));
     assert.match(await page.locator("#sponsors-display").textContent(), /Acme & Co/);
+    assert.match(await page.locator("#sponsors-display").textContent(), /Your advert could be here/);
+    assert.match(await page.locator("#venues-display").textContent(), /Garden Hall, Nairobi/);
+    assert.match(await page.locator("#venues-display").textContent(), /Saturday, December 12, 2099/);
+    assert.equal(await page.locator("#venues-display a").first().getAttribute("href"), "https://maps.example.test/venue");
+    assert.match(await page.locator("#prewedding-display").textContent(), /Welcome gathering/);
+    assert.match(await page.locator("#prewedding-display").textContent(), /Westlands, Nairobi/);
+    assert.match(await page.locator("#prewedding-display").textContent(), /Thursday, December 10, 2099/);
 
     await page.fill("#guest-name", couple);
     await page.fill("#guest-phone", "0712345678");
@@ -118,12 +138,11 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     assert.equal(await page.locator("#qrcode").getAttribute("data-qr-text"), `${base}/verify.html?code=${rsvpId}`);
     assert.equal(await page.locator("#standalone-pass-link").getAttribute("href"), `${base}/ecard.html?slug=${wedding.slug}&guest_id=${rsvpId}`);
     assert.match(await page.locator("#notice").textContent(), /RSVP received/);
-    await page.fill("#song-title", "Home & Away");
-    await page.fill("#artist", "Artist & Friend");
-    await page.fill("#bid-amount", "4500");
-    await page.click('#bid-form button[type="submit"]');
-    await page.waitForFunction(() => document.querySelector("#notice").textContent.includes("Bid placed"));
-    assert.ok(apiCalls.some(call => call.action === "bid" && call.method === "POST"));
+    await page.click('#leaderboard-body [data-song-bid]');
+    await page.waitForFunction(() => !document.querySelector("#pay-error").hidden);
+    assert.match(await page.locator("#pay-error").textContent(), /Payments are not available yet/);
+    assert.doesNotMatch(await page.locator("#notice").textContent(), /bid placed/i);
+    assert.equal(apiCalls.some(call => call.action === "bid" && call.method === "POST"), false);
 
     const verification = await context.newPage();
     const verificationCalls = [];
@@ -182,7 +201,7 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
           max_guest_capacity: savedBody.maxCapacity,
           palette: savedBody.palette,
           attire_notes: savedBody.attireNotes,
-          venues: savedBody.venues.map(venue => ({ ...venue, event_time: venue.eventTime, map_link: venue.mapLink, is_main: venue.isMain })),
+          venues: savedBody.venues.map(venue => ({ ...venue, event_time: venue.eventTime, event_date: venue.eventDate, address: venue.address, map_link: venue.mapLink, is_main: venue.isMain })),
           registry: savedBody.registry.map(item => ({ ...item, target_amount_minor: item.targetAmount * 100 })),
           tiers: savedBody.tiers.map(tier => ({ ...tier, min_amount_minor: tier.minAmount * 100 })),
           vip: savedBody.vip.price ? { ...savedBody.vip, price_minor: savedBody.vip.price * 100, seats_total: savedBody.vip.seats } : null,

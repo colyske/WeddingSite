@@ -59,3 +59,25 @@ Not built yet (recommended next): photo gallery/uploads with moderation (needs s
 | Admin per-wedding metrics | "Metrics" button on each wedding | - | `admin_wedding_metrics()` | Admin, owner |
 | Pagination and search | Weddings, users, ledger, audit: search, 20 per page (10/20/50/100) | - | Client-side over newest 500 rows | Admin, owner |
 | Active admin tab | Highlighted tab, `aria-selected` | - | - | Admin, owner |
+
+## Paid featured sponsor campaign
+
+| Feature | Configured (organizer) | Shown (guest site) | Recorded | Who sees it |
+|---|---|---|---|---|
+| Fixed sponsor packages plus optional featured slots | Wedding editor sets the opening/closing instants, slot count, minimum paid bid, and increment; campaign terms lock after the first paid bid | Campaign state, current leaders, next eligible bid, and a bid action; closed-window leaders are the featured slots | `sponsor_featured_campaigns`, `sponsor_featured_bids`, paid `contributions`, and sponsor advert cards | Public sees company names and verified totals; wedding organizers see sponsor records |
+
+Featured bids are charged through the configured test checkout. Only a provider-verified payment created during the campaign window can be counted; if campaign terms/capacity no longer permit finalization, the payment is routed to review and is not shown as a completed bid. The browser redirect alone is not confirmation. The new migration must be replayed and safely deployed before this feature is available in Production.
+
+The prior release did not include refund/dispute accounting; see the branch-status section below for the current implementation and its verification limits.
+
+## Verified refunds, disputes and settlement adjustments
+
+| Feature | Behavior | Status |
+|---|---|---|
+| Refund/dispute webhook intake | Stripe and Paystack signatures are verified before normalization; raw webhook bodies are not stored. Adjustment events are deduplicated and correlated to the original verified payment reference. Exact-match Admin reconciliation is available for timestamped, provider-confirmed unmatched refunds. | Implemented; provider sandbox events not yet exercised |
+| Refund accounting | Provider-confirmed processed refunds create immutable adjustment-ledger entries. An Owner policy is snapshotted at payment creation: couple absorbs the full refund, platform reimburses the known original fees proportionally (rounded down), or manual review. Unknown fees and ambiguous/out-of-order events hold funds. | Implemented; new migration awaiting CI replay |
+| Dispute accounting | Open disputes hold the disputed amount; verified withdrawals/losses debit the couple balance once; verified reinstatements reverse that debit once. Unmatched or conflicting events are visible in Admin review. | Implemented; new migration awaiting CI replay |
+| Payout availability | Settled net contributions plus immutable adjustments, minus outstanding holds, approved expenses and active withdrawals; payout requests and refund resolutions serialize on the wedding row. | Implemented; no payout provider execution |
+| Admin/Owner operations | Admins see actionable adjustment/reconciliation queues and may allocate a provider-confirmed refund only after fee data is known. Owner sees aggregate queue counts and controls the default allocation for new payments. | Implemented; real provider and Production verification blocked |
+
+These are code and local contract-test claims, not Production verification. No financial migration has been applied to Production, and no refund/dispute event, real payout, or configured test checkout has been exercised against provider credentials. Paystack refund events without a stable adjustment reference or timestamp are held for review rather than automatically posted.

@@ -5,8 +5,33 @@ import { normalizePhone, isPhoneKeyEmail } from "../server/phone.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
+const NAMED_COLORS = [
+  ["Forest Green", "#244b3a"], ["Eucalyptus Sage", "#a9b5a2"], ["Royal Gold", "#be9b52"], ["Ivory", "#eee8d9"],
+  ["Black", "#000000"], ["White", "#ffffff"], ["Charcoal", "#36454f"], ["Navy", "#000080"],
+  ["Royal Blue", "#4169e1"], ["Sky Blue", "#87ceeb"], ["Teal", "#008080"], ["Turquoise", "#40e0d0"],
+  ["Sage Green", "#9caf88"], ["Olive Green", "#808000"], ["Forest Green", "#228b22"], ["Mint", "#98ff98"],
+  ["Burgundy", "#800020"], ["Crimson", "#dc143c"], ["Rose", "#ff007f"], ["Blush Pink", "#de5d83"],
+  ["Lavender", "#e6e6fa"], ["Purple", "#800080"], ["Plum", "#8e4585"], ["Orange", "#ffa500"],
+  ["Coral", "#ff7f50"], ["Terracotta", "#e2725b"], ["Mustard", "#ffdb58"], ["Gold", "#ffd700"],
+  ["Beige", "#f5f5dc"], ["Taupe", "#483c32"], ["Brown", "#8b4513"], ["Silver", "#c0c0c0"]
+];
+const colorHexForName = name => {
+  const normalized = String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return NAMED_COLORS.find(([label]) => label.toLowerCase() === normalized)?.[1] || null;
+};
+const friendlyColorName = hex => {
+  const rgb = String(hex).slice(1).match(/.{2}/g)?.map(value => parseInt(value, 16)) || [];
+  if (rgb.length !== 3) return "";
+  let closest = NAMED_COLORS[0], distance = Infinity;
+  for (const candidate of NAMED_COLORS) {
+    const values = candidate[1].slice(1).match(/.{2}/g).map(value => parseInt(value, 16));
+    const next = values.reduce((sum, value, index) => sum + (value - rgb[index]) ** 2, 0);
+    if (next < distance) { distance = next; closest = candidate; }
+  }
+  return closest[0];
+};
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,enabled_payment_methods,background_music_url,published_at,created_at,archived_at,unpublished_at,first_published_at";
+const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,published_at,created_at,archived_at,unpublished_at,first_published_at";
 const DEFAULT_ZONE = "Africa/Nairobi";
 const validZone = tz => {
   if (typeof tz !== "string" || !tz || tz.length > 64) return false;
@@ -45,16 +70,38 @@ const configuredPayoutMethods = currency => {
   return [...methods].map(([id, name]) => ({ id, name }));
 };
 
-// Load venues and payout info for a wedding
-const loadWeddingDetails = async (weddingId, opts) => {
-  const [venues, payout, registry, tiers, vip] = await Promise.all([
-    supabaseRequest(`/rest/v1/venues?wedding_id=eq.${weddingId}&select=id,name,event_time,event_date,map_link,description,is_main,kind,address,sort_order&order=sort_order.asc`, opts),
-    supabaseRequest(`/rest/v1/payout_preferences?wedding_id=eq.${weddingId}&select=method,display_mask,verified`, opts),
-    supabaseRequest(`/rest/v1/registry_items?wedding_id=eq.${weddingId}&select=id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts),
-    supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}&select=id,name,min_amount_minor,perks,sort_order&order=sort_order.asc`, opts),
-    supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${weddingId}&select=id,title,description,seats_total,seats_sold,price_minor&limit=1`, opts)
+const loadWeddingDetails = async (weddings, opts) => {
+  const rows = Array.isArray(weddings) ? weddings : [weddings];
+  if (!rows.length) return [];
+  const ids = rows.map(row => row.id);
+  const inFilter = `in.(${ids.map(encodeURIComponent).join(",")})`;
+  const [venues, payouts, registry, tiers, vip, siteContent, campaigns, paymentConfigs, setupStatuses, featuredCampaigns] = await Promise.all([
+    supabaseRequest(`/rest/v1/venues?wedding_id=${inFilter}&select=id,wedding_id,name,event_time,event_date,map_link,description,is_main,kind,address,sort_order&order=sort_order.asc`, opts),
+    supabaseRequest(`/rest/v1/payout_preferences?wedding_id=${inFilter}&select=wedding_id,method,display_mask,verified`, opts),
+    supabaseRequest(`/rest/v1/registry_items?wedding_id=${inFilter}&select=id,wedding_id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts),
+    supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=${inFilter}&select=id,wedding_id,name,min_amount_minor,perks,sort_order&order=sort_order.asc`, opts),
+    supabaseRequest(`/rest/v1/vip_offers?wedding_id=${inFilter}&select=id,wedding_id,title,description,seats_total,seats_sold,price_minor`, opts),
+    supabaseRequest(`/rest/v1/guest_site_content?wedding_id=${inFilter}&select=wedding_id,story_draft,story_approved,travel_notes,travel_approved`, opts),
+    supabaseRequest(`/rest/v1/fundraising_streams?wedding_id=${inFilter}&select=id,wedding_id,enabled`, opts),
+    supabaseRequest(`/rest/v1/payment_provider_configs?wedding_id=${inFilter}&select=wedding_id,provider,enabled`, opts),
+    supabaseRequest("/rest/v1/rpc/get_wedding_setup_status", {
+      ...opts, method: "POST", body: { p_wedding_ids: ids }
+    }),
+    supabaseRequest(`/rest/v1/sponsor_featured_campaigns?wedding_id=${inFilter}&select=wedding_id,enabled,starts_at,closes_at,slot_count,minimum_bid_minor,bid_increment_minor`, { service: true })
   ]);
-  return { venues: venues || [], payout: payout?.[0] || null, registry: registry || [], tiers: tiers || [], vip: vip?.[0] || null };
+  return rows.map(row => ({
+    ...row,
+    venues: (venues || []).filter(item => item.wedding_id === row.id),
+    payout: (payouts || []).find(item => item.wedding_id === row.id) || null,
+    registry: (registry || []).filter(item => item.wedding_id === row.id),
+    tiers: (tiers || []).filter(item => item.wedding_id === row.id),
+    vip: (vip || []).find(item => item.wedding_id === row.id) || null,
+    siteContent: (siteContent || []).find(item => item.wedding_id === row.id) || {},
+    campaigns: (campaigns || []).filter(item => item.wedding_id === row.id),
+    paymentConfigured: (paymentConfigs || []).some(item => item.wedding_id === row.id && item.enabled),
+    featuredSponsorCampaign: (featuredCampaigns || []).find(item => item.wedding_id === row.id) || null,
+    kyc_submitted: (setupStatuses || []).some(item => item.wedding_id === row.id && item.kyc_submitted === true)
+  }));
 };
 
 // Authenticated Client workspace API. All reads/writes run as the signed-in user so RLS applies.
@@ -70,7 +117,7 @@ export default async function handler(req, res) {
       if (!methodOnly(req, res, "GET")) return;
       const rows = await supabaseRequest(
         `/rest/v1/weddings?client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=${FIELDS}&order=created_at.desc&limit=50`, opts);
-      return sendJson(res, 200, { weddings: rows || [] });
+      return sendJson(res, 200, { weddings: await loadWeddingDetails(rows || [], opts) });
     }
 
     if (action === "get") {
@@ -79,15 +126,15 @@ export default async function handler(req, res) {
       const rows = await supabaseRequest(
         `/rest/v1/weddings?id=eq.${req.query.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=${FIELDS}`, opts);
       if (!rows?.length) return sendJson(res, 404, { error: "Wedding not found." });
-      const details = await loadWeddingDetails(rows[0].id, opts);
-      return sendJson(res, 200, { wedding: { ...rows[0], ...details } });
+      const [wedding] = await loadWeddingDetails(rows, opts);
+      return sendJson(res, 200, { wedding });
     }
 
     if (action === "create") {
       if (!methodOnly(req, res, "POST")) return;
       const names = String(body.coupleNames || "").trim();
       const location = String(body.location || "").trim();
-      const palette = Array.isArray(body.palette) && body.palette.length
+      const palette = Array.isArray(body.palette)
         ? body.palette.map(color => typeof color === "string" ? color.trim().toLowerCase() : "")
         : ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"];
       const capacity = Number(body.maxCapacity ?? 150);
@@ -97,9 +144,12 @@ export default async function handler(req, res) {
         venues = (Array.isArray(body.venues) ? body.venues : []).slice(0, 30).map((venue, sortOrder) => ({
           name: String(venue?.name || "").trim().slice(0, 100),
           eventTime: parseVenueTime(venue?.eventTime ?? venue?.time),
+          eventDate: validDate(venue?.eventDate) ? venue.eventDate : body.weddingDate,
+          address: String(venue?.address || "").trim().slice(0, 200) || null,
           mapLink: String(venue?.mapLink ?? venue?.map ?? "").trim() || null,
           description: String(venue?.description || "").trim().slice(0, 500) || null,
           isMain: venue?.isMain === true,
+          kind: venue?.kind === "pre" ? "pre" : "main",
           sortOrder
         })).filter(venue => venue.name);
       } catch (error) {
@@ -108,8 +158,11 @@ export default async function handler(req, res) {
       if (venues.some(venue => venue.mapLink && !/^https?:\/\//i.test(venue.mapLink))) {
         return sendJson(res, 400, { error: "Venue map links must use HTTP or HTTPS." });
       }
+      if (!venues.length || venues.some(venue => !venue.eventTime || !validDate(venue.eventDate) || !venue.address)) {
+        return sendJson(res, 400, { error: "Every event needs a date, start time, venue name and street address.", field: "venues" });
+      }
       if (names.length < 1 || names.length > 120 || location.length < 1 || location.length > 120 || !/^[A-Z]{3}$/.test(currency) ||
-          !Number.isInteger(capacity) || capacity < 1 || palette.length < 1 || palette.length > 4 || !palette.every(c => COLOR.test(c))) {
+          !Number.isInteger(capacity) || capacity < 1 || palette.length > 4 || !palette.every(c => COLOR.test(c))) {
         return sendJson(res, 400, { error: "Check the couple names, location, currency, guest capacity and up to four hex colors." });
       }
       if (!validDate(body.weddingDate)) return sendJson(res, 400, { error: "The wedding date is required (YYYY-MM-DD)." });
@@ -125,10 +178,10 @@ export default async function handler(req, res) {
             p_slug: `${base}${suffix}`.slice(0, 80).padEnd(3, "x"), p_couple_names: names,
             p_wedding_date: body.weddingDate, p_location: location.slice(0, 120),
             p_currency: currency, p_capacity: capacity, p_palette: palette, p_venues: venues } });
-          if (timeZone !== DEFAULT_ZONE) {
-            await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(id)}&client_owner_id=eq.${encodeURIComponent(session.user.id)}`,
-              { ...opts, method: "PATCH", body: { time_zone: timeZone } });
-          }
+          await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(id)}&client_owner_id=eq.${encodeURIComponent(session.user.id)}`,
+            { ...opts, method: "PATCH", body: {
+              time_zone: timeZone, palette_names: palette.map(friendlyColorName)
+            } });
           return sendJson(res, 201, { weddingId: id, slug: `${base}${suffix}` });
         } catch (error) {
           if (!/duplicate|unique/i.test(error.message)) throw error;
@@ -156,8 +209,11 @@ export default async function handler(req, res) {
             address: String(v?.address || "").trim().slice(0, 200) || null,
             sortOrder
           })).filter(v => v.name);
-          if (!normalizedVenues.some(v => v.eventTime && v.kind !== "pre")) {
-            return sendJson(res, 400, { error: "The wedding time is required: at least one venue needs a start time." });
+          if (!normalizedVenues.length || normalizedVenues.some(v => !v.eventDate || !v.eventTime || !v.address)) {
+            return sendJson(res, 400, { error: "Every event needs a date, start time, venue name and street address.", field: "venues" });
+          }
+          if (!normalizedVenues.some(v => v.kind !== "pre")) {
+            return sendJson(res, 400, { error: "Add at least one wedding-day event.", field: "venues" });
           }
           if (normalizedVenues.some(v => v.mapLink && !/^https?:\/\//i.test(v.mapLink))) {
             return sendJson(res, 400, { error: "Venue map links must use HTTP or HTTPS." });
@@ -217,13 +273,18 @@ export default async function handler(req, res) {
         const palette = Array.isArray(body.palette)
           ? body.palette.map(color => typeof color === "string" ? color.trim().toLowerCase() : "")
           : null;
-        if (!palette || palette.length < 1 || palette.length > 4 || !palette.every(c => COLOR.test(c))) {
-          return sendJson(res, 400, { error: "Choose one to four hex colors." });
+        if (!palette || palette.length > 4 || !palette.every(c => COLOR.test(c))) {
+          return sendJson(res, 400, { error: "Choose up to four valid hex colors." });
         }
         patch.palette = palette;
       }
       if (body.paletteNames !== undefined) {
-        patch.palette_names = Array.isArray(body.paletteNames) ? body.paletteNames.slice(0, 4).map(n => String(n || "").trim().slice(0, 40)) : [];
+        const names = Array.isArray(body.paletteNames) ? body.paletteNames : [];
+        patch.palette_names = (patch.palette || []).map((color, index) =>
+          String(names[index] || "").trim().slice(0, 40) || friendlyColorName(color)
+        );
+      } else if (patch.palette) {
+        patch.palette_names = patch.palette.map(friendlyColorName);
       }
       for (const [key, col] of [["rsvpFee", "rsvp_fee_minor"], ["extraGuestFee", "extra_guest_fee_minor"], ["premiumDietFee", "premium_diet_fee_minor"]]) {
         if (body[key] === undefined) continue;
@@ -237,6 +298,10 @@ export default async function handler(req, res) {
       }
       if (body.attireNotes !== undefined) {
         patch.attire_notes = String(body.attireNotes).slice(0, 300);
+      }
+      if (body.allowInKindSponsorship !== undefined) {
+        if (typeof body.allowInKindSponsorship !== "boolean") return sendJson(res, 400, { error: "Choose whether to accept free/in-kind sponsor enquiries." });
+        patch.allow_in_kind_sponsorship = body.allowInKindSponsorship;
       }
       if (body.backgroundMusicUrl !== undefined) {
         const url = String(body.backgroundMusicUrl).trim();
@@ -320,6 +385,7 @@ export default async function handler(req, res) {
           for (const id of toDelete) {
             await supabaseRequest(`/rest/v1/sponsor_tiers?id=eq.${id}`, { ...opts, method: "DELETE" });
           }
+
           for (let i = 0; i < body.tiers.length; i++) {
             const t = body.tiers[i];
             if (!t.name || !t.minAmount) continue;
@@ -336,6 +402,31 @@ export default async function handler(req, res) {
             }
           }
         } catch (e) { console.error("Tier update failed:", e.message); throw e; }
+      }
+
+      if (body.featuredSponsorCampaign) {
+        const campaign = body.featuredSponsorCampaign;
+        const positiveMoney = value => Number.isFinite(Number(value)) && Number(value) > 0 && Number(value) <= 1000000000;
+        const slotCount = Number(campaign.slotCount);
+        const startsAt = typeof campaign.startsAt === "string" && campaign.startsAt ? new Date(campaign.startsAt) : null;
+        const closesAt = typeof campaign.closesAt === "string" && campaign.closesAt ? new Date(campaign.closesAt) : null;
+        if (campaign.enabled === true && (!startsAt || !closesAt || !Number.isFinite(startsAt.getTime()) ||
+            !Number.isFinite(closesAt.getTime()) || closesAt <= startsAt ||
+            !Number.isSafeInteger(slotCount) || slotCount < 1 || slotCount > 20 ||
+            !positiveMoney(campaign.minimumBid) || Math.round(Number(campaign.minimumBid) * 100) < 1 ||
+            !positiveMoney(campaign.bidIncrement) || Math.round(Number(campaign.bidIncrement) * 100) < 1)) {
+          return sendJson(res, 400, { error: "Enter a valid campaign window, 1–20 slots, minimum bid and bid increment." });
+        }
+        await supabaseRequest("/rest/v1/rpc/save_sponsor_featured_campaign", {
+          ...opts, method: "POST", body: { p_wedding_id: body.weddingId, p_data: {
+            enabled: campaign.enabled === true,
+            starts_at: startsAt?.toISOString() || null,
+            closes_at: closesAt?.toISOString() || null,
+            slot_count: slotCount,
+            minimum_bid_minor: positiveMoney(campaign.minimumBid) ? Math.round(Number(campaign.minimumBid) * 100) : null,
+            bid_increment_minor: positiveMoney(campaign.bidIncrement) ? Math.round(Number(campaign.bidIncrement) * 100) : null
+          } }
+        });
       }
 
       // Update VIP offer if provided
@@ -384,8 +475,8 @@ export default async function handler(req, res) {
         } catch (e) { console.error("Payout update failed:", e.message); throw e; }
       }
       
-      const details = await loadWeddingDetails(rows[0].id, opts);
-      return sendJson(res, 200, { wedding: { ...rows[0], ...details } });
+      const [updatedWedding] = await loadWeddingDetails(rows, opts);
+      return sendJson(res, 200, { wedding: updatedWedding });
     }
 
     if (action === "payout-methods") {
@@ -448,7 +539,7 @@ export default async function handler(req, res) {
         if (msg.includes("PAYMENT_REQUIRED")) {
           return sendJson(res, 402, { error: msg.replace(/^.*PAYMENT_REQUIRED:?\s*/, "").slice(0, 300) || "A publication fee is required.", paymentRequired: true });
         } else if (/KYC|identity/i.test(msg)) {
-          return sendJson(res, 409, { error: "Complete the couple identity (KYC) details before publishing.", kycRequired: true });
+          return sendJson(res, 409, { error: "Submit complete KYC details for both partners. WeddingSite does not independently verify identity documents.", kycRequired: true });
         } else if (/date/i.test(msg)) {
           userMessage = "Set the wedding date before publishing.";
         } else if (msg.includes("publication fee")) {
@@ -460,10 +551,10 @@ export default async function handler(req, res) {
         }
         return sendJson(res, 409, { error: userMessage });
       }
-      const details = await loadWeddingDetails(body.weddingId, opts);
       const rows = await supabaseRequest(
         `/rest/v1/weddings?id=eq.${body.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=${FIELDS}`, opts);
-      return sendJson(res, 200, { published: true, wedding: rows?.[0] ? { ...rows[0], ...details } : null });
+      const [publishedWedding] = await loadWeddingDetails(rows || [], opts);
+      return sendJson(res, 200, { published: true, wedding: publishedWedding || null });
     }
 
     if (action === "payout") {
@@ -497,7 +588,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (["balance", "withdraw", "withdrawals", "guests-import", "guests-list", "fundraising", "fundraising-save", "campaigns", "campaigns-save"].includes(action)) {
+    if (["balance", "withdraw", "withdrawals", "guests-import", "guests-list", "fundraising", "fundraising-save", "campaigns", "campaigns-save", "sponsor-enquiries", "sponsor-enquiry-review"].includes(action)) {
       const weddingId = String(req.query.weddingId || body.weddingId || "");
       if (!UUID.test(weddingId)) return sendJson(res, 400, { error: "Invalid wedding." });
       const owned = await supabaseRequest(
@@ -508,7 +599,10 @@ export default async function handler(req, res) {
       if (action === "balance") {
         const rows = await supabaseRequest("/rest/v1/rpc/withdrawable_balance", { ...opts, method: "POST", body: { p_wedding_id: weddingId, p_currency: currency } });
         const r = rows?.[0] || {};
-        return sendJson(res, 200, { currency, available_minor: Number(r.available_minor || 0), settling_minor: Number(r.settling_minor || 0), next_available_at: r.next_available_at || null });
+        return sendJson(res, 200, {
+          currency, available_minor: Number(r.available_minor || 0), settling_minor: Number(r.settling_minor || 0),
+          held_minor: Number(r.held_minor || 0), next_available_at: r.next_available_at || null
+        });
       }
       if (action === "withdrawals") {
         const rows = await supabaseRequest(`/rest/v1/payout_records?wedding_id=eq.${weddingId}&select=id,amount_minor,currency,status,requested_at&order=requested_at.desc&limit=100`, opts);
@@ -550,9 +644,28 @@ export default async function handler(req, res) {
         const [tiers, vip, sponsors] = await Promise.all([
           supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}&select=id,name,min_amount_minor,perks,sort_order&order=sort_order`, opts),
           supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${weddingId}&select=id,title,description,seats_total,price_minor&limit=1`, opts),
-          supabaseRequest(`/rest/v1/sponsors?wedding_id=eq.${weddingId}&select=id,company_name,contact_email,contact_phone,website,amount_minor,status,created_at&order=amount_minor.desc&limit=200`, opts)
+          supabaseRequest(`/rest/v1/sponsors?wedding_id=eq.${weddingId}&select=id,company_name,contact_email,contact_phone,website,amount_minor,status,in_kind,location,offer,created_at&order=amount_minor.desc&limit=200`, opts)
         ]);
         return sendJson(res, 200, { tiers: tiers || [], vip: vip?.[0] || null, sponsors: sponsors || [] });
+      }
+      if (action === "sponsor-enquiries") {
+        if (!methodOnly(req, res, "GET")) return;
+        const enquiries = await supabaseRequest(
+          `/rest/v1/sponsor_enquiries?wedding_id=eq.${weddingId}&select=id,company_name,contact_name,contact_email,contact_phone,location,offer,in_kind,public_contact,status,created_at&order=created_at.desc&limit=200`,
+          { service: true }
+        );
+        return sendJson(res, 200, { enquiries: enquiries || [] });
+      }
+      if (action === "sponsor-enquiry-review") {
+        if (!methodOnly(req, res, "POST")) return;
+        if (!UUID.test(String(body.enquiryId || "")) || !["approved", "declined"].includes(body.status)) {
+          return sendJson(res, 400, { error: "Choose a valid sponsor enquiry and review decision." });
+        }
+        const approved = body.status === "approved";
+        const result = await supabaseRequest("/rest/v1/rpc/review_sponsor_enquiry", {
+          ...opts, method: "POST", body: { p_enquiry_id: body.enquiryId, p_approved: approved }
+        });
+        return sendJson(res, 200, { reviewed: Boolean(result), status: body.status });
       }
       if (action === "campaigns") {
         if (!methodOnly(req, res, "GET")) return;

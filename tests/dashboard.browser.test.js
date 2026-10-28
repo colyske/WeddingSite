@@ -98,9 +98,13 @@ test("Edit colours toggles editor, updates swatches, saves and resets (4 colours
 });
 
 test("success: sends every field (currency, capacity, palette, venues), shows created wedding, double-submit blocked", { skip }, async () => {
-  const { page, calls, close } = await openDashboard({ create: json(201, { weddingId: "11111111-1111-1111-1111-111111111111", slug: "sarah-john" }, 300) });
+  const { page, calls, close } = await openDashboard({ create: json(201, { weddingId: "11111111-1111-1111-1111-111111111111", slug: "sarah-john" }, 3000) });
   await fill(page);
   await page.fill("#wedding-date", "2027-06-12");
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-venue-field="eventDate"]')].every(input => input.value === "2027-06-12"));
+  await page.locator("[data-venue-field=name]").first().fill("Church");
+  await page.locator("[data-venue-field=time]").first().fill("10:00");
+  await page.locator("[data-venue-field=address]").first().fill("Nairobi Cathedral");
   await page.selectOption("#currency", "KES");
   await page.fill("#max-capacity", "220");
   await page.click("#edit-palette");
@@ -109,12 +113,23 @@ test("success: sends every field (currency, capacity, palette, venues), shows cr
   const names = page.locator("[data-venue-field=name]");
   await names.nth(0).fill("Church");
   await names.nth(1).fill("Reception");
+  await page.locator('[data-venue-field="time"]').nth(0).fill("10:00");
+  await page.locator('[data-venue-field="time"]').nth(1).fill("16:00");
+  await page.locator('[data-venue-field="address"]').nth(0).fill("Nairobi Cathedral");
+  await page.locator('[data-venue-field="address"]').nth(1).fill("Garden Estate, Nairobi");
   await page.locator("input[name=main-venue]").nth(1).check();
 
+  await page.evaluate(() => {
+    const nativeTimeout = window.setTimeout.bind(window);
+    window.setTimeout = (callback, delay, ...args) =>
+      nativeTimeout(callback, delay === 2500 ? 60000 : delay, ...args);
+  });
   await page.click("#create-submit");
   assert.equal(await page.isDisabled("#create-submit"), true, "button disabled while creating");
   await page.locator("#create-submit").dispatchEvent("click");
   await page.locator("#create-form").evaluate((f) => f.requestSubmit());
+  await page.waitForFunction(() => /created successfully|fix these required fields|could not create/i.test(document.querySelector("#notice").textContent));
+  assert.match(await page.textContent("#notice"), /created successfully/i, `Wedding creation did not complete: ${await page.textContent("#notice")}; calls=${JSON.stringify(calls)}`);
   await page.waitForSelector("#created:not([hidden])");
 
   const creates = calls.filter((c) => c.action === "create");
@@ -145,11 +160,15 @@ for (const [label, handler, pattern] of [
   test(`error (${label}): message shown, every value kept, can retry`, { skip }, async () => {
     const { page, calls, close } = await openDashboard({ create: handler });
     await fill(page, "Amina & Joseph", "Mombasa");
+    await page.fill("#wedding-date", "2027-06-12");
+    await page.waitForFunction(() => [...document.querySelectorAll('[data-venue-field="eventDate"]')].every(input => input.value === "2027-06-12"));
     await page.selectOption("#currency", "NGN");
     await page.fill("#max-capacity", "75");
     await page.click("#edit-palette");
     await page.fill("#color-3", "#abcdef");
     await page.locator("[data-venue-field=name]").first().fill("Beach chapel");
+    await page.locator("[data-venue-field=time]").first().fill("10:00");
+    await page.locator("[data-venue-field=address]").first().fill("Beach chapel, Mombasa");
     await page.click("#create-submit");
     await page.waitForFunction(() => !document.getElementById("create-submit").disabled);
     assert.match(await page.textContent("#notice"), pattern);
@@ -171,7 +190,8 @@ for (const [label, handler, pattern] of [
 test("client validation: shows messages, keeps values, sends nothing", { skip }, async () => {
   const { page, calls, close } = await openDashboard({ create: json(201, { weddingId: "x", slug: "x" }) });
   await page.click("#create-submit");
-  assert.match(await page.textContent("#notice"), /Couple names|required/i);
+  assert.match(await page.textContent("#notice"), /required/i);
+  assert.equal(await page.locator("#couple-names").evaluate(el => el === document.activeElement), true);
   await page.fill("#couple-names", "A & B");
   await page.click("#create-submit");
   assert.match(await page.textContent("#notice"), /location|required/i);
