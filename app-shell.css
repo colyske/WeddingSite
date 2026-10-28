@@ -329,3 +329,12 @@ tr:hover td { background: rgba(32,58,49,0.02); }
   border: none;
   border-radius: 8px;
 }
+
+/* Official Join Our Wedding logo (white-background artwork; multiply blends it into light surfaces). */
+.brand-logo { display: inline-flex; align-items: center; line-height: 0; text-decoration: none; }
+.brand-logo img { display: block; height: 64px; width: auto; aspect-ratio: 1234 / 1064; mix-blend-mode: multiply; }
+.brand-logo.lg img { height: 112px; }
+.card .brand-logo { display: flex; justify-content: center; margin: 0 auto .5rem; }
+.ws-promo .platform-logo { display: block; width: max-content; background: #fffdf8; border-radius: 10px; padding: 4px 8px; line-height: 0; margin: .9rem auto .2rem; }
+.ws-promo .platform-logo img { display: block; height: 40px; width: auto; aspect-ratio: 1234 / 1064; }
+@media (max-width: 600px) { .brand-logo img { height: 44px; } .brand-logo.lg img { height: 88px; } }

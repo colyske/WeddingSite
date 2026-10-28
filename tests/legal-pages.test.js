@@ -30,3 +30,14 @@ test("legal pages are linked from footer, sign-in/sign-up and guest site", () =>
   assert.match(read("guest.html"), /href="\/privacy\.html" data-platform-link/);
   assert.match(read("guest.html"), /href="\/terms\.html" data-platform-link/);
 });
+
+test("official logo is used on platform pages with alt text and explicit dimensions", () => {
+  for (const page of ["index.html", "signin.html", "dashboard.html", "privacy.html", "terms.html"]) {
+    const html = read(page);
+    assert.match(html, /<img src="\/assets\/brand\/logo-320\.jpg"[^>]*width="320" height="276" alt="Join Our Wedding">/, page);
+  }
+  const guest = read("guest.html");
+  assert.match(guest, /class="platform-logo"[^>]*data-platform-link><img [^>]*alt="Join Our Wedding"/);
+  assert.match(guest, /id="nav-couple"/, "couple names lead the guest nav");
+  assert.doesNotMatch(guest, /apple-touch-icon/, "guest sites keep their own identity");
+});

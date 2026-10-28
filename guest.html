@@ -138,7 +138,7 @@
   <nav class="sticky-nav">
     <div class="logo-section">
       <div class="monogram" id="monogram" style="background: var(--gold);"></div>
-      <span class="brand">Join Our Wedding</span>
+      <span class="brand" id="nav-couple">Our Wedding</span>
     </div>
     <ul class="nav-links">
       <li><a href="#story">Story</a></li>
@@ -501,6 +501,7 @@
 
       // Couple monogram
       const names = wedding.couple_names?.split(/[&,]|and/).map(n => n.trim().charAt(0).toUpperCase()).join("").slice(0, 3) || "WS";
+      if ($("nav-couple") && wedding.couple_names) $("nav-couple").textContent = wedding.couple_names;
       $("monogram").textContent = names; if ($("footer-monogram")) $("footer-monogram").textContent = names;
       const palette = wedding.palette || ["#244b3a"];
       $("monogram").style.background = palette[0];
@@ -1359,7 +1360,7 @@
 })();
   </script>
   <div class="prop-row" data-props="ringsLine,cake,bouquet,dove,bell2" style="background:var(--green-deep);margin:0;padding:1.6rem 0 0;color:#e1cf9f"></div>
-<footer class="ws-promo"><div class="foot-top"><span class="foot-mono" id="footer-monogram">W</span><a href="#top" class="foot-up">Back to top &#8593;</a></div><span>Planning your own wedding? <a href="/signin.html" data-platform-link>Create your wedding site at joinourwedding.site</a></span><span class="credit">Made with love on <a href="/" data-platform-link>Join Our Wedding</a> &middot; <a href="/privacy.html" data-platform-link>Privacy</a> &middot; <a href="/terms.html" data-platform-link>Terms</a></span></footer>
+<footer class="ws-promo"><div class="foot-top"><span class="foot-mono" id="footer-monogram">W</span><a href="#top" class="foot-up">Back to top &#8593;</a></div><span>Planning your own wedding? <a href="/signin.html" data-platform-link>Create your wedding site at joinourwedding.site</a></span><a class="platform-logo" href="/" data-platform-link><img src="/assets/brand/logo-160.jpg" srcset="/assets/brand/logo-160.jpg 1x, /assets/brand/logo-320.jpg 2x" width="46" height="40" alt="Join Our Wedding" loading="lazy"></a><span class="credit">Made with love on <a href="/" data-platform-link>Join Our Wedding</a> &middot; <a href="/privacy.html" data-platform-link>Privacy</a> &middot; <a href="/terms.html" data-platform-link>Terms</a></span></footer>
   <script>
 (function () {
   const MAP = {
