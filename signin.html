@@ -12,6 +12,9 @@
     <a class="brand" href="/">WeddingSite</a>
     <h1 id="title">Sign in</h1>
     <p id="notice" class="notice" role="status" hidden></p>
+    <button id="google-signin" type="button" disabled>Continue with Google</button>
+    <p id="google-status" class="fine" role="status" aria-live="polite">Checking Google sign-in availability…</p>
+    <p class="fine">or sign in with email</p>
 
     <form id="password-form" hidden>
       <p>Choose a password of at least 12 characters. You will use it to sign in from now on.</p>
@@ -55,6 +58,118 @@
     const post = (action, body, token) => fetch("/api/auth?action=" + action, {
       method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) }, body: JSON.stringify(body)
     });
+    const googleFlowKey = "ws-google-pkce";
+    const safeReturnPaths = new Set(["/dashboard.html", "/wedding.html", "/account.html", "/admin.html", "/owner.html"]);
+    function safeReturnDestination(value) {
+      try {
+        const destination = new URL(value || "/dashboard.html", location.origin);
+        if (destination.origin !== location.origin || !safeReturnPaths.has(destination.pathname)) return "/dashboard.html";
+        return destination.pathname + destination.search + destination.hash;
+      } catch {
+        return "/dashboard.html";
+      }
+    }
+    function base64Url(bytes) {
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+    }
+    function secureRandomToken() {
+      return base64Url(crypto.getRandomValues(new Uint8Array(32)));
+    }
+    async function checkGoogleAvailability() {
+      const button = $("google-signin");
+      const status = $("google-status");
+      try {
+        const response = await fetch("/api/auth?action=google-status", { cache: "no-store" });
+        const data = await response.json();
+        button.disabled = !response.ok || data.enabled !== true;
+        status.textContent = button.disabled
+          ? "Google sign-in is not enabled or could not be checked. You can still use email sign-in."
+          : "";
+        status.hidden = !button.disabled;
+      } catch {
+        button.disabled = true;
+        status.textContent = "Google sign-in could not be checked. You can still use email sign-in.";
+        status.hidden = false;
+      }
+    }
+    async function startGoogleSignIn() {
+      const button = $("google-signin");
+      button.disabled = true;
+      notice("");
+      try {
+        const state = secureRandomToken();
+        const verifier = secureRandomToken();
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+        const codeChallenge = base64Url(new Uint8Array(digest));
+        const query = new URLSearchParams(location.search);
+        const flow = {
+          state, verifier,
+          returnTo: safeReturnDestination(query.get("next")),
+          createdAt: Date.now()
+        };
+        sessionStorage.setItem(googleFlowKey, JSON.stringify(flow));
+        const response = await post("google-start", { state, codeChallenge });
+        const data = await response.json();
+        if (!response.ok || !data.authorizationUrl) throw new Error(data.error || "Google sign-in could not be started.");
+        const authorization = new URL(data.authorizationUrl);
+        const callback = new URL(authorization.searchParams.get("redirect_to") || "");
+        if (!["https:", "http:"].includes(authorization.protocol) ||
+            (authorization.protocol === "http:" && !["localhost", "127.0.0.1"].includes(authorization.hostname)) ||
+            !authorization.pathname.endsWith("/auth/v1/authorize") ||
+            authorization.searchParams.get("provider") !== "google" ||
+            callback.origin !== location.origin || callback.pathname !== "/signin.html" ||
+            callback.searchParams.get("oauth_state") !== state ||
+            authorization.searchParams.get("code_challenge") !== codeChallenge) {
+          throw new Error("Google sign-in returned an invalid authorization destination.");
+        }
+        location.assign(authorization.toString());
+      } catch (error) {
+        sessionStorage.removeItem(googleFlowKey);
+        notice(error.message || "Google sign-in could not be started. Use email sign-in or try again.", true);
+        await checkGoogleAvailability();
+      }
+    }
+    async function handleGoogleCallback() {
+      const query = new URLSearchParams(location.search);
+      const code = query.get("code");
+      const state = query.get("oauth_state");
+      const providerError = query.get("error");
+      if (!code && !state && !providerError) return false;
+      history.replaceState(null, "", location.pathname);
+      let flow = null;
+      try { flow = JSON.parse(sessionStorage.getItem(googleFlowKey) || "null"); } catch (_) {}
+      const clearFlow = () => sessionStorage.removeItem(googleFlowKey);
+      if (providerError) {
+        clearFlow();
+        notice("Google sign-in was cancelled or denied. You can try again or use email sign-in.", true);
+        return true;
+      }
+      if (!code || !state || !flow || state !== flow.state ||
+          !/^[A-Za-z0-9._~-]{43,128}$/.test(flow.verifier || "") ||
+          !Number.isFinite(flow.createdAt) || Date.now() - flow.createdAt > 10 * 60 * 1000 ||
+          flow.createdAt > Date.now() + 1000) {
+        clearFlow();
+        notice("Google sign-in could not be verified. Start again from this page.", true);
+        return true;
+      }
+      try {
+        const response = await post("google-exchange", { code, codeVerifier: flow.verifier });
+        const data = await response.json();
+        if (!response.ok || !data.accessToken || !data.refreshToken || !data.user?.id || !data.role) {
+          throw new Error(data.error || "Google sign-in could not be completed. Start again.");
+        }
+        clearFlow();
+        WS.save(data);
+        location.replace(safeReturnDestination(flow.returnTo));
+      } catch (error) {
+        clearFlow();
+        notice(error.message || "Google sign-in could not be completed. Start again or use email sign-in.", true);
+      }
+      return true;
+    }
+    $("google-signin").addEventListener("click", startGoogleSignIn);
 
     // Magic, invite and recovery links return tokens in the URL fragment; capture them, then clear the URL.
     (() => {
@@ -139,6 +254,9 @@
     }
     $("magic").addEventListener("click", () => emailLink("magic"));
     $("recover").addEventListener("click", () => emailLink("recovery"));
+    handleGoogleCallback().then(handled => {
+      if (!handled) checkGoogleAvailability();
+    });
   </script>
   <script src="footer.js"></script>
 <script src="/feedback.js"></script>

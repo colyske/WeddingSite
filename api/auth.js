@@ -11,6 +11,23 @@ function siteOrigin(req) {
   return `https://${host}`;
 }
 
+function validOAuthOrigin(value) {
+  try {
+    const url = new URL(value);
+    return url.origin === value &&
+      (url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)));
+  } catch {
+    return false;
+  }
+}
+
+function requestOAuthOrigin(req) {
+  const origin = String(req.headers.origin || "");
+  const configured = process.env.WEDDINGSITE_PUBLIC_ORIGIN?.replace(/\/+$/, "");
+  if (!validOAuthOrigin(origin) || (configured && origin !== configured)) return null;
+  return origin;
+}
+
 async function authCall(path, { method = "POST", body, token } = {}) {
   const { url, apiKey } = supabaseConfig();
   const response = await fetch(`${url}/auth/v1${path}`, {
@@ -22,6 +39,84 @@ async function authCall(path, { method = "POST", body, token } = {}) {
   let data = null;
   try { data = await response.json(); } catch { data = null; }
   return { ok: response.ok, status: response.status, data };
+}
+
+async function googleStatus(req, res) {
+  if (!methodOnly(req, res, "GET")) return;
+  try {
+    const { url, apiKey } = supabaseConfig();
+    const response = await fetch(`${url}/auth/v1/settings`, {
+      headers: { apikey: apiKey, Authorization: `Bearer ${apiKey}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(5000)
+    });
+    const settings = await response.json().catch(() => null);
+    if (!response.ok || !settings) return sendJson(res, 503, { enabled: false, error: "Google sign-in availability could not be checked." });
+    return sendJson(res, 200, { enabled: settings.external?.google === true });
+  } catch (error) {
+    console.error("Google provider status check failed", error.message);
+    return sendJson(res, 503, { enabled: false, error: "Google sign-in availability could not be checked." });
+  }
+}
+
+async function startGoogleOAuth(req, res, body) {
+  if (!methodOnly(req, res, "POST")) return;
+  const origin = requestOAuthOrigin(req);
+  const state = String(body.state || "");
+  const codeChallenge = String(body.codeChallenge || "");
+  if (!origin || !/^[A-Za-z0-9_-]{43,128}$/.test(state) ||
+      !/^[A-Za-z0-9_-]{43,128}$/.test(codeChallenge)) {
+    return sendJson(res, 400, { error: "Google sign-in could not be started securely. Reload and try again." });
+  }
+  try {
+    const { url, apiKey } = supabaseConfig();
+    const authorization = new URL(`${url.replace(/\/+$/, "")}/auth/v1/authorize`);
+    authorization.searchParams.set("provider", "google");
+    authorization.searchParams.set("redirect_to", `${origin}/signin.html?oauth_state=${encodeURIComponent(state)}`);
+    authorization.searchParams.set("code_challenge", codeChallenge);
+    authorization.searchParams.set("code_challenge_method", "s256");
+    authorization.searchParams.set("apikey", apiKey);
+    return sendJson(res, 200, { authorizationUrl: authorization.toString() });
+  } catch (error) {
+    console.error("Google OAuth start failed", error.message);
+    return sendJson(res, 503, { error: "Google sign-in is unavailable. Use email sign-in or try again later." });
+  }
+}
+
+async function exchangeGoogleCode(req, res, body) {
+  if (!methodOnly(req, res, "POST")) return;
+  if (!requestOAuthOrigin(req)) return sendJson(res, 403, { error: "Google sign-in callback origin is invalid." });
+  const code = typeof body.code === "string" ? body.code : "";
+  const codeVerifier = typeof body.codeVerifier === "string" ? body.codeVerifier : "";
+  if (!code || code.length > 2048 || /[\u0000-\u0020]/.test(code) ||
+      !/^[A-Za-z0-9._~-]{43,128}$/.test(codeVerifier)) {
+    return sendJson(res, 400, { error: "Google sign-in could not be verified. Start again." });
+  }
+  try {
+    const result = await authCall("/token?grant_type=pkce", {
+      body: { auth_code: code, code_verifier: codeVerifier }
+    });
+    if (!result.ok || !result.data?.access_token || !result.data?.refresh_token || !result.data?.user?.id) {
+      return sendJson(res, 401, { error: "Google sign-in could not be completed. Start again or use email sign-in." });
+    }
+    const { access_token: accessToken, refresh_token: refreshToken, user } = result.data;
+    const role = await roleFor(user.id, accessToken);
+    if (!role) return sendJson(res, 503, { error: "Your WeddingSite profile is not ready yet. Try again or contact support." });
+    const userData = user.user_metadata || {};
+    return sendJson(res, 200, {
+      accessToken,
+      refreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: userData.display_name || userData.full_name || ""
+      },
+      role
+    });
+  } catch (error) {
+    console.error("Google OAuth code exchange failed", error.message);
+    return sendJson(res, 503, { error: "Google sign-in could not be completed. Start again or use email sign-in." });
+  }
 }
 
 async function roleFor(userId, token) {
@@ -38,6 +133,9 @@ export default async function handler(req, res) {
   const body = req.body && typeof req.body === "object" ? req.body : {};
 
   try {
+    if (action === "google-status") return await googleStatus(req, res);
+    if (action === "google-start") return await startGoogleOAuth(req, res, body);
+    if (action === "google-exchange") return await exchangeGoogleCode(req, res, body);
     if (action === "sign-in") {
       if (!methodOnly(req, res, "POST")) return;
       if (!isEmail(body.email) || typeof body.password !== "string" || !body.password) {

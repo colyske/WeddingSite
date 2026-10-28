@@ -1,6 +1,10 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 const providerHealthCache = new Map();
+let darajaAccessToken = "";
+let darajaAccessTokenExpiresAt = 0;
+let darajaAccessTokenKey = "";
+const DARAJA_SANDBOX = "https://sandbox.safaricom.co.ke";
 const isoFromSeconds = value => {
   const seconds = Number(value);
   if (!Number.isSafeInteger(seconds) || seconds < 1) return null;
@@ -18,12 +22,134 @@ export function isSecurePublicOrigin(value) {
   }
 }
 
+function darajaCredentialsReady() {
+  return process.env.WEDDINGSITE_PAYMENT_MODE === "test" &&
+    process.env.DARAJA_ENVIRONMENT === "sandbox" &&
+    Boolean(process.env.DARAJA_CONSUMER_KEY) &&
+    Boolean(process.env.DARAJA_CONSUMER_SECRET) &&
+    /^\d{5,7}$/.test(String(process.env.DARAJA_SHORTCODE || "")) &&
+    Boolean(process.env.DARAJA_PASSKEY) &&
+    isSecurePublicOrigin(process.env.WEDDINGSITE_PUBLIC_ORIGIN);
+}
+
+export function darajaTimestamp(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Nairobi",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  const value = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${value.year}${value.month}${value.day}${value.hour}${value.minute}${value.second}`;
+}
+
+export function darajaPassword(shortcode, passkey, timestamp) {
+  return Buffer.from(`${shortcode}${passkey}${timestamp}`).toString("base64");
+}
+
+async function getDarajaAccessToken() {
+  if (!darajaCredentialsReady()) throw new Error("Daraja sandbox credentials are not fully configured.");
+  const cacheKey = createHash("sha256")
+    .update(`${process.env.DARAJA_CONSUMER_KEY}:${process.env.DARAJA_CONSUMER_SECRET}`)
+    .digest("hex");
+  if (darajaAccessTokenKey === cacheKey && darajaAccessToken &&
+      darajaAccessTokenExpiresAt > Date.now() + 30_000) return darajaAccessToken;
+  const authorization = Buffer.from(
+    `${process.env.DARAJA_CONSUMER_KEY}:${process.env.DARAJA_CONSUMER_SECRET}`
+  ).toString("base64");
+  const response = await fetch(`${DARAJA_SANDBOX}/oauth/v1/generate?grant_type=client_credentials`, {
+    headers: { Authorization: `Basic ${authorization}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(8000)
+  });
+  const result = await response.json();
+  const expiresIn = Number(result.expires_in);
+  if (!response.ok || typeof result.access_token !== "string" ||
+      !Number.isFinite(expiresIn) || expiresIn <= 0) {
+    throw new Error("Daraja sandbox could not issue an access token.");
+  }
+  darajaAccessToken = result.access_token;
+  darajaAccessTokenKey = cacheKey;
+  darajaAccessTokenExpiresAt = Date.now() + expiresIn * 1000;
+  return darajaAccessToken;
+}
+
+export async function initiateDarajaStkPush({
+  amountMinor, phoneNumber, callbackUrl, accountReference, description
+}) {
+  const amount = Number(amountMinor) / 100;
+  const shortcode = process.env.DARAJA_SHORTCODE;
+  if (!darajaCredentialsReady() || !Number.isSafeInteger(amount) || amount < 1 ||
+      !/^254[17]\d{8}$/.test(String(phoneNumber || "")) ||
+      !/^[A-Za-z0-9_-]{1,12}$/.test(String(accountReference || ""))) {
+    throw new Error("Daraja sandbox checkout details are invalid.");
+  }
+  const callback = new URL(callbackUrl);
+  if (!isSecurePublicOrigin(callback.origin) ||
+      callback.origin !== process.env.WEDDINGSITE_PUBLIC_ORIGIN ||
+      callback.protocol !== "https:" ||
+      callback.pathname !== "/api/webhooks" ||
+      callback.searchParams.get("provider") !== "daraja") {
+    throw new Error("Daraja callback URL is not the configured secure WeddingSite endpoint.");
+  }
+  const timestamp = darajaTimestamp();
+  const token = await getDarajaAccessToken();
+  const response = await fetch(`${DARAJA_SANDBOX}/mpesa/stkpush/v1/processrequest`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      BusinessShortCode: shortcode,
+      Password: darajaPassword(shortcode, process.env.DARAJA_PASSKEY, timestamp),
+      Timestamp: timestamp,
+      TransactionType: "CustomerPayBillOnline",
+      Amount: amount,
+      PartyA: phoneNumber,
+      PartyB: shortcode,
+      PhoneNumber: phoneNumber,
+      CallBackURL: callback.toString(),
+      AccountReference: accountReference,
+      TransactionDesc: String(description || "Wedding payment").slice(0, 20)
+    }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(12_000)
+  });
+  const result = await response.json();
+  if (!response.ok || String(result.ResponseCode) !== "0" ||
+      typeof result.CheckoutRequestID !== "string" || !result.CheckoutRequestID ||
+      typeof result.MerchantRequestID !== "string" || !result.MerchantRequestID) {
+    throw new Error("Daraja sandbox did not accept the STK Push request.");
+  }
+  return {
+    reference: result.CheckoutRequestID,
+    merchantRequestId: result.MerchantRequestID
+  };
+}
+
 export async function checkProviderHealth(provider) {
   const now = Date.now();
-  const cached = providerHealthCache.get(provider);
+  const cacheKey = provider === "daraja"
+    ? `daraja:${createHash("sha256").update([
+      process.env.WEDDINGSITE_PAYMENT_MODE, process.env.DARAJA_ENVIRONMENT,
+      process.env.DARAJA_CONSUMER_KEY, process.env.DARAJA_CONSUMER_SECRET,
+      process.env.DARAJA_SHORTCODE, process.env.DARAJA_PASSKEY,
+      process.env.WEDDINGSITE_PUBLIC_ORIGIN
+    ].join(":")).digest("hex")}`
+    : provider;
+  const cached = providerHealthCache.get(cacheKey);
   if (cached && cached.expiresAt > now) return cached.healthy;
 
   const mode = process.env.WEDDINGSITE_PAYMENT_MODE;
+  if (provider === "daraja") {
+    if (!darajaCredentialsReady()) return false;
+    try {
+      await getDarajaAccessToken();
+      providerHealthCache.set(cacheKey, { healthy: true, expiresAt: now + 30_000 });
+      return true;
+    } catch {
+      providerHealthCache.set(cacheKey, { healthy: false, expiresAt: now + 10_000 });
+      return false;
+    }
+  }
   const key = provider === "stripe" ? process.env.STRIPE_SECRET_KEY : process.env.PAYSTACK_SECRET_KEY;
   const expectedPrefix = mode === "test" ? "sk_test_" : "";
   if (!key || !expectedPrefix || !key.startsWith(expectedPrefix)) return false;
@@ -39,10 +165,10 @@ export async function checkProviderHealth(provider) {
     });
     const body = await response.json();
     const healthy = response.ok && (provider === "stripe" ? Boolean(body.id) : body.status === true);
-    providerHealthCache.set(provider, { healthy, expiresAt: now + 30_000 });
+    providerHealthCache.set(cacheKey, { healthy, expiresAt: now + 30_000 });
     return healthy;
   } catch {
-    providerHealthCache.set(provider, { healthy: false, expiresAt: now + 10_000 });
+    providerHealthCache.set(cacheKey, { healthy: false, expiresAt: now + 10_000 });
     return false;
   }
 }
@@ -209,10 +335,51 @@ export function normalizePaystackAdjustment(event, eventDigest) {
   return null;
 }
 
-export async function verifyProviderPayment(provider, reference, contributionId) {
+export async function verifyProviderPayment(provider, reference, contributionId, expectedAmountMinor, expectedCurrency) {
   const mode = process.env.WEDDINGSITE_PAYMENT_MODE;
   const key = provider === "stripe" ? process.env.STRIPE_SECRET_KEY
     : provider === "paystack" ? process.env.PAYSTACK_SECRET_KEY : "";
+  if (provider === "daraja") {
+    if (!darajaCredentialsReady() || !reference || !contributionId ||
+        !Number.isSafeInteger(Number(expectedAmountMinor)) || Number(expectedAmountMinor) < 100 ||
+        Number(expectedAmountMinor) % 100 !== 0 || String(expectedCurrency).toUpperCase() !== "KES") {
+      throw new Error("Daraja sandbox payment verification is not configured.");
+    }
+    const shortcode = process.env.DARAJA_SHORTCODE;
+    const timestamp = darajaTimestamp();
+    const token = await getDarajaAccessToken();
+    const response = await fetch(`${DARAJA_SANDBOX}/mpesa/stkpushquery/v1/query`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        BusinessShortCode: shortcode,
+        Password: darajaPassword(shortcode, process.env.DARAJA_PASSKEY, timestamp),
+        Timestamp: timestamp,
+        CheckoutRequestID: reference
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000)
+    });
+    const result = await response.json();
+    if (!response.ok || String(result.CheckoutRequestID || "") !== String(reference)) {
+      throw new Error("Daraja sandbox could not verify this STK Push request.");
+    }
+    if (String(result.ResponseCode) !== "0" || result.ResultCode === undefined || result.ResultCode === null) {
+      return { verified: false };
+    }
+    if (String(result.ResultCode) !== "0") return { verified: false, terminal: true };
+    return {
+      verified: true,
+      provider: "daraja",
+      eventId: `stk-query:${reference}`,
+      amountMinor: Number(expectedAmountMinor),
+      currency: "KES",
+      reference: String(reference),
+      providerPaymentReference: String(reference),
+      providerPaidAt: null,
+      providerFeeMinor: null
+    };
+  }
   if (mode !== "test" || !key?.startsWith("sk_test_") || !reference || !contributionId) {
     throw new Error("A test-mode payment provider is not configured.");
   }

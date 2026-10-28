@@ -65,7 +65,9 @@ const configuredPayoutMethods = currency => {
   ].map(market => market.trim().toUpperCase()).filter(Boolean));
   const methods = new Map();
   for (const market of markets) {
-    for (const adapter of paymentAdaptersFor(currency, market)) methods.set(adapter.id, adapter.name);
+    for (const adapter of paymentAdaptersFor(currency, market)) {
+      if (adapter.id !== "daraja") methods.set(adapter.id, adapter.name);
+    }
   }
   return [...methods].map(([id, name]) => ({ id, name }));
 };
