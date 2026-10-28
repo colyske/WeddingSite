@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
-import { checkProviderHealth, isSecurePublicOrigin, verifyProviderPayment } from "../server/payment-adapters.js";
+import { checkProviderHealth, initiateDarajaStkPush, isSecurePublicOrigin, verifyProviderPayment } from "../server/payment-adapters.js";
 import { normalizePhone } from "../server/phone.js";
 import { isPastWedding } from "../server/wedding-time.js";
 
@@ -14,6 +14,10 @@ function configuredAdapters(currency, market) {
   const mode = process.env.WEDDINGSITE_PAYMENT_MODE;
   const stripeModeMatches = mode === "test" && process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_");
   const paystackModeMatches = mode === "test" && process.env.PAYSTACK_SECRET_KEY?.startsWith("sk_test_");
+  const darajaSandboxReady = mode === "test" && process.env.DARAJA_ENVIRONMENT === "sandbox" &&
+    Boolean(process.env.DARAJA_CONSUMER_KEY) && Boolean(process.env.DARAJA_CONSUMER_SECRET) &&
+    Boolean(process.env.DARAJA_SHORTCODE) && Boolean(process.env.DARAJA_PASSKEY) &&
+    isSecurePublicOrigin(process.env.WEDDINGSITE_PUBLIC_ORIGIN);
   const rules = [
     {
       id: "stripe", name: "Stripe Checkout",
@@ -26,6 +30,12 @@ function configuredAdapters(currency, market) {
       ready: Boolean(paystackModeMatches),
       currencies: setOf(process.env.PAYSTACK_SUPPORTED_CURRENCIES),
       markets: setOf(process.env.PAYSTACK_SUPPORTED_MARKETS)
+    },
+    {
+      id: "daraja", name: "M-Pesa · Safaricom Daraja (Sandbox)",
+      ready: Boolean(darajaSandboxReady),
+      currencies: new Set(["KES"]),
+      markets: new Set(["KE"])
     }
   ];
   for (const item of rules) {
@@ -109,7 +119,8 @@ async function handleOptions(req, res) {
   }
   if (process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED !== "true" ||
       process.env.WEDDINGSITE_PAYMENT_MODE !== "test" ||
-      !Boolean(process.env.TURNSTILE_SECRET_KEY) || !Boolean(process.env.TURNSTILE_SITE_KEY) ||
+      !Boolean(process.env.TURNSTILE_SECRET_KEY) ||
+      !Boolean(process.env.TURNSTILE_SITE_KEY || process.env.TURNSTILE_PUBLIC_KEY) ||
       !isSecurePublicOrigin(process.env.WEDDINGSITE_PUBLIC_ORIGIN)) {
     return sendJson(res, 200, { providers: [], paymentAvailable: false, message: "Payments are not available yet. No payment gateway is enabled." });
   }
@@ -134,13 +145,16 @@ async function handleOptions(req, res) {
     const healthy = new Set(health.filter(([, ready]) => ready).map(([provider]) => provider));
     const providers = eligible.filter(provider => healthy.has(provider)).flatMap(provider =>
       marketsByProvider.get(provider).map(market => ({
-        id: provider, name: provider === "stripe" ? "Stripe Checkout" : "Paystack", market
+        id: provider,
+        name: provider === "stripe" ? "Stripe Checkout" :
+          provider === "daraja" ? "M-Pesa · Safaricom Daraja (Sandbox)" : "Paystack",
+        market
       }))
     );
     return sendJson(res, 200, {
       providers,
       paymentAvailable: providers.length > 0,
-      turnstileSiteKey: process.env.TURNSTILE_SITE_KEY || "",
+      turnstileSiteKey: process.env.TURNSTILE_SITE_KEY || process.env.TURNSTILE_PUBLIC_KEY || "",
       message: providers.length ? "" : "Payments are not available for this wedding and market yet, or a provider health check failed."
     });
   } catch (error) {
@@ -166,7 +180,7 @@ async function handleCheckout(req, res) {
   const idempotencyKey = String(body.idempotencyKey || "");
   const visibility = body.visibility || "hidden";
   if (!isUuid(weddingId) || !/^[A-Z0-9_-]{2,12}$/.test(market) || !/^[A-Z]{3}$/.test(currency) ||
-      !isUuid(idempotencyKey) || !["stripe", "paystack"].includes(body.provider) ||
+      !isUuid(idempotencyKey) ||       !["stripe", "paystack", "daraja"].includes(body.provider) ||
       !["rsvp", "song_bid", "vip", "sponsor", "fundraiser", "registry", "sponsor_featured_bid"].includes(purchaseAction) ||
       !["name", "anonymous", "hidden"].includes(visibility) ||
       (visibility !== "hidden" && body.publicConsent !== true) ||
@@ -331,6 +345,14 @@ async function handleCheckout(req, res) {
       purchaseData = { songTitle, artist };
     }
 
+    if (body.provider === "daraja") {
+      const phone = normalizePhone(body.mpesaPhone);
+      if (currency !== "KES" || market !== "KE" || amountMinor % 100 !== 0 ||
+          !/^254[17]\d{8}$/.test(phone)) {
+        return sendJson(res, 400, { error: "M-Pesa sandbox requires a valid Kenyan mobile number and a whole-KES amount." });
+      }
+    }
+
     if (!Number.isSafeInteger(amountMinor) || amountMinor < 1 || amountMinor > Number(policy.max_contribution_minor)) {
       return sendJson(res, 400, { error: "The amount is outside the configured per-payment limit." });
     }
@@ -380,7 +402,15 @@ async function handleCheckout(req, res) {
       };
       checkout = body.provider === "stripe"
         ? await createStripeCheckout(arguments_)
-        : await createPaystackCheckout({ ...arguments_, email: body.email || body.guestEmail });
+        : body.provider === "paystack"
+          ? await createPaystackCheckout({ ...arguments_, email: body.email || body.guestEmail })
+          : await initiateDarajaStkPush({
+            amountMinor,
+            phoneNumber: normalizePhone(body.mpesaPhone),
+            callbackUrl: `${origin}/api/webhooks?provider=daraja`,
+            accountReference: `WS${contributionId.replaceAll("-", "").slice(0, 10)}`,
+            description: streamName
+          });
       const patch = {
         provider_reference: checkout.reference,
         visibility,
@@ -401,7 +431,14 @@ async function handleCheckout(req, res) {
       }).catch(cleanupError => console.error("Failed to clean up incomplete checkout", cleanupError.message));
       throw error;
     }
-    return sendJson(res, 201, { provider: body.provider, checkoutUrl: checkout.url, paymentStatus: "pending", paymentId: contributionId });
+    return sendJson(res, 201, body.provider === "daraja"
+      ? {
+        provider: body.provider,
+        paymentStatus: "pending",
+        paymentId: contributionId,
+        message: "M-Pesa sandbox STK Push sent. Check the phone you entered and approve the prompt; the action remains pending until Safaricom confirms it."
+      }
+      : { provider: body.provider, checkoutUrl: checkout.url, paymentStatus: "pending", paymentId: contributionId });
   } catch (error) {
     console.error("hosted checkout initialization failed", error.message);
     return sendJson(res, error.status || 503, { error: "Checkout was not started. No funds were collected; try again later." });
@@ -416,8 +453,12 @@ async function handleStatus(req, res) {
     let rows = await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&select=id,payment_status,provider_name,provider_reference,pledged_amount_minor,currency,purchase_action,action_result,action_completed_at,provider_fee_pending`, { service: true });
     let row = rows?.[0];
     if (!row) return sendJson(res, 404, { error: "Payment reference not found." });
-    if ((row.payment_status === "pending" || row.provider_fee_pending) && row.provider_reference) {
-      const payment = await verifyProviderPayment(row.provider_name, row.provider_reference, row.id);
+    const shouldVerify = row.payment_status === "pending" ||
+      (row.provider_name !== "daraja" && row.provider_fee_pending);
+    if (shouldVerify && row.provider_reference) {
+      const payment = await verifyProviderPayment(
+        row.provider_name, row.provider_reference, row.id, row.pledged_amount_minor, row.currency
+      );
       if (payment.verified) {
         await supabaseRequest("/rest/v1/rpc/record_verified_payment", {
           service: true, method: "POST",
@@ -430,12 +471,21 @@ async function handleStatus(req, res) {
             p_provider_payment_reference: payment.providerPaymentReference
           }
         });
+      } else if (payment.terminal && row.payment_status === "pending") {
+        await supabaseRequest(
+            `/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&payment_status=eq.pending`,
+            { service: true, method: "PATCH", body: { payment_status: "cancelled" }, prefer: "return=minimal" }
+        );
+      }
+      if (payment.verified || payment.terminal) {
         rows = await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&select=id,payment_status,purchase_action,action_result,action_completed_at,provider_fee_pending`, { service: true });
         row = rows?.[0] || row;
       }
     }
     return sendJson(res, 200, {
-      paymentStatus: row.payment_status === "paid" ? "paid" : row.payment_status === "refunded" ? "refunded" : "pending",
+      paymentStatus: row.payment_status === "paid" ? "paid" :
+        row.payment_status === "refunded" ? "refunded" :
+          row.payment_status === "cancelled" ? "cancelled" : "pending",
       action: row.purchase_action || null,
       actionStatus: row.action_completed_at ? "completed" : row.payment_status === "paid" ? "review_required" : "pending",
       actionResult: row.action_completed_at ? row.action_result : null

@@ -434,6 +434,11 @@
       <label for="pay-name">Your name / organization *</label><input id="pay-name" maxlength="100" autocomplete="name">
       <label for="pay-email">Email (required by some providers)</label><input id="pay-email" type="email" maxlength="200" autocomplete="email">
       <label for="pay-amount">Amount (<span id="pay-currency"></span>) *</label><input id="pay-amount" type="number" min="1" step="0.01" required>
+      <div id="pay-daraja-fields" hidden>
+        <label for="pay-mpesa-phone">Safaricom M-Pesa phone number *</label>
+        <input id="pay-mpesa-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="18">
+        <p class="fine">Sandbox only. Approve the STK Push on this phone; the action stays pending until Daraja confirms payment.</p>
+      </div>
       <div id="pay-sponsor-fields" hidden>
         <label for="pay-phone">Public contact phone (optional)</label><input id="pay-phone" type="tel" maxlength="30">
         <label for="pay-website">Website (optional)</label><input id="pay-website" type="url" maxlength="300">
@@ -894,12 +899,22 @@
     if (!paymentId) return;
     let saved = {};
     try { saved = JSON.parse(sessionStorage.getItem(`ws-payment:${paymentId}`) || "{}"); } catch (_) {}
-    for (let attempt = 0; attempt < 30; attempt += 1) {
+    const report = (message, bad = false) => {
+      if ($("pay-dialog").open) {
+        $("pay-error").className = bad ? "notice bad" : "notice";
+        $("pay-error").textContent = message;
+        $("pay-error").hidden = false;
+      } else toast(message, bad);
+    };
+    const pollDelay = saved.provider === "daraja" ? 5000 : 2000;
+    const maxAttempts = 30;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       try {
         const res = await fetch(`/api/checkout?action=status&id=${encodeURIComponent(paymentId)}`, { cache: "no-store" });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Payment status could not be checked.");
         if (data.paymentStatus === "paid" && data.actionStatus === "completed") {
+          if ($("pay-dialog").open) $("pay-dialog").close();
           if (data.action === "rsvp" && data.actionResult?.rsvpId) {
             showPass(data.actionResult.rsvpId, saved.guestName || "Guest", "yes");
             try {
@@ -914,16 +929,28 @@
           history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
           return;
         }
+        if (data.paymentStatus === "cancelled") {
+          const message = "The M-Pesa request was cancelled or declined. No paid action was completed.";
+          if ($("pay-dialog").open) {
+            $("pay-error").textContent = message;
+            $("pay-error").hidden = false;
+          } else toast(message, true);
+          $("pay-submit").disabled = false;
+          try { sessionStorage.removeItem(`ws-payment:${paymentId}`); } catch (_) {}
+          params.delete("paymentReturn");
+          history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
+          return;
+        }
         if (data.paymentStatus === "paid" && data.actionStatus === "review_required") {
-          toast("Payment verified; your request needs organizer review. Please do not pay again.", true);
+          report("Payment verified; your request needs organizer review. Please do not pay again.", true);
           return;
         }
       } catch (error) {
-        if (attempt === 29) toast(error.message || "Payment is not confirmed yet. No action was completed.", true);
+        if (attempt === maxAttempts - 1) report(error.message || "Payment is not confirmed yet. No action was completed.", true);
       }
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, pollDelay));
     }
-    toast("Payment is not confirmed yet. No action was completed; check this page again before retrying.", true);
+    report("Payment is not confirmed yet. No action was completed; check this payment status before trying again.", true);
   }
 
   // E-card pass: rendered after RSVP, restored from this device, or found by email/code
@@ -1020,6 +1047,12 @@
     $("pay-name").value = next.data?.guestName || $("guest-name")?.value || "";
     $("pay-email").value = next.data?.guestEmail || $("guest-email")?.value || "";
     $("pay-phone").value = "";
+    $("pay-mpesa-phone").value = next.data?.guestPhone || "";
+    $("pay-mpesa-phone").required = false;
+    $("pay-daraja-fields").hidden = true;
+    $("pay-email").required = false;
+    $("pay-amount").step = "0.01";
+    $("pay-submit").textContent = "Pay (test mode)";
     $("pay-website").value = "";
     $("pay-location").value = "";
     $("pay-offer").value = "";
@@ -1038,6 +1071,7 @@
       $("pay-provider").replaceChildren(...options.providers.map(p =>
         new Option(`${p.name} · ${p.market}`, `${p.id}|${p.market}`)
       ));
+      $("pay-provider").dispatchEvent(new Event("change"));
       await prepareTurnstile(options.turnstileSiteKey);
       $("pay-submit").disabled = false;
     } catch (error) {
@@ -1078,6 +1112,15 @@
     }
     showPaymentDialog(next);
   });
+  $("pay-provider").addEventListener("change", () => {
+    const provider = $("pay-provider").value.split("|")[0];
+    const isDaraja = provider === "daraja";
+    $("pay-daraja-fields").hidden = !isDaraja;
+    $("pay-mpesa-phone").required = isDaraja;
+    $("pay-email").required = provider === "paystack";
+    $("pay-amount").step = isDaraja ? "1" : "0.01";
+    $("pay-submit").textContent = isDaraja ? "Send M-Pesa prompt (sandbox)" : "Pay (test mode)";
+  });
   $("pay-cancel").addEventListener("click", () => $("pay-dialog").close());
   $("pay-form").addEventListener("submit", async e => {
     e.preventDefault();
@@ -1110,6 +1153,7 @@
         visibility: "hidden", publicConsent: false,
         amountMinor, guestName: name, displayName: name,
         email: $("pay-email").value.trim(), guestEmail: $("pay-email").value.trim(),
+        mpesaPhone: $("pay-mpesa-phone").value.trim(),
         refId: buying.refId, streamId: buying.action === "fundraiser" ? buying.refId : undefined,
         milestoneId: buying.action === "fundraiser" ? buying.milestoneId : undefined,
         registryItemId: buying.action === "registry" ? buying.refId : undefined,
@@ -1126,10 +1170,24 @@
       if (!res.ok) throw new Error(data.error || "Checkout could not be started.");
       try {
         sessionStorage.setItem(`ws-payment:${data.paymentId}`, JSON.stringify({
-          action: buying.action, guestName: buying.data?.guestName || name, amountMinor
+          action: buying.action, guestName: buying.data?.guestName || name, amountMinor, provider
         }));
       } catch (_) {}
-      location.assign(data.checkoutUrl);
+      if (data.checkoutUrl) {
+        location.assign(data.checkoutUrl);
+      } else if (provider === "daraja" && data.paymentId) {
+        $("pay-error").className = "notice";
+        $("pay-error").textContent = data.message || "M-Pesa sandbox prompt sent. Approve it on your phone to continue.";
+        $("pay-error").hidden = false;
+        $("pay-submit").textContent = "Waiting for M-Pesa…";
+        const nextParams = new URLSearchParams(location.search);
+        nextParams.set("paymentReturn", data.paymentId);
+        params.set("paymentReturn", data.paymentId);
+        history.replaceState(null, "", `${location.pathname}?${nextParams.toString()}`);
+        await handlePaymentReturn();
+      } else {
+        throw new Error("Payment provider did not return a checkout or M-Pesa prompt.");
+      }
     } catch (error) {
       $("pay-error").textContent = error.message || "Checkout could not be started. No action was completed.";
       $("pay-error").hidden = false;
