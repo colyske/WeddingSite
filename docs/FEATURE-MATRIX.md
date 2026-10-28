@@ -1,29 +1,28 @@
 # Feature-to-surface matrix
 
-Status: built features are implemented; payments are test mode (no real money).
+Status: features below are implemented where marked. Production payments fail closed until a test provider is fully configured; no live payment processing is enabled or claimed.
 
 | Feature | Configured (organizer) | Shown (guest site) | Recorded | Who sees it |
 |---|---|---|---|---|
 | Fundraising campaigns with milestones (separate from the gift registry) | Editor → "Fundraising campaigns": named campaigns, goal, ordered milestones, visibility | "A gift for our next chapter": progress bar, ticked milestones, 10/25/50/Other (test mode) | `fundraising_streams`, `fundraising_milestones`, `contributions.stream_id/milestone_id` | Guests see totals only; organizer sees ledger by campaign (guest, amount, campaign, milestone, status); Owner ledger |
 | Wedding date, time, time zone (mandatory) | Editor | Hero, venue cards, countdown, .ics | `weddings`, `venues` | Public |
-| Past / Completed state | Automatic from date in the wedding zone | "Completed" banner; RSVP, bids, pledges closed | `is_past` (RPC) | Public |
+| Past / Completed state | Automatic from date in the wedding zone | "Completed" banner; RSVP and paid actions closed | `is_past` (RPC) | Public |
 | Unpublish / archive (no delete) | Editor buttons (confirm) | Site hidden | `unpublished_at`, `archived_at`; delete blocked by trigger and API 405 | Wedding owner, admins |
 | Publication fee policy | Admin / SuperAdmin fees and settings | Fee explained at publish | `platform_policies`, `publication_fees` | Client, admins, owner |
 | KYC (legal names, ID, next of kin) | Editor KYC form | Never shown | `wedding_kyc` (no direct grants, masked) | Wedding owner, admins, owner role |
 | Venues with date, time, address, map | Editor | Venue cards, programme | `venues` | Public |
-| RSVP and e-card pass | Capacity in editor | RSVP form, then persisted pass, lookup by email or code | `guest_rsvps` | Public (own pass), organizer list |
+| RSVP and e-card pass | Capacity in editor | Phone-based RSVP and pass lookup | `guest_rsvps` | Public (own pass), organizer list |
 | QR verification and check-in | - | Pass QR links to `/verify.html?code=` | `guest_rsvps` | Organizer checks in |
 | DJ bids | Editor | Leaderboard, bid form | `dj_song_bids` | Public, organizer |
-| VIP seating, sponsorship tiers, registry pledges | Editor | Buy buttons (test checkout) | `contributions`, ledger | Public ledger (opt-in names), organizer, admin, owner |
+| VIP seating, sponsor packages, registry and campaign contributions | Editor | Purchase options use hosted checkout; completion requires verified payment | `contributions`, ledger | Public ledger (opt-in names), organizer, admin, owner |
 | Payouts | Organizer requests | - | `payout_records` | Organizer, admin, owner |
 | Back office | - | - | Role changes, audit | Admin (limited), SuperAdmin, Owner (security tab) |
 | Editorial design and wedding props | - | All pages | CSS/SVG only | Public |
 
 ## Limitations
-- Payments are simulated; no live provider is connected.
-- Pass lookup uses email or code only (no phone stored on RSVPs).
-- Venue dates are saved on update, not on create.
-- Not built (recommended later): Facebook/X/SMS share and Open Graph meta, guestbook, gallery, seating lookup, FAQ/travel, referral tracking, analytics, Swahili toggle, PWA.
+- Production checkout currently advertises no provider; no Production checkout or provider sandbox event has been exercised.
+- Historical guest records without a phone need an organizer guest-list re-import before those guests can use phone-based seating lookup.
+- Not built: photo gallery/uploads with moderation, PWA/offline pass, per-wedding Open Graph image, templates/themes, and real WhatsApp/email delivery (which require approved integrations and external configuration).
 
 ## Sharing, referrals and engagement (completion batch)
 
@@ -42,15 +41,15 @@ Status: built features are implemented; payments are test mode (no real money).
 | English / Swahili toggle | - | SW/EN button in the navbar; fixed interface text and section headings only (couple-written content is not translated); choice kept in the browser | `localStorage` only | Public |
 | Post-wedding thank-you | Automatic once the date passes | Memories/thank-you banner; guestbook still open | `is_past` | Public |
 
-Not built yet (recommended next): photo gallery/uploads with moderation (needs storage + size limits), PWA/offline pass, per-wedding Open Graph image, templates/themes, real WhatsApp/email delivery (needs credentials). Swahili covers the guest site only, not the organizer pages; seating lookup depends on the couple importing a guest list with phone numbers.
+Swahili currently covers the guest site only, not organizer pages. Seating lookup depends on the couple importing a guest list with phone numbers.
 
 ## Refinements batch
 
 | Feature | Configured (organizer / admin) | Shown (guest site) | Recorded | Who sees it |
 |---|---|---|---|---|
 | Phone as primary identifier | CSV import has a phone column | RSVP, pass lookup and seating use phone (email optional) | Digits-only `guest_rsvps.phone`, `guests.phone`; placeholder key email for phone-only RSVPs is hidden | Couple, admins |
-| DJ bids consolidated | - | One row per song (case-insensitive), totals add up, bid count; note says money goes to the wedding fundraiser, not the DJ | `get_dj_leaderboard` aggregates `dj_song_bids`. Bids are pledges: not ledgered or paid in demo mode | Public |
-| Extra-guest fee, base RSVP fee | Editor "RSVP fees" (major units) | Fee note, quote dialog with line items, confirm before submit (HTTP 402 quote then confirm) | `contributions` rows (RSVP fee, Extra guests, Premium dietary), provider `test-simulator` | Couple, admins (ledger) |
+| DJ bids consolidated | - | One row per song (case-insensitive), totals add up only after payment verification; note says money goes to the wedding fundraiser, not the DJ | `get_dj_leaderboard` aggregates `dj_song_bids`; paid action finalization is provider-verified | Public |
+| Extra-guest fee, base RSVP fee | Editor "RSVP fees" (major units) | Fee note, itemized quote, and checkout before RSVP completion | `contributions` rows (RSVP fee, Extra guests, Premium dietary); verified provider payment required | Couple, admins (ledger) |
 | Premium dietary fee | Editor: premium options + fee; standard options stay free | Premium group in the dietary select | Ledger line | Couple, admins |
 | Palette names and hex | Editor palette: name each colour | "Wedding theme - colour palette" label, `Name (#HEX)` | `weddings.palette_names` | Public |
 | Pre-wedding events | Editor: event type "Before the wedding" plus street address | "Before the wedding" section, time, name, address, Get directions (Google Maps) | `venues.kind`, `venues.address` | Public |
@@ -66,18 +65,20 @@ Not built yet (recommended next): photo gallery/uploads with moderation (needs s
 |---|---|---|---|---|
 | Fixed sponsor packages plus optional featured slots | Wedding editor sets the opening/closing instants, slot count, minimum paid bid, and increment; campaign terms lock after the first paid bid | Campaign state, current leaders, next eligible bid, and a bid action; closed-window leaders are the featured slots | `sponsor_featured_campaigns`, `sponsor_featured_bids`, paid `contributions`, and sponsor advert cards | Public sees company names and verified totals; wedding organizers see sponsor records |
 
-Featured bids are charged through the configured test checkout. Only a provider-verified payment created during the campaign window can be counted; if campaign terms/capacity no longer permit finalization, the payment is routed to review and is not shown as a completed bid. The browser redirect alone is not confirmation. The new migration must be replayed and safely deployed before this feature is available in Production.
+Featured bids are charged through the configured test checkout. Only a provider-verified payment created during the campaign window can be counted; if campaign terms/capacity no longer permit finalization, the payment is routed to review and is not shown as a completed bid. The browser redirect alone is not confirmation. The campaign migration has passed CI replay and is applied in Production; checkout remains unavailable until a test provider is configured.
 
-The prior release did not include refund/dispute accounting; see the branch-status section below for the current implementation and its verification limits.
+Refund/dispute accounting and deployment status are summarized below.
 
 ## Verified refunds, disputes and settlement adjustments
 
 | Feature | Behavior | Status |
 |---|---|---|
 | Refund/dispute webhook intake | Stripe and Paystack signatures are verified before normalization; raw webhook bodies are not stored. Adjustment events are deduplicated and correlated to the original verified payment reference. Exact-match Admin reconciliation is available for timestamped, provider-confirmed unmatched refunds. | Implemented; provider sandbox events not yet exercised |
-| Refund accounting | Provider-confirmed processed refunds create immutable adjustment-ledger entries. An Owner policy is snapshotted at payment creation: couple absorbs the full refund, platform reimburses the known original fees proportionally (rounded down), or manual review. Unknown fees and ambiguous/out-of-order events hold funds. | Implemented; new migration awaiting CI replay |
-| Dispute accounting | Open disputes hold the disputed amount; verified withdrawals/losses debit the couple balance once; verified reinstatements reverse that debit once. Unmatched or conflicting events are visible in Admin review. | Implemented; new migration awaiting CI replay |
+| Refund accounting | Provider-confirmed processed refunds create immutable adjustment-ledger entries. An Owner policy is snapshotted at payment creation: couple absorbs the full refund, platform reimburses the known original fees proportionally (rounded down), or manual review. Unknown fees and ambiguous/out-of-order events hold funds. | Implemented; CI replay passed and migration applied in Production; no provider sandbox event tested |
+| Dispute accounting | Open disputes hold the disputed amount; verified withdrawals/losses debit the couple balance once; verified reinstatements reverse that debit once. Unmatched or conflicting events are visible in Admin review. | Implemented; CI replay passed and migration applied in Production; no provider sandbox event tested |
 | Payout availability | Settled net contributions plus immutable adjustments, minus outstanding holds, approved expenses and active withdrawals; payout requests and refund resolutions serialize on the wedding row. | Implemented; no payout provider execution |
 | Admin/Owner operations | Admins see actionable adjustment/reconciliation queues and may allocate a provider-confirmed refund only after fee data is known. Owner sees aggregate queue counts and controls the default allocation for new payments. | Implemented; real provider and Production verification blocked |
 
-These are code and local contract-test claims, not Production verification. No financial migration has been applied to Production, and no refund/dispute event, real payout, or configured test checkout has been exercised against provider credentials. Paystack refund events without a stable adjustment reference or timestamp are held for review rather than automatically posted.
+CI successfully replayed and linted the migrations on a fresh isolated database. Migrations `202610300002`, `202610300003`, and `202610300004` are present in the linked Production migration history, and the post-merge Production deployment is Ready. The Production payment-options API was queried for a published QA wedding and returned `paymentAvailable: false`; no checkout, refund/dispute sandbox event, or payout was initiated. Authenticated Owner/Admin browser operations remain unverified. Paystack refund events without a stable adjustment reference or timestamp are held for review rather than automatically posted.
+
+Production environment-variable names observed as missing: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_SUPPORTED_CURRENCIES`, `STRIPE_SUPPORTED_MARKETS`, `PAYSTACK_SUPPORTED_CURRENCIES`, `PAYSTACK_SUPPORTED_MARKETS`, and `TURNSTILE_SITE_KEY`. `PAYSTACK_SECRET_KEY` is present by name only; payment mode and secret values were not inspected. The API's no-provider response is authoritative for current checkout readiness.
