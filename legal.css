@@ -1,0 +1,9 @@
+.legal { max-width: 46rem; margin: 2rem auto; line-height: 1.65; }
+.legal h2 { margin-top: 2rem; font-size: 1.25rem; }
+.legal h3 { margin-top: 1.25rem; font-size: 1.05rem; }
+.legal ul { padding-left: 1.25rem; }
+.legal li { margin: .35rem 0; }
+.legal-flag { border: 1px solid #b8924a; background: rgba(184, 146, 74, .12); border-radius: 10px; padding: .85rem 1rem; margin: 1rem 0; }
+.legal .pending { font-weight: 600; color: #8a5a12; }
+.legal-toc { font-size: .9rem; margin: 1rem 0; }
+.legal-links { margin-top: 2rem; text-align: center; }
