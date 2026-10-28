@@ -145,6 +145,7 @@ test("Payment adapters normalize only paid, well-formed events", () => {
   });
   assert.equal(stripe.provider, "stripe");
   assert.equal(stripe.amountMinor, 2500);
+  assert.equal(stripe.providerPaymentReference, null);
   assert.equal(stripe.providerPaidAt, "2026-10-28T01:06:40.000Z");
   assert.equal(normalizeStripePayment({ id: "evt_124", type: "checkout.session.completed", data: { object: { mode: "payment", payment_status: "unpaid" } } }), null);
   const paystack = normalizePaystackPayment({
@@ -153,6 +154,7 @@ test("Payment adapters normalize only paid, well-formed events", () => {
   });
   assert.equal(paystack.provider, "paystack");
   assert.equal(paystack.eventId, "123");
+  assert.equal(paystack.providerPaymentReference, "123");
   assert.equal(paystack.providerPaidAt, "2026-10-28T01:06:40.000Z");
   assert.equal(normalizePaystackPayment({ event: "charge.failed", data: {} }), null);
 });

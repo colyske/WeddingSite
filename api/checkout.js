@@ -426,7 +426,8 @@ async function handleStatus(req, res) {
             p_contribution_id: row.id, p_amount_minor: payment.amountMinor,
             p_currency: payment.currency, p_provider_reference: payment.reference,
             p_provider_fee_minor: payment.providerFeeMinor,
-            p_provider_paid_at: payment.providerPaidAt
+            p_provider_paid_at: payment.providerPaidAt,
+            p_provider_payment_reference: payment.providerPaymentReference
           }
         });
         rows = await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&select=id,payment_status,purchase_action,action_result,action_completed_at,provider_fee_pending`, { service: true });

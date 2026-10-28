@@ -92,13 +92,15 @@
         <div class="stats">${stat("Contributions collected", esc(moneyMap(o.collected_by_currency)))}
         ${stat("Platform fees (contributions)", esc(moneyMap(o.fees_by_currency)))}
         ${stat("Known provider charges", esc(moneyMap(o.provider_fees_by_currency)))}
-        ${stat("Couple net, before withdrawals", esc(moneyMap(o.net_to_weddings_by_currency)))}
+        ${stat("Estimated available wedding funds", esc(moneyMap(o.settlement?.available_by_currency)))}
+        ${stat("Refund/dispute adjustments", esc(moneyMap(o.settlement?.adjustments_by_currency)))}
+        ${stat("Refund/dispute holds", esc(moneyMap(o.settlement?.refund_dispute_holds_by_currency)))}
         ${stat("Held pending provider fee", esc(moneyMap(o.provider_fee_holds_by_currency)))}
         ${stat("Publication fees", esc(moneyMap(o.publication_fees_by_currency)))}</div>
         <p class="fine">Checkout only accepts verified test-provider payments. Test checkout remains unavailable until provider keys, allowed currencies and markets, Turnstile site/secret keys, and a wedding-specific provider configuration are all ready. Payment credentials are never shown here.</p>`;
     },
     async operations(el) {
-      const { queue: q } = await get("operations");
+      const { queue: q, adjustments: financial = {} } = await get("operations");
       const reviews = q.payment_reviews || [];
       const kyc = q.kyc_exceptions || [];
       const reconciliations = q.reconciliations || [];
@@ -107,7 +109,8 @@
         const counts = q.counts || {};
         el.innerHTML = `<h2>Operational health</h2><p class="fine">Routine exception work is assigned to Admins. The Owner view is limited to aggregate escalations; no private KYC values are shown.</p>
           <div class="stats">${stat("Paid actions needing follow-up", counts.payment_reviews ?? 0)}${stat("KYC exceptions", counts.kyc_exceptions ?? 0)}
-          ${stat("Reconciliation differences", counts.reconciliations ?? 0)}${stat("Payouts awaiting staff action", counts.payouts ?? 0)}</div>`;
+          ${stat("Reconciliation differences", counts.reconciliations ?? 0)}${stat("Payouts awaiting staff action", counts.payouts ?? 0)}
+          ${stat("Refund / dispute holds", financial.count ?? 0)}</div>`;
         return;
       }
       const reviewRows = reviews.map((r) => `<tr><td>${date(r.created_at)}</td><td>${esc(r.couple_names)}</td><td>${esc(r.reason_code)}</td>
@@ -119,12 +122,37 @@
         <td>${esc(r.status)}</td></tr>`);
       const payoutRows = payouts.map((p) => `<tr><td>${date(p.requested_at)}</td><td>${esc(p.couple_names)}</td>
         <td>${esc(WS.money(Number(p.amount_minor || 0), p.currency, false))}</td><td>${esc(p.status)}</td></tr>`);
+      const adjustmentRows = (financial.adjustments || []).map((a) => {
+        const allocation = a.can_resolve
+          ? `<select data-refund-allocation="${esc(a.id)}" aria-label="Refund cost allocation">
+              ${(a.refund_fee_allocation === "manual_review"
+                ? [["couple", "Charge full refund to couple"], ["platform", "Platform absorbs known fees"]]
+                : [[a.refund_fee_allocation, a.refund_fee_allocation === "platform" ? "Saved policy: platform absorbs known fees" : "Saved policy: couple absorbs full refund"]])
+                .map(([value, label]) => `<option value="${value}">${label}</option>`).join("")}</select>
+             ${btn("Record allocation", `data-refund-id="${esc(a.id)}"`)}`
+          : a.adjustment_kind === "refund" && a.status === "review" && a.resolution_code === "provider_fee_unknown"
+            ? "Provider fee not reconciled; payout hold remains"
+            : "-";
+        return `<tr><td>${date(a.created_at)}</td><td>${esc(a.couple_names)}</td><td>${esc(a.provider)}</td>
+          <td>${esc(a.adjustment_kind)}</td><td>${esc(WS.money(Number(a.amount_minor || 0), a.currency, false))}</td>
+          <td>${esc(a.status)}${a.hold_minor ? ` · held ${esc(WS.money(Number(a.hold_minor), a.currency, false))}` : ""}</td>
+          <td>${esc(a.resolution_code || "-")}</td><td>${allocation}</td></tr>`;
+      });
+      const unmatchedRows = (financial.unmatched_events || []).map((event) => `<tr><td>${date(event.received_at)}</td>
+        <td>${esc(event.provider)}</td><td>${esc(event.event_type)}</td><td>${esc(event.provider_payment_reference || "-")}</td>
+        <td>${esc(event.reason_code || event.outcome)}${event.can_match ? `<div><input data-refund-match-contribution="${esc(event.id)}" aria-label="Contribution ID for provider event ${esc(event.id)}" placeholder="Contribution ID">
+          ${btn("Match & hold", `data-refund-event="${esc(event.id)}"`)}</div>` : ""}</td></tr>`);
       el.innerHTML = `<h2>Admin exception queue</h2><p class="fine">Work unresolved exceptions first. Paid action failures do not authorize a second charge; reconcile the verified payment before any manual fulfilment. KYC completeness is not independent identity verification.</p>
         <h3>Paid actions needing follow-up (${reviews.length})</h3>${table(["Detected", "Wedding", "Reason", "Next step"], reviewRows)}
         <h3>KYC completeness exceptions (${kyc.length})</h3>${table(["Wedding", "Date", "Next step"], kycRows)}
         <h3>Reconciliation differences (${reconciliations.length})</h3>${table(["Detected", "Wedding", "Provider", "Expected", "Reported", "Status"], reconRows)}
         <h3>Payouts awaiting staff action (${payouts.length})</h3>${table(["Requested", "Wedding", "Amount", "Status"], payoutRows)}
-        <p class="fine">Provider disputes/refunds and automated payout execution are unavailable until provider integration and settlement operations are configured. Do not mark an exception resolved from this screen.</p>`;
+        <h3>Provider refunds and disputes (${financial.count ?? 0})</h3>
+        <p class="fine">Only signed, normalized provider events are considered. Pending refunds and open disputes reserve withdrawable funds. Refund allocations use the policy captured when payment was created; unknown provider fees stay held. Recording an allocation does not initiate a refund.</p>
+        ${table(["Detected", "Wedding", "Provider", "Type", "Amount", "Status / hold", "Reason", "Action"], adjustmentRows)}
+        <h3>Unmatched provider events (${(financial.unmatched_events || []).length})</h3>
+        ${table(["Received", "Provider", "Event", "Payment reference", "Reason"], unmatchedRows)}
+        <p class="fine">Automated disbursement and provider-side refund initiation are not enabled. Staff records only the allocation for refunds already confirmed by a provider.</p>`;
     },
     async weddings(el) {
       if (el.dataset.wedding) return weddingMetrics(el, el.dataset.wedding);
@@ -170,7 +198,7 @@
       });
     },
     async fees(el) {
-      const { policies: p } = await get("policies");
+      const [{ policies: p }, refundPolicy] = await Promise.all([get("policies"), get("refund-policy")]);
       const extendedPolicy = ["contribution_fixed_fee_minor", "contribution_fixed_fee_currency", "min_payout_minor", "payout_hold_days"]
         .every((key) => Object.prototype.hasOwnProperty.call(p, key));
       const { history = [] } = role === "owner" && extendedPolicy ? await get("policy-history") : {};
@@ -196,6 +224,13 @@
         <button type="submit"${owner ? "" : " disabled"}>${owner ? "Save settings" : "Owner access required"}</button></fieldset></form>
         <p class="fine">Only the protected Owner can change platform fee and payout policies. Admins can view these settings; transaction eligibility and fee calculation are enforced server-side.</p>
         ${owner && extendedPolicy ? `<details><summary>Recent policy versions (${history.length})</summary>${history.length ? history.map((h) => `<article class="policy-version"><strong>${date(h.changed_at)}</strong><pre>${esc(JSON.stringify({ old: h.old_values, new: h.new_values }, null, 2))}</pre></article>`).join("") : '<p class="fine">No policy changes have been recorded yet.</p>'}</details>` : ""}`;
+      const refundAllocation = refundPolicy.allocation || "manual_review";
+      el.insertAdjacentHTML("beforeend", `<form id="refund-policy-form"><h3>Refund fee allocation</h3>
+        <p class="fine">This applies to new payments only. “Couple” assigns the full provider-confirmed refund to the wedding balance. “Platform” reimburses the couple for the known original platform and provider fees proportionally; unknown provider fees remain held. “Manual review” is the safest default and keeps refund amounts unavailable until an Admin records an allocation.</p>
+        <label for="refund-allocation">Default allocation</label><select id="refund-allocation"${owner ? "" : " disabled"}>
+          ${[["manual_review", "Manual review (recommended)"], ["couple", "Couple absorbs the full refund"], ["platform", "Platform absorbs known fees"]]
+            .map(([value, label]) => `<option value="${value}"${refundAllocation === value ? " selected" : ""}>${label}</option>`).join("")}
+        </select><button type="submit"${owner ? "" : " disabled"}>${owner ? "Save refund policy" : "Owner access required"}</button></form>`);
     },
     async ledger(el) {
       const { ledger } = await get("ledger");
@@ -270,7 +305,7 @@
       if (e.target.closest("[data-ops-wedding]")) { panel.dataset.wedding = e.target.closest("[data-ops-wedding]").dataset.opsWedding; return show("weddings"); }
       if (e.target.closest("[data-wm]")) { panel.dataset.wedding = e.target.closest("[data-wm]").dataset.wm; return show("weddings"); }
       if (e.target.closest("[data-wm-back]")) { delete panel.dataset.wedding; return show("weddings"); }
-      const t = e.target.closest("button[data-wa],button[data-ps],button[data-setrole]");
+      const t = e.target.closest("button[data-wa],button[data-ps],button[data-setrole],button[data-refund-id],button[data-refund-event]");
       if (!t) return;
       try {
         if (t.dataset.wa) {
@@ -279,6 +314,15 @@
         } else if (t.dataset.ps) {
           if (!confirm("Confirm: mark payout as " + t.dataset.ps + "?")) return;
           await post("payout-status", { payout_id: t.dataset.id, status: t.dataset.ps });
+        } else if (t.dataset.refundId) {
+          const allocation = panel.querySelector(`select[data-refund-allocation="${t.dataset.refundId}"]`)?.value;
+          if (!allocation || !confirm(`Record this provider-confirmed refund using the ${allocation} allocation? This does not initiate a refund.`)) return;
+          await post("refund-resolution", { adjustment_id: t.dataset.refundId, allocation, confirmed: true });
+        } else if (t.dataset.refundEvent) {
+          const input = panel.querySelector(`input[data-refund-match-contribution="${t.dataset.refundEvent}"]`);
+          const contributionId = input?.value.trim();
+          if (!contributionId || !confirm("Match this signed provider refund to the contribution ID? This reserves the amount for review and does not initiate a refund.")) return;
+          await post("refund-match", { event_id: Number(t.dataset.refundEvent), contribution_id: contributionId, confirmed: true });
         } else {
           const id = t.dataset.setrole;
           const sel = panel.querySelector(`select[data-role-for="${id}"]`);
@@ -310,6 +354,15 @@
         };
         for (const k of Object.keys(policies)) if (policies[k] === undefined || Number.isNaN(policies[k])) delete policies[k];
         try { await post("policies-save", { policies }); toast("Settings saved."); } catch (err) { toast(err.message, true); }
+      }
+      if (e.target.id === "refund-policy-form") {
+        const allocation = $("refund-allocation").value;
+        if (!confirm(`Apply the ${allocation} refund-fee policy to new payments? Existing transactions keep their saved policy.`)) return;
+        try {
+          await post("refund-policy-save", { allocation, confirmed: true });
+          toast("Refund allocation policy saved.");
+          await show("fees");
+        } catch (err) { toast(err.message, true); }
       }
     });
     show("overview");

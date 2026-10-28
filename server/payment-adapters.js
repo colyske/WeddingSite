@@ -86,6 +86,8 @@ export function normalizeStripePayment(event) {
   return {
     provider: "stripe", eventId: String(event.id), contributionId, amountMinor, currency,
     reference: String(checkout.id || ""),
+    providerPaymentReference: typeof checkout.payment_intent === "string" ? checkout.payment_intent
+      : checkout.payment_intent?.id || null,
     providerPaidAt: isoFromSeconds(event.created),
     providerFeeMinor: Number.isSafeInteger(Number(fee)) && Number(fee) >= 0 ? Number(fee) : null
   };
@@ -105,10 +107,106 @@ export function normalizePaystackPayment(event) {
     amountMinor,
     currency,
     reference: String(transaction.reference),
+    providerPaymentReference: String(transaction.id || transaction.reference),
     providerPaidAt: typeof transaction.paid_at === "string" && Number.isFinite(Date.parse(transaction.paid_at))
       ? new Date(transaction.paid_at).toISOString() : null,
     providerFeeMinor: Number.isSafeInteger(Number(transaction.fees)) && Number(transaction.fees) >= 0 ? Number(transaction.fees) : null
   };
+}
+
+const isoFromDate = value => {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+};
+
+function providerAdjustment(provider, eventId, eventType, adjustment, paymentReference, state, occurredAt) {
+  const amountMinor = Number(adjustment?.amount);
+  const currency = String(adjustment?.currency || "").toUpperCase();
+  const adjustmentId = adjustment?.id || adjustment?.refund_reference || adjustment?.dispute_reference;
+  if (!eventId || !eventType || !Number.isSafeInteger(amountMinor) || amountMinor < 1 ||
+      !/^[A-Z]{3}$/.test(currency) || !adjustmentId) return null;
+  return {
+    provider, eventId: String(eventId), eventType: String(eventType),
+    adjustmentId: String(adjustmentId), paymentReference: paymentReference ? String(paymentReference) : null,
+    amountMinor, currency, state, occurredAt
+  };
+}
+
+export function normalizeStripeAdjustment(event) {
+  const obj = event?.data?.object;
+  if (!obj || !event.id) return null;
+  if (["refund.created", "refund.updated", "charge.refund.updated", "charge.refunded"].includes(event.type)) {
+    const chargeRefunds = event.type === "charge.refunded" ? obj.refunds?.data : null;
+    const refund = Array.isArray(chargeRefunds) && chargeRefunds.length === 1 ? chargeRefunds[0] : obj;
+    const refundAmount = event.type === "charge.refunded" && refund === obj ? obj.amount_refunded : refund.amount;
+    const state = ({
+      succeeded: "refund_processed",
+      pending: "refund_pending",
+      failed: "refund_failed",
+      canceled: "refund_failed"
+    })[refund.status] || "review";
+    const normalized = { ...refund, amount: refundAmount, currency: refund.currency || obj.currency };
+    const reference = typeof obj.payment_intent === "string" ? obj.payment_intent
+      : obj.payment_intent?.id || (typeof (refund.charge || obj.charge || obj.id) === "string"
+        ? refund.charge || obj.charge || obj.id : (refund.charge || obj.charge)?.id);
+    const safeState = event.type === "charge.refunded" && (!Array.isArray(chargeRefunds) || chargeRefunds.length !== 1)
+      ? "review" : state;
+    return providerAdjustment("stripe", event.id, event.type, normalized, reference, safeState, isoFromSeconds(event.created));
+  }
+  if (event.type?.startsWith("charge.dispute.")) {
+    const state = ({
+      "charge.dispute.created": "dispute_open",
+      "charge.dispute.funds_withdrawn": "dispute_withdrawn",
+      "charge.dispute.funds_reinstated": "dispute_reinstated",
+      "charge.dispute.closed": obj.status === "lost" ? "dispute_lost" :
+        ["won", "warning_closed"].includes(obj.status) ? "dispute_won" : "review"
+    })[event.type] || "review";
+    const reference = typeof obj.payment_intent === "string" ? obj.payment_intent
+      : obj.payment_intent?.id || (typeof obj.charge === "string" ? obj.charge : obj.charge?.id);
+    return providerAdjustment("stripe", event.id, event.type, obj, reference, state, isoFromSeconds(event.created));
+  }
+  return null;
+}
+
+export function normalizePaystackAdjustment(event, eventDigest) {
+  const data = event?.data;
+  if (!data) return null;
+  const eventType = String(event.event || "");
+  const occurredAt = isoFromDate(data.createdAt || data.created_at || event.createdAt || event.created_at);
+  const adjustment = data.refund || data;
+  if (eventType.startsWith("refund.")) {
+    const mappedState = ({
+      "refund.pending": "refund_pending",
+      "refund.processing": "refund_pending",
+      "refund.processed": "refund_processed",
+      "refund.failed": "refund_failed",
+      "refund.needs-attention": "review"
+    })[eventType] || "review";
+    const stableId = adjustment.refund_reference || adjustment.id;
+    const state = stableId ? mappedState : "review";
+    const id = stableId || eventDigest;
+    return providerAdjustment(
+      "paystack", eventDigest, eventType, { ...adjustment, id },
+      adjustment.transaction_reference || adjustment.transaction?.reference, state, occurredAt
+    );
+  }
+  if (eventType.startsWith("charge.dispute.")) {
+    const status = String(data.status || data.resolution || "").toLowerCase();
+    const mappedState = eventType.endsWith(".create") || eventType.endsWith(".remind") ? "dispute_open"
+      : eventType.endsWith(".resolve") && ["won", "merchant_won", "reversed"].includes(status) ? "dispute_reinstated"
+        : eventType.endsWith(".resolve") && ["lost", "merchant_lost", "accepted"].includes(status) ? "dispute_lost"
+          : "review";
+    const stableId = data.dispute_reference || data.id;
+    const state = stableId ? mappedState : "review";
+    const id = stableId || eventDigest;
+    const paymentReference = data.transaction_reference || data.transaction?.reference;
+    return providerAdjustment(
+      "paystack", eventDigest, eventType, { ...data, id, amount: data.amount || data.transaction?.amount,
+        currency: data.currency || data.transaction?.currency },
+      paymentReference, state, occurredAt
+    );
+  }
+  return null;
 }
 
 export async function verifyProviderPayment(provider, reference, contributionId) {
@@ -145,6 +243,8 @@ export async function verifyProviderPayment(provider, reference, contributionId)
     return {
       verified: true, provider, eventId: `verified:${checkout.id}`,
       amountMinor, currency, reference: String(checkout.id),
+      providerPaymentReference: typeof checkout.payment_intent === "string" ? checkout.payment_intent
+        : checkout.payment_intent?.id || null,
       providerPaidAt: isoFromSeconds(checkout.payment_intent?.latest_charge?.created),
       providerFeeMinor: Number.isSafeInteger(Number(fee)) && Number(fee) >= 0 ? Number(fee) : null
     };
@@ -162,6 +262,7 @@ export async function verifyProviderPayment(provider, reference, contributionId)
   return {
     verified: true, provider, eventId: `verified:${transaction.id || transaction.reference}`,
     amountMinor, currency, reference: String(transaction.reference),
+    providerPaymentReference: String(transaction.id || transaction.reference),
     providerPaidAt: typeof transaction.paid_at === "string" && Number.isFinite(Date.parse(transaction.paid_at))
       ? new Date(transaction.paid_at).toISOString() : null,
     providerFeeMinor: Number.isSafeInteger(Number(transaction.fees)) && Number(transaction.fees) >= 0 ? Number(transaction.fees) : null

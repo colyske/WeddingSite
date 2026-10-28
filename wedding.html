@@ -383,8 +383,10 @@
         <p style="margin: 0; font-size: 1.5rem; font-weight: bold; color: #244b3a;">
           <span id="balance-display">$0.00</span>
         </p>
+        <p class="fine" style="margin: 0.6rem 0 0;">Settling: <strong id="settling-display">$0.00</strong>
+          &middot; Held for fee/refund/dispute review: <strong id="held-display">$0.00</strong></p>
         <p class="fine" style="margin: 0.75rem 0 0; color: #666;">
-          💡 <strong>Note:</strong> Paystack settles at least 2 days after a guest pays, so those funds become withdrawable from the 3rd day. Card and other funds are available sooner.
+          💡 Amounts exclude pending or failed checkouts. Refunds, open disputes and unknown provider fees reduce available funds until they are resolved. Provider settlement holds also apply.
         </p>
       </div>
 
@@ -1690,8 +1692,9 @@
         const balRes = await WS.api(`/api/weddings?action=balance&weddingId=${encodeURIComponent(weddingId)}`);
         const balData = await balRes.json();
         if (balRes.ok) {
-          const balance = (balData.balance_minor || 0) / 100;
-          $("balance-display").textContent = WS.money(balData.balance_minor || 0, balData.currency);
+          $("balance-display").textContent = WS.money(balData.available_minor || 0, balData.currency);
+          $("settling-display").textContent = WS.money(balData.settling_minor || 0, balData.currency);
+          $("held-display").textContent = WS.money(balData.held_minor || 0, balData.currency);
         }
 
         // Load history
