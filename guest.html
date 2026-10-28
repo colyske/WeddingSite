@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#203a31">
-  <title>WeddingSite — Wedding</title>
+  <title>Join Our Wedding — Wedding</title>
   <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><script src="ornaments.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
@@ -138,7 +138,7 @@
   <nav class="sticky-nav">
     <div class="logo-section">
       <div class="monogram" id="monogram" style="background: var(--gold);"></div>
-      <span class="brand">WeddingSite</span>
+      <span class="brand">Join Our Wedding</span>
     </div>
     <ul class="nav-links">
       <li><a href="#story">Story</a></li>
@@ -453,6 +453,7 @@
   <audio id="background-music" loop style="display: none;"></audio>
 
   <script src="tz.js"></script>
+  <script src="site-urls.js"></script>
   <script src="share.js"></script>
   <script src="auth-client.js"></script>
   <script>
@@ -475,7 +476,7 @@
   };
 
   const params = new URLSearchParams(location.search);
-  const slug = params.get("slug");
+  const slug = WSSite.currentSlug();
   if (!slug) return notice("Wedding not found.", true);
 
   let wedding = null;
@@ -1358,7 +1359,7 @@
 })();
   </script>
   <div class="prop-row" data-props="ringsLine,cake,bouquet,dove,bell2" style="background:var(--green-deep);margin:0;padding:1.6rem 0 0;color:#e1cf9f"></div>
-<footer class="ws-promo"><div class="foot-top"><span class="foot-mono" id="footer-monogram">W</span><a href="#top" class="foot-up">Back to top &#8593;</a></div><span>Planning your own wedding? <a href="/signin.html">Create your wedding site with WeddingSite</a></span><span class="credit">Made with love on <a href="/">WeddingSite</a></span></footer>
+<footer class="ws-promo"><div class="foot-top"><span class="foot-mono" id="footer-monogram">W</span><a href="#top" class="foot-up">Back to top &#8593;</a></div><span>Planning your own wedding? <a href="/signin.html" data-platform-link>Create your wedding site at joinourwedding.site</a></span><span class="credit">Made with love on <a href="/" data-platform-link>Join Our Wedding</a></span></footer>
   <script>
 (function () {
   const MAP = {

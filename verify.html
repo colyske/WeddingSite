@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#203a31">
-  <title>WeddingSite — Pass verification</title>
+  <title>Join Our Wedding — Pass verification</title>
   <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><script src="ornaments.js" defer></script>
   <style>
     main { max-width: 38rem; margin: 3rem auto; }
@@ -14,7 +14,7 @@
 </head>
 <body>
   <main class="card">
-    <a class="brand" href="/">WeddingSite</a>
+    <a class="brand" href="/">Join Our Wedding</a>
     <h1>Guest pass verification</h1>
     <p id="message" class="notice" role="status">Loading pass…</p>
     <section id="guest-details" class="status" hidden>
@@ -29,6 +29,7 @@
       </div>
     </section>
   </main>
+  <script src="site-urls.js"></script>
   <script src="auth-client.js"></script>
   <script>
     const $ = id => document.getElementById(id);
@@ -46,7 +47,7 @@
       $("guest-name").textContent = item.guest_name || "Guest";
       $("attendance-status").textContent = item.attendance_status === "yes"
         ? "Attending" : item.attendance_status === "no" ? "Not attending" : item.attendance_status || "Unknown";
-      $("guest-site").href = `/guest.html?slug=${encodeURIComponent(item.slug)}`;
+      $("guest-site").href = (window.WSSite ? WSSite.weddingUrl(item.slug) : "/guest.html?slug=" + encodeURIComponent(item.slug));
       $("guest-site").hidden = !item.slug;
       const checkedIn = Boolean(item.checked_in_at);
       $("checkin-status").hidden = !checkedIn;

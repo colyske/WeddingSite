@@ -658,7 +658,7 @@ document.addEventListener("click", event => {
       notify("Sample member added. No invitation email was sent.");
     }, "Add sample member");
   } else if (action === "help") {
-    showDialog("WeddingSite product demo", "The workspace and client invitation are separate experiences. Sample changes live only in this browser session. Preview permissions as each role, review a committee suggestion, or open the generated client site.", [], () => {}, "Close");
+    showDialog("Join Our Wedding product demo", "The workspace and client invitation are separate experiences. Sample changes live only in this browser session. Preview permissions as each role, review a committee suggestion, or open the generated client site.", [], () => {}, "Close");
   } else if (action === "profile") {
     switchPage("people");
     notify("Profile controls are illustrative. No sign-in or account settings are connected.");

@@ -112,7 +112,7 @@
         ${window.WSShare.panelHTML(window.WSShare.guestUrl(w.slug), { title: w.couple_names, published: !!w.published_at })}
         <div class="row" style="margin-top: 1.5rem;">
           <a class="btn" href="/wedding.html?id=${encodeURIComponent(w.id)}&slug=${encodeURIComponent(w.slug)}">✎ Edit</a>
-          ${w.published_at ? `<a class="btn" href="/guest.html?slug=${encodeURIComponent(w.slug)}" target="_blank" rel="noopener">👁 View</a>` : ""}
+          ${w.published_at ? `<a class="btn" href="${window.WSShare.guestUrl(w.slug)}" target="_blank" rel="noopener">👁 View</a>` : ""}
         </div>
       </div>`).join("");
     for (const w of list) {

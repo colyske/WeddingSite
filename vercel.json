@@ -1,7 +1,11 @@
 {
   "rewrites": [
+    { "source": "/", "has": [{ "type": "host", "value": "(?<label>[a-z0-9-]+)\\.joinourwedding\\.site" }], "destination": "/api/guest?action=page" },
     { "source": "/w/:slug", "destination": "/api/guest?action=og&slug=:slug" }
   ],
+  "functions": {
+    "api/guest.js": { "includeFiles": "{guest,index}.html" }
+  },
   "crons": [
     {
       "path": "/api/reminders",

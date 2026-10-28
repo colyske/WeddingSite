@@ -3,6 +3,49 @@ import { requireAuth } from "../server/auth-middleware.js";
 import { isPastWedding } from "../server/wedding-time.js";
 import { createHmac } from "node:crypto";
 import { normalizePhone, phoneKeyEmail } from "../server/phone.js";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { canonicalWeddingUrl, classifyHost, isSubdomainSlug, weddingBaseDomain } from "../server/site-hosts.js";
+
+const BRAND = "Join Our Wedding";
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const OG_IMAGE = "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1200&q=80";
+
+function ogDetails(site) {
+  if (!site?.id) return { title: BRAND, desc: "Create and share your wedding website at joinourwedding.site.", image: OG_IMAGE };
+  const when = site.wedding_date ? String(site.wedding_date).slice(0, 10) : "";
+  return {
+    title: `${site.couple_names} are getting married`,
+    desc: `You are invited${when ? " - " + when : ""}${site.public_location ? " - " + site.public_location : ""}. RSVP, send wishes and save the date.`,
+    image: OG_IMAGE
+  };
+}
+
+let guestTemplate = null;
+async function renderGuestPage(site, { base }) {
+  guestTemplate ||= await readFile(join(process.cwd(), "guest.html"), "utf8");
+  const { title, desc, image } = ogDetails(site);
+  const url = canonicalWeddingUrl(site.slug, { base });
+  const meta = `<title>${esc(title)} · ${BRAND}</title>
+  <link rel="canonical" href="${esc(url)}">
+  <meta name="description" content="${esc(desc)}">
+  <meta property="og:type" content="website"><meta property="og:site_name" content="${BRAND}">
+  <meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
+  <meta property="og:url" content="${esc(url)}"><meta property="og:image" content="${esc(image)}">
+  <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}">
+  <meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(image)}">`;
+  void ref;
+  return guestTemplate.replace(/<title>[^<]*<\/title>/, meta);
+}
+
+function notFoundPage(base) {
+  const home = base ? `https://${base}/` : "/";
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Wedding site not found · ${BRAND}</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:16px/1.6 Georgia,serif;background:#f7f3ea;color:#203a31;text-align:center;padding:2rem}a{color:#8a6d2f;font-weight:600}</style></head>
+<body><main><h1>This wedding site isn't available</h1><p>The address may be mistyped, or the couple hasn't published their site yet.</p>
+<p><a href="${esc(home)}">Go to ${esc(base || "Join Our Wedding")}</a></p></main></body></html>`;
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const text = (value, max) => (typeof value === "string" ? value.trim().slice(0, max) : "");
@@ -56,25 +99,55 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { wedding });
     }
 
+    if (action === "page") {
+      if (!methodOnly(req, res, "GET")) return;
+      const base = weddingBaseDomain() || "joinourwedding.site";
+      const host = classifyHost(req.headers["x-forwarded-host"] || req.headers.host, base);
+      if (host.kind === "root") {
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "public, max-age=0, s-maxage=300");
+        return res.end(await readFile(join(process.cwd(), "index.html"), "utf8"));
+      }
+      if (host.kind === "reserved") {
+        res.statusCode = 308;
+        res.setHeader("Location", `https://${base}/`);
+        return res.end();
+      }
+      const slug = host.kind === "wedding" ? host.slug : "";
+      const site = slug ? await rpc("get_public_wedding_site", { p_slug: slug }).catch(() => null) : null;
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.setHeader("Cache-Control", "public, max-age=0, s-maxage=60");
+      res.setHeader("Vary", "Host");
+      if (!site?.id) {
+        res.statusCode = 404;
+        return res.end(notFoundPage(base));
+      }
+      res.statusCode = 200;
+      return res.end(await renderGuestPage(site, { base }));
+    }
+
     if (action === "og") {
       if (!methodOnly(req, res, "GET")) return;
       const slug = String(req.query.slug || "").toLowerCase();
-      const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
       const site = /^[a-z0-9-]{3,80}$/.test(slug) ? await rpc("get_public_wedding_site", { p_slug: slug }).catch(() => null) : null;
+      const ref = REF.test(String(req.query.ref || "")) ? String(req.query.ref) : "";
+      if (site?.id && weddingBaseDomain() && isSubdomainSlug(slug)) {
+        res.statusCode = 308;
+        res.setHeader("Location", canonicalWeddingUrl(slug, { params: { ref } }));
+        res.setHeader("Cache-Control", "public, max-age=300");
+        return res.end();
+      }
       const host = req.headers["x-forwarded-host"] || req.headers.host || "weddingsite-six-bice.vercel.app";
       const origin = `https://${String(host).replace(/[^a-z0-9.:-]/gi, "")}`;
-      const ref = REF.test(String(req.query.ref || "")) ? String(req.query.ref) : "";
       const target = `/guest.html?slug=${encodeURIComponent(slug)}${ref ? `&ref=${ref}` : ""}`;
-      const title = site?.id ? `${site.couple_names} are getting married` : "WeddingSite";
-      const when = site?.wedding_date ? String(site.wedding_date).slice(0, 10) : "";
-      const desc = site?.id ? `You are invited${when ? " - " + when : ""}${site.public_location ? " - " + site.public_location : ""}. RSVP, send wishes and save the date.` : "Organize your wedding your way.";
-      const image = "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&w=1200&q=80";
+      const { title, desc, image } = ogDetails(site);
       res.statusCode = 200;
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Cache-Control", "public, max-age=300");
       return res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
-<meta property="og:type" content="website"><meta property="og:site_name" content="WeddingSite">
+<meta property="og:type" content="website"><meta property="og:site_name" content="${BRAND}">
 <meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}">
 <meta property="og:url" content="${esc(origin + "/w/" + slug)}"><meta property="og:image" content="${esc(image)}">
 <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}">

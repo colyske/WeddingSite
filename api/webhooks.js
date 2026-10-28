@@ -145,8 +145,20 @@ async function handleDarajaCallback(req, res) {
     }
     contributionId = contribution.id;
 
+    // The callback payload is unsigned. If it carries an Amount that disagrees with the
+    // server-created immutable amount, treat it as suspicious and confirm nothing.
+    const metaItems = body?.Body?.stkCallback?.CallbackMetadata?.Item;
+    const callbackAmount = Array.isArray(metaItems) ? metaItems.find(item => item?.Name === "Amount")?.Value : undefined;
+    if (callbackAmount !== undefined && Math.round(Number(callbackAmount) * 100) !== Number(contribution.pledged_amount_minor)) {
+      console.error("Daraja callback amount mismatch", contribution.id);
+      return sendJson(res, 200, { received: true, processed: false });
+    }
+
     // Daraja callbacks are not treated as signed payment evidence. Confirm the
     // exact stored CheckoutRequestID through the authenticated STK Query API.
+    // STK Query returns only status fields (ResponseCode/ResultCode/ResultDesc and the
+    // request IDs) — not the amount. The recorded amount is the server-created, immutable
+    // contribution amount bound to that CheckoutRequestID at STK Push initiation.
     const payment = await verifyProviderPayment(
       "daraja", checkoutRequestId, contribution.id,
       contribution.pledged_amount_minor, contribution.currency

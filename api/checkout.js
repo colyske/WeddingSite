@@ -3,6 +3,7 @@ import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
 import { checkProviderHealth, initiateDarajaStkPush, isSecurePublicOrigin, verifyProviderPayment } from "../server/payment-adapters.js";
 import { normalizePhone } from "../server/phone.js";
 import { isPastWedding } from "../server/wedding-time.js";
+import { platformOrigins, weddingOriginSlug } from "../server/site-hosts.js";
 
 const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 const isText = (value, max) => typeof value === "string" && value.trim().length > 0 && value.trim().length <= max;
@@ -48,6 +49,30 @@ export function paymentAdaptersFor(currency, market) {
   return configuredAdapters(currency, market);
 }
 
+// Provider availability is derived from platform configuration (test-mode credentials plus
+// each provider's configured markets/currencies). Organizers never choose a processor.
+export function availableProviderMarkets(currency) {
+  const markets = new Set([
+    ...setOf(process.env.STRIPE_SUPPORTED_MARKETS), ...setOf(process.env.PAYSTACK_SUPPORTED_MARKETS), "KE"
+  ]);
+  return [...markets].flatMap(market => configuredAdapters(currency, market).map(item => ({ ...item, market })));
+}
+
+// Only provider TEST/sandbox mode is supported; live mode is never accepted. The
+// WEDDINGSITE_LIVE_PAYMENTS_ENABLED flag is not required or consulted for test checkout.
+export function testPaymentsEnabled() {
+  return process.env.WEDDINGSITE_PAYMENT_MODE === "test";
+}
+
+// Returns to the exact origin that started checkout: pending-payment state is kept in that origin's sessionStorage.
+export function paymentReturnUrl(returnOrigin, slug, key, id) {
+  const onWeddingHost = Boolean(weddingOriginSlug(returnOrigin));
+  const url = new URL(onWeddingHost ? "/" : "/guest.html", returnOrigin);
+  if (!onWeddingHost) url.searchParams.set("slug", slug);
+  url.searchParams.set(key, id);
+  return url.toString();
+}
+
 async function verifyChallenge(token, req, expectedHostname) {
   if (!process.env.TURNSTILE_SECRET_KEY || !token) return false;
   const body = new URLSearchParams({ secret: process.env.TURNSTILE_SECRET_KEY, response: token });
@@ -58,7 +83,7 @@ async function verifyChallenge(token, req, expectedHostname) {
   return result.success === true && result.hostname === expectedHostname;
 }
 
-async function createStripeCheckout({ id, weddingId, slug, streamName, amountMinor, currency, origin, idempotencyKey, email }) {
+async function createStripeCheckout({ id, weddingId, slug, streamName, amountMinor, currency, returnOrigin, idempotencyKey, email }) {
   const form = new URLSearchParams({
     mode: "payment",
     customer_creation: "always",
@@ -69,8 +94,8 @@ async function createStripeCheckout({ id, weddingId, slug, streamName, amountMin
     client_reference_id: id,
     "metadata[contribution_id]": id,
     "metadata[wedding_id]": weddingId,
-    success_url: `${origin}/guest.html?slug=${encodeURIComponent(slug)}&paymentReturn=${encodeURIComponent(id)}`,
-    cancel_url: `${origin}/guest.html?slug=${encodeURIComponent(slug)}&paymentCancel=${encodeURIComponent(id)}`
+    success_url: paymentReturnUrl(returnOrigin, slug, "paymentReturn", id),
+    cancel_url: paymentReturnUrl(returnOrigin, slug, "paymentCancel", id)
   });
   if (isText(email, 254)) form.set("customer_email", email.trim().toLowerCase());
   const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
@@ -88,7 +113,7 @@ async function createStripeCheckout({ id, weddingId, slug, streamName, amountMin
   return { url: result.url, reference: result.id };
 }
 
-async function createPaystackCheckout({ id, weddingId, slug, streamName, amountMinor, currency, origin, idempotencyKey, email }) {
+async function createPaystackCheckout({ id, weddingId, slug, streamName, amountMinor, currency, returnOrigin, idempotencyKey, email }) {
   const response = await fetch("https://api.paystack.co/transaction/initialize", {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, "Content-Type": "application/json" },
@@ -97,7 +122,7 @@ async function createPaystackCheckout({ id, weddingId, slug, streamName, amountM
       amount: amountMinor,
       currency,
       reference: idempotencyKey,
-      callback_url: `${origin}/guest.html?slug=${encodeURIComponent(slug)}&paymentReturn=${encodeURIComponent(id)}`,
+      callback_url: paymentReturnUrl(returnOrigin, slug, "paymentReturn", id),
       metadata: { contribution_id: id, wedding_id: weddingId, stream: streamName }
     }),
     cache: "no-store"
@@ -117,40 +142,24 @@ async function handleOptions(req, res) {
       !/^[A-Z]{3}$/.test(currency)) {
     return sendJson(res, 400, { providers: [], paymentAvailable: false, message: "Select a valid wedding, market, and currency." });
   }
-  if (process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED !== "true" ||
-      process.env.WEDDINGSITE_PAYMENT_MODE !== "test" ||
+  if (!testPaymentsEnabled() ||
       !Boolean(process.env.TURNSTILE_SECRET_KEY) ||
       !Boolean(process.env.TURNSTILE_SITE_KEY || process.env.TURNSTILE_PUBLIC_KEY) ||
       !isSecurePublicOrigin(process.env.WEDDINGSITE_PUBLIC_ORIGIN)) {
     return sendJson(res, 200, { providers: [], paymentAvailable: false, message: "Payments are not available yet. No payment gateway is enabled." });
   }
   try {
-    const [weddings, configs] = await Promise.all([
-      supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&select=id,currency` , { service: true }),
-      supabaseRequest(`/rest/v1/payment_provider_configs?wedding_id=eq.${encodeURIComponent(weddingId)}&enabled=eq.true&select=provider,market_codes,currencies`, { service: true })
-    ]);
+    const weddings = await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=id,currency`, { service: true });
     if (!weddings?.length || weddings[0].currency !== currency) {
       return sendJson(res, 200, { providers: [], paymentAvailable: false, message: "Payments are not available for this wedding or currency." });
     }
-    const marketsByProvider = new Map();
-    for (const item of configs || []) {
-      if (!item.currencies.includes(currency)) continue;
-      const markets = item.market_codes.filter(code => paymentAdaptersFor(currency, code).some(adapter => adapter.id === item.provider));
-      if (markets.length) marketsByProvider.set(item.provider, markets);
-    }
-    const eligible = [...marketsByProvider.keys()];
+    const candidates = availableProviderMarkets(currency);
+    const eligible = [...new Set(candidates.map(item => item.id))];
     const health = await Promise.all(eligible.map(async provider =>
       [provider, await checkProviderHealth(provider)]
     ));
     const healthy = new Set(health.filter(([, ready]) => ready).map(([provider]) => provider));
-    const providers = eligible.filter(provider => healthy.has(provider)).flatMap(provider =>
-      marketsByProvider.get(provider).map(market => ({
-        id: provider,
-        name: provider === "stripe" ? "Stripe Checkout" :
-          provider === "daraja" ? "M-Pesa · Safaricom Daraja (Sandbox)" : "Paystack",
-        market
-      }))
-    );
+    const providers = candidates.filter(item => healthy.has(item.id));
     return sendJson(res, 200, {
       providers,
       paymentAvailable: providers.length > 0,
@@ -165,13 +174,17 @@ async function handleOptions(req, res) {
 
 async function handleCheckout(req, res) {
   if (!methodOnly(req, res, "POST")) return;
-  if (process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED !== "true" || process.env.WEDDINGSITE_PAYMENT_MODE !== "test") {
+  if (!testPaymentsEnabled()) {
     return sendJson(res, 503, { error: "Payments are currently unavailable. Paid actions cannot be completed until a test provider is enabled." });
   }
   const origin = process.env.WEDDINGSITE_PUBLIC_ORIGIN?.replace(/\/+$/, "");
   if (!isSecurePublicOrigin(origin)) return sendJson(res, 503, { error: "The public site origin must be a valid HTTPS origin (localhost is allowed for testing)." });
-  if (req.headers.origin !== origin) return sendJson(res, 403, { error: "Checkout must be started from the configured WeddingSite origin." });
-  const expectedHostname = new URL(origin).hostname;
+  const requestOrigin = String(req.headers.origin || "");
+  const originSlug = weddingOriginSlug(requestOrigin);
+  if (requestOrigin !== origin && !platformOrigins().includes(requestOrigin) && !originSlug) {
+    return sendJson(res, 403, { error: "Checkout must be started from the wedding site or the Join Our Wedding platform." });
+  }
+  const expectedHostname = new URL(requestOrigin).hostname;
   const body = req.body && typeof req.body === "object" ? req.body : {};
   const weddingId = String(body.weddingId || "");
   const purchaseAction = String(body.purchaseAction || "");
@@ -195,17 +208,17 @@ async function handleCheckout(req, res) {
     const available = configuredAdapters(currency, market).some(item => item.id === body.provider);
     if (!available) return sendJson(res, 409, { error: "That payment option is not configured for this currency and market." });
     if (!await checkProviderHealth(body.provider)) return sendJson(res, 503, { error: "The selected payment provider is not healthy. No checkout was created." });
-    const [weddings, configs, policies] = await Promise.all([
+    const [weddings, policies] = await Promise.all([
       supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=id,slug,currency,wedding_date,time_zone,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options`, { service: true }),
-      supabaseRequest(`/rest/v1/payment_provider_configs?wedding_id=eq.${encodeURIComponent(weddingId)}&provider=eq.${encodeURIComponent(body.provider)}&enabled=eq.true&select=provider,market_codes,currencies`, { service: true }),
       supabaseRequest("/rest/v1/platform_policies?id=eq.true&select=contribution_fee_basis_points,contribution_fixed_fee_minor,contribution_fixed_fee_currency,max_contribution_minor", { service: true })
     ]);
-    const config = configs?.[0];
     const wedding = weddings?.[0];
     const policy = policies?.[0];
-    if (!wedding || !config || !policy || wedding.currency !== currency ||
-        !config.market_codes.includes(market) || !config.currencies.includes(currency)) {
-      return sendJson(res, 409, { error: "This wedding does not have a verified, enabled gateway for the selected market and currency." });
+    if (!wedding || !policy || wedding.currency !== currency) {
+      return sendJson(res, 409, { error: "Payments are not available for this wedding or currency." });
+    }
+    if (originSlug && originSlug !== wedding.slug) {
+      return sendJson(res, 403, { error: "Checkout must be started from this wedding's own site." });
     }
     const prior = (await supabaseRequest(
       `/rest/v1/contributions?checkout_idempotency_key=eq.${encodeURIComponent(idempotencyKey)}&select=id,payment_status&limit=1`,
@@ -398,7 +411,7 @@ async function handleCheckout(req, res) {
       });
       const arguments_ = {
         id: contributionId, weddingId, slug: wedding.slug, streamName, amountMinor,
-        currency, origin, idempotencyKey, email: body.email || body.guestEmail
+        currency, returnOrigin: requestOrigin, idempotencyKey, email: body.email || body.guestEmail
       };
       checkout = body.provider === "stripe"
         ? await createStripeCheckout(arguments_)

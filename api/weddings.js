@@ -2,6 +2,7 @@ import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireAuth } from "../server/auth-middleware.js";
 import { paymentAdaptersFor } from "./checkout.js";
 import { normalizePhone, isPhoneKeyEmail } from "../server/phone.js";
+import { isReservedLabel } from "../server/site-hosts.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
@@ -77,7 +78,7 @@ const loadWeddingDetails = async (weddings, opts) => {
   if (!rows.length) return [];
   const ids = rows.map(row => row.id);
   const inFilter = `in.(${ids.map(encodeURIComponent).join(",")})`;
-  const [venues, payouts, registry, tiers, vip, siteContent, campaigns, paymentConfigs, setupStatuses, featuredCampaigns] = await Promise.all([
+  const [venues, payouts, registry, tiers, vip, siteContent, campaigns, setupStatuses, featuredCampaigns] = await Promise.all([
     supabaseRequest(`/rest/v1/venues?wedding_id=${inFilter}&select=id,wedding_id,name,event_time,event_date,map_link,description,is_main,kind,address,sort_order&order=sort_order.asc`, opts),
     supabaseRequest(`/rest/v1/payout_preferences?wedding_id=${inFilter}&select=wedding_id,method,display_mask,verified`, opts),
     supabaseRequest(`/rest/v1/registry_items?wedding_id=${inFilter}&select=id,wedding_id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts),
@@ -85,7 +86,6 @@ const loadWeddingDetails = async (weddings, opts) => {
     supabaseRequest(`/rest/v1/vip_offers?wedding_id=${inFilter}&select=id,wedding_id,title,description,seats_total,seats_sold,price_minor`, opts),
     supabaseRequest(`/rest/v1/guest_site_content?wedding_id=${inFilter}&select=wedding_id,story_draft,story_approved,travel_notes,travel_approved`, opts),
     supabaseRequest(`/rest/v1/fundraising_streams?wedding_id=${inFilter}&select=id,wedding_id,enabled`, opts),
-    supabaseRequest(`/rest/v1/payment_provider_configs?wedding_id=${inFilter}&select=wedding_id,provider,enabled`, opts),
     supabaseRequest("/rest/v1/rpc/get_wedding_setup_status", {
       ...opts, method: "POST", body: { p_wedding_ids: ids }
     }),
@@ -100,7 +100,6 @@ const loadWeddingDetails = async (weddings, opts) => {
     vip: (vip || []).find(item => item.wedding_id === row.id) || null,
     siteContent: (siteContent || []).find(item => item.wedding_id === row.id) || {},
     campaigns: (campaigns || []).filter(item => item.wedding_id === row.id),
-    paymentConfigured: (paymentConfigs || []).some(item => item.wedding_id === row.id && item.enabled),
     featuredSponsorCampaign: (featuredCampaigns || []).find(item => item.wedding_id === row.id) || null,
     kyc_submitted: (setupStatuses || []).some(item => item.wedding_id === row.id && item.kyc_submitted === true)
   }));
@@ -169,7 +168,8 @@ export default async function handler(req, res) {
       }
       if (!validDate(body.weddingDate)) return sendJson(res, 400, { error: "The wedding date is required (YYYY-MM-DD)." });
       if (!venues.some(venue => venue.eventTime)) return sendJson(res, 400, { error: "The wedding time is required: add the main venue with a start time." });
-      const base = toSlug(names) || "wedding";
+      const slugRoot = toSlug(names) || "wedding";
+      const base = isReservedLabel(slugRoot) ? `${slugRoot}-wedding` : slugRoot;
       if (body.timeZone !== undefined && body.timeZone !== null && body.timeZone !== "" && !validZone(body.timeZone)) {
         return sendJson(res, 400, { error: "Choose a valid time zone." });
       }
@@ -232,7 +232,7 @@ export default async function handler(req, res) {
           return sendJson(res, 400, { error: "Slug must be 3-80 lowercase letters, numbers, and hyphens." });
         }
         const reserved = ["admin", "api", "auth", "dashboard", "signin", "guest", "demo", "form-diagnostics", "index"];
-        if (newSlug && reserved.includes(newSlug)) {
+        if (newSlug && (reserved.includes(newSlug) || isReservedLabel(newSlug))) {
           return sendJson(res, 400, { error: "That web address is reserved. Please choose a different one." });
         }
         if (newSlug) {
@@ -459,7 +459,7 @@ export default async function handler(req, res) {
           const currency = String(body.currency || rows[0].currency || "USD").toUpperCase();
           const validMethods = configuredPayoutMethods(currency).map(item => item.id);
           if (!validMethods.includes(method)) {
-            return sendJson(res, 400, { error: "Choose a payout method currently configured by WeddingSite." });
+            return sendJson(res, 400, { error: "Choose a payout method currently configured by Join Our Wedding." });
           } else {
             // Encrypt details: simple approach (in production, use actual encryption)
             const fieldsJson = JSON.stringify(details.fields || {});
@@ -541,7 +541,7 @@ export default async function handler(req, res) {
         if (msg.includes("PAYMENT_REQUIRED")) {
           return sendJson(res, 402, { error: msg.replace(/^.*PAYMENT_REQUIRED:?\s*/, "").slice(0, 300) || "A publication fee is required.", paymentRequired: true });
         } else if (/KYC|identity/i.test(msg)) {
-          return sendJson(res, 409, { error: "Submit complete KYC details for both partners. WeddingSite does not independently verify identity documents.", kycRequired: true });
+          return sendJson(res, 409, { error: "Submit complete KYC details for both partners. Join Our Wedding does not independently verify identity documents.", kycRequired: true });
         } else if (/date/i.test(msg)) {
           userMessage = "Set the wedding date before publishing.";
         } else if (msg.includes("publication fee")) {

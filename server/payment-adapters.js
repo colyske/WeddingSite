@@ -90,7 +90,7 @@ export async function initiateDarajaStkPush({
       callback.protocol !== "https:" ||
       callback.pathname !== "/api/webhooks" ||
       callback.searchParams.get("provider") !== "daraja") {
-    throw new Error("Daraja callback URL is not the configured secure WeddingSite endpoint.");
+    throw new Error("Daraja callback URL is not the configured secure Join Our Wedding endpoint.");
   }
   const timestamp = darajaTimestamp();
   const token = await getDarajaAccessToken();
@@ -400,7 +400,7 @@ export async function verifyProviderPayment(provider, reference, contributionId,
   if (provider === "stripe") {
     const checkout = result;
     if (checkout.metadata?.contribution_id !== contributionId || checkout.client_reference_id !== contributionId) {
-      throw new Error("Provider checkout does not match the WeddingSite payment.");
+      throw new Error("Provider checkout does not match the Join Our Wedding payment.");
     }
     if (checkout.payment_status !== "paid") return { verified: false };
     const amountMinor = Number(checkout.amount_total);
@@ -420,7 +420,7 @@ export async function verifyProviderPayment(provider, reference, contributionId,
   const transaction = result.data;
   if (result.status !== true || transaction?.metadata?.contribution_id !== contributionId ||
       String(transaction.reference) !== String(reference)) {
-    throw new Error("Provider transaction does not match the WeddingSite payment.");
+    throw new Error("Provider transaction does not match the Join Our Wedding payment.");
   }
   if (transaction.status !== "success") return { verified: false };
   const amountMinor = Number(transaction.amount);

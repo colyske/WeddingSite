@@ -43,7 +43,7 @@
     if (document.querySelector(".announcement") || document.body.hasAttribute("data-no-announcement")) return;
     var a = document.createElement("div");
     a.className = "announcement";
-    a.innerHTML = '<i></i><span>A celebration of love, family &amp; home</span><span aria-hidden="true">&middot;</span><span id="announce-date">WeddingSite</span>';
+    a.innerHTML = '<i></i><span>A celebration of love, family &amp; home</span><span aria-hidden="true">&middot;</span><span id="announce-date">Join Our Wedding</span>';
     document.body.insertBefore(a, document.body.firstChild);
   }
   function svg(name, cls) {

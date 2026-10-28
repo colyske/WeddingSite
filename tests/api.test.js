@@ -73,37 +73,48 @@ test("provider health checks fail closed without a configured key", async () => 
   }
 });
 
-test("payment availability endpoint advertises no providers while payments are disabled", async () => {
-  const previous = process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED;
+test("payment availability endpoint advertises no providers unless provider TEST mode is on", async () => {
+  const previous = process.env.WEDDINGSITE_PAYMENT_MODE;
   try {
-    process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED = "false";
-    const res = responseRecorder();
-    await checkoutHandler({
-      method: "GET",
-      query: { action: "options", weddingId: "7c1b33e8-6b41-4f66-9169-54197263db7f", market: "US", currency: "USD" }
-    }, res);
-    assert.equal(res.statusCode, 200);
-    assert.deepEqual(JSON.parse(res.body), {
-      providers: [], paymentAvailable: false, message: "Payments are not available yet. No payment gateway is enabled."
-    });
+    for (const mode of [undefined, "live", "production"]) {
+      if (mode === undefined) delete process.env.WEDDINGSITE_PAYMENT_MODE;
+      else process.env.WEDDINGSITE_PAYMENT_MODE = mode;
+      const res = responseRecorder();
+      await checkoutHandler({
+        method: "GET",
+        query: { action: "options", weddingId: "7c1b33e8-6b41-4f66-9169-54197263db7f", market: "US", currency: "USD" }
+      }, res);
+      assert.equal(res.statusCode, 200);
+      assert.deepEqual(JSON.parse(res.body), {
+        providers: [], paymentAvailable: false, message: "Payments are not available yet. No payment gateway is enabled."
+      });
+    }
   } finally {
-    if (previous === undefined) delete process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED;
-    else process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED = previous;
+    if (previous === undefined) delete process.env.WEDDINGSITE_PAYMENT_MODE;
+    else process.env.WEDDINGSITE_PAYMENT_MODE = previous;
   }
 });
 
-test("checkout endpoint stays disabled until explicitly enabled", async () => {
-  const previous = process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED;
+test("checkout endpoint stays disabled outside provider TEST mode", async () => {
+  const previous = process.env.WEDDINGSITE_PAYMENT_MODE;
   try {
-    process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED = "false";
+    process.env.WEDDINGSITE_PAYMENT_MODE = "live";
     const res = responseRecorder();
     await checkoutHandler({ method: "POST", query: { action: "create" }, body: {} }, res);
     assert.equal(res.statusCode, 503);
     assert.equal(JSON.parse(res.body).error, "Payments are currently unavailable. Paid actions cannot be completed until a test provider is enabled.");
   } finally {
-    if (previous === undefined) delete process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED;
-    else process.env.WEDDINGSITE_LIVE_PAYMENTS_ENABLED = previous;
+    if (previous === undefined) delete process.env.WEDDINGSITE_PAYMENT_MODE;
+    else process.env.WEDDINGSITE_PAYMENT_MODE = previous;
   }
+});
+
+test("checkout gating never reads the live-payments flag", () => {
+  const source = readFileSync(new URL("../api/checkout.js", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /WEDDINGSITE_LIVE_PAYMENTS_ENABLED\s*[!=]==/);
+  assert.doesNotMatch(source, /payment_provider_configs/);
+  const finance = readFileSync(new URL("../api/finance.js", import.meta.url), "utf8");
+  assert.doesNotMatch(finance, /configure_payment_provider/);
 });
 
 test("verified payments finalize paid actions once and keep pending money unavailable", () => {

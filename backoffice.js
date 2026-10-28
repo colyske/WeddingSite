@@ -170,7 +170,7 @@
             w.published_at && !w.archived_at ? btn("Unpublish", `data-wa="unpublish" data-id="${esc(w.id)}"`) : "",
             w.archived_at ? btn("Restore", `data-wa="restore" data-id="${esc(w.id)}"`) : btn("Archive", `data-wa="archive" data-id="${esc(w.id)}"`),
             w.fee_status !== "paid" && w.fee_status !== "waived" ? btn("Waive fee", `data-wa="waive_fee" data-id="${esc(w.id)}"`) : "",
-            w.slug && w.published_at ? `<a class="mini" href="/guest.html?slug=${encodeURIComponent(w.slug)}" target="_blank" rel="noopener">Guest site</a>` : ""
+            w.slug && w.published_at ? `<a class="mini" href="${esc(window.WSSite ? WSSite.weddingUrl(w.slug) : "/guest.html?slug=" + encodeURIComponent(w.slug))}" target="_blank" rel="noopener">Guest site</a>` : ""
           ].join(" ");
           return `<tr><td>${esc(w.couple_names)}</td><td>${esc(w.owner_email || "-")}</td><td>${esc(w.wedding_date || "-")} ${esc(w.time_zone || "")}</td>
             <td>${state}</td><td>${w.rsvps}/${w.bids}</td><td>${esc(WS.money(Number(w.collected_minor), w.currency, false))}</td>
@@ -267,7 +267,7 @@
         <li>Use a unique password of 12+ characters for the Owner account and rotate it if it was ever shared.</li>
         <li>The Owner controls all Admin/SuperAdmin delegation; changes are audited and the protected Owner identity cannot be reassigned from this screen.</li>
         <li>ID/passport numbers are stored privately and masked; only staff can reveal them and each reveal is audited.</li>
-        <li>MFA enrolment is not built into WeddingSite yet: enable MFA on the email account used for recovery.</li>
+        <li>MFA enrolment is not built into Join Our Wedding yet: enable MFA on the email account used for recovery.</li>
         <li>Payments are in test mode until live provider credentials are configured by the Owner in the hosting environment.</li>
         <li>Review the audit log regularly for unexpected role changes or fee waivers.</li></ul>`;
     }

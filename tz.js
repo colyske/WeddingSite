@@ -75,13 +75,15 @@
     if (start == null) return null;
     var tz = w.time_zone || DEFAULT_ZONE;
     var label = formatTime(start, tz);
-    var lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//WeddingSite//EN", "CALSCALE:GREGORIAN", "X-WR-TIMEZONE:" + tz,
+    var link = w.slug && root.WSSite ? root.WSSite.weddingUrl(w.slug) : "";
+    var lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Join Our Wedding//joinourwedding.site//EN", "CALSCALE:GREGORIAN", "X-WR-TIMEZONE:" + tz,
       "BEGIN:VEVENT", "UID:" + (w.id || w.slug || "wedding") + "@weddingsite",
       "DTSTAMP:" + icsStamp(now == null ? Date.now() : now), "DTSTART:" + icsStamp(start),
       "SUMMARY:" + icsEscape((w.couple_names || "Wedding") + "'s Wedding"),
       "LOCATION:" + icsEscape(w.public_location || ""),
-      "DESCRIPTION:" + icsEscape((w.welcome_story || "Join us for our wedding!") + " (" + label + ")"),
-      "END:VEVENT", "END:VCALENDAR"];
+      "DESCRIPTION:" + icsEscape((w.welcome_story || "Join us for our wedding!") + " (" + label + ")" + (link ? " RSVP: " + link : ""))];
+    if (link) lines.push("URL:" + link);
+    lines.push("END:VEVENT", "END:VCALENDAR");
     return lines.join("\r\n");
   }
   /** Fills a <select> with Africa/Nairobi first, the browser zone second, then every IANA zone. */
