@@ -92,3 +92,20 @@ test("routing middleware rewrites only wedding subdomains of the base domain", a
   assert.equal(middleware(new Request("https://weddingsite-six-bice.vercel.app/")), undefined);
   assert.equal(middleware(new Request(`https://a.b.${BASE}/`)), undefined);
 });
+
+test("host page action renders a published wedding with canonical subdomain meta", async () => {
+  process.env.WEDDINGSITE_WEDDING_BASE_DOMAIN = BASE;
+  process.env.SUPABASE_URL = "https://supabase.example";
+  process.env.SUPABASE_ANON_KEY = "anon";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service";
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    id: "7c1b33e8-6b41-4f66-9169-54197263db7f", slug: "alice-and-bob", couple_names: "Alice & Bob",
+    wedding_date: "2027-01-02", public_location: "Nairobi"
+  }), { status: 200, headers: { "Content-Type": "application/json" } });
+  const res = recorder();
+  await guestHandler({ method: "GET", query: { action: "page" }, headers: { host: `alice-and-bob.${BASE}` } }, res);
+  assert.equal(res.statusCode, 200);
+  assert.match(res.body, /<link rel="canonical" href="https:\/\/alice-and-bob\.joinourwedding\.site\/">/);
+  assert.match(res.body, /og:title" content="Alice &amp; Bob are getting married"/);
+  assert.match(res.body, /Join Our Wedding/);
+});

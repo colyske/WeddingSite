@@ -34,7 +34,6 @@ async function renderGuestPage(site, { base }) {
   <meta property="og:url" content="${esc(url)}"><meta property="og:image" content="${esc(image)}">
   <meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${esc(title)}">
   <meta name="twitter:description" content="${esc(desc)}"><meta name="twitter:image" content="${esc(image)}">`;
-  void ref;
   return guestTemplate.replace(/<title>[^<]*<\/title>/, meta);
 }
 
