@@ -81,3 +81,14 @@ test("host page action: root serves the platform, reserved redirects, unknown sl
   assert.equal(unknown.statusCode, 404);
   assert.match(String(unknown.body), /joinourwedding\.site/);
 });
+
+test("routing middleware rewrites only wedding subdomains of the base domain", async () => {
+  const { default: middleware, config } = await import("../middleware.js");
+  assert.equal(config.matcher, "/");
+  const rewrite = middleware(new Request(`https://alice-and-bob.${BASE}/?ref=wa`));
+  assert.equal(rewrite.headers.get("x-middleware-rewrite"), `https://alice-and-bob.${BASE}/api/guest?action=page`);
+  assert.equal(middleware(new Request(`https://www.${BASE}/`)), undefined);
+  assert.equal(middleware(new Request(`https://${BASE}/`)), undefined);
+  assert.equal(middleware(new Request("https://weddingsite-six-bice.vercel.app/")), undefined);
+  assert.equal(middleware(new Request(`https://a.b.${BASE}/`)), undefined);
+});

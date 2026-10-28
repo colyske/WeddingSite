@@ -142,11 +142,15 @@ async function handleOptions(req, res) {
       !/^[A-Z]{3}$/.test(currency)) {
     return sendJson(res, 400, { providers: [], paymentAvailable: false, message: "Select a valid wedding, market, and currency." });
   }
-  if (!testPaymentsEnabled() ||
-      !Boolean(process.env.TURNSTILE_SECRET_KEY) ||
-      !Boolean(process.env.TURNSTILE_SITE_KEY || process.env.TURNSTILE_PUBLIC_KEY) ||
-      !isSecurePublicOrigin(process.env.WEDDINGSITE_PUBLIC_ORIGIN)) {
-    return sendJson(res, 200, { providers: [], paymentAvailable: false, message: "Payments are not available yet. No payment gateway is enabled." });
+  const unmetChecks = [
+    !testPaymentsEnabled() && "WEDDINGSITE_PAYMENT_MODE=test",
+    !process.env.TURNSTILE_SECRET_KEY && "TURNSTILE_SECRET_KEY",
+    !(process.env.TURNSTILE_SITE_KEY || process.env.TURNSTILE_PUBLIC_KEY) && "TURNSTILE_SITE_KEY|TURNSTILE_PUBLIC_KEY",
+    !isSecurePublicOrigin(process.env.WEDDINGSITE_PUBLIC_ORIGIN) && "WEDDINGSITE_PUBLIC_ORIGIN"
+  ].filter(Boolean);
+  if (unmetChecks.length) {
+    // Names of unmet setting checks only; never values.
+    return sendJson(res, 200, { providers: [], paymentAvailable: false, unmetChecks, message: "Payments are not available yet. No payment gateway is enabled." });
   }
   try {
     const weddings = await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=id,currency`, { service: true });
@@ -164,7 +168,8 @@ async function handleOptions(req, res) {
       providers,
       paymentAvailable: providers.length > 0,
       turnstileSiteKey: process.env.TURNSTILE_SITE_KEY || process.env.TURNSTILE_PUBLIC_KEY || "",
-      message: providers.length ? "" : "Payments are not available for this wedding and market yet, or a provider health check failed."
+      message: providers.length ? "" : "Payments are not available for this wedding and market yet, or a provider health check failed.",
+      providerChecks: health.map(([provider, healthy]) => ({ provider, healthy }))
     });
   } catch (error) {
     console.error("payment availability check failed", error.message);

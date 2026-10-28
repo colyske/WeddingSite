@@ -85,9 +85,11 @@ test("payment availability endpoint advertises no providers unless provider TEST
         query: { action: "options", weddingId: "7c1b33e8-6b41-4f66-9169-54197263db7f", market: "US", currency: "USD" }
       }, res);
       assert.equal(res.statusCode, 200);
-      assert.deepEqual(JSON.parse(res.body), {
-        providers: [], paymentAvailable: false, message: "Payments are not available yet. No payment gateway is enabled."
-      });
+      const body = JSON.parse(res.body);
+      assert.deepEqual(body.providers, []);
+      assert.equal(body.paymentAvailable, false);
+      assert.ok(body.unmetChecks.includes("WEDDINGSITE_PAYMENT_MODE=test"));
+      assert.equal(body.message, "Payments are not available yet. No payment gateway is enabled.");
     }
   } finally {
     if (previous === undefined) delete process.env.WEDDINGSITE_PAYMENT_MODE;
