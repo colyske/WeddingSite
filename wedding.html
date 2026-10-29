@@ -377,6 +377,7 @@
     <div id="withdrawals-section" class="card" hidden>
       <h2>💰 Payouts & Withdrawals</h2>
       <p class="fine">View your current payout balance and request withdrawals</p>
+      <p class="notice" id="payout-kyc-notice" role="status">Complete KYC to receive your payout. <a href="#kyc-section">Complete both partners&rsquo; KYC details</a>. Publishing is not blocked.</p>
       
       <div id="payout-balance" style="padding: 1.5rem; background: #f3faf3; border-radius: 8px; margin-bottom: 1.5rem;">
         <p class="fine" style="margin: 0 0 0.5rem;">Available balance:</p>
@@ -1495,7 +1496,7 @@
         const res = await WS.api(`/api/weddings?action=kyc-get&weddingId=${encodeURIComponent(weddingId)}`);
         const d = await res.json();
         const k = d.kyc;
-        if (!res.ok || !k || !k.exists) return;
+        if (!res.ok || !k) throw new Error(d.error || "KYC status could not be loaded.");
         for (const [id, key] of Object.entries(KYC_FIELDS)) {
           const masked = id === "kyc-p1-id" ? k.partner1_id_number_masked
             : id === "kyc-p2-id" ? k.partner2_id_number_masked : null;
@@ -1504,9 +1505,14 @@
         $("kyc-status").textContent = k.complete
           ? "Submission complete; no independent ID-verification provider is configured. ID numbers are masked."
           : "Incomplete — both partners’ required details are needed.";
-        $("kyc-notice-status").textContent = k.complete ? "Submitted (payout eligibility met)" : "Incomplete (required before payouts)";
+        $("kyc-notice-status").textContent = k.complete ? "Submitted (KYC requirement complete)" : "Incomplete (required before payouts)";
+        $("payout-kyc-notice").hidden = !!k.complete;
         $("kyc-consent").checked = !!k.complete;
-      } catch (_) {}
+      } catch (error) {
+        console.error("KYC status failed:", error);
+        $("kyc-notice-status").textContent = "Unavailable; reload to check before requesting a payout";
+        $("payout-kyc-notice").hidden = false;
+      }
     }
     $("kyc-form").addEventListener("submit", async e => {
       e.preventDefault();
@@ -1739,7 +1745,15 @@
           body: JSON.stringify({ weddingId, amountMinor, notes, confirmed: true })
         });
         const data = await res.json();
-        if (!res.ok) return notice(data.error || "Could not request withdrawal", true);
+        if (!res.ok) {
+          if (data.kycRequired) {
+            $("payout-kyc-notice").hidden = false;
+            $("kyc-section").hidden = false;
+            $("kyc-section").scrollIntoView({ behavior: "smooth", block: "start" });
+            $("kyc-p1").focus({ preventScroll: true });
+          }
+          return notice(data.error || "Could not request withdrawal", true);
+        }
         notice("Withdrawal request submitted. Our team will process it soon.");
         $("withdrawal-amount").value = "";
         $("withdrawal-notes").value = "";

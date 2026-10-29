@@ -115,6 +115,9 @@ export default async function handler(req, res) {
     return sendJson(res, 404, { error: "Unknown action." });
   } catch (error) {
     console.error("admin endpoint failed", action, String(error?.message || "").slice(0, 300));
+    if (action === "payout-status" && error.message?.includes("PAYOUT_KYC_REQUIRED")) {
+      return sendJson(res, 409, { error: "Complete KYC to receive your payout.", kycRequired: true });
+    }
     const [status, message] = safeMessage(error);
     return sendJson(res, status, { error: message });
   }
