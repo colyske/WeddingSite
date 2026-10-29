@@ -473,6 +473,7 @@ async function handleStatus(req, res) {
     let rows = await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&select=id,payment_status,provider_name,provider_reference,pledged_amount_minor,currency,purchase_action,action_result,action_completed_at,provider_fee_pending`, { service: true });
     let row = rows?.[0];
     if (!row) return sendJson(res, 404, { error: "Payment reference not found." });
+    let providerResultCode = null;
     const shouldVerify = row.payment_status === "pending" ||
       (row.provider_name !== "daraja" && row.provider_fee_pending);
     if (shouldVerify && row.provider_reference) {
@@ -492,6 +493,8 @@ async function handleStatus(req, res) {
           }
         });
       } else if (payment.terminal && row.payment_status === "pending") {
+        providerResultCode = payment.resultCode || null;
+        console.info("payment terminal result", { provider: row.provider_name, resultCode: providerResultCode });
         await supabaseRequest(
             `/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&payment_status=eq.pending`,
             { service: true, method: "PATCH", body: { payment_status: "cancelled" }, prefer: "return=minimal" }
@@ -507,6 +510,7 @@ async function handleStatus(req, res) {
         row.payment_status === "refunded" ? "refunded" :
           row.payment_status === "cancelled" ? "cancelled" : "pending",
       action: row.purchase_action || null,
+      providerResultCode,
       actionStatus: row.action_completed_at ? "completed" : row.payment_status === "paid" ? "review_required" : "pending",
       actionResult: row.action_completed_at ? row.action_result : null
     });

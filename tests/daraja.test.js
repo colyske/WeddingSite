@@ -112,6 +112,7 @@ test("Daraja status comes from authenticated STK Query, not the callback payload
   const failed = await verifyProviderPayment("daraja", "ws_STK_001", "f8e5022e-fad8-4dc7-b222-c55e4f6ce190", 12500, "KES");
   assert.equal(failed.verified, false);
   assert.equal(failed.terminal, true);
+  assert.equal(failed.resultCode, String(resultCode));
   resultCode = undefined;
   const pending = await verifyProviderPayment("daraja", "ws_STK_001", "f8e5022e-fad8-4dc7-b222-c55e4f6ce190", 12500, "KES");
   assert.equal(pending.verified, false);
@@ -173,6 +174,47 @@ test("unsigned Daraja callback cannot confirm payment without successful STK Que
   await webhooks(req, res);
   assert.equal(res.statusCode, 200);
   assert.deepEqual(writes.map(item => item.kind), ["cancelled"]);
+});
+
+test("terminal status returns a sanitized query code without payment or song credit", async () => {
+  useSandbox();
+  process.env.SUPABASE_URL = "https://supabase.example";
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role";
+  let state = "pending";
+  const writes = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url.includes("/oauth/")) return response({ access_token: "sandbox-token", expires_in: "3599" });
+    if (url.includes("/mpesa/stkpushquery/v1/query")) {
+      return response({ ResponseCode: "0", CheckoutRequestID: "ws_STK_001", ResultCode: "1032", ResultDesc: "untrusted provider text" });
+    }
+    if (url.startsWith(process.env.SUPABASE_URL) && new URL(url).pathname === "/rest/v1/contributions") {
+      if (init.method === "PATCH") {
+        writes.push(JSON.parse(init.body));
+        state = "cancelled";
+        return new Response(null, { status: 204 });
+      }
+      return response([{
+        id: "f8e5022e-fad8-4dc7-b222-c55e4f6ce190", payment_status: state,
+        provider_name: "daraja", provider_reference: "ws_STK_001",
+        pledged_amount_minor: 12500, currency: "KES", purchase_action: "song_bid"
+      }]);
+    }
+    throw new Error("Unexpected request, including any settlement RPC.");
+  };
+  const res = {
+    status(code) { this.statusCode = code; return this; },
+    setHeader() {},
+    end(body) { this.body = JSON.parse(body); }
+  };
+  await checkoutHandler({ method: "GET", query: { action: "status", id: "f8e5022e-fad8-4dc7-b222-c55e4f6ce190" } }, res);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.paymentStatus, "cancelled");
+  assert.equal(res.body.providerResultCode, "1032");
+  assert.equal(res.body.actionResult, null);
+  assert.notEqual(res.body.actionStatus, "completed");
+  assert.ok(!JSON.stringify(res.body).includes("untrusted provider text"));
+  assert.deepEqual(writes, [{ payment_status: "cancelled" }]);
 });
 
 test("successful Daraja callback records only the independently queried KES payment", async () => {

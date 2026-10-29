@@ -35,7 +35,7 @@ test("new and existing song requests create pending verified checkouts, never di
     const url = new URL(input);
     calls.push(url.pathname);
     if (url.hostname === "challenges.cloudflare.com") return response({ success: challengeValid, hostname: "wedding.example" });
-    if (url.pathname === "/integration") return response({ status: true });
+    if (url.pathname === "/integration/payment_session_timeout") return response({ status: true });
     if (url.pathname === "/transaction/initialize") return response({
       status: true, data: { authorization_url: "https://checkout.paystack.com/test", reference: idempotencyKey }
     });

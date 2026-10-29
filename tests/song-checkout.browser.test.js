@@ -19,6 +19,7 @@ test("empty and populated DJ lists open verified checkout and preserve requests 
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     try { browser = await chromium.launch({ channel: "msedge" }); } catch { browser = await chromium.launch(); }
     const page = await browser.newPage({ viewport: { width: 375, height: 900 } });
+    await page.route("https://**", route => route.fulfill({ body: "" }));
     const wedding = { id: "550e8400-e29b-41d4-a716-446655440000", slug: "qa-couple", couple_names: "QA Couple",
       wedding_date: "2099-01-01", currency: "KES", published_at: "2026-01-01", palette: ["#244b3a"] };
     let bids = [];
@@ -79,7 +80,7 @@ test("empty and populated DJ lists open verified checkout and preserve requests 
     await page.waitForFunction(() => document.getElementById("pay-submit").textContent.includes("Waiting"));
     assert.equal(await page.locator("#leaderboard-body tr").count(), 0, "pending STK acceptance creates no leaderboard entry");
     status = "cancelled";
-    await page.waitForFunction(() => document.getElementById("pay-error").textContent.includes("cancelled"));
+    await page.waitForFunction(() => document.getElementById("pay-error").textContent.includes("unsuccessful M-Pesa"));
     assert.equal(await page.locator("#leaderboard-body tr").count(), 0, "declined payments create no entry");
     bids = [{ song_title: "QA Song", artist_name: "QA Artist", bid_amount_minor: 1000, bid_count: 1 }];
     status = "paid";
@@ -87,9 +88,13 @@ test("empty and populated DJ lists open verified checkout and preserve requests 
     await page.waitForFunction(() => !document.getElementById("pay-dialog").open);
     await page.locator("#leaderboard-body tr").waitFor();
     assert.equal(await page.locator("#leaderboard-body tr").count(), 1, "verified new request appears once");
+    assert.equal(await page.locator("#leaderboard-body tr.song-highlight").count(), 1, "new paid song is highlighted");
     assert.equal(payload.songTitle, "QA Song");
     await page.reload();
-    await page.locator("#leaderboard-body [data-song-bid]").first().waitFor();
+    await page.locator("#leaderboard-body summary").first().click();
+    await page.getByRole("button", { name: "Custom amount", exact: true }).click();
+    await page.click("#pay-cancel");
+    assert.equal(await page.locator("#leaderboard-body summary").evaluate(el => el === document.activeElement), true);
     await page.getByRole("button", { name: "Custom amount", exact: true }).click();
     assert.match(await page.locator("#pay-summary").textContent(), /QA Song/);
     assert.equal(await page.locator("#pay-amount").getAttribute("readonly"), null);

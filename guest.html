@@ -20,14 +20,17 @@
     @media (max-width:640px) {
       #leaderboard-table thead { display:none; }
       #leaderboard-table, #leaderboard-table tbody, #leaderboard-table tr { display:block; width:100%; }
-      #leaderboard-table tr { display:grid; grid-template-columns:auto 1fr auto; gap:.15rem .5rem; padding:.6rem 0; }
+      #leaderboard-table tr { display:grid; grid-template-columns:1.5rem minmax(0,1fr) auto; gap:.2rem .5rem; padding:.6rem 0; }
       #leaderboard-table td { display:block; padding:.1rem 0 !important; min-width:0; overflow-wrap:anywhere; }
-      #leaderboard-table td.lb-bid { grid-column:1 / -1; display:flex !important; flex-wrap:wrap; gap:.35rem; }
-      #leaderboard-table td.lb-bid .buy-btn { flex:1 1 4.2rem; min-height:40px; padding:.4rem .5rem; font-size:.85rem; }
+      #leaderboard-table .lb-rank { grid-column:1; grid-row:1; }
+      #leaderboard-table .lb-song { grid-column:2; grid-row:1; }
+      #leaderboard-table .lb-artist { grid-column:2; grid-row:2; }
+      #leaderboard-table .lb-total { grid-column:2; grid-row:3; text-align:left !important; }
+      #leaderboard-table td.lb-bid { grid-column:3; grid-row:1 / span 3; max-width:9rem; }
     }
     .song-request-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem 1rem; margin-bottom:1rem; }
-    .song-request label { display:flex; flex-direction:column; gap:.35rem; font-weight:600; color:var(--green); }
-    .song-request input { width:100%; box-sizing:border-box; padding:.65rem .75rem; border:1px solid #d8cfb4; border-radius:8px; font:inherit; }
+    .song-request label { display:block; font-weight:600; color:var(--green); }
+    .song-request input { display:block; margin-top:.35rem; width:100%; box-sizing:border-box; padding:.65rem .75rem; border:1px solid #d8cfb4; border-radius:8px; font:inherit; }
     #song-request-error { color:#8a2a2a; }
     .link-btn { background:none; border:0; padding:0; color:var(--gold); font:inherit; font-weight:600; text-decoration:underline; cursor:pointer; }
     .venue-card dl { margin:.5rem 0 0; display:grid; grid-template-columns:auto 1fr; gap:.25rem .75rem; font-size:.95rem; }
@@ -130,7 +133,7 @@
     }
 
     /* Responsive */
-    @media (max-width: 768px) {
+    @media (max-width: 1100px) {
       nav.sticky-nav {
         padding: 0.25rem 0.6rem !important;
         display: grid;
@@ -147,12 +150,13 @@
         grid-area: links;
         gap: 0 .9rem;
         font-size: 0.85rem;
-        flex-wrap: nowrap;
-        overflow-x: auto;
-        scrollbar-width: none;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        overflow: visible;
         max-width: 100%;
       }
-      nav.sticky-nav .nav-links a { display: inline-block; padding: .45rem 0; white-space: nowrap; }
+      nav.sticky-nav .nav-links { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0 .35rem; }
+      nav.sticky-nav .nav-links a { display:flex; align-items:center; justify-content:center; min-height:32px; padding:.2rem 0; font-size:.68rem; letter-spacing:.02em; white-space:nowrap; }
     }
   </style>
 </head>
@@ -219,10 +223,11 @@
 
     <!-- Wedding details -->
     <section id="details" class="card" hidden>
-      <h2>Wedding Details</h2>
+      <h2>Wedding Theme &mdash; Dress like the joy of the day</h2>
       <p id="wedding-location" class="fine"></p>
       <p class="fine palette-label">Wedding theme &middot; colour palette</p>
       <div class="swatches" id="palette-preview"></div>
+      <p id="attire-notes-display" class="fine"></p>
     </section>
 
     <!-- Venues section -->
@@ -237,14 +242,6 @@
       <h2>04 Before the wedding: The road to the day</h2>
       <p class="fine">Fundraisers, rehearsals and gatherings leading up to the day.</p>
       <div id="prewedding-display" style="display: flex; flex-direction: column; gap: 1.5rem;"></div>
-    </section>
-
-    <!-- Attire & Dress Code -->
-    <section id="attire" class="card" hidden>
-      <h2>Dress code</h2>
-      <p class="fine palette-label">Wedding theme &middot; colour palette</p>
-      <div class="swatches" id="attire-palette-preview"></div>
-      <p id="attire-notes-display" class="fine" style="margin-top: 1rem;"></p>
     </section>
 
     <!-- Fundraising campaigns -->
@@ -496,6 +493,7 @@
   <audio id="background-music" loop style="display: none;"></audio>
 
   <script src="tz.js"></script>
+  <script src="theme-colors.js"></script>
   <script src="site-urls.js"></script>
   <script src="share.js"></script>
   <script src="auth-client.js"></script>
@@ -551,12 +549,7 @@
       if ($("nav-couple") && wedding.couple_names) $("nav-couple").textContent = wedding.couple_names;
       $("monogram").textContent = names; if ($("footer-monogram")) $("footer-monogram").textContent = names;
       const palette = wedding.palette || ["#244b3a"];
-      $("monogram").style.background = palette[0];
-      const hex = c => /^#[0-9a-f]{6}$/i.test(c || "");
-      const root = document.documentElement.style;
-      if (hex(palette[0])) root.setProperty("--green", palette[0]);
-      if (hex(palette[1])) root.setProperty("--gold", palette[1]);
-      if (hex(palette[2])) root.setProperty("--sage", palette[2]);
+      WSTheme.apply(palette);
 
       // Set background music if available
       if (wedding.background_music_url) {
@@ -586,10 +579,12 @@
       }
 
       // Details
-      if (wedding.public_location?.trim() || wedding.palette?.length) {
+      if (wedding.public_location?.trim() || wedding.palette?.length || wedding.attire_notes?.trim()) {
         $("details").hidden = false;
         $("wedding-location").textContent = wedding.public_location || "Location TBA";
         $("palette-preview").innerHTML = paletteFigs(wedding);
+        $("attire-notes-display").textContent = wedding.attire_notes || "";
+        $("attire-notes-display").hidden = !wedding.attire_notes?.trim();
       }
 
       // Venues: date, time (wedding time zone), address/notes and map link
@@ -603,15 +598,6 @@
         $("venues-zone").textContent = "Times are shown in " + zone.replace(/_/g, " ") + (startMs != null ? " (" + WSTime.abbreviation(zone, startMs) + ")" : "") + ".";
         $("venues-display").innerHTML = mainVenues.map(v => venueRow(v, wedding)).join("");
       }
-      // Attire & Dress Code
-      if ((wedding.palette && wedding.palette.length) || wedding.attire_notes?.trim()) {
-        $("attire").hidden = false;
-        $("attire-palette-preview").innerHTML = paletteFigs(wedding);
-        if (wedding.attire_notes?.trim()) {
-          $("attire-notes-display").textContent = wedding.attire_notes;
-        }
-      }
-
       // Registry & Crowdfunding
       if (wedding.registry && wedding.registry.length > 0) {
         $("registry").hidden = false;
@@ -982,7 +968,9 @@
           return;
         }
         if (data.paymentStatus === "cancelled") {
-          const message = "The M-Pesa request was cancelled or declined. No paid action was completed.";
+          const code = /^\d{1,6}$/.test(String(data.providerResultCode || "")) ? ` (provider code ${data.providerResultCode})` : "";
+          const method = saved.provider === "daraja" ? "M-Pesa request" : "payment";
+          const message = `The payment service reported an unsuccessful ${method}${code}. This does not necessarily mean you cancelled it; sandbox tests can also fail. No paid action was completed.`;
           if ($("pay-dialog").open) {
             $("pay-error").textContent = message;
             $("pay-error").hidden = false;
@@ -1107,7 +1095,9 @@
       "expired-callback": () => { captchaToken = ""; }
     });
   }
+  let paymentReturnFocus = null;
   async function showPaymentDialog(next) {
+    paymentReturnFocus = document.activeElement?.closest(".song-bid-options")?.querySelector("summary") || document.activeElement;
     buying = next;
     $("pay-title").textContent = next.title || "Complete your payment";
     $("pay-currency").textContent = wedding.currency || "USD";
@@ -1211,6 +1201,9 @@
     $("pay-submit").textContent = isDaraja ? "Send M-Pesa prompt" : "Pay (test mode)";
   });
   $("pay-cancel").addEventListener("click", () => $("pay-dialog").close());
+  $("pay-dialog").addEventListener("close", () => {
+    if (paymentReturnFocus?.isConnected) paymentReturnFocus.focus({ preventScroll: true });
+  });
   $("pay-form").addEventListener("submit", async e => {
     e.preventDefault();
     if (!buying) return;
@@ -1395,11 +1388,11 @@
         <tr style="border-bottom: 1px solid #e3dcc7;" data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}">
           <td class="lb-rank" style="padding: 0.75rem; color: var(--gold);">${i + 1}</td>
           <td class="lb-song" style="padding: 0.75rem;">${esc(b.song_title)}${Number(b.bid_count) > 1 ? ` <small class="fine">(${Number(b.bid_count)} bids)</small>` : ""}</td>
-          <td style="padding: 0.75rem; color: var(--sage);">${esc(b.artist_name || "—")}</td>
-          <td style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, wedding.currency)}</td>
-          <td class="lb-bid" style="padding: 0.75rem;">${wedding.is_past ? "Closed" : [500, 1000, 2500, 5000].map(amount =>
+          <td class="lb-artist" style="padding: 0.75rem; color: var(--sage);">${esc(b.artist_name || "—")}</td>
+          <td class="lb-total" style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, wedding.currency)}</td>
+          <td class="lb-bid" style="padding: 0.75rem;">${wedding.is_past ? "Closed" : `<details class="song-bid-options"><summary aria-label="Bid on ${esc(b.song_title)}">Bid on song</summary><div class="song-bid-amounts" role="group" aria-label="Bid amounts for ${esc(b.song_title)}">` + [500, 1000, 2500, 5000].map(amount =>
             `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}" data-amount="${amount}">${esc(wedding.currency || "USD")} ${(amount / 100).toFixed(2)}</button>`
-          ).join(" ") + `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}" data-amount="0">Custom amount</button>`}</td>
+          ).join(" ") + `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}" data-amount="0">Custom amount</button></div></details>`}</td>
         </tr>
       `).join("");
     } catch (err) {
@@ -1454,10 +1447,9 @@
 (function () {
   const MAP = {
     story: ["A little about us", "Our <em>story.</em>"],
-    details: ["The details", "Everything <em>you need to know.</em>"],
+    details: ["Wedding theme", "Dress like the <em>joy of the day.</em>"],
     venues: ["The celebration", "A day made <em>of moments.</em>"],
     prewedding: ["Before the wedding", "The road <em>to the day.</em>"],
-    attire: ["The look", "Dress like the <em>joy of the day.</em>"],
     campaigns: ["A gift for our next chapter", "Celebrate us, <em>if you wish.</em>"],
     registry: ["The registry", "Gifts <em>with meaning.</em>"],
     rsvp: ["We hope you\u2019ll be there", "Will you <em>attend?</em>"],
