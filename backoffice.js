@@ -45,6 +45,18 @@
       ? `<div class="table-wrap"><table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`
       : '<p class="empty">Nothing here yet.</p>';
   const btn = (label, attrs) => `<button type="button" class="mini" ${attrs}>${esc(label)}</button>`;
+  async function moderationQueue(el) {
+    const { cases = [] } = await get("moderation", "&closed=1");
+    el.insertAdjacentHTML("afterbegin", `<section><h2>Moderation corrections</h2><p class="fine">Review the wedding changes before deciding. Republishing restores a previously published site; lifting a restriction returns it to the normal publication flow. No automatic publishing occurs.</p>${cases.map(c => `<article class="card">
+      <h3>${esc(c.couple_names)}: ${esc(c.status)}</h3><p>${esc(c.reason)}</p><p><strong>Required action:</strong> ${esc(c.required_action)}</p>
+      ${c.client_response ? `<p><strong>Client correction:</strong> ${esc(c.client_response)}</p>` : ""}
+      <details class="policy-version"><summary>Current wedding details (private review)</summary><pre>${esc(JSON.stringify(c.current_details || {}, null, 2))}</pre></details>
+      <details><summary>History</summary>${(c.history || []).map(h => `<p>${esc(h.event)} (${esc(h.actor)}): ${esc(h.note || "")}</p>`).join("")}</details>
+      ${["open", "submitted", "returned"].includes(c.status) && !c.own_wedding ? `<form data-moderation-review="${esc(c.id)}" data-revision="${c.revision}">
+        <label>Decision<select name="decision"><option value="lift">Lift restriction (leave unpublished)</option>${c.was_published ? '<option value="republish">Approve and republish</option>' : ""}${c.status === "submitted" ? '<option value="return">Return for more corrections</option>' : ""}</select></label>
+        <label>Client-visible note (required when returning)<textarea name="note" maxlength="1000"></textarea></label>
+        <button type="submit" class="mini">Confirm review decision</button></form>` : ""}</article>`).join("") || '<p>No moderation cases.</p>'}</section>`);
+  }
 
   // Client-side search + pagination (default 20 per page, selectable).
   const pgState = {};
@@ -295,6 +307,7 @@
     el.dataset.tab = tab;
     try {
       await panels[tab](el);
+      if (tab === "operations") await moderationQueue(el);
     } catch (e) {
       el.innerHTML = `<p class="notice bad">${esc(e.message)}</p>`;
     }
@@ -324,11 +337,24 @@
       if (!t) return;
       try {
         if (t.dataset.wa) {
+          if (["archive", "unpublish"].includes(t.dataset.wa)) {
+            panel.querySelector("#restriction-form")?.remove();
+            panel.insertAdjacentHTML("afterbegin", `<form id="restriction-form" data-id="${esc(t.dataset.id)}" data-action="${esc(t.dataset.wa)}" class="card">
+              <h3>${esc(t.dataset.wa)} wedding: Client-visible explanation</h3>
+              <label>Category<select name="reason_code">${["content_policy", "inaccurate_details", "payment_issue", "legal_request", "safety", "other"].map(v => `<option>${v}</option>`).join("")}</select></label>
+              <label>Reason<textarea name="reason" minlength="15" maxlength="1000" required></textarea></label>
+              <label>What must the Client correct?<textarea name="required_action" minlength="10" maxlength="1000" required></textarea></label>
+              <button type="submit" class="mini">Confirm restriction</button></form>`);
+            $("restriction-form").scrollIntoView();
+            return;
+          }
           if (!confirm("Confirm: " + t.dataset.wa.replace("_", " ") + " this wedding?")) return;
           await post("wedding-action", { wedding_id: t.dataset.id, action: t.dataset.wa });
         } else if (t.dataset.ps) {
           if (!confirm("Confirm: mark payout as " + t.dataset.ps + "?")) return;
-          await post("payout-status", { payout_id: t.dataset.id, status: t.dataset.ps });
+          const note = t.dataset.ps === "cancelled" ? prompt("Explain why this payout is cancelled and what the Client should correct (10-240 characters):") : null;
+          if (t.dataset.ps === "cancelled" && note === null) return;
+          await post("payout-status", { payout_id: t.dataset.id, status: t.dataset.ps, note });
         } else if (t.dataset.refundId) {
           const allocation = panel.querySelector(`select[data-refund-allocation="${t.dataset.refundId}"]`)?.value;
           if (!allocation || !confirm(`Record this provider-confirmed refund using the ${allocation} allocation? This does not initiate a refund.`)) return;
@@ -350,6 +376,20 @@
     });
     panel.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (e.target.id === "restriction-form" || e.target.dataset.moderationReview) {
+        const form = e.target, button = form.querySelector('button[type="submit"]');
+        if (button.disabled) return;
+        const values = Object.fromEntries(new FormData(form));
+        if (form.dataset.moderationReview && !confirm("Confirm this moderation review decision?")) return;
+        button.disabled = true;
+        try {
+          if (form.id === "restriction-form") await post("wedding-action", { wedding_id: form.dataset.id, action: form.dataset.action, ...values });
+          else await post("moderation-review", { case_id: form.dataset.moderationReview, expected_revision: Number(form.dataset.revision), ...values, confirmed: true });
+          toast("Saved.");
+          await show(panel.dataset.tab);
+        } catch (error) { toast(error.message, true); button.disabled = false; }
+        return;
+      }
       if (e.target.id === "user-search") { panel.dataset.search = $("user-q").value.trim(); return show("users"); }
       if (e.target.id === "fees-form") {
         const n = (id) => (panel.querySelector("#" + id) ? Number(panel.querySelector("#" + id).value) : undefined);

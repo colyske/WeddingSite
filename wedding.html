@@ -244,6 +244,18 @@
     <div id="ops-section" class="card" hidden>
       <h2>Status &amp; publication</h2>
       <p><span id="status-badge" class="tag"></span></p>
+      <div id="moderation-box" class="notice" role="region" aria-labelledby="moderation-title" hidden>
+        <h3 id="moderation-title">Platform moderation review</h3>
+        <p class="fine">Only you and platform staff can see these details.</p>
+        <div id="moderation-details"></div>
+        <details><summary>Case history</summary><ol id="moderation-history" class="fine"></ol></details>
+        <form id="moderation-form" hidden>
+          <label for="moderation-note">Describe what you corrected</label>
+          <textarea id="moderation-note" rows="4" minlength="10" maxlength="2000" required></textarea>
+          <button type="submit" id="moderation-submit" class="btn">Submit correction for Admin review</button>
+        </form>
+        <p id="moderation-status" role="status" aria-live="polite"></p>
+      </div>
       <p id="past-note" class="fine" hidden>The wedding date has passed. The guest site now shows a thank-you / memories page; RSVPs, bids and new contributions are closed.</p>
       <div id="fee-box" class="fine"></div>
       <div class="row">
@@ -251,7 +263,7 @@
         <button type="button" id="unpublish-btn" class="ghost" hidden>Unpublish (reversible)</button>
         <button type="button" id="archive-btn" class="ghost">Archive</button>
       </div>
-      <p class="fine">Weddings are never deleted. Unpublishing hides the guest site; you can publish again any time.</p>
+      <p class="fine">Weddings are never deleted. Unpublishing hides the guest site. Staff restrictions require Admin review before publishing again.</p>
     </div>
 
     <!-- KYC -->
@@ -1437,7 +1449,35 @@
 
     // Status, fee quote, unpublish / archive, KYC
     const ISO_TODAY = () => new Date().toISOString().slice(0, 10);
+    function renderModeration(w) {
+      const c = w.moderation;
+      $("moderation-box").hidden = !c;
+      if (!c) return;
+      $("moderation-details").innerHTML = `<p><strong>Reason:</strong> ${WS.esc(c.reason)}</p><p><strong>Required action:</strong> ${WS.esc(c.required_action)}</p>${c.staff_note ? `<p><strong>Admin note:</strong> ${WS.esc(c.staff_note)}</p>` : ""}`;
+      $("moderation-history").innerHTML = (c.history || []).map(e => `<li>${WS.esc(e.event)} (${WS.esc(e.actor)}): ${WS.esc(e.note || "")}</li>`).join("");
+      $("moderation-form").hidden = !["open", "returned"].includes(c.status);
+      $("moderation-status").textContent = c.status === "submitted" ? "Correction submitted. An Admin must review it; your site remains restricted." :
+        c.status === "resolved" ? (c.resolution === "republished" ? "Admin approved and republished your wedding." : "Admin lifted the restriction. Use the normal publication flow when ready.") :
+        "Make the requested changes, then describe your correction below.";
+    }
+    $("moderation-form").addEventListener("submit", async event => {
+      event.preventDefault();
+      const c = window.__wedding?.moderation;
+      if (!c || $("moderation-submit").disabled) return;
+      $("moderation-submit").disabled = true;
+      try {
+        await postAction("moderation-correction", { caseId: c.id, expectedRevision: c.revision, note: $("moderation-note").value });
+        const res = await WS.api(`/api/weddings?action=get&weddingId=${encodeURIComponent(weddingId)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Reload to see the latest case status.");
+        window.__wedding = data.wedding;
+        await refreshOps(data.wedding);
+      } catch (error) { notice(error.message, true); }
+      finally { $("moderation-submit").disabled = false; }
+    });
     async function refreshOps(w) {
+      renderModeration(w);
+      const restricted = !!w.lifecycle_admin_restricted || ["open", "returned", "submitted"].includes(w.moderation?.status);
       $("ops-section").hidden = false;
       $("kyc-section").hidden = false;
       const badge = $("status-badge");
@@ -1447,12 +1487,13 @@
       else if (w.published_at) label = past ? "Completed / Past" : "Published";
       else if (w.unpublished_at) label = "Unpublished";
       else if (past) label = "Past (draft)";
-      badge.textContent = label;
+      badge.textContent = restricted ? "Restricted by staff: review required" : label;
       $("past-note").hidden = !past;
       $("unpublish-btn").hidden = !w.published_at;
       $("archive-btn").textContent = w.archived_at ? "Restore from archive" : "Archive";
       $("archive-btn").dataset.archived = w.archived_at ? "1" : "";
-      $("publish-btn").hidden = !!w.published_at || !!w.archived_at;
+      $("archive-btn").disabled = restricted && !!w.archived_at;
+      $("publish-btn").hidden = restricted || !!w.published_at || !!w.archived_at;
       try {
         const res = await WS.api(`/api/weddings?action=quote&weddingId=${encodeURIComponent(weddingId)}`);
         const data = await res.json();
@@ -1462,7 +1503,7 @@
           $("fee-box").textContent = q.fee_minor > 0
             ? `Publication fee: ${WS.money(q.fee_minor, q.currency || "USD", false)}${q.currency !== "USD" && q.usd_amount_minor != null ? ` [USD ${(q.usd_amount_minor / 100).toFixed(2)} base]` : ""}. ${q.reason || ""}${q.fx_published_at ? ` Indicative FX published ${new Date(q.fx_published_at).toLocaleString()}; final payment-method rounding is shown before confirmation.` : ""} Test-mode checkout is available only through configured payment methods.`
             : `No publication fee. ${q.reason || ""}`;
-          $("pay-fee-btn").hidden = !(q.fee_minor > 0) || !!w.published_at || !!w.archived_at;
+          $("pay-fee-btn").hidden = restricted || !(q.fee_minor > 0) || !!w.published_at || !!w.archived_at;
         }
       } catch (error) {
         console.error("Publication quote failed:", error.message);
@@ -1483,7 +1524,7 @@
         const d = await postAction("unpublish");
         notice("Wedding unpublished. You can publish again any time.");
         $("published-section").hidden = true;
-        window.__wedding = d.wedding || window.__wedding;
+        window.__wedding = { ...window.__wedding, ...d.wedding };
         refreshOps(window.__wedding || {});
       } catch (e) { notice(e.message, true); }
     });
@@ -1493,7 +1534,7 @@
       try {
         const d = await postAction("archive", { archived: !restoring });
         notice(restoring ? "Wedding restored." : "Wedding archived.");
-        window.__wedding = d.wedding || window.__wedding;
+        window.__wedding = { ...window.__wedding, ...d.wedding };
         refreshOps(window.__wedding || {});
       } catch (e) { notice(e.message, true); }
     });
@@ -1731,7 +1772,7 @@
           $("withdrawals-body").innerHTML = withdrawals.map(w => `
             <tr style="border-bottom: 1px solid #ddd;">
               <td style="padding: 0.75rem;">${WS.money(w.amount_minor, w.currency)}</td>
-              <td style="padding: 0.75rem;"><span class="tag ${w.status === 'sent' ? 'live' : w.status === 'requested' ? '' : 'warn'}">${w.status}</span></td>
+              <td style="padding: 0.75rem;"><span class="tag ${w.status === 'sent' ? 'live' : w.status === 'requested' ? '' : 'warn'}">${WS.esc(w.status)}</span>${w.staff_reason ? `<p>${WS.esc(w.staff_reason)}</p>` : ""}${w.status === "cancelled" ? '<p class="fine">Address the staff note, then submit a new request. This cancelled request cannot be reopened.</p>' : ""}</td>
               <td style="padding: 0.75rem; font-size: 0.9rem;">${new Date(w.requested_at).toLocaleDateString()}</td>
             </tr>
           `).join("");

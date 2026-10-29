@@ -8,7 +8,7 @@ Status: features below are implemented where marked. Production payments fail cl
 | Fundraising campaigns with milestones (separate from the gift registry) | Editor → "Fundraising campaigns": named campaigns, goal, ordered milestones, visibility | "A gift for our next chapter": progress bar, ticked milestones, 10/25/50/Other (test mode) | `fundraising_streams`, `fundraising_milestones`, `contributions.stream_id/milestone_id` | Guests see totals only; organizer sees ledger by campaign (guest, amount, campaign, milestone, status); Owner ledger |
 | Wedding date, time, time zone (mandatory) | Editor | Hero, venue cards, countdown, .ics | `weddings`, `venues` | Public |
 | Past / Completed state | Automatic from date in the wedding zone | "Completed" banner; RSVP and paid actions closed | `is_past` (RPC) | Public |
-| Unpublish / archive (no delete) | Editor buttons (confirm) | Site hidden | `unpublished_at`, `archived_at`; delete blocked by trigger and API 405 | Wedding owner, admins |
+| Unpublish / archive (no delete) | Client editor buttons; staff must give a reason and required correction. Client submits a correction note; Admin reviews in Operations and republishes, lifts the restriction, or returns with guidance | Site hidden; no moderation details shown to guests | `moderation_cases`, append-only `moderation_case_events`, lifecycle columns; revision-checked RPCs; no client republish/restore bypass | Wedding owner and staff only |
 | Publication fee policy | Admin / SuperAdmin fees and settings | Fee explained at publish | `platform_policies`, `publication_fees` | Client, admins, owner |
 | KYC (legal names, ID, next of kin) | Editor KYC form; payout notice links to both partners' required details and consent. Not part of setup score or publishing | Never shown | `wedding_kyc` (no direct grants, masked); completeness is not independent identity verification | Wedding owner, admins, owner role |
 | Venues with date, time, address, map | Editor | Venue cards, programme | `venues` | Public |
@@ -16,11 +16,13 @@ Status: features below are implemented where marked. Production payments fail cl
 | QR verification and check-in | - | Pass QR links to `/verify.html?code=` | `guest_rsvps` | Organizer checks in |
 | DJ bids | Editor | Leaderboard, bid form | `dj_song_bids` | Public, organizer |
 | VIP seating, sponsor packages, registry and campaign contributions | Editor | Purchase options use hosted checkout; completion requires verified payment | `contributions`, ledger | Public ledger (opt-in names), organizer, admin, owner |
-| Payouts | Organizer requests; both-partner KYC completeness is enforced by SQL at request, approval and marking sent. Cancellation remains available. No automatic money transfer | - | `payout_records`; blocked requests return `kycRequired` and the editor links to `#kyc-section` | Organizer, admin, owner |
+| Payouts | Organizer requests; both-partner KYC completeness is enforced by SQL at request, approval and marking sent. Cancellation requires a client-visible reason; fix the issue and submit a new request, never reopen a cancellation. No automatic money transfer | - | `payout_records.staff_reason` preserves the Client request note; blocked requests return `kycRequired` and link to `#kyc-section` | Organizer; staff active exceptions; leadership history |
 | Back office | - | - | Role changes, audit | Admin (limited), SuperAdmin, Owner (security tab) |
 | Editorial design and wedding props | - | All pages | CSS/SVG only | Public |
 
 ## Limitations
+- Moderation corrections are in-app only (no real emails). Migration `202610300013_moderation_corrections.sql` backfills legacy restrictions with an honest "reason not recorded" case. Approval restores only previously published sites; first publication still uses normal fee checks. Self-review of a staff-owned wedding is prohibited.
+- No invented staff review is added for unused AI content-review records, retired in-kind sponsor enquiries, client-moderated guestbook wishes, or self-attested identity/KYC. Provider payment holds/refunds and cancelled/settled payments retain their existing domain semantics; cancellation reasons do not reopen payments or bypass payout KYC/live-funds guards.
 - Checkout availability is derived from configured currency/market capabilities and read-only provider health. A visible payment method or accepted STK initiation is not proof of settlement.
 - Historical guest records without a phone need an organizer guest-list re-import before those guests can use phone-based seating lookup.
 - Not built: photo gallery/uploads with moderation, PWA/offline pass, per-wedding Open Graph image, templates/themes, and real WhatsApp/email delivery (which require approved integrations and external configuration).
