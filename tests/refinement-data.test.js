@@ -67,6 +67,28 @@ test("shared sponsor cards validate links and require contact-sharing consent", 
   assert.match(hostile, /Social profiles unavailable/);
 });
 
+test("overview conversions preserve source currency and refuse stale or missing FX", async () => {
+  let published = new Date(Date.now() - 37 * 3600000).toUTCString();
+  const sandbox = { window: { addEventListener() {} }, Intl, Number, JSON, Date, AbortController, setTimeout, clearTimeout,
+    document: { dispatchEvent() {} }, CustomEvent: class {},
+    localStorage: { getItem() { return null; }, setItem() {} },
+    fetch: async () => ({ ok: true, json: async () => ({
+      result: "success", base_code: "USD", time_last_update_utc: published, rates: { USD: 1, KES: 130, EUR: 0.9 }
+    }) }) };
+  vm.createContext(sandbox);
+  vm.runInContext(await readFile(new URL("../fx.js", import.meta.url), "utf8"), sandbox);
+  const fx = sandbox.window.WeddingSiteFX;
+  await fx.refresh();
+  assert.equal(fx.convertBetween(130, "KES", "USD"), null);
+  assert.match(fx.statusText(), /STALE/);
+  published = new Date().toUTCString();
+  await fx.refresh();
+  assert.equal(fx.convertBetween(130, "KES", "USD"), 1);
+  assert.equal(fx.convertBetween(1, "USD", "KES"), 130);
+  assert.equal(fx.convertBetween(1, "XXX", "KES"), null);
+  assert.match(fx.statusText(), /ExchangeRate-API.*dated/);
+});
+
 test("currency formatter uses major units in the chosen currency and never outputs NaN", async () => {
   const sandbox = { window: {}, console: { error() {} }, Intl, Number, JSON, sessionStorage: { getItem() { return null; } } };
   vm.createContext(sandbox);
