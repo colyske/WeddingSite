@@ -56,7 +56,7 @@ const ALL_PROVIDERS = ["stripe", "paystack", "daraja"];
 export function enabledPaymentProviders(policy) {
   if (!policy) throw new Error("Payment controls could not be loaded.");
   // Compatibility during migration rollout; the database column has this same default.
-  const enabled = policy.enabled_payment_providers ?? ALL_PROVIDERS;
+  const enabled = policy.enabled_payment_providers === undefined ? ALL_PROVIDERS : policy.enabled_payment_providers;
   if (!Array.isArray(enabled) || enabled.some(id => !ALL_PROVIDERS.includes(id))) throw new Error("Invalid platform payment controls.");
   return enabled;
 }
