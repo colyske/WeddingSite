@@ -17,6 +17,21 @@ begin
   end loop;
 end $$;
 
+-- Support can inspect unresolved payout cases, not the global payout history.
+do $$
+declare definition text := pg_get_functiondef('public.admin_operations_queue()'::regprocedure);
+begin
+  if position('from public.admin_payouts() p' in definition) = 0 then
+    raise exception 'Expected payout exception projection missing.';
+  end if;
+  execute replace(definition, 'from public.admin_payouts() p', $projection$
+    from (select p.id, p.wedding_id, w.couple_names, p.amount_minor, p.currency,
+      p.status::text, p.requested_at, p.note, (p.requested_by = auth.uid()) as own_request
+      from public.payout_records p join public.weddings w on w.id = p.wedding_id
+      where p.status in ('requested','approved')) p
+  $projection$);
+end $$;
+
 create or replace function public.admin_set_role(p_user_id uuid, p_role text) returns boolean
 language plpgsql security definer set search_path = '' set row_security = off as $$
 declare ok boolean;
