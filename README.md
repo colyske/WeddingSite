@@ -26,6 +26,36 @@ providers even from stale tabs. Disabling affects new intents, never reroutes,
 cancels or prevents verification of an already-created payment. Changes require
 confirmation and are audited. No configuration is silently enabled on save.
 
+### Publication checkout (test mode only)
+
+Nonzero publication quotes now have an authenticated checkout in the wedding
+editor. The platform derives ownership, fee, currency and payment-method routing
+server-side. The database locks and snapshots the quote when admitting checkout,
+rejects stale amounts/currencies or disabled providers, and permits only one
+unresolved intent per wedding. Already-published weddings are not newly charged.
+Current policy still grants the first publication free unless the far-future
+rule takes precedence; no fee setting is changed by this implementation.
+
+Turnstile remains required. A provider return URL or accepted STK request cannot
+settle a fee. Signed card events or authenticated provider queries must match
+the stored reference, amount and currency. Separate `publication_checkouts`
+records preserve attempts without creating contributions or couple payout credit.
+Test settlement uses `publication_fees.status = 'test_paid'`, not `paid`, and is
+excluded from collected-publication-revenue totals. Staff waivers are preserved
+if they race a confirmed payment. Settled admitted quotes are not repriced when
+policy changes; a changed wedding currency requires support review.
+
+Publishing remains an explicit action after verification and never requires
+KYC. Nonzero unpaid quotes continue to fail closed. Local polling is bounded;
+timeout/query errors do not imply cancellation or permit a fresh charge.
+Ambiguous initialization is held for review, not retried automatically. Support
+can inspect the retained checkout reference and audit events; do not clear a
+review hold without reconciling the recorded provider request. Provider refunds
+or disputes continue through the existing unmatched-event staff review flow:
+they do not credit wedding balances, automatically reverse fees or unpublish
+an existing wedding. Historical published/unsettled quotes are not automatic debt.
+Live publication collection is deliberately unsupported.
+
 Production Supabase Auth uses `https://www.joinourwedding.site` as its Site URL.
 Redirects allow both platform origins and paths, the Production Vercel host and
 existing local development callbacks; the stale preview is removed. Google

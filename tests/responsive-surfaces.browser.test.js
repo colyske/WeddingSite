@@ -42,6 +42,8 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       if (action === "operations") data = { queue: { counts: {} } };
       if (action === "policies") data = { policies: {} };
       if (action === "options") data = { providers: [], paymentAvailable: false };
+      if (action === "quote") data = { quote: { fee_minor: 5000, currency: "KES", reason: "Sample far-future fee." } };
+      if (action === "publication-options") data = { quote: { fee_minor: 5000, currency: "KES", reason: "Sample far-future fee." }, methods: [], checkout: null, testMode: true };
       if (action === "payment-controls") data = { enabled: ["daraja", "paystack"],
         providers: [{ id: "daraja", configured: true }, { id: "paystack", configured: true }, { id: "stripe", configured: false }] };
       return route.fulfill({ contentType: "application/json", body: JSON.stringify(data) });
@@ -73,12 +75,23 @@ test("public, organizer and back-office surfaces fit small and large screens", a
         });
       }
     }
+    wedding.published_at = null;
     await page.goto(`http://127.0.0.1:${server.address().port}/wedding.html?id=${id}`, { waitUntil: "domcontentloaded" });
     await page.locator("#edit-section").waitFor({ state: "visible" });
     await page.setViewportSize({ width: 320, height: 800 });
     await page.click("#edit-colors-btn");
     const paletteFits = await page.locator("#color-inputs").evaluate(el => el.scrollWidth <= el.clientWidth);
     assert.ok(paletteFits, "palette name/hex controls wrap on mobile");
+    await page.locator("#pay-fee-btn").click();
+    await page.waitForFunction(() => document.getElementById("publication-status").textContent.includes("No configured test payment method"));
+    assert.ok(await page.locator("#publication-submit").isDisabled(), "editor fails closed without a configured publication method");
+    for (const width of [320, 375, 768, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      assert.ok(await page.locator("#publication-dialog").evaluate(el => {
+        const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && el.scrollWidth <= el.clientWidth;
+      }), `integrated editor publication dialog fits ${width}`);
+    }
+    await page.locator("#publication-close").click();
     for (const surface of ["admin.html", "owner.html"]) {
       await page.goto(`http://127.0.0.1:${server.address().port}/${surface}`, { waitUntil: "domcontentloaded" });
       await page.locator('[data-tab="fees"]').click();
