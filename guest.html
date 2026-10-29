@@ -14,6 +14,8 @@
     #pay-dialog { border:1px solid #d8cfb4; border-radius:14px; max-width:min(440px,92vw); padding:1.25rem; }
     #pay-dialog input, #pay-dialog select { width:100%; box-sizing:border-box; }
     .buy-btn { margin-top:.75rem; }
+    [data-song-bid], [data-new-song-amount], [data-pay-preset], [data-preset] { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+    #song-request-presets, #pay-presets { display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:.75rem; }
     .song-request { margin-top:1.5rem; padding:1.25rem; border:1px solid #e3dcc7; border-radius:12px; background:rgba(255,255,255,.55); }
     .song-request h3 { margin-top:0; }
     .song-highlight td { background:#fff3c4; transition:background .6s; }
@@ -358,6 +360,7 @@
                     <input id="song-request-amount" type="number" min="1" step="1" inputmode="decimal" required>
                   </label>
                 </div>
+                <div id="song-request-presets" role="group" aria-label="Suggested new song bid amounts"></div>
                 <p id="song-request-error" class="fine" role="alert" hidden></p>
                 <button type="submit" class="btn">Request &amp; pay</button>
               </form>
@@ -475,6 +478,7 @@
       <label for="pay-name">Your name / organization *</label><input id="pay-name" maxlength="100" autocomplete="name">
       <label for="pay-email">Email (required by some providers)</label><input id="pay-email" type="email" maxlength="200" autocomplete="email">
       <label for="pay-amount">Amount (<span id="pay-currency"></span>) *</label><input id="pay-amount" type="number" min="1" step="0.01" required>
+      <div id="pay-presets" role="group" aria-label="Suggested voluntary amounts"></div>
       <div id="pay-daraja-fields" hidden>
         <label for="pay-mpesa-phone">Safaricom M-Pesa phone number *</label>
         <input id="pay-mpesa-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="18">
@@ -499,6 +503,9 @@
   <script src="site-urls.js"></script>
   <script src="share.js"></script>
   <script src="auth-client.js"></script>
+  <script src="currencies.js"></script>
+  <script src="fx.js"></script>
+  <script src="amount-presets.js"></script>
   <script src="social-links.js"></script>
   <script>
 (async () => {
@@ -521,6 +528,9 @@
       .map(platform => [platform, $(`${prefix}-social-${platform}`).value.trim()])));
   }
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const presetLabel = amount => `<span data-preset-money="${amount}" data-currency="${esc(wedding.currency)}">${esc(WSAmountPresets.label(amount, wedding.currency))}</span>`;
+  const giftButtons = item => WSAmountPresets.amounts(wedding, "gift").map(amount =>
+    `<button type="button" class="buy-btn" data-buy="registry" data-ref="${esc(item.id)}" data-label="${esc(item.name)}" data-min="${amount}" data-preset>${presetLabel(amount)}</button>`).join(" ");
   const safeUrl = value => {
     try {
       const url = new URL(value);
@@ -575,6 +585,10 @@
       document.dispatchEvent(new CustomEvent("ws:wedding", { detail: wedding }));
       applyRsvpFees();
       $("song-request-currency").textContent = wedding.currency || "USD";
+      $("song-request-amount").step = "0.01";
+      $("song-request-presets").innerHTML = WSAmountPresets.amounts(wedding, "song").map(amount =>
+        `<button type="button" class="buy-btn" data-new-song-amount="${amount}">${presetLabel(amount)}</button>`).join(" ") +
+        '<button type="button" class="buy-btn" data-new-song-amount="0">Custom amount</button>';
       $("song-request-form").hidden = Boolean(wedding.is_past);
       $("song-request-closed").hidden = !wedding.is_past;
       $("no-bids-cta").hidden = Boolean(wedding.is_past);
@@ -653,7 +667,7 @@
                 ${WS.money(raised, wedding.currency || "USD", true)} of ${WS.money(target, wedding.currency || "USD", true)}
               </p>
               ${item.notes ? `<p style="margin: 0.5rem 0 0; font-size: 0.9rem; color: #5a5f5a;">${esc(item.notes)}</p>` : ""}
-              ${wedding.is_past ? "" : `<button type="button" class="buy-btn" data-buy="registry" data-ref="${esc(item.id)}" data-label="${esc(item.name)}">Contribute now</button>`}
+              ${wedding.is_past ? "" : `${giftButtons(item)} <button type="button" class="buy-btn" data-buy="registry" data-ref="${esc(item.id)}" data-label="${esc(item.name)}">Contribute now</button>`}
             </div>
           `;
         }).join("");
@@ -743,14 +757,14 @@
         const cur = wedding.currency || "USD";
         $("campaigns-display").innerHTML = camps.map(c => {
           const pct = c.goal_minor > 0 ? Math.min(100, Math.round(c.raised_minor / c.goal_minor * 100)) : 0;
-          const presets = [10, 25, 50];
+          const presets = WSAmountPresets.amounts(wedding, "gift");
           return `<article class="campaign" data-campaign="${esc(c.id)}">
             <h3>${esc(c.name)}</h3>
             ${c.purpose && c.purpose !== c.name ? `<p>${esc(c.purpose)}</p>` : ""}
             <div class="camp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="${esc(c.name)} progress"><span style="width:${pct}%"></span></div>
             <p class="camp-total"><strong>${pct}%</strong> of ${WS.money(c.goal_minor, cur, false)} · ${WS.money(c.raised_minor, cur, false)} raised</p>
             ${c.milestones.length ? `<ul class="camp-ms">${c.milestones.map(m => `<li class="${m.reached ? "done" : ""}"><span aria-hidden="true">${m.reached ? "☑" : "☐"}</span> <span><strong>${esc(m.name)}</strong> · ${WS.money(m.target_minor, cur, false)}${m.description ? `<br><small>${esc(m.description)}</small>` : ""}<span class="sr-only">${m.reached ? " (reached)" : " (not yet reached)"}</span>${wedding.is_past ? "" : `<br><button type="button" class="link" data-buy="fund" data-ref="${esc(c.id)}" data-milestone="${esc(m.id)}" data-label="${esc(c.name)} · ${esc(m.name)}">Contribute to this milestone</button>`}</span></li>`).join("")}</ul>` : ""}
-            ${wedding.is_past ? "" : `<div class="camp-give">${presets.map(p => `<button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-min="${p * 100}" data-preset data-label="${esc(c.name)}">${esc(cur)} ${p}</button>`).join("")}<button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-preset data-label="${esc(c.name)}">Other</button></div>`}
+            ${wedding.is_past ? "" : `<div class="camp-give">${presets.map(p => `<button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-min="${p}" data-preset data-label="${esc(c.name)}">${presetLabel(p)}</button>`).join("")}<button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-preset data-label="${esc(c.name)}">Other</button></div>`}
           </article>`;
         }).join("");
       }
@@ -1165,6 +1179,10 @@
     $("pay-sponsor-fields").hidden = !["sponsor", "sponsor_featured_bid"].includes(next.action);
     $("pay-amount").value = next.amountMinor ? String(next.amountMinor / 100) : "";
     $("pay-amount").readOnly = next.exact === true;
+    const presetKind = next.action === "song_bid" ? "song" : ["fundraiser", "registry"].includes(next.action) ? "gift" : null;
+    $("pay-presets").innerHTML = presetKind ? WSAmountPresets.amounts(wedding, presetKind).map(amount =>
+      `<button type="button" class="buy-btn" data-pay-preset="${amount}">${presetLabel(amount)}</button>`).join(" ") +
+      '<button type="button" class="buy-btn" data-pay-preset="0">Custom amount</button>' : "";
     $("pay-error").hidden = true;
     $("pay-submit").disabled = true;
     $("pay-summary").textContent = next.summary || "Your action will be saved only after the payment provider confirms the charge.";
@@ -1208,6 +1226,15 @@
     });
   });
   document.addEventListener("click", e => {
+    const newSongPreset = e.target.closest("[data-new-song-amount]");
+    const paymentPreset = e.target.closest("[data-pay-preset]");
+    if (newSongPreset || paymentPreset) {
+      const input = $(newSongPreset ? "song-request-amount" : "pay-amount");
+      const amount = Number(newSongPreset ? newSongPreset.dataset.newSongAmount : paymentPreset.dataset.payPreset);
+      input.value = amount ? String(amount / 100) : "";
+      input.focus();
+      return;
+    }
     const bidBtn = e.target.closest("[data-song-bid]");
     if (bidBtn && wedding) {
       showPaymentDialog({
@@ -1440,8 +1467,8 @@
           <td class="lb-song" style="padding: 0.75rem;">${esc(b.song_title)}${Number(b.bid_count) > 1 ? ` <small class="fine">(${Number(b.bid_count)} bids)</small>` : ""}</td>
           <td class="lb-artist" style="padding: 0.75rem; color: var(--sage);">${esc(b.artist_name || "—")}</td>
           <td class="lb-total" style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, wedding.currency)}</td>
-          <td class="lb-bid" style="padding: 0.75rem;">${wedding.is_past ? "Closed" : `<details class="song-bid-options"><summary aria-label="Bid on ${esc(b.song_title)}">Bid on song</summary><div class="song-bid-amounts" role="group" aria-label="Bid amounts for ${esc(b.song_title)}">` + [500, 1000, 2500, 5000].map(amount =>
-            `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}" data-amount="${amount}">${esc(wedding.currency || "USD")} ${(amount / 100).toFixed(2)}</button>`
+          <td class="lb-bid" style="padding: 0.75rem;">${wedding.is_past ? "Closed" : `<details class="song-bid-options"><summary aria-label="Bid on ${esc(b.song_title)}">Bid on song</summary><div class="song-bid-amounts" role="group" aria-label="Bid amounts for ${esc(b.song_title)}">` + WSAmountPresets.amounts(wedding, "song").map(amount =>
+            `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}" data-amount="${amount}">${presetLabel(amount)}</button>`
           ).join(" ") + `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}" data-amount="0">Custom amount</button></div></details>`}</td>
         </tr>
       `).join("");

@@ -26,6 +26,37 @@ providers even from stale tabs. Disabling affects new intents, never reroutes,
 cancels or prevents verification of an already-created payment. Changes require
 confirmation and are audited. No configuration is silently enabled on save.
 
+### Organizer-selected guest amount suggestions
+
+The wedding editor stores optional `amount_presets` as
+`{ currency, song: [minorUnits], gift: [minorUnits] }` via migration
+`202610300014_wedding_amount_presets.sql`. Song suggestions cover new requests,
+existing songs and their payment dialog. Gift suggestions cover registry gifts,
+celebration/fundraising campaigns and milestone payment dialogs. Custom entry
+remains available. Fixed offers, sponsor bid minimums, RSVP/publication fees,
+account balances and protected Owner financial policy are not changed.
+
+Lists contain 1-6 amounts, sorted and deduplicated on both API and database
+writes. The editor parses at most two decimal places; persisted values must be
+integer hundredths in a supported two-decimal currency and within the configured
+checkout cap. Suggested shortcuts must be at least one major unit to match the
+existing guest form minimum; this does not change checkout or custom-entry
+policy. Unset weddings retain legacy song `[500,1000,2500,5000]` and gift
+`[1000,2500,5000]` minor-unit defaults. Opening or saving unrelated settings
+does not persist defaults or overwrite saved choices.
+
+Changing currency clears the editor's draft lists, never converts or re-labels
+saved amounts. Enter new lists or explicitly apply deterministic currency-aware
+suggestions (KES or USD), then review/confirm before saving. API clients must
+send `amountPresetsReviewed: true` and `amountPresetsBaseCurrency` with new
+`amountPresets`, or an explicit `null` reset; stale currency edits are rejected.
+The database rejects a saved preset currency that differs from its wedding.
+Suggestions are not AI, do not infer guest wealth, do not call a model, and
+never autosave. Non-USD labels may show a dated indicative USD equivalent from
+the existing approved daily feed only while fresh (36 hours); FX never changes
+the organizer's selected amounts. The read-only showcase keeps KES song
+100/500/1000 and gift 500/1000/5000.
+
 ### Publication checkout (test mode only)
 
 Nonzero publication quotes now have an authenticated checkout in the wedding

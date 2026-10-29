@@ -6,6 +6,7 @@ export const isShowcase = value => [SHOWCASE_SLUG, SHOWCASE_ID].includes(String(
 export const showcase = {
   id: SHOWCASE_ID, slug: SHOWCASE_SLUG, is_showcase: true, couple_names: "Amara & Kito (sample)",
   wedding_date: "2099-08-16", time_zone: "Africa/Nairobi", currency: "KES",
+  amount_presets: { currency: "KES", song: [10000, 50000, 100000], gift: [50000, 100000, 500000] },
   published_at: "2026-10-29T00:00:00Z", public_location: "Fictional Azure Gardens, Diani",
   welcome_story: "A fictional celebration of friendship, family and new beginnings. Amara and Kito met at a community garden, bonded over music, and built a life full of small adventures. Join this sample journey from the family gathering to the last dance.",
   palette: ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"],
