@@ -16,6 +16,15 @@
     .buy-btn { margin-top:.75rem; }
     .song-request { margin-top:1.5rem; padding:1.25rem; border:1px solid #e3dcc7; border-radius:12px; background:rgba(255,255,255,.55); }
     .song-request h3 { margin-top:0; }
+    .song-highlight td { background:#fff3c4; transition:background .6s; }
+    @media (max-width:640px) {
+      #leaderboard-table thead { display:none; }
+      #leaderboard-table, #leaderboard-table tbody, #leaderboard-table tr { display:block; width:100%; }
+      #leaderboard-table tr { display:grid; grid-template-columns:auto 1fr auto; gap:.15rem .5rem; padding:.6rem 0; }
+      #leaderboard-table td { display:block; padding:.1rem 0 !important; min-width:0; overflow-wrap:anywhere; }
+      #leaderboard-table td.lb-bid { grid-column:1 / -1; display:flex !important; flex-wrap:wrap; gap:.35rem; }
+      #leaderboard-table td.lb-bid .buy-btn { flex:1 1 4.2rem; min-height:40px; padding:.4rem .5rem; font-size:.85rem; }
+    }
     .song-request-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem 1rem; margin-bottom:1rem; }
     .song-request label { display:flex; flex-direction:column; gap:.35rem; font-weight:600; color:var(--green); }
     .song-request input { width:100%; box-sizing:border-box; padding:.65rem .75rem; border:1px solid #d8cfb4; border-radius:8px; font:inherit; }
@@ -123,20 +132,27 @@
     /* Responsive */
     @media (max-width: 768px) {
       nav.sticky-nav {
-        padding: 0.75rem 1rem;
-        flex-direction: column;
-        gap: 1rem;
+        padding: 0.25rem 0.6rem !important;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-areas: "logo controls" "links links";
+        gap: 0.1rem 0.5rem;
       }
-
+      nav.sticky-nav .logo-section { grid-area: logo; gap: .5rem; min-width: 0; }
+      nav.sticky-nav .monogram { width: 30px; height: 30px; font-size: .8rem; }
+      nav.sticky-nav .brand { font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      nav.sticky-nav .controls { grid-area: controls; gap: .1rem; }
+      nav.sticky-nav .controls button.audio-toggle { font-size: 1rem !important; width: 44px !important; min-width: 44px !important; height: 36px !important; min-height: 36px !important; padding: 0 !important; margin: 0 !important; }
       nav.sticky-nav .nav-links {
-        gap: .5rem 1rem;
+        grid-area: links;
+        gap: 0 .9rem;
         font-size: 0.85rem;
-        flex-wrap: wrap;
-        justify-content: center;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
         max-width: 100%;
       }
-
-
+      nav.sticky-nav .nav-links a { display: inline-block; padding: .45rem 0; white-space: nowrap; }
     }
   </style>
 </head>
@@ -312,26 +328,8 @@
       <h2>DJ Song Requests</h2>
       <p class="fine">Request a new song or bid on one already on the list. Paid bids for the same song and artist combine into one total and support the couple&rsquo;s wedding fund, not the DJ. A song appears on the leaderboard only after the payment provider confirms the payment.</p>
 
-      <form id="song-request-form" class="song-request" novalidate>
-        <h3>Request a new song</h3>
-        <div class="song-request-fields">
-          <label>Song title *
-            <input id="song-request-title" type="text" maxlength="160" autocomplete="off" required>
-          </label>
-          <label>Artist *
-            <input id="song-request-artist" type="text" maxlength="100" autocomplete="off" required>
-          </label>
-          <label>Bid amount (<span id="song-request-currency">KES</span>) *
-            <input id="song-request-amount" type="number" min="1" step="1" inputmode="decimal" required>
-          </label>
-        </div>
-        <p id="song-request-error" class="fine" role="alert" hidden></p>
-        <button type="submit" class="btn">Request &amp; pay</button>
-      </form>
-      <p id="song-request-closed" class="fine" hidden>Song requests are closed for this wedding.</p>
-
       <!-- DJ leaderboard -->
-      <div style="margin-top: 2rem;">
+      <div style="margin-top: 1rem;">
         <h3>Top Song Requests</h3>
         <div style="overflow-x:auto;" role="region" aria-label="Paid song leaderboard" tabindex="0">
         <table id="leaderboard-table" style="width: 100%; border-collapse: collapse;">
@@ -349,6 +347,24 @@
         </div>
         <p id="no-bids" class="fine">No paid song requests yet. <button type="button" id="no-bids-cta" class="link-btn">Be the first to request a song</button></p>
       </div>
+
+              <form id="song-request-form" class="song-request" novalidate>
+                <h3>Can&rsquo;t find your song? Request a new one</h3>
+                <div class="song-request-fields">
+                  <label>Song title *
+                    <input id="song-request-title" type="text" maxlength="160" autocomplete="off" required>
+                  </label>
+                  <label>Artist *
+                    <input id="song-request-artist" type="text" maxlength="100" autocomplete="off" required>
+                  </label>
+                  <label>Bid (<span id="song-request-currency">KES</span>) *
+                    <input id="song-request-amount" type="number" min="1" step="1" inputmode="decimal" required>
+                  </label>
+                </div>
+                <p id="song-request-error" class="fine" role="alert" hidden></p>
+                <button type="submit" class="btn">Request &amp; pay</button>
+              </form>
+              <p id="song-request-closed" class="fine" hidden>Song requests are closed for this wedding.</p>
     </section>
 
     <!-- Contribution ledger -->
@@ -457,14 +473,14 @@
       <h3 id="pay-title">Complete your contribution</h3>
       <p class="fine"><strong>Test checkout:</strong> the action completes only after the provider confirms payment. No live payment keys are accepted.</p>
       <p id="pay-summary"></p>
-      <label for="pay-provider">Payment provider *</label><select id="pay-provider" required></select>
+      <label for="pay-provider">Payment method *</label><select id="pay-provider" required></select>
       <label for="pay-name">Your name / organization *</label><input id="pay-name" maxlength="100" autocomplete="name">
       <label for="pay-email">Email (required by some providers)</label><input id="pay-email" type="email" maxlength="200" autocomplete="email">
       <label for="pay-amount">Amount (<span id="pay-currency"></span>) *</label><input id="pay-amount" type="number" min="1" step="0.01" required>
       <div id="pay-daraja-fields" hidden>
         <label for="pay-mpesa-phone">Safaricom M-Pesa phone number *</label>
         <input id="pay-mpesa-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="18">
-        <p class="fine">Sandbox only. Approve the STK Push on this phone; the action stays pending until Daraja confirms payment.</p>
+        <p class="fine">Sandbox only. Approve the STK Push on this phone; the action stays pending until payment is confirmed.</p>
       </div>
       <div id="pay-sponsor-fields" hidden>
         <label for="pay-phone">Public contact phone (optional)</label><input id="pay-phone" type="tel" maxlength="30">
@@ -474,7 +490,7 @@
       </div>
       <div id="pay-captcha"></div>
       <p id="pay-error" class="notice bad" hidden></p>
-      <div style="display:flex;gap:.5rem;margin-top:1rem"><button type="submit" id="pay-submit">Pay (test mode)</button><button type="button" id="pay-cancel" class="link">Cancel</button></div>
+      <div style="display:flex;gap:.5rem;margin-top:1rem"><button type="submit" id="pay-submit">Pay (test mode)</button><button type="button" id="pay-recheck" hidden>Check payment status again</button><button type="button" id="pay-cancel" class="link">Cancel</button></div>
     </form>
   </dialog>
   <audio id="background-music" loop style="display: none;"></audio>
@@ -939,9 +955,11 @@
         $("pay-error").hidden = false;
       } else toast(message, bad);
     };
-    const pollDelay = saved.provider === "daraja" ? 5000 : 2000;
-    const maxAttempts = 30;
+    const baseDelay = saved.provider === "daraja" ? 4000 : 2000;
+    const maxAttempts = 24;
+    $("pay-recheck").hidden = true;
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const pollDelay = Math.min(baseDelay * Math.pow(1.25, attempt), 15000);
       try {
         const res = await fetch(`/api/checkout?action=status&id=${encodeURIComponent(paymentId)}`, { cache: "no-store" });
         const data = await res.json();
@@ -957,6 +975,7 @@
           }
           toast("Payment verified. Your action is complete.");
           await Promise.all([loadBids(), loadLedger(), loadFundraising()]);
+          if (data.action === "song_bid") highlightSong(saved.songTitle, saved.artist);
           try { sessionStorage.removeItem(`ws-payment:${paymentId}`); } catch (_) {}
           params.delete("paymentReturn");
           history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
@@ -986,7 +1005,19 @@
       }
       await new Promise(resolve => setTimeout(resolve, pollDelay));
     }
-    report("Payment is not confirmed yet. No action was completed; check this payment status before trying again.", true);
+    report("Timed out: the payment is still not confirmed by the provider. No action was completed and no new payment can be started until this one is resolved. You can check again.", true);
+    $("pay-submit").disabled = true;
+    $("pay-recheck").hidden = false;
+    $("pay-recheck").onclick = () => handlePaymentReturn();
+  }
+
+  const normSong = s => String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
+  function highlightSong(title, artist) {
+    const rows = [...$("leaderboard-body").querySelectorAll("tr")];
+    const row = rows.find(r => normSong(r.dataset.title) === normSong(title) && normSong(r.dataset.artist) === normSong(artist));
+    const target = row || $("leaderboard-table");
+    target.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (row) { row.classList.add("song-highlight"); setTimeout(() => row.classList.remove("song-highlight"), 4000); }
   }
 
   // E-card pass: rendered after RSVP, restored from this device, or found by email/code
@@ -1105,7 +1136,7 @@
       const options = await optionsRes.json();
       if (!optionsRes.ok || !options.paymentAvailable) throw new Error(options.message || "Verified test checkout is not available for this wedding.");
       $("pay-provider").replaceChildren(...options.providers.map(p =>
-        new Option(`${p.name} · ${p.market}`, `${p.id}|${p.market}`)
+        new Option(p.label || "Pay online", `${p.id}|${p.market}`)
       ));
       $("pay-provider").dispatchEvent(new Event("change"));
       await prepareTurnstile(options.turnstileSiteKey);
@@ -1177,7 +1208,7 @@
     $("pay-mpesa-phone").required = isDaraja;
     $("pay-email").required = provider === "paystack";
     $("pay-amount").step = isDaraja ? "1" : "0.01";
-    $("pay-submit").textContent = isDaraja ? "Send M-Pesa prompt (sandbox)" : "Pay (test mode)";
+    $("pay-submit").textContent = isDaraja ? "Send M-Pesa prompt" : "Pay (test mode)";
   });
   $("pay-cancel").addEventListener("click", () => $("pay-dialog").close());
   $("pay-form").addEventListener("submit", async e => {
@@ -1228,7 +1259,8 @@
       if (!res.ok) throw new Error(data.error || "Checkout could not be started.");
       try {
         sessionStorage.setItem(`ws-payment:${data.paymentId}`, JSON.stringify({
-          action: buying.action, guestName: buying.data?.guestName || name, amountMinor, provider
+          action: buying.action, guestName: buying.data?.guestName || name, amountMinor, provider,
+          songTitle: buying.data?.songTitle, artist: buying.data?.artist
         }));
       } catch (_) {}
       if (data.checkoutUrl) {
@@ -1360,12 +1392,12 @@
 
       $("no-bids").hidden = true;
       $("leaderboard-body").innerHTML = bids.map((b, i) => `
-        <tr style="border-bottom: 1px solid #e3dcc7;">
-          <td style="padding: 0.75rem; color: var(--gold);">${i + 1}</td>
-          <td style="padding: 0.75rem;">${esc(b.song_title)}${Number(b.bid_count) > 1 ? ` <small class="fine">(${Number(b.bid_count)} bids)</small>` : ""}</td>
+        <tr style="border-bottom: 1px solid #e3dcc7;" data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}">
+          <td class="lb-rank" style="padding: 0.75rem; color: var(--gold);">${i + 1}</td>
+          <td class="lb-song" style="padding: 0.75rem;">${esc(b.song_title)}${Number(b.bid_count) > 1 ? ` <small class="fine">(${Number(b.bid_count)} bids)</small>` : ""}</td>
           <td style="padding: 0.75rem; color: var(--sage);">${esc(b.artist_name || "—")}</td>
           <td style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, wedding.currency)}</td>
-          <td style="padding: 0.75rem;">${wedding.is_past ? "Closed" : [500, 1000, 2500, 5000].map(amount =>
+          <td class="lb-bid" style="padding: 0.75rem;">${wedding.is_past ? "Closed" : [500, 1000, 2500, 5000].map(amount =>
             `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}" data-amount="${amount}">${esc(wedding.currency || "USD")} ${(amount / 100).toFixed(2)}</button>`
           ).join(" ") + `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}" data-amount="0">Custom amount</button>`}</td>
         </tr>

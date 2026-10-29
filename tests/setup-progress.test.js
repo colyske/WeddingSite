@@ -21,13 +21,15 @@ const completeWedding = () => ({
 test("setup progress uses saved wedding data and separates publish readiness", () => {
   const result = calculate(completeWedding());
   assert.equal(result.requiredReady, true);
-  assert.equal(result.percent, 50);
+  assert.equal(result.percent, 43);
   assert.equal(result.items.find(item => item.id === "palette-preview").complete, false);
 
-  const partial = calculate({ ...completeWedding(), couple_names: "", kyc_submitted: false });
+  const partial = calculate({ ...completeWedding(), couple_names: "" });
   assert.equal(partial.requiredReady, false);
   assert.ok(partial.nextStep);
   assert.equal(partial.items.find(item => item.id === "couple-names").complete, false);
+  assert.equal(result.items.some(item => /kyc/i.test(item.id + item.label)), false);
+  assert.equal(calculate({ ...completeWedding(), kyc_submitted: false }).requiredReady, true);
 });
 
 test("optional disabled paid features do not add payout setup requirements", () => {

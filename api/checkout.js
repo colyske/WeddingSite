@@ -163,7 +163,9 @@ async function handleOptions(req, res) {
       [provider, await checkProviderHealth(provider)]
     ));
     const healthy = new Set(health.filter(([, ready]) => ready).map(([provider]) => provider));
-    const providers = candidates.filter(item => healthy.has(item.id));
+    const METHOD_LABELS = { daraja: "M-Pesa", stripe: "Card", paystack: "Card" };
+    const providers = candidates.filter(item => healthy.has(item.id))
+      .map(item => ({ ...item, label: METHOD_LABELS[item.id] || "Pay online" }));
     return sendJson(res, 200, {
       providers,
       paymentAvailable: providers.length > 0,
