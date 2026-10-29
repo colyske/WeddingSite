@@ -331,7 +331,7 @@ test("KES payment options are system-derived without per-wedding setup or the li
     assert.equal(res.statusCode, 200);
     assert.equal(body.paymentAvailable, true);
     assert.deepEqual(body.providers.map(item => [item.id, item.market]), [["daraja", "KE"]]);
-    assert.deepEqual(paths, ["/rest/v1/weddings"]);
+    assert.deepEqual(paths, ["/rest/v1/weddings", "/rest/v1/platform_policies"]);
   } finally {
     for (const [key, name] of [["live", "WEDDINGSITE_LIVE_PAYMENTS_ENABLED"], ["ts", "TURNSTILE_SECRET_KEY"], ["tk", "TURNSTILE_SITE_KEY"]]) {
       if (saved[key] === undefined) delete process.env[name]; else process.env[name] = saved[key];

@@ -1,4 +1,5 @@
 import { authenticatedUser, csvCell, methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
+import { contentError } from "../server/content-policy.js";
 
 function toCsv(rows) {
   if (!rows.length) return "No records\n";
@@ -78,7 +79,7 @@ async function handleReportQuery(req, res) {
     const filter = `wedding_id=eq.${encodeURIComponent(weddingId)}`;
     const [summary, contributions, expenses, payouts, budgets, reconciliations, alerts, adjustmentData, audit] = await Promise.all([
       supabaseRequest(`/rest/v1/finance_summary?${filter}&select=*`, { token: session.token }),
-      supabaseRequest(`/rest/v1/contributions?${filter}&select=id,stream_name,pledged_amount_minor,paid_amount_minor,platform_fee_minor,net_paid_minor,currency,payment_status,created_at&order=created_at.desc&limit=1000`, { token: session.token }),
+      supabaseRequest(`/rest/v1/contributions?${filter}&select=id,stream_name,purchase_action,display_name,pledged_amount_minor,paid_amount_minor,platform_fee_minor,provider_fee_minor,net_paid_minor,currency,payment_status,created_at&order=created_at.desc&limit=1000`, { token: session.token }),
       supabaseRequest(`/rest/v1/expenses?${filter}&select=id,category,description,amount_minor,currency,status,due_on,created_at&order=created_at.desc&limit=1000`, { token: session.token }),
       supabaseRequest(`/rest/v1/payout_records?${filter}&select=id,amount_minor,currency,status,requested_at,confirmed_at&order=requested_at.desc&limit=500`, { token: session.token }),
       supabaseRequest(`/rest/v1/budget_lines?${filter}&select=id,category,planned_minor,actual_minor,currency,updated_at&order=category&limit=500`, { token: session.token }),
@@ -123,6 +124,8 @@ async function handleAction(req, res) {
   }
   if (!session) return sendJson(res, 401, { error: "Sign in to submit a private finance record." });
   const body = req.body && typeof req.body === "object" ? req.body : {};
+  const invalidContent = contentError(body);
+  if (invalidContent) return sendJson(res, 400, { error: invalidContent });
   const action = financeActions[body.action];
   if (!action || !action.validate(body)) {
     return sendJson(res, 400, { error: "Invalid finance action or fields; explicit confirmation is required." });

@@ -1,5 +1,7 @@
 import { sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireRole } from "../server/auth-middleware.js";
+import { contentError } from "../server/content-policy.js";
+import { paymentProviderReadiness } from "./checkout.js";
 
 const rpc = (name, token, body = {}) =>
   supabaseRequest(`/rest/v1/rpc/${name}`, { token, method: "POST", body });
@@ -26,6 +28,7 @@ const GET_ACTIONS = {
   },
   policies: async (t) => ({ policies: await rpc("admin_get_policies", t) }),
   "refund-policy": async (t) => ({ allocation: await rpc("admin_get_refund_policy", t) }),
+  "payment-controls": async t => ({ enabled: await rpc("admin_get_payment_controls", t), providers: paymentProviderReadiness() }),
   "policy-history": async (t) => ({ history: await rpc("admin_policy_history", t, { p_limit: 50 }) }),
   "wedding-metrics": async (t, q) => {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(q.weddingId || ""))) throw new Error("Invalid wedding.");
@@ -63,6 +66,8 @@ export default async function handler(req, res) {
 
     if (req.method !== "POST") return sendJson(res, 405, { error: "Method not allowed." });
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
+    const invalidContent = contentError(body);
+    if (invalidContent) return sendJson(res, 400, { error: invalidContent });
 
     if (action === "set-role") {
       if (role !== "owner") return sendJson(res, 403, { error: "Only the protected Owner can change platform roles." });
@@ -85,6 +90,15 @@ export default async function handler(req, res) {
       }
       await rpc("admin_set_refund_policy", token, { p_allocation: body.allocation, p_confirmed: true });
       return sendJson(res, 200, { ok: true, allocation: await rpc("admin_get_refund_policy", token) });
+    }
+    if (action === "payment-controls-save") {
+      if (body.confirmed !== true || !Array.isArray(body.enabled) ||
+          body.enabled.some(id => !["stripe", "paystack", "daraja"].includes(id)) ||
+          new Set(body.enabled).size !== body.enabled.length) {
+        return sendJson(res, 400, { error: "Choose the allowed payment methods and confirm the change." });
+      }
+      await rpc("admin_set_payment_controls", token, { p_enabled: body.enabled, p_confirmed: true });
+      return sendJson(res, 200, { ok: true, enabled: await rpc("admin_get_payment_controls", token) });
     }
     if (action === "refund-resolution") {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(body.adjustment_id || "")) ||

@@ -86,7 +86,10 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
       let payload = {};
       if (action === "site" || action === "wedding") payload = action === "site" ? { wedding } : wedding;
       if (action === "leaderboard") payload = { bids: [{ song_title: "Home & Away", artist_name: "Artist <One>", bid_amount_minor: 450000, currency: "KES" }] };
-      if (action === "ledger") payload = { ledger: [] };
+      if (action === "ledger") payload = { ledger: [{
+        contribution_type: "Song bid", paid_amount_minor: 123400, currency: "KES",
+        guest_display_name: "Sample Contributor", created_at: "2026-10-28T12:00:00Z"
+      }] };
       if (action === "fundraising") payload = { tiers: [{ name: "Gold & Friends", min_amount_minor: 500000, perks: "Brand recognition" }], vip: { title: "VIP seating", description: "Reserved section", price_minor: 250000, seats_total: 12, seats_sold: 2 }, sponsors: [{ company_name: "Acme & Co", amount_minor: 100000, website: "https://example.test", contact_phone: "+254700000000" }] };
       if (action === "rsvp-count") payload = { count: 0 };
       if (action === "rsvp" && method === "POST") payload = { message: "Your attendance is confirmed.", status: "confirmed", rsvpId };
@@ -120,7 +123,9 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     assert.match(await page.locator("#vip-display").textContent(), /VIP seating/);
     await page.waitForFunction(() => document.querySelector("#sponsors-display")?.textContent.includes("Acme & Co"));
     assert.match(await page.locator("#sponsors-display").textContent(), /Acme & Co/);
-    assert.match(await page.locator("#sponsors-display").textContent(), /Your advert could be here/);
+    assert.match(await page.locator("#sponsors-display").textContent(), /Sample advert/);
+    assert.match(await page.locator("#ledger-body").textContent(), /Song bid[\s\S]*1,234[\s\S]*Sample Contributor/);
+    assert.doesNotMatch(await page.locator("#ledger-body").textContent(), /NaN|\$/);
     assert.match(await page.locator("#venues-display").textContent(), /Garden Hall, Nairobi/);
     assert.match(await page.locator("#venues-display").textContent(), /Saturday, December 12, 2099/);
     assert.equal(await page.locator("#venues-display a").first().getAttribute("href"), "https://maps.example.test/venue");

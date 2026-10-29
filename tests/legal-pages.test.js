@@ -5,14 +5,15 @@ import { readFileSync } from "node:fs";
 const read = f => readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
 
 for (const page of ["privacy.html", "terms.html"]) {
-  test(`${page} is a branded public page with flagged unconfirmed operator details`, () => {
+  test(`${page} is a branded public page with confirmed operator details`, () => {
     const html = read(page);
     assert.match(html, /<title>[^<]*Join Our Wedding<\/title>/);
     assert.match(html, /footer\.js/);
-    assert.match(html, /\[to be confirmed\]/);
-    assert.match(html, /not legal advice/i);
+    assert.doesNotMatch(html, /\[to be confirmed\]|Draft notice/i);
+    assert.match(html, /Aster Azure Ltd/);
+    assert.match(html, /PVT-EYUBL333/);
     assert.doesNotMatch(html, /GDPR compliant|certified|ISO 27001|SOC 2/i);
-    assert.doesNotMatch(html, /@[a-z0-9-]+\.[a-z]{2,}/i, "no invented contact inbox");
+    assert.match(html, /info\.asterazure@gmail\.com/, "user-supplied contact inbox");
   });
 }
 

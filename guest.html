@@ -348,13 +348,13 @@
               <form id="song-request-form" class="song-request" novalidate>
                 <h3>Can&rsquo;t find your song? Request a new one</h3>
                 <div class="song-request-fields">
-                  <label>Song title *
+                  <label><span>Song title *</span>
                     <input id="song-request-title" type="text" maxlength="160" autocomplete="off" required>
                   </label>
-                  <label>Artist *
+                  <label><span>Artist *</span>
                     <input id="song-request-artist" type="text" maxlength="100" autocomplete="off" required>
                   </label>
-                  <label>Bid (<span id="song-request-currency">KES</span>) *
+                  <label><span>Bid (<span id="song-request-currency">KES</span>) *</span>
                     <input id="song-request-amount" type="number" min="1" step="1" inputmode="decimal" required>
                   </label>
                 </div>
@@ -428,6 +428,7 @@
           <input id="enquiry-location" maxlength="160">
           <label for="enquiry-offer">What would you like to offer? *</label>
           <textarea id="enquiry-offer" required maxlength="360"></textarea>
+          <fieldset id="enquiry-social"><legend>Social profiles (optional)</legend></fieldset>
           <label><input id="enquiry-public-contact" type="checkbox"> I consent to the selected phone/email being shown on an approved sponsor card.</label>
           <button type="submit" id="sponsor-enquiry-submit">Send enquiry</button>
         </div>
@@ -484,6 +485,7 @@
         <label for="pay-website">Website (optional)</label><input id="pay-website" type="url" maxlength="300">
         <label for="pay-location">Location (optional)</label><input id="pay-location" maxlength="160">
         <label for="pay-offer">What your organization offers (optional)</label><textarea id="pay-offer" maxlength="360"></textarea>
+        <fieldset id="pay-social"><legend>Social profiles (optional)</legend></fieldset>
       </div>
       <div id="pay-captcha"></div>
       <p id="pay-error" class="notice bad" hidden></p>
@@ -497,9 +499,27 @@
   <script src="site-urls.js"></script>
   <script src="share.js"></script>
   <script src="auth-client.js"></script>
+  <script src="social-links.js"></script>
   <script>
 (async () => {
   const $ = id => document.getElementById(id);
+  for (const prefix of ["pay", "enquiry"]) {
+    for (const [platform, label] of Object.entries(WSSocialLinks.labels)) {
+      const field = document.createElement("label");
+      field.htmlFor = `${prefix}-social-${platform}`;
+      field.textContent = label;
+      const input = document.createElement("input");
+      input.id = field.htmlFor;
+      input.type = "url";
+      input.maxLength = 300;
+      input.placeholder = `https://${platform === "x" ? "x" : platform}.com/your-page`;
+      $(`${prefix}-social`).append(field, input);
+    }
+  }
+  function readSocialFields(prefix) {
+    return WSSocialLinks.parse(Object.fromEntries(Object.keys(WSSocialLinks.labels)
+      .map(platform => [platform, $(`${prefix}-social-${platform}`).value.trim()])));
+  }
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const safeUrl = value => {
     try {
@@ -535,6 +555,21 @@
 
       wedding = data.wedding;
       if (!wedding) return notice("Wedding not found.", true);
+      if (wedding.is_showcase) {
+        document.body.dataset.showcase = "true";
+        const banner = document.createElement("aside");
+        banner.className = "showcase-banner";
+        banner.setAttribute("role", "note");
+        banner.textContent = "Fictional showcase - all sample amounts and guests are illustrative. Payments, RSVPs, passes and messages are disabled.";
+        document.querySelector(".sticky-nav").after(banner);
+        $("ecard").hidden = false;
+        $("ecard-guest-name").textContent = "Sample Guest";
+        $("qrcode").textContent = "SAMPLE PASS - NOT VALID FOR ENTRY";
+        $("pass-status").textContent = "Illustration only; no QR credential is issued.";
+        $("ecard").querySelector("p.fine").textContent = "Illustrative e-card layout. This sample is not valid for admission.";
+        $("qrcode").nextElementSibling.textContent = "No scannable guest credential in this showcase.";
+        $("seating").insertAdjacentHTML("beforeend", '<p class="notice">Sample Guest A &mdash; Garden Table, seat 4 (illustration only).</p>');
+      }
 
       document.title = `${wedding.couple_names || "Wedding"} — Wedding`;
       document.dispatchEvent(new CustomEvent("ws:wedding", { detail: wedding }));
@@ -759,6 +794,13 @@
       }).format(new Date(value));
       const featuredNames = new Set((auction?.leaders || []).slice(0, Number(auction?.slot_count) || 0)
         .map(row => String(row.company_name || "").trim().toLowerCase()));
+      const socialIcons = { instagram: "◎", facebook: "f", x: "X", youtube: "▶", tiktok: "♪", linkedin: "in" };
+      const socialHtml = links => {
+        let safe;
+        try { safe = WSSocialLinks.parse(links); } catch { return ""; }
+        return `<div class="sponsor-socials">${Object.entries(safe).map(([platform, url]) =>
+          `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(WSSocialLinks.labels[platform])}"><span aria-hidden="true">${socialIcons[platform]}</span></a>`).join("")}</div>`;
+      };
       const sponsorCards = (data.sponsors || []).map(sponsor => `
           <div style="border: 1px solid #d0d5cc; border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
             ${featuredNames.has(String(sponsor.company_name || "").trim().toLowerCase()) ? `<p class="fine"><strong>${featuredLabel}</strong></p>` : ""}
@@ -766,14 +808,18 @@
             <p style="margin: 0 0 1rem; color: var(--gold); font-weight: 600;">${sponsor.in_kind ? "Approved in-kind supporter" : WS.money(sponsor.amount_minor, wedding.currency || "USD", false)}</p>
             ${sponsor.location ? `<p>${esc(sponsor.location)}</p>` : ""}
             ${sponsor.offer ? `<p>${esc(sponsor.offer)}</p>` : ""}
+            ${socialHtml(sponsor.social_links)}
             ${safeUrl(sponsor.website) ? `<p style="margin: 0 0 0.5rem;"><a href="${esc(safeUrl(sponsor.website))}" target="_blank" rel="noopener noreferrer" class="link" style="font-size: 0.9rem;">Visit website</a></p>` : ""}
             ${sponsor.contact_email ? `<p style="margin: 0; font-size: 0.85rem; color: #5a5f5a;"><a href="mailto:${esc(sponsor.contact_email)}">${esc(sponsor.contact_email)}</a></p>` : ""}
             ${sponsor.contact_phone ? `<p style="margin: 0; font-size: 0.85rem; color: #5a5f5a;"><a href="tel:${esc(sponsor.contact_phone)}">${esc(sponsor.contact_phone)}</a></p>` : ""}
           </div>
         `).join("");
-      const placeholder = `<article style="border: 2px dashed var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
-        <h3>Your advert could be here</h3>
-        <p>Support ${esc(wedding.couple_names || "the couple")}&rsquo;s celebration.</p>
+      const placeholder = `<article class="sponsor-sample">
+        <p class="eyebrow">Sample advert · your brand here</p>
+        <div class="sponsor-emblem" aria-hidden="true">✦</div>
+        <h3>Bloom &amp; Celebrate</h3>
+        <p>Beautiful details.<br>Unforgettable celebrations.</p>
+        <p class="fine">Imagine your flowers, styling or services here, supporting ${esc(wedding.couple_names || "the couple")}.</p>
         <button type="button" class="buy-btn" id="sponsor-cta" ${wedding.is_past ? "disabled" : ""}>Become a sponsor</button>
       </article>`;
       $("sponsors-display").innerHTML = sponsorCards + placeholder;
@@ -822,6 +868,7 @@
           slug, companyName: $("enquiry-company").value, contactName: $("enquiry-contact").value,
           contactEmail: $("enquiry-email").value, contactPhone: $("enquiry-phone").value,
           location: $("enquiry-location").value, offer: $("enquiry-offer").value,
+          socialLinks: readSocialFields("enquiry"),
           publicContact: $("enquiry-public-contact").checked
         })
       });
@@ -1097,6 +1144,7 @@
   }
   let paymentReturnFocus = null;
   async function showPaymentDialog(next) {
+    if (wedding?.is_showcase) return toast("Showcase: payments disabled.", true);
     paymentReturnFocus = document.activeElement?.closest(".song-bid-options")?.querySelector("summary") || document.activeElement;
     buying = next;
     $("pay-title").textContent = next.title || "Complete your payment";
@@ -1113,6 +1161,7 @@
     $("pay-website").value = "";
     $("pay-location").value = "";
     $("pay-offer").value = "";
+    $("pay-social").querySelectorAll("input").forEach(input => { input.value = ""; });
     $("pay-sponsor-fields").hidden = !["sponsor", "sponsor_featured_bid"].includes(next.action);
     $("pay-amount").value = next.amountMinor ? String(next.amountMinor / 100) : "";
     $("pay-amount").readOnly = next.exact === true;
@@ -1241,7 +1290,8 @@
         registryItemId: buying.action === "registry" ? buying.refId : undefined,
         songTitle: buying.data?.songTitle, artist: buying.data?.artist,
         phone: $("pay-phone").value.trim(), website: $("pay-website").value.trim(),
-        location: $("pay-location").value.trim(), offer: $("pay-offer").value.trim()
+        location: $("pay-location").value.trim(), offer: $("pay-offer").value.trim(),
+        socialLinks: readSocialFields("pay")
       };
       if (buying.action === "rsvp") Object.assign(payload, buying.data);
       const res = await fetch("/api/checkout?action=create", {
@@ -1416,9 +1466,9 @@
       $("no-ledger").hidden = true;
       $("ledger-body").innerHTML = ledger.map(l => `
         <tr style="border-bottom: 1px solid #e3dcc7;">
-          <td style="padding: 0.75rem;">${esc(l.description || "Contribution")}</td>
-          <td style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(l.amount_minor, wedding.currency)}</td>
-          <td style="padding: 0.75rem;">${esc(l.guest_name || "—")}</td>
+          <td style="padding: 0.75rem;">${esc(l.contribution_type || l.stream_name || "Contribution")}</td>
+          <td style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(l.paid_amount_minor, l.currency || wedding.currency)}</td>
+          <td style="padding: 0.75rem;">${esc(l.guest_display_name || "Anonymous")}</td>
           <td style="padding: 0.75rem; color: var(--sage);">${new Date(l.created_at).toLocaleDateString()}</td>
         </tr>
       `).join("");

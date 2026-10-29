@@ -40,17 +40,20 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       if (action === "role") data = { role: "owner" };
       if (action === "overview") data = { weddings: 1, published: 1, archived: 0, past: 0, users: 1, admins: 1, rsvps: 1, bids: 0, pending_payouts: 0, test_payments: 0 };
       if (action === "operations") data = { queue: { counts: {} } };
+      if (action === "policies") data = { policies: {} };
       if (action === "options") data = { providers: [], paymentAvailable: false };
+      if (action === "payment-controls") data = { enabled: ["daraja", "paystack"],
+        providers: [{ id: "daraja", configured: true }, { id: "paystack", configured: true }, { id: "stripe", configured: false }] };
       return route.fulfill({ contentType: "application/json", body: JSON.stringify(data) });
     });
     const pages = ["index.html", "signin.html", "dashboard.html", `wedding.html?id=${id}`,
       "account.html", "admin.html", "owner.html", `verify.html?code=${id}`,
       `ecard.html?slug=qa-couple&guest_id=${id}`, "privacy.html", "terms.html"];
     for (const surface of pages) {
-      await page.goto(`http://127.0.0.1:${server.address().port}/${surface}`);
+      await page.goto(`http://127.0.0.1:${server.address().port}/${surface}`, { waitUntil: "domcontentloaded" });
       if (surface.startsWith("wedding.html")) await page.locator("#edit-section").waitFor({ state: "visible" });
       if (surface === "admin.html" || surface === "owner.html") await page.locator(".stat-card").first().waitFor();
-      for (const width of [320, 375, 1280]) {
+      for (const width of [320, 375, 768, 1280]) {
         await page.setViewportSize({ width, height: 800 });
         const metrics = await page.evaluate(() => ({
           width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth,
@@ -70,12 +73,23 @@ test("public, organizer and back-office surfaces fit small and large screens", a
         });
       }
     }
-    await page.goto(`http://127.0.0.1:${server.address().port}/wedding.html?id=${id}`);
+    await page.goto(`http://127.0.0.1:${server.address().port}/wedding.html?id=${id}`, { waitUntil: "domcontentloaded" });
     await page.locator("#edit-section").waitFor({ state: "visible" });
     await page.setViewportSize({ width: 320, height: 800 });
     await page.click("#edit-colors-btn");
     const paletteFits = await page.locator("#color-inputs").evaluate(el => el.scrollWidth <= el.clientWidth);
     assert.ok(paletteFits, "palette name/hex controls wrap on mobile");
+    for (const surface of ["admin.html", "owner.html"]) {
+      await page.goto(`http://127.0.0.1:${server.address().port}/${surface}`, { waitUntil: "domcontentloaded" });
+      await page.locator('[data-tab="fees"]').click();
+      await page.locator("#payment-controls-form").waitFor();
+      assert.equal(await page.locator('#payment-controls-form input:checked').count(), 2);
+      assert.ok(await page.locator('#payment-controls-form button').isEnabled(), "Admin and Owner can save independent method controls");
+      for (const width of [320, 375, 768, 1280]) {
+        await page.setViewportSize({ width, height: 800 });
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${surface}: payment controls fit ${width}`);
+      }
+    }
   } finally {
     await browser?.close();
     server.close();

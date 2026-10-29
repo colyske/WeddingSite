@@ -119,6 +119,7 @@
   }
 
   function trackVisit() {
+    if (wedding?.is_showcase) return;
     var key = "ws-visit:" + slug;
     try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, "1"); } catch (_) {}
     var ref = ""; try { ref = localStorage.getItem("ws-ref:" + slug) || ""; } catch (_) {}

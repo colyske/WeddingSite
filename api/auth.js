@@ -1,6 +1,7 @@
 import { methodOnly, sendJson, supabaseConfig, supabaseRequest } from "../server/supabase.js";
 import { requireAuth } from "../server/auth-middleware.js";
 import { platformOrigins } from "../server/site-hosts.js";
+import { contentError } from "../server/content-policy.js";
 
 const GENERIC_LINK_MESSAGE = "If that email belongs to a Join Our Wedding account, a sign-in link is on its way.";
 const isEmail = value => typeof value === "string" && value.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
@@ -132,6 +133,8 @@ async function roleFor(userId, token) {
 export default async function handler(req, res) {
   const action = String(req.query?.action || "");
   const body = req.body && typeof req.body === "object" ? req.body : {};
+  const invalidContent = contentError(body);
+  if (req.method === "POST" && invalidContent) return sendJson(res, 400, { error: invalidContent });
 
   try {
     if (action === "google-status") return await googleStatus(req, res);
