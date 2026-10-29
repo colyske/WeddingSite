@@ -620,6 +620,12 @@ export default async function handler(req, res) {
             p_wedding_id: weddingId, p_amount_minor: amount, p_currency: currency, p_note: String(body.notes || "").slice(0, 240), p_confirmed: true } });
           return sendJson(res, 201, { payoutId: id });
         } catch (error) {
+          if (error.message?.includes("PAYOUT_KYC_REQUIRED")) {
+            return sendJson(res, 409, {
+              error: "Complete KYC to receive your payout.", kycRequired: true,
+              kycUrl: `/wedding.html?id=${encodeURIComponent(weddingId)}#kyc-section`
+            });
+          }
           return sendJson(res, 409, { error: error.message || "Payout could not be requested." });
         }
       }

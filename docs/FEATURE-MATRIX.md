@@ -10,13 +10,13 @@ Status: features below are implemented where marked. Production payments fail cl
 | Past / Completed state | Automatic from date in the wedding zone | "Completed" banner; RSVP and paid actions closed | `is_past` (RPC) | Public |
 | Unpublish / archive (no delete) | Editor buttons (confirm) | Site hidden | `unpublished_at`, `archived_at`; delete blocked by trigger and API 405 | Wedding owner, admins |
 | Publication fee policy | Admin / SuperAdmin fees and settings | Fee explained at publish | `platform_policies`, `publication_fees` | Client, admins, owner |
-| KYC (legal names, ID, next of kin) | Editor KYC form | Never shown | `wedding_kyc` (no direct grants, masked) | Wedding owner, admins, owner role |
+| KYC (legal names, ID, next of kin) | Editor KYC form; payout notice links to both partners' required details and consent. Not part of setup score or publishing | Never shown | `wedding_kyc` (no direct grants, masked); completeness is not independent identity verification | Wedding owner, admins, owner role |
 | Venues with date, time, address, map | Editor | Venue cards, programme | `venues` | Public |
 | RSVP and e-card pass | Capacity in editor | Phone-based RSVP and pass lookup | `guest_rsvps` | Public (own pass), organizer list |
 | QR verification and check-in | - | Pass QR links to `/verify.html?code=` | `guest_rsvps` | Organizer checks in |
 | DJ bids | Editor | Leaderboard, bid form | `dj_song_bids` | Public, organizer |
 | VIP seating, sponsor packages, registry and campaign contributions | Editor | Purchase options use hosted checkout; completion requires verified payment | `contributions`, ledger | Public ledger (opt-in names), organizer, admin, owner |
-| Payouts | Organizer requests | - | `payout_records` | Organizer, admin, owner |
+| Payouts | Organizer requests; both-partner KYC completeness is enforced by SQL at request, approval and marking sent. Cancellation remains available. No automatic money transfer | - | `payout_records`; blocked requests return `kycRequired` and the editor links to `#kyc-section` | Organizer, admin, owner |
 | Back office | - | - | Role changes, audit | Admin (limited), SuperAdmin, Owner (security tab) |
 | Editorial design and wedding props | - | All pages | CSS/SVG only | Public |
 

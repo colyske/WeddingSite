@@ -137,6 +137,12 @@ async function handleAction(req, res) {
     return sendJson(res, 201, { recordId, status: statuses[body.action] });
   } catch (error) {
     console.error("finance action failed", error.message);
+    if (body.action === "payout_request" && error.message?.includes("PAYOUT_KYC_REQUIRED")) {
+      return sendJson(res, 409, {
+        error: "Complete KYC to receive your payout.", kycRequired: true,
+        kycUrl: `/wedding.html?id=${encodeURIComponent(body.weddingId)}#kyc-section`
+      });
+    }
     return sendJson(res, error.status || 403, { error: "Finance record was not created. Check your role, workspace access, and limits." });
   }
 }

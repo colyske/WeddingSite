@@ -244,12 +244,12 @@
       });
     },    async payouts(el) {
       const { payouts } = await get("payouts");
-      el.innerHTML = `<h2>Payouts / withdrawals</h2><p class="fine">Four-eyes rule: you cannot approve a payout you requested. No money moves automatically; "sent" records a manual transfer.</p>` +
+      el.innerHTML = `<h2>Payouts / withdrawals</h2><p class="fine">Complete KYC to receive your payout. Both partners' required details and consent must be submitted before requesting, approving or marking a payout sent; this is not independent identity verification. Four-eyes rule: you cannot approve a payout you requested. No money moves automatically; "sent" records a manual transfer.</p>` +
         table(["Requested", "Wedding", "Amount", "Status", "Note", "Actions"], payouts.map((p) => {
           const acts = [];
           if (p.status === "requested") acts.push(btn("Approve", `data-ps="approved" data-id="${esc(p.id)}"`), btn("Cancel", `data-ps="cancelled" data-id="${esc(p.id)}"`));
           if (p.status === "approved") acts.push(btn("Mark sent", `data-ps="sent" data-id="${esc(p.id)}"`), btn("Cancel", `data-ps="cancelled" data-id="${esc(p.id)}"`));
-          return `<tr><td>${date(p.requested_at)}</td><td>${esc(p.couple_names)}</td><td>${esc(WS.money(Number(p.amount_minor), p.currency, false))}</td><td>${esc(p.status)}</td><td>${esc(p.note || "")}</td><td class="acts">${acts.join(" ") || "-"}</td></tr>`;
+          return `<tr><td>${date(p.requested_at)}</td><td>${esc(p.couple_names)} <a href="/wedding.html?id=${encodeURIComponent(p.wedding_id)}#kyc-section">KYC details</a></td><td>${esc(WS.money(Number(p.amount_minor), p.currency, false))}</td><td>${esc(p.status)}</td><td>${esc(p.note || "")}</td><td class="acts">${acts.join(" ") || "-"}</td></tr>`;
         }));
     },
     async audit(el) {
