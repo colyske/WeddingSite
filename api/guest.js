@@ -6,6 +6,9 @@ import { normalizePhone, phoneKeyEmail } from "../server/phone.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { canonicalWeddingUrl, classifyHost, isSubdomainSlug, weddingBaseDomain } from "../server/site-hosts.js";
+import { isShowcase, showcase, showcaseBids, showcaseLedger, showcaseFundraising, showcaseExtras } from "../server/showcase.js";
+import { contentError } from "../server/content-policy.js";
+import "../social-links.js";
 
 const BRAND = "Join Our Wedding";
 const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -89,6 +92,16 @@ export default async function handler(req, res) {
   const rpc = (name, body, options = {}) => supabaseRequest(`/rest/v1/rpc/${name}`, { ...options, method: "POST", body });
 
   try {
+    const invalidContent = req.method === "POST" && contentError(req.body);
+    if (invalidContent) return sendJson(res, 400, { error: invalidContent });
+    const sample = [req.query.slug, req.query.weddingId, req.body?.slug, req.body?.weddingSlug, req.body?.weddingId].some(isShowcase);
+    if (sample && req.method !== "GET") return sendJson(res, 403, { error: "Showcase: payments, RSVPs and messages are disabled." });
+    if (sample && action === "site") return sendJson(res, 200, { wedding: showcase });
+    if (sample && action === "leaderboard") return sendJson(res, 200, { bids: showcaseBids });
+    if (sample && action === "ledger") return sendJson(res, 200, { ledger: showcaseLedger });
+    if (sample && action === "fundraising") return sendJson(res, 200, showcaseFundraising);
+    if (sample && action === "extras") return sendJson(res, 200, showcaseExtras);
+    if (sample && action === "rsvp-count") return sendJson(res, 200, { count: 84 });
     if (action === "site") {
       if (!methodOnly(req, res, "GET")) return;
       const slug = String(req.query.slug || "").toLowerCase();
@@ -114,7 +127,7 @@ export default async function handler(req, res) {
         return res.end();
       }
       const slug = host.kind === "wedding" ? host.slug : "";
-      const site = slug ? await rpc("get_public_wedding_site", { p_slug: slug }).catch(() => null) : null;
+      const site = isShowcase(slug) ? showcase : slug ? await rpc("get_public_wedding_site", { p_slug: slug }).catch(() => null) : null;
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Cache-Control", "public, max-age=0, s-maxage=60");
       res.setHeader("Vary", "Host");
@@ -129,7 +142,7 @@ export default async function handler(req, res) {
     if (action === "og") {
       if (!methodOnly(req, res, "GET")) return;
       const slug = String(req.query.slug || "").toLowerCase();
-      const site = /^[a-z0-9-]{3,80}$/.test(slug) ? await rpc("get_public_wedding_site", { p_slug: slug }).catch(() => null) : null;
+      const site = isShowcase(slug) ? showcase : /^[a-z0-9-]{3,80}$/.test(slug) ? await rpc("get_public_wedding_site", { p_slug: slug }).catch(() => null) : null;
       const ref = REF.test(String(req.query.ref || "")) ? String(req.query.ref) : "";
       if (site?.id && weddingBaseDomain() && isSubdomainSlug(slug)) {
         res.statusCode = 308;
@@ -206,6 +219,9 @@ export default async function handler(req, res) {
       const contactPhone = text(body.contactPhone, 30);
       const location = text(body.location, 160);
       const offer = text(body.offer, 360);
+      let socialLinks;
+      try { socialLinks = globalThis.WSSocialLinks.parse(body.socialLinks); }
+      catch (error) { return sendJson(res, 400, { error: error.message }); }
       if (!companyName || !contactName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail) || !offer) {
         return sendJson(res, 400, { error: "Enter the organization, contact name, valid email and proposed offer." });
       }
@@ -223,7 +239,8 @@ export default async function handler(req, res) {
         body: {
           wedding_id: weddingId, company_name: companyName, contact_name: contactName,
           contact_email: contactEmail, contact_phone: contactPhone || null,
-          location: location || null, offer, in_kind: true, public_contact: body.publicContact === true
+          location: location || null, offer, in_kind: true, public_contact: body.publicContact === true,
+          social_links: socialLinks
         }
       });
       return sendJson(res, 201, {

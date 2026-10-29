@@ -284,3 +284,62 @@ body.guest-page #bids .link-btn { background: transparent !important; color: var
   #color-inputs .palette-color-name { flex: 1 1 7rem; min-width: 0; }
   #pay-dialog { max-height: 90dvh; overflow-y: auto; width: calc(100vw - 24px); }
 }
+
+/* Shared celebration surfaces. */
+body.guest-page #details, body.guest-page #campaigns, body.guest-page #sponsors { background: #e2e9df !important; }
+.sponsor-sample { padding: 1.4rem; border-radius: 12px; text-align: center; color: #fffaf0; background: radial-gradient(ellipse at top, #49684f, #183d30); border: 1px solid #ac925a; }
+.sponsor-sample h3, .sponsor-sample .fine, .sponsor-sample .eyebrow { color: #fffaf0 !important; }
+.sponsor-emblem { font-size: 2rem; color: #e5c986; }
+.sponsor-socials { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; }
+.sponsor-socials a { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid #718376; border-radius: 50%; color: #203a31; background: #fffaf0; font-weight: 700; text-decoration: none; }
+fieldset[id$="-social"] { border: 1px solid #718376; border-radius: 8px; padding: .6rem; }
+body.guest-page #story, body.guest-page #registry, body.guest-page #ledger, body.guest-page #info-section { background: #fffaf0 !important; }
+body.guest-page #rsvp, body.guest-page #vip-section, body.guest-page #guestbook { background: #eee2cd !important; }
+body.guest-page #bids, body.guest-page #prewedding, body.guest-page #seating { background: #fcfbf8 !important; }
+#prewedding .venue-card, #prewedding .sched-body h3, #prewedding .sched-body p { color: #263d30; }
+#prewedding .sched-time, #prewedding .sched-body a { color: #795b20 !important; }
+#prewedding .sched-date { color: #555b53; }
+#prewedding .sched-row { border-color: #b7c1af; }
+body.guest-page section.card { border-top: 1px solid #c9cbbb !important; }
+body.guest-page #details { background-image: radial-gradient(ellipse at top right, #cad8c6 0, transparent 60%) !important; }
+body.guest-page #sponsors { background-image: linear-gradient(135deg, #e2e9df, #f8edda) !important; }
+#palette-preview { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; gap: .6rem; }
+#palette-preview figure { min-width: 0; align-self: start; margin: 0 !important; display: grid; grid-template-rows: auto auto; }
+#palette-preview figure > span { display: block; margin: 0 !important; min-height: 48px; }
+#palette-preview figcaption { overflow-wrap: anywhere; font-size: clamp(.65rem, 1.2vw, .8rem); margin: .4rem 0 0; letter-spacing: 0; }
+#palette-preview > span { margin: 0 !important; width: 100% !important; height: 54px !important; }
+.showcase-pin { display: flex; align-items: center; justify-content: space-between; gap: 2rem; padding: clamp(1.25rem, 4vw, 3rem); margin: 1.5rem 0; background: #e2e9df; border: 1px solid #aebda5; border-left: 6px solid var(--green); }
+.showcase-pin > div { max-width: 42rem; }
+.showcase-pin .btn { flex-shrink: 0; text-align: center; max-width: 100%; }
+.showcase-banner { padding: .8rem 1rem; background: #fff3cc; color: #4a3b16; border-bottom: 1px solid #bba663; text-align: center; font-weight: 600; font-size: .85rem; }
+.feature-grid { padding: 1.25rem; background: #eee2cd; border: 1px solid #d5c7ac; }
+.feature-grid .feature-card:nth-child(even) { background: #e2e9df !important; }
+.weddings-section { background: #fffaf0; padding: 1.5rem !important; }
+#create-section, #edit-section { border-top: 5px solid var(--green) !important; }
+#create-section > h2, #edit-section > h2, .bo-panel > h2 { border-bottom: 1px solid #c5cdbb; padding-bottom: .75rem; }
+.bo-panel { background: linear-gradient(135deg, #fcfbf8, #f3eddf) !important; }
+.bo-panel .stat-card:nth-child(even) { background: #e2e9df; }
+.field-row { display: grid; grid-template-columns: minmax(6.5rem, 30%) minmax(0, 1fr); align-items: center; gap: .6rem; margin: .65rem 0; }
+.field-row > label, label.field-row > span { margin: 0; line-height: 1.35; font-size: .85rem; }
+.field-row > :is(input, select, textarea) { width: 100%; min-width: 0; margin: 0 !important; padding: .55rem .65rem; }
+.song-request-fields { gap: .5rem !important; grid-template-columns: 1fr !important; }
+.song-request-fields > label { display: grid; grid-template-columns: minmax(6rem, 30%) minmax(0, 1fr); align-items: center; gap: .6rem; font-size: .85rem; }
+.song-request-fields > label input { margin-top: 0; }
+@media (max-width: 768px) {
+  .showcase-pin { flex-direction: column; align-items: stretch; gap: .5rem; }
+}
+@media (max-width: 640px) {
+  #leaderboard-table tr { grid-template-columns: 1rem minmax(0, 1fr) minmax(3.2rem, .65fr) minmax(4rem, auto) !important; gap: .2rem .35rem; }
+  #leaderboard-table .lb-rank { grid-column: 1; grid-row: 1; }
+  #leaderboard-table .lb-song { grid-column: 2; grid-row: 1; font-size: .82rem; line-height: 1.4; }
+  #leaderboard-table .lb-artist { grid-column: 3; grid-row: 1; font-size: .76rem; line-height: 1.4; }
+  #leaderboard-table .lb-total { grid-column: 4; grid-row: 1; font-size: .76rem; line-height: 1.4; text-align: right !important; }
+  #leaderboard-table td.lb-bid { grid-column: 2 / -1; grid-row: 2 !important; max-width: none; }
+  .song-bid-options { min-width: 0; }
+  .song-bid-options:not([open]) { width: max-content; margin-left: auto; }
+  .song-bid-options summary { min-height: 44px; padding: .45rem .65rem; font-size: .75rem; }
+  #ledger-table { font-size: .75rem; table-layout: fixed; }
+  #ledger-table :is(td, th) { padding: .45rem .2rem !important; overflow-wrap: anywhere; }
+  .field-row { grid-template-columns: minmax(5.2rem, 32%) minmax(0, 1fr); gap: .4rem; }
+  .field-row > label { font-size: .8rem; }
+}

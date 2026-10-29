@@ -4,6 +4,9 @@ import { checkProviderHealth, initiateDarajaStkPush, isSecurePublicOrigin, verif
 import { normalizePhone } from "../server/phone.js";
 import { isPastWedding } from "../server/wedding-time.js";
 import { platformOrigins, weddingOriginSlug } from "../server/site-hosts.js";
+import { isShowcase } from "../server/showcase.js";
+import "../social-links.js";
+import { contentError } from "../server/content-policy.js";
 
 const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 const isText = (value, max) => typeof value === "string" && value.trim().length > 0 && value.trim().length <= max;
@@ -136,6 +139,7 @@ async function createPaystackCheckout({ id, weddingId, slug, streamName, amountM
 
 async function handleOptions(req, res) {
   if (!methodOnly(req, res, "GET")) return;
+  if (isShowcase(req.query.weddingId)) return sendJson(res, 200, { providers: [], paymentAvailable: false, message: "Showcase: payments disabled." });
   const weddingId = String(req.query.weddingId || "");
   const currency = String(req.query.currency || "").toUpperCase();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(weddingId) ||
@@ -181,6 +185,11 @@ async function handleOptions(req, res) {
 
 async function handleCheckout(req, res) {
   if (!methodOnly(req, res, "POST")) return;
+  if (isShowcase(req.body?.weddingId)) return sendJson(res, 403, { error: "Showcase: payments disabled." });
+  const invalidContent = contentError(req.body);
+  try { globalThis.WSSocialLinks.parse(req.body?.socialLinks); }
+  catch (error) { return sendJson(res, 400, { error: error.message }); }
+  if (invalidContent) return sendJson(res, 400, { error: invalidContent });
   if (!testPaymentsEnabled()) {
     return sendJson(res, 503, { error: "Payments are currently unavailable. Paid actions cannot be completed until a test provider is enabled." });
   }
@@ -320,7 +329,7 @@ async function handleCheckout(req, res) {
       purchaseData = {
         refId: tier.id, companyName: String(body.companyName || body.guestName || "").trim().slice(0, 100),
         email: String(body.email || "").trim().slice(0, 200), phone: String(body.phone || "").trim().slice(0, 30),
-        website: String(body.website || "").trim().slice(0, 300),
+        website: String(body.website || "").trim().slice(0, 300), socialLinks: globalThis.WSSocialLinks.parse(body.socialLinks),
         location: String(body.location || "").trim().slice(0, 160),
         offer: String(body.offer || "").trim().slice(0, 360), publicContact: body.publicContact === true
       };
@@ -341,7 +350,7 @@ async function handleCheckout(req, res) {
         minimumBidAtCheckout: Number(auction.next_bid_minor),
         companyName: String(body.companyName || body.guestName || "").trim().slice(0, 100),
         email: String(body.email || "").trim().slice(0, 200), phone: String(body.phone || "").trim().slice(0, 30),
-        website: String(body.website || "").trim().slice(0, 300),
+        website: String(body.website || "").trim().slice(0, 300), socialLinks: globalThis.WSSocialLinks.parse(body.socialLinks),
         location: String(body.location || "").trim().slice(0, 160),
         offer: String(body.offer || "").trim().slice(0, 360), publicContact: body.publicContact === true
       };

@@ -1,5 +1,6 @@
 import { sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireRole } from "../server/auth-middleware.js";
+import { contentError } from "../server/content-policy.js";
 
 const rpc = (name, token, body = {}) =>
   supabaseRequest(`/rest/v1/rpc/${name}`, { token, method: "POST", body });
@@ -63,6 +64,8 @@ export default async function handler(req, res) {
 
     if (req.method !== "POST") return sendJson(res, 405, { error: "Method not allowed." });
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
+    const invalidContent = contentError(body);
+    if (invalidContent) return sendJson(res, 400, { error: invalidContent });
 
     if (action === "set-role") {
       if (role !== "owner") return sendJson(res, 403, { error: "Only the protected Owner can change platform roles." });

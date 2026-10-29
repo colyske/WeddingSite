@@ -237,10 +237,10 @@
       mountPaged(el, "ledger", {
         title: "Ledger",
         intro: "Newest 500 contributions across all weddings. test-simulator rows are simulated.",
-        head: ["Date", "Wedding", "Stream", "Amount", "Fee", "Net", "Status", "Provider"],
+        head: ["Date", "Wedding", "Type / purpose", "Contributor", "Amount", "Fee", "Net", "Status", "Provider"],
         items: ledger,
         text: (l) => [l.couple_names, l.stream_name, l.status, l.provider].join(" "),
-        row: (l) => `<tr><td>${date(l.created_at)}</td><td>${esc(l.couple_names)}</td><td>${esc(l.stream_name)}</td><td>${esc(WS.money(Number(l.amount_minor), l.currency, false))}</td><td>${esc(WS.money(Number(l.fee_minor || 0), l.currency, false))}</td><td>${esc(WS.money(Number(l.net_minor || 0), l.currency, false))}</td><td>${esc(l.status)}</td><td>${esc(l.provider || "-")}</td></tr>`
+        row: (l) => `<tr><td>${date(l.created_at)}</td><td>${esc(l.couple_names)}</td><td>${esc(l.stream_name)}</td><td>${esc(l.contributor || "Anonymous")}</td><td>${esc(WS.money(l.amount_minor, l.currency, false))}</td><td>${esc(WS.money(Number(l.fee_minor || 0), l.currency, false))}</td><td>${esc(WS.money(Number(l.net_minor || 0), l.currency, false))}</td><td>${esc(l.status)}</td><td>${esc(l.provider || "-")}</td></tr>`
       });
     },    async payouts(el) {
       const { payouts } = await get("payouts");

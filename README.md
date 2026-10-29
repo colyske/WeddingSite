@@ -1,5 +1,46 @@
 # WeddingSite
 
+## Current hosted service
+
+The current platform is [Join Our Wedding](https://www.joinourwedding.site).
+The pinned [fictional showcase](https://showcase-wedding.joinourwedding.site/) is a
+read-only fixture served by the application, not a database wedding. Its sample
+contributions, guests and sponsor never enter reporting or payout metrics. Both
+guest writes and checkout are blocked server-side for its reserved slug/ID.
+
+Public contribution rows use confirmed `paid_amount_minor`, contribution type,
+consented display name and date; amounts are divided by 100 in the wedding's
+currency. Sponsor social profiles accept only HTTPS links on the named common
+platform's domain. Contact details belong in designated contact fields, not free
+text; browser/API validation and database content triggers enforce this for new
+or changed content without rewriting historical records. This is an abuse
+deterrent, not a guarantee against every creative encoding.
+
+Production Supabase Auth uses `https://www.joinourwedding.site` as its Site URL.
+Redirects allow both platform origins and paths, the Production Vercel host and
+existing local development callbacks; the stale preview is removed. Google
+sign-in explicitly uses `/signin.html?oauth_state=...` on the requesting trusted
+platform origin, with PKCE code exchange in the callback.
+
+Google's `supabase.co` destination label is separate from the return URL.
+Changing it requires a Supabase custom auth subdomain, available on a paid plan,
+plus the [custom-domain add-on](https://supabase.com/docs/guides/platform/manage-your-usage/custom-domains)
+at $0.0137/hour (approximately $10/month). Pro starts at $25/month; compute and
+other usage may add charges. No paid add-on is enabled by this repository.
+To configure after approval: register `auth.joinourwedding.site` with Supabase,
+add its prescribed CNAME/TXT DNS records, wait for verification/TLS, add
+`https://auth.joinourwedding.site/auth/v1/callback` to the Google OAuth client's
+authorized redirect URIs, then activate the domain and update the auth URL.
+Retain the old provider callback during transition. In Google Auth Platform
+Branding, set the app name to **Join Our Wedding**, upload the supplied brand
+logo, authorize `joinourwedding.site`, and set the homepage, privacy and terms
+URLs to this platform. Google may require brand/domain verification. These
+Google project changes require its administrator; do not purchase a plan or
+claim verification on the user's behalf.
+
+The older prototype notes below describe the initial static implementation, not
+the current Production deployment.
+
 WeddingSite contains two distinct experiences:
 
 1. **The WeddingSite platform** (`index.html`) is a multi-tenant planning workspace concept with Client, Admin, and SuperAdmin permission previews. It demonstrates tenant setup, committee minutes and tasks, finance controls, site content review, publication-fee gating, wedding settings, and the separate guest-site preview.

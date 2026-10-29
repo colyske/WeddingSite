@@ -50,7 +50,7 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       await page.goto(`http://127.0.0.1:${server.address().port}/${surface}`);
       if (surface.startsWith("wedding.html")) await page.locator("#edit-section").waitFor({ state: "visible" });
       if (surface === "admin.html" || surface === "owner.html") await page.locator(".stat-card").first().waitFor();
-      for (const width of [320, 375, 1280]) {
+      for (const width of [320, 375, 768, 1280]) {
         await page.setViewportSize({ width, height: 800 });
         const metrics = await page.evaluate(() => ({
           width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth,

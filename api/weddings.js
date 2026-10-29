@@ -3,6 +3,8 @@ import { requireAuth } from "../server/auth-middleware.js";
 import { paymentAdaptersFor } from "./checkout.js";
 import { normalizePhone, isPhoneKeyEmail } from "../server/phone.js";
 import { isReservedLabel } from "../server/site-hosts.js";
+import { isShowcase } from "../server/showcase.js";
+import { contentError } from "../server/content-policy.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
@@ -114,6 +116,8 @@ export default async function handler(req, res) {
   const body = req.body && typeof req.body === "object" ? req.body : {};
 
   try {
+    const invalidContent = req.method === "POST" && contentError(body);
+    if (invalidContent) return sendJson(res, 400, { error: invalidContent });
     if (action === "list") {
       if (!methodOnly(req, res, "GET")) return;
       const rows = await supabaseRequest(
@@ -169,7 +173,7 @@ export default async function handler(req, res) {
       if (!validDate(body.weddingDate)) return sendJson(res, 400, { error: "The wedding date is required (YYYY-MM-DD)." });
       if (!venues.some(venue => venue.eventTime)) return sendJson(res, 400, { error: "The wedding time is required: add the main venue with a start time." });
       const slugRoot = toSlug(names) || "wedding";
-      const base = isReservedLabel(slugRoot) ? `${slugRoot}-wedding` : slugRoot;
+      const base = isReservedLabel(slugRoot) || isShowcase(slugRoot) ? `${slugRoot}-wedding` : slugRoot;
       if (body.timeZone !== undefined && body.timeZone !== null && body.timeZone !== "" && !validZone(body.timeZone)) {
         return sendJson(res, 400, { error: "Choose a valid time zone." });
       }
@@ -231,7 +235,7 @@ export default async function handler(req, res) {
         if (newSlug && !/^[a-z0-9-]{3,80}$/.test(newSlug)) {
           return sendJson(res, 400, { error: "Slug must be 3-80 lowercase letters, numbers, and hyphens." });
         }
-        const reserved = ["admin", "api", "auth", "dashboard", "signin", "guest", "demo", "form-diagnostics", "index"];
+        const reserved = ["admin", "api", "auth", "dashboard", "signin", "guest", "demo", "form-diagnostics", "index", "showcase-wedding"];
         if (newSlug && (reserved.includes(newSlug) || isReservedLabel(newSlug))) {
           return sendJson(res, 400, { error: "That web address is reserved. Please choose a different one." });
         }

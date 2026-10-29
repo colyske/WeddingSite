@@ -35,7 +35,11 @@ window.WS = {
     }
     return res;
   },
-  money(minor, currency, showUsd = true) {
+  money(minor, currency, showUsd = false) {
+    if (minor === null || minor === undefined || minor === "" || !Number.isFinite(Number(minor))) {
+      console.error("Amount unavailable: expected a numeric minor-unit amount.");
+      return "Amount unavailable";
+    }
     try {
       const amount = minor / 100;
       const formatted = new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);

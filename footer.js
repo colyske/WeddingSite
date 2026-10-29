@@ -1,4 +1,12 @@
 (function () {
+  const policy = document.createElement("script");
+  policy.src = "/contact-policy.js";
+  policy.onload = () => {
+    const forms = document.createElement("script");
+    forms.src = "/compact-forms.js";
+    document.body.appendChild(forms);
+  };
+  document.body.appendChild(policy);
   if (document.getElementById("ws-site-footer")) return;
   const f = document.createElement("footer");
   f.id = "ws-site-footer";
