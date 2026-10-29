@@ -38,9 +38,10 @@ test("deployed staff scripts render fresh USD/KES and explicit unavailable/stale
           const errors = [];
           page.on("pageerror", error => errors.push(error.message));
           for (const surface of ["admin.html", "owner.html"]) {
-            const loaded = page.waitForResponse(response => new URL(response.url()).pathname === "/fx.js");
-            await page.goto(new URL(surface, deployment).href, { waitUntil: "domcontentloaded" });
-            const asset = await loaded;
+            const [asset] = await Promise.all([
+              page.waitForResponse(response => new URL(response.url()).pathname === "/fx.js"),
+              page.goto(new URL(surface, deployment).href, { waitUntil: "domcontentloaded" })
+            ]);
             assert.equal(asset.status(), 200, "real deployed FX asset must load successfully");
             assert.match(asset.headers()["content-type"], /javascript/);
             await page.waitForFunction(() => typeof window.WeddingSiteFX?.convertBetween === "function");
