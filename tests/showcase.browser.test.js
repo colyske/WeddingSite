@@ -79,9 +79,13 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     }
     assert.deepEqual(errors, []);
     // Exercise local input validation without enabling or submitting sample actions.
-    await page.locator("#song-request-title").evaluate(el => { el.disabled = false; });
-    await page.locator("#song-request-title").fill("call +254700000001");
-    assert.match(await page.locator("#song-request-title").evaluate(el => el.validationMessage), /designated contact fields/);
+    const message = await page.locator("#song-request-title").evaluate(el => {
+      el.disabled = false;
+      el.value = "call +254700000001";
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      return el.validationMessage;
+    });
+    assert.match(message, /designated contact fields/);
   } finally {
     await browser?.close();
     server.close();
