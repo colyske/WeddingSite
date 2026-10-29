@@ -16,9 +16,17 @@ test("authenticated correction and staff reason/review surfaces never auto-publi
   });
   let browser;
   try {
-    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    const deployedBase = process.env.WEDDING_MODERATION_BASE_URL;
+    if (deployedBase && !/^https:\/\/[^/?#]+\/?$/.test(deployedBase)) throw new Error("Use an HTTPS origin for WEDDING_MODERATION_BASE_URL.");
+    if (!deployedBase) await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    const base = deployedBase ? new URL(deployedBase).origin : `http://127.0.0.1:${server.address().port}`;
     try { browser = await chromium.launch({ channel: "msedge" }); } catch { browser = await chromium.launch(); }
-    const page = await browser.newPage();
+    const context = await browser.newContext({ serviceWorkers: "block" });
+    const page = await context.newPage();
+    const loadedScripts = new Set();
+    page.on("response", response => {
+      if (response.ok() && response.request().resourceType() === "script") loadedScripts.add(new URL(response.url()).pathname);
+    });
     const id = "550e8400-e29b-41d4-a716-446655440000";
     const c = { id, wedding_id: id, reason_code: "inaccurate_details", reason: "The <venue> address needs correction.",
       required_action: "Correct the venue address and map.", status: "open", revision: 1, was_published: true,
@@ -27,7 +35,11 @@ test("authenticated correction and staff reason/review surfaces never auto-publi
       public_location: "Nairobi", lifecycle_admin_restricted: true, unpublished_at: "2026-01-01", moderation: c,
       venues: [], registry: [], tiers: [], palette: ["#ffffff"], time_zone: "Africa/Nairobi" };
     const posts = [];
-    await page.route("https://**", route => route.fulfill({ body: "" }));
+    await page.route("**/*", route => {
+      const request = route.request(), url = new URL(request.url());
+      if (url.origin === base && ["GET", "HEAD"].includes(request.method()) && !url.pathname.startsWith("/api/")) return route.continue();
+      return route.fulfill({ body: "" });
+    });
     await page.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "fixture", r: "client" })));
     await page.route("**/api/**", async route => {
       const action = new URL(route.request().url()).searchParams.get("action");
@@ -60,7 +72,6 @@ test("authenticated correction and staff reason/review surfaces never auto-publi
         requested_at: "2026-01-01", staff_reason: "Correct the payout account details." }] };
       await route.fulfill({ contentType: "application/json", body: JSON.stringify(data) });
     });
-    const base = `http://127.0.0.1:${server.address().port}`;
     await page.goto(`${base}/wedding.html?id=${id}`, { waitUntil: "domcontentloaded" });
     await page.locator("#moderation-form").waitFor({ state: "visible" });
     await page.locator("#edit-section").waitFor({ state: "visible" });
@@ -89,6 +100,7 @@ test("authenticated correction and staff reason/review surfaces never auto-publi
     await page.locator('#restriction-form button').click();
     await page.waitForFunction(() => !document.getElementById("restriction-form"));
     assert.deepEqual(posts.map(p => p.action), ["update", "moderation-correction", "moderation-review", "wedding-action"]);
+    for (const script of ["/auth-client.js", "/backoffice.js"]) assert.ok(loadedScripts.has(script), `real asset loaded: ${script}`);
     for (const width of [320, 768, 1280]) {
       await page.setViewportSize({ width, height: 800 });
       await page.goto(`${base}/wedding.html?id=${id}`, { waitUntil: "domcontentloaded" });
