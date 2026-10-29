@@ -42,6 +42,24 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     assert.doesNotMatch(await page.locator("#ledger-body").innerText(), /NaN|\$/);
     assert.ok(await page.locator(".showcase-banner").isVisible());
     assert.ok(await page.locator("#pay-submit").isDisabled());
+    const contrast = await page.evaluate(() => {
+      function luminance(rgb) {
+        return rgb.map(v => { const s = v / 255; return s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4; })
+          .reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
+      }
+      function ratio(selector, background) {
+        const foreground = getComputedStyle(document.querySelector(selector)).color.match(/\d+/g).slice(0, 3).map(Number);
+        const [hi, lo] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+        return (hi + .05) / (lo + .05);
+      }
+      return {
+        time: ratio("#prewedding .sched-time", [252, 251, 248]),
+        text: ratio("#prewedding .sched-body p", [252, 251, 248]),
+        date: ratio("#prewedding .sched-date", [252, 251, 248]),
+        advert: ratio(".sponsor-sample .fine", [73, 104, 79])
+      };
+    });
+    for (const [label, value] of Object.entries(contrast)) assert.ok(value >= 4.5, `${label} contrast ${value}`);
     for (const width of [320, 375, 768, 1280]) {
       await page.setViewportSize({ width, height: 800 });
       const metrics = await page.evaluate(() => ({
