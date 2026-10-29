@@ -1444,6 +1444,7 @@
       try {
         const res = await WS.api(`/api/weddings?action=quote&weddingId=${encodeURIComponent(weddingId)}`);
         const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not load the publication quote.");
         const q = data.quote || {};
         if (res.ok && q.fee_minor != null) {
           $("fee-box").textContent = q.fee_minor > 0
@@ -1451,9 +1452,13 @@
             : `No publication fee. ${q.reason || ""}`;
           $("pay-fee-btn").hidden = !(q.fee_minor > 0) || !!w.published_at || !!w.archived_at;
         }
-        document.addEventListener("ws:publication-verified", () => refreshOps(window.__wedding || {}));
-      } catch (_) {}
+      } catch (error) {
+        console.error("Publication quote failed:", error.message);
+        $("fee-box").textContent = "The publication quote could not be loaded. Reload before attempting payment or publishing.";
+        $("pay-fee-btn").hidden = true;
+      }
     }
+    document.addEventListener("ws:publication-verified", () => refreshOps(window.__wedding || {}));
     async function postAction(action, extra) {
       const res = await WS.api(`/api/weddings?action=${action}`, { method: "POST", body: JSON.stringify({ weddingId, confirmed: true, ...extra }) });
       const data = await res.json().catch(() => ({}));
