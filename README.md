@@ -56,6 +56,37 @@ they do not credit wedding balances, automatically reverse fees or unpublish
 an existing wedding. Historical published/unsettled quotes are not automatic debt.
 Live publication collection is deliberately unsupported.
 
+### USD publication fees and supported currencies
+
+Publication policy amounts are **USD cents**: `2500` means USD 25, not 25 in
+every wedding currency. The far-future `5000` means USD 50; the first-publication
+allowance and 18-month threshold are unchanged. Migration `202610300011` makes
+this denomination explicit without changing historical fee or checkout rows.
+New quotes use the wedding's currency with the USD base shown underneath.
+
+The approved indicative quote source is ExchangeRate-API's daily
+`https://open.er-api.com/v6/latest/USD` feed. The server validates and stores
+immutable rate snapshots. Rates older than 36 hours, missing currencies and
+invalid responses fail closed for new non-USD publication checkout. A retained
+rate within 36 hours may be used if refresh fails, with its original published
+timestamp visible. USD quotes require no external rate. Each admitted checkout
+retains its USD amount, local amount, rate, source and timestamp; later rates
+never reprice it. The quoted local minor-unit amount is rounded **up**; Daraja
+rounds up to whole KES. This is a platform fee quote, not the provider's
+settlement/accounting FX rate or a claim of live collected revenue.
+
+Wedding creation/editing offers the runtime's supported ISO currencies with
+**two decimal places**, matching the existing hundredths-based budget,
+contribution, RSVP and payout contracts. The FX display engine also recognizes
+zero/three/four-decimal ISO currencies, but these are not enabled for wedding
+accounting or checkout: changing only a dropdown would misprice existing forms
+and provider amounts. For example JPY/KRW (zero), KWD/BHD (three) and CLF (four)
+remain display-only where the FX source publishes them. Precious-metal,
+non-ISO and missing-rate codes do not acquire a conversion by default.
+Currency support is not payment acceptance: checkout additionally requires
+the configured merchant's explicit currency/market allowlist, provider health,
+platform switch and test-mode credentials. Daraja remains Kenya/KES only.
+
 Production Supabase Auth uses `https://www.joinourwedding.site` as its Site URL.
 Redirects allow both platform origins and paths, the Production Vercel host and
 existing local development callbacks; the stale preview is removed. Google

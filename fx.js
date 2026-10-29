@@ -5,7 +5,7 @@
   const weddingKey = "weddingsite-demo-wedding-settings";
   const currencyKey = "weddingsite-demo-display-currency";
   const maxAgeHours = 36;
-  const options = ["USD", "EUR", "GBP", "KES", "CAD", "AUD", "NZD", "ZAR", "NGN", "GHS", "INR", "JPY", "CNY", "SGD", "HKD", "AED", "CHF", "TZS", "UGX", "RWF", "BRL", "MXN", "EGP"];
+  const options = Intl.supportedValuesOf("currency");
   let rates = { USD: 1 };
   let rateDate = "";
   let fetchedAt = "";

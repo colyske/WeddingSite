@@ -9,6 +9,8 @@
     <h2 id="publication-title">Publication fee — test mode</h2>
     <p>This checkout pays the platform, not the wedding fund. Test confirmation is not real collected revenue. Publishing still requires your separate confirmation.</p>
     <p id="publication-quote" role="status"></p>
+    <small id="publication-usd" class="fine"></small>
+    <p id="publication-fx" class="fine"></p>
     <label for="publication-method">Payment method</label><select id="publication-method"></select>
     <label for="publication-email">Payment email</label><input id="publication-email" type="email" autocomplete="email" maxlength="254">
     <label for="publication-phone">M-Pesa number</label><input id="publication-phone" type="tel" autocomplete="tel">
@@ -22,8 +24,16 @@
   document.body.append(dialog);
   const $ = id => document.getElementById(id);
   const key = `ws-publication:${weddingId}`;
-  let quote, paymentId, token = "", widget, scriptPromise, timer, checks = 0, submitting = false;
+  let quote, methodQuotes = new Map(), paymentId, token = "", widget, scriptPromise, timer, checks = 0, submitting = false;
   const message = text => { $("publication-status").textContent = text; };
+  function showQuote(value) {
+    $("publication-quote").textContent = `${WS.money(value.fee_minor, value.currency, false)}. ${value.reason || ""}`;
+    $("publication-usd").textContent = value.currency !== "USD" && value.usd_amount_minor != null
+      ? `[USD ${(Number(value.usd_amount_minor) / 100).toFixed(2)} base fee]` : "";
+    $("publication-fx").textContent = value.fx_published_at
+      ? `Indicative quote from ExchangeRate-API: 1 USD = ${value.fx_rate} ${value.currency}. Published ${new Date(value.fx_published_at).toLocaleString()}. Rounded up to ${value.payment_unit_minor === 100 ? "whole KES for M-Pesa" : "the next currency minor unit"}; not a provider settlement rate.`
+      : "";
+  }
   async function api(action, body, id) {
     const response = await WS.api(`/api/weddings?action=publication-${action}&weddingId=${encodeURIComponent(weddingId)}${id ? "&id=" + encodeURIComponent(id) : ""}`,
       body ? { method: "POST", body: JSON.stringify({ weddingId, ...body }) } : {});
@@ -41,6 +51,11 @@
     $("publication-check").hidden = false;
     $("publication-reload").hidden = true;
     $("publication-quote").textContent = `Existing test payment: ${WS.money(checkout.amountMinor, checkout.currency, false)}.`;
+    $("publication-usd").textContent = checkout.usdAmountMinor != null && checkout.currency !== "USD"
+      ? `[USD ${(checkout.usdAmountMinor / 100).toFixed(2)} base fee]` : "";
+    $("publication-fx").textContent = checkout.fxPublishedAt
+      ? `Admitted indicative rate: ${checkout.fxRate} ${checkout.currency}/USD, published ${new Date(checkout.fxPublishedAt).toLocaleString()}. This existing payment is not repriced.`
+      : checkout.usdAmountMinor == null ? "Legacy admitted amount; no USD FX snapshot was recorded. This existing payment is not repriced." : "";
   }
   function clearPayment() {
     clearTimeout(timer);
@@ -93,7 +108,7 @@
     token = "";
     $("publication-captcha").replaceChildren();
     widget = window.turnstile.render($("publication-captcha"), {
-      sitekey: siteKey, callback: value => { token = value; $("publication-submit").disabled = false; },
+      sitekey: siteKey, callback: value => { token = value; $("publication-submit").disabled = Boolean(paymentId || submitting); },
       "expired-callback": () => { token = ""; $("publication-submit").disabled = true; },
       "error-callback": () => { token = ""; $("publication-submit").disabled = true; message("Human verification failed. Reload payment options to try the challenge again."); }
     });
@@ -115,7 +130,8 @@
         document.dispatchEvent(new CustomEvent("ws:publication-verified"));
         return;
       }
-      $("publication-quote").textContent = `${WS.money(quote.fee_minor, quote.currency, false)}. ${quote.reason}`;
+      methodQuotes = new Map(data.methods.map(method => [method.id, method.quote || quote]));
+      showQuote(quote);
       $("publication-method").replaceChildren(...data.methods.map(method => new Option(method.label, method.id)));
       $("publication-method").dispatchEvent(new Event("change"));
       if (!data.methods.length) throw new Error("No configured test payment method is currently available. Publishing remains blocked; contact platform support.");
@@ -124,6 +140,8 @@
     } catch (error) { message(error.message); $("publication-reload").hidden = false; }
   }
   $("publication-method").addEventListener("change", () => {
+    quote = methodQuotes.get($("publication-method").value) || quote;
+    if (quote) showQuote(quote);
     const mpesa = $("publication-method").value === "mpesa";
     $("publication-phone").required = mpesa;
     $("publication-email").required = !mpesa;
@@ -139,6 +157,7 @@
     try {
       const data = await api("create", {
         idempotencyKey: crypto.randomUUID(), confirmed: true, expectedAmountMinor: Number(quote.fee_minor),
+        expectedUsdAmountMinor: Number(quote.usd_amount_minor), expectedFxId: quote.fx_snapshot_id || null,
         expectedCurrency: quote.currency, method: $("publication-method").value, captchaToken: token,
         email: $("publication-email").value, mpesaPhone: $("publication-phone").value
       });

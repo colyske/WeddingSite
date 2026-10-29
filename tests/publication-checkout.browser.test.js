@@ -39,12 +39,14 @@ test("publication UI retains Turnstile, handles unresolved returns and never pub
           const action = new URL(url, location.origin).searchParams.get("action");
           let data;
           if (action === "publication-options") data = {
-            quote: { fee_minor: 5000, currency: "KES", reason: "Far-future fee applies." },
-            methods: [{ id: "card", label: "Card" }, { id: "mpesa", label: "M-Pesa" }], turnstileSiteKey: "fixture-site"
+            quote: { fee_minor: 649162, usd_amount_minor: 5000, currency: "KES", reason: "Far-future fee applies." },
+            methods: [{ id: "card", label: "Card", quote: { fee_minor: 649162, usd_amount_minor: 5000, currency: "KES" } },
+              { id: "mpesa", label: "M-Pesa", quote: { fee_minor: 649200, usd_amount_minor: 5000, currency: "KES",
+                fx_rate: 129.832372, fx_published_at: "2026-10-29T00:02:31Z", payment_unit_minor: 100 } }], turnstileSiteKey: "fixture-site"
           };
           else if (action === "publication-create") {
             const body = JSON.parse(init.body);
-            if (body.captchaToken !== "human-fixture" || body.expectedAmountMinor !== 5000) throw new Error("Missing challenge or quote");
+            if (body.captchaToken !== "human-fixture" || body.expectedAmountMinor !== 649200 || body.expectedUsdAmountMinor !== 5000) throw new Error("Missing challenge or quote");
             window.created++;
             data = { checkout: checkout() };
           } else if (action === "publication-status") { window.reads++; data = { checkout: checkout() }; }
@@ -66,6 +68,9 @@ test("publication UI retains Turnstile, handles unresolved returns and never pub
       }), `dialog fits ${width}`);
     }
     await page.locator("#publication-method").selectOption("mpesa");
+    assert.match(await page.locator("#publication-quote").innerText(), /6492\.00/);
+    assert.match(await page.locator("#publication-usd").innerText(), /USD 50\.00/);
+    assert.match(await page.locator("#publication-fx").innerText(), /whole KES for M-Pesa/);
     await page.locator("#publication-phone").fill("254700000001");
     await page.evaluate(() => window.challengeOptions.callback("human-fixture"));
     await page.locator("#publication-submit").click();

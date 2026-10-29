@@ -3,8 +3,10 @@ begin;
 do $$
 declare client_id uuid := extensions.gen_random_uuid(); stranger_id uuid := extensions.gen_random_uuid();
   wedding_id uuid := extensions.gen_random_uuid(); checkout public.publication_checkouts; other public.publication_checkouts;
-  blocked boolean; q jsonb; contributions_before bigint; audits_before bigint;
+  blocked boolean; q jsonb; contributions_before bigint; audits_before bigint; fx_id uuid := extensions.gen_random_uuid();
 begin
+  insert into public.publication_fx_snapshots(id,source,published_at,rates)
+    values(fx_id,'https://open.er-api.com/v6/latest/USD',now(),'{"USD":1,"KES":1}');
   insert into auth.users(id) values(client_id),(stranger_id);
   update public.platform_policies set publication_fee_minor=2500,far_future_fee_minor=5000,
     far_future_months=18,free_publications_per_client=1,enabled_payment_providers=array['daraja','paystack'];
@@ -23,20 +25,20 @@ begin
     raise exception 'Unpaid publication must fail closed'; end if;
   perform set_config('request.jwt.claim.sub',stranger_id::text,true);
   blocked := false;
-  begin perform public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'daraja',5000,'KES');
+  begin perform public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'daraja',5000,'KES',5000,fx_id);
   exception when raise_exception then blocked := sqlerrm like 'Access denied%'; end;
   if not blocked then raise exception 'Checkout must enforce wedding ownership'; end if;
   perform set_config('request.jwt.claim.sub',client_id::text,true);
   blocked := false;
-  begin perform public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'stripe',5000,'KES');
+  begin perform public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'stripe',5000,'KES',5000,fx_id);
   exception when raise_exception then blocked := sqlerrm like 'Payment method disabled%'; end;
   if not blocked then raise exception 'Disabled provider must fail closed'; end if;
   blocked := false;
-  begin perform public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'daraja',2500,'KES');
+  begin perform public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'daraja',2500,'KES',5000,fx_id);
   exception when raise_exception then blocked := sqlerrm like 'Publication quote changed%'; end;
   if not blocked then raise exception 'Stale quote must not initiate checkout'; end if;
-  checkout := public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'daraja',5000,'KES');
-  other := public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'paystack',5000,'KES');
+  checkout := public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'daraja',5000,'KES',5000,fx_id);
+  other := public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'paystack',5000,'KES',5000,fx_id);
   if other.id <> checkout.id then raise exception 'Cross-tab retry must reuse unresolved checkout'; end if;
   update public.publication_checkouts set provider_reference='local-stk-reference' where id=checkout.id;
   update public.platform_policies set far_future_fee_minor=9000,enabled_payment_providers=array[]::text[];
@@ -67,14 +69,14 @@ begin
   update public.weddings set published_at=null where id=wedding_id;
   update public.publication_fees pf set status='pending' where pf.wedding_id=checkout.wedding_id;
   update public.platform_policies set enabled_payment_providers=array['daraja'];
-  other := public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'daraja',9000,'KES');
+  other := public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'daraja',9000,'KES',9000,fx_id);
   update public.publication_checkouts set provider_reference='local-second-stk' where id=other.id;
   update public.publication_fees pf set status='waived',provider='staff-waiver' where pf.wedding_id=checkout.wedding_id;
   perform public.record_verified_publication_payment(other.id,'daraja','local-second-stk',9000,'KES','local-second-event');
   if not exists(select 1 from public.publication_fees pf where pf.wedding_id=checkout.wedding_id and status='waived') then
     raise exception 'Late verified payment must preserve a staff waiver'; end if;
   update public.publication_fees pf set status='pending' where pf.wedding_id=checkout.wedding_id;
-  other := public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'daraja',9000,'KES');
+  other := public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'daraja',9000,'KES',9000,fx_id);
   update public.publication_checkouts set provider_reference='local-currency-stk' where id=other.id;
   update public.weddings set currency='USD' where id=wedding_id;
   if public.record_verified_publication_payment(other.id,'daraja','local-currency-stk',9000,'KES','local-currency-event') then

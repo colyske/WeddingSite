@@ -28,6 +28,8 @@ jobs:
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/contribution-content.sql
       - name: Test verified publication checkout without retaining fixtures
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/publication-checkout.sql
+      - name: Test USD publication FX without retaining fixtures
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/publication-fx.sql
       - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup

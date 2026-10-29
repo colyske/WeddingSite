@@ -64,7 +64,7 @@
         <input id="location" type="text" maxlength="120" placeholder="City, venue, or coordinates" autocomplete="off" required aria-required="true">
 
         <label for="currency">💵 Primary currency <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
-        <select id="currency" required aria-required="true">
+        <select id="currency" data-wedding-currency required aria-required="true">
           <option value="USD">USD - US Dollar</option>
           <option value="KES">KES - Kenyan Shilling</option>
           <option value="EUR">EUR - Euro</option>
@@ -113,6 +113,7 @@
   </div>
 
   <script src="site-urls.js"></script>
+  <script src="currencies.js"></script>
   <script src="auth-client.js"></script>
   <script src="tz.js"></script>
   <script src="share.js"></script>

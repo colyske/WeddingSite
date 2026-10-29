@@ -7,6 +7,7 @@ import { platformOrigins, weddingOriginSlug } from "../server/site-hosts.js";
 import { isShowcase } from "../server/showcase.js";
 import "../social-links.js";
 import { contentError } from "../server/content-policy.js";
+import "../currencies.js";
 
 const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 const isText = (value, max) => typeof value === "string" && value.trim().length > 0 && value.trim().length <= max;
@@ -14,6 +15,7 @@ const isText = (value, max) => typeof value === "string" && value.trim().length 
 const setOf = value => new Set(String(value || "").split(",").map(item => item.trim().toUpperCase()).filter(Boolean));
 
 function configuredAdapters(currency, market) {
+  if (!globalThis.WSCurrencies.supportsAccounting(currency)) return [];
   const options = [];
   const mode = process.env.WEDDINGSITE_PAYMENT_MODE;
   const stripeModeMatches = mode === "test" && process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_");
