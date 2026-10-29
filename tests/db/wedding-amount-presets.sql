@@ -7,6 +7,8 @@ begin
   insert into auth.users(id) values(owner_id);
   insert into public.weddings(id,client_owner_id,slug,couple_names,wedding_date,currency)
     values(wedding_id,owner_id,'amount-presets-local','Local amount sample',current_date+90,'KES');
+  insert into public.wedding_memberships(wedding_id,user_id,role)
+    values(wedding_id,owner_id,'client');
   perform set_config('qa.amount_wedding_id',wedding_id::text,true);
   perform set_config('qa.amount_owner_id',owner_id::text,true);
   if (select amount_presets from public.weddings where id=wedding_id) is not null then
