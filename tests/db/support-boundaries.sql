@@ -19,7 +19,7 @@ begin
     platform_fee_minor,net_paid_minor,provider_fee_minor,provider_fee_pending,currency,payment_status,
     verified_provider_payment,funds_available_at)
     values(wid,'Simulated matured funds',100000,100000,8000,92000,3000,false,'KES','paid',true,now()-interval '10 days');
-  insert into public.audit_events(wedding_id,source,action) values(wid,'user','local_boundary_fixture');
+  insert into public.audit_events(wedding_id,source,action,table_name) values(wid,'user','local_boundary_fixture','weddings');
 end $$;
 
 set local role authenticated;
