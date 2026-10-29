@@ -164,6 +164,7 @@ async function handleDarajaCallback(req, res) {
       contribution.pledged_amount_minor, contribution.currency
     );
     if (payment.terminal) {
+      console.info("Daraja STK Query terminal result", { resultCode: payment.resultCode || null });
       await supabaseRequest(
         `/rest/v1/contributions?id=eq.${encodeURIComponent(contribution.id)}&payment_status=eq.pending`,
         { service: true, method: "PATCH", body: { payment_status: "cancelled" }, prefer: "return=minimal" }

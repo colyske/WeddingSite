@@ -138,7 +138,8 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     assert.equal(await page.locator("#qrcode").getAttribute("data-qr-text"), `${base}/verify.html?code=${rsvpId}`);
     assert.equal(await page.locator("#standalone-pass-link").getAttribute("href"), `${base}/ecard.html?slug=${wedding.slug}&guest_id=${rsvpId}`);
     assert.match(await page.locator("#notice").textContent(), /RSVP received/);
-    await page.click('#leaderboard-body [data-song-bid]');
+    await page.click('#leaderboard-body summary');
+    await page.locator('#leaderboard-body [data-song-bid]').first().click();
     await page.waitForFunction(() => !document.querySelector("#pay-error").hidden);
     assert.match(await page.locator("#pay-error").textContent(), /Payments are not available yet/);
     assert.doesNotMatch(await page.locator("#notice").textContent(), /bid placed/i);

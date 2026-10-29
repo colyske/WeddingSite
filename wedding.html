@@ -107,9 +107,6 @@
         <label for="max-capacity">Maximum guests <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="max-capacity" type="number" min="1" required aria-required="true">
 
-        <label>Wedding theme palette</label>
-        <div class="swatches" id="palette-preview"></div>
-
         <fieldset id="rsvp-fees-fieldset" style="border:1px solid #d0d5cc; border-radius:8px; padding:1rem; margin:1rem 0;">
           <legend>RSVP fees (optional, in your wedding currency)</legend>
           <p class="fine">Leave at 0 for free RSVPs. Guests see the exact fee quote before checkout. A paid RSVP is saved only after a configured test provider verifies payment; no simulator records payments.</p>
@@ -128,9 +125,11 @@
         </label>
         <div id="venues-list" style="margin-bottom: 1.5rem;"></div>
 
-        <label>Wedding theme palette
+        <label>Wedding theme &mdash; decor and dress inspiration
           <button type="button" class="link" id="edit-colors-btn" style="margin-left: 0.5rem; font-weight: normal;">🎨 Edit colours</button>
         </label>
+        <p class="fine">One shared palette for your celebration and guest outfits. Existing saved colours and attire notes are kept; text colours are adjusted for readability on the guest site.</p>
+        <div class="swatches" id="palette-preview"></div>
         <div id="attire-editor" style="display: none; border: 2px dashed #d0d5cc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: #fafbf9;">
           <p style="margin: 0 0 1rem; font-weight: 500;">Edit the wedding theme palette used throughout your site and lookbook. Add up to four colours, name them or enter a recognized colour name, and remove any or all colours. Guests see each name and hex code.</p>
           <div id="color-inputs" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
@@ -148,9 +147,9 @@
         </div>
 
         <div id="attire-description">
-          <label for="attire-notes">Attire notes & dress code</label>
+          <label for="attire-notes">Clothing style &amp; guidance (optional)</label>
           <p class="fine">Suggested outfit colours use the wedding theme palette shown above. Add any dress-code guidance here.</p>
-          <textarea id="attire-notes" maxlength="300" rows="3" placeholder="E.g. Forest Green, Eucalyptus Sage, Royal Gold, Ivory palette. Formal African elegance encouraged."></textarea>
+          <textarea id="attire-notes" maxlength="300" rows="3" placeholder="E.g. Official, traditional, African elegance or casual. Choose something comfortable in the shared wedding colours."></textarea>
         </div>
 
         <label>Registry & Crowdfunding Milestones

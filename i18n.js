@@ -50,7 +50,7 @@
   };
   const SECTIONS = {
     story: ["Hadithi yetu", "Hadithi <em>yetu.</em>"],
-    details: ["Maelezo", "Kila kitu <em>unachohitaji kujua.</em>"],
+    details: ["Mandhari ya harusi", "Vaa kama <em>furaha ya siku.</em>"],
     prewedding: ["Kabla ya harusi", "Njiani <em>kuelekea siku kuu.</em>"],
     venues: ["Sherehe", "Siku iliyojaa <em>nyakati.</em>"],
     attire: ["Mwonekano", "Vaa kama <em>furaha ya siku.</em>"],

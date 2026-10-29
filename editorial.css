@@ -191,3 +191,96 @@ body.guest-page #ecard > div, body.guest-page #ecard .ecard { box-shadow: 10px 1
 #rsvp-pay-dialog table { width: 100%; border-collapse: collapse; margin: .75rem 0; }
 #rsvp-pay-dialog td { padding: .4rem 0; border-bottom: 1px solid #e3dcc7; }
 #rsvp-pay-dialog td:last-child { text-align: right; }
+
+/* Compact, readable surfaces; palette swatches remain independent of UI ink. */
+:root { --gold: #795b20; --sage: #4d6250; --muted: #555b53; }
+body { overflow-wrap: break-word; }
+.fine, .muted { color: #555b53 !important; }
+small, .empty, .palette-label, .sec-label { color: #555b53; }
+a { color: var(--green); text-underline-offset: .18em; }
+input::placeholder, textarea::placeholder { color: #62685f; opacity: 1; }
+input:disabled, select:disabled, textarea:disabled { color: #555b53; opacity: 1; }
+button:disabled, .btn[aria-disabled="true"] { background: #e0e2db !important; color: #4b5148 !important; opacity: 1; }
+:is(a, button, summary, input, select, textarea):focus-visible { outline: 3px solid #1667b1 !important; outline-offset: 3px; }
+.card { padding: clamp(1rem, 3vw, 2rem); }
+.card:hover { transform: none; }
+.top { gap: .5rem; flex-wrap: wrap; }
+.top .btn, .top button, .site-header .btn { margin-top: 0; min-height: 44px; padding: .6rem .8rem; letter-spacing: .04em; }
+.site-header { gap: .65rem; }
+.site-header .btn { text-align: center; }
+.bo-nav { gap: .35rem; margin: .75rem 0 1rem; }
+.bo-nav button { flex: 1 1 auto; min-height: 44px; margin: 0; padding: .55rem .65rem !important; letter-spacing: .02em; }
+.bo-nav button.tab-btn:not(.active) { background: #f0eee6 !important; color: #263d30 !important; }
+.bo-panel .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr)); gap: .65rem; }
+.bo-panel .stat-card { min-width: 0; padding: .8rem; }
+.stat-card .number { color: #795b20; }
+body.guest-page section.card {
+  padding: clamp(1.5rem, 4vw, 3rem) max(1rem, calc((100% - 1080px) / 2)) !important;
+}
+body.guest-page section.card > h2 { font-size: clamp(1.75rem, 4vw, 2.7rem); line-height: 1.15; margin-bottom: .85rem; }
+body.guest-page .sec-label { margin-bottom: .65rem; font-size: .75rem; }
+body.guest-page #details, body.guest-page #registry, body.guest-page #sponsors { background: #edece3 !important; }
+body.guest-page .story-section { padding: 1rem 1.2rem; margin: .75rem 0; }
+.hero { min-height: 480px; }
+.hero .hero-content { padding: 45px 0 55px; }
+.hero h1, .hero h1#couple-names { font-size: clamp(2.4rem, 6vw, 4.5rem); }
+.countdown-band { padding: 18px 5vw; gap: 1.1rem 3rem; }
+.countdown-band .countdown-label { font-size: .68rem; }
+.countdown-band .countdown-intro .eyebrow { font-size: .72rem; }
+.hero .subtitle { font-size: .8rem; letter-spacing: .08em; }
+.hero .hero-side { color: #fff; }
+.hero h1 em, .cta-section h2 { color: #e1cf9f !important; }
+.role-badge { background: #e0e4db !important; color: #263d30 !important; }
+.ecard-container .actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; }
+.ecard-container .actions button { padding: .6rem .4rem !important; min-height: 44px; letter-spacing: .02em; }
+.wedding-card-header, .wedding-card-header p { color: #263d30 !important; opacity: 1 !important; }
+.wedding-card-body p, .wedding-badge:not(.past) { color: #555b53 !important; }
+button.link { min-height: 44px; padding: .5rem .7rem; box-shadow: none; }
+.grid, #weddings-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); }
+.sched-row { padding: 1rem 0; gap: .7rem 1.25rem; }
+.sched-body p { margin-bottom: .4rem; }
+.sched-date { font-size: .8rem; color: #e0e4db; }
+#venues .fine, #venues .sec-label { color: #e0e4db !important; }
+#venues small, #venues .sec-label span { color: #e0e4db; }
+.countdown-band .countdown-item + .countdown-item::before { color: #d6c69f; }
+#palette-preview { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: .75rem; margin: .85rem 0; }
+#palette-preview figure span { aspect-ratio: 2 / 1; }
+#palette-preview figcaption { font-size: .8rem; letter-spacing: .04em; margin-top: .4rem; }
+#palette-preview figcaption small { color: #555b53; letter-spacing: .02em; }
+.song-bid-options { min-width: 7rem; }
+.song-bid-options summary {
+  display: list-item; cursor: pointer; min-height: 44px; padding: .65rem .5rem;
+  background: var(--green); color: #fff; font-size: .85rem; font-weight: 600; white-space: nowrap;
+}
+.song-bid-amounts { display: flex; flex-wrap: wrap; gap: .4rem; padding-top: .5rem; }
+.song-bid-amounts .buy-btn { margin: 0; min-height: 44px; padding: .5rem .65rem !important; letter-spacing: .02em; }
+#leaderboard-table td { vertical-align: top; }
+#leaderboard-table .lb-song { overflow-wrap: anywhere; }
+body.guest-page #leaderboard-table .lb-artist { color: #4a554b !important; }
+body.guest-page .song-request { margin-top: 1rem; padding: 1rem; }
+body.guest-page #bids .link-btn { background: transparent !important; color: var(--green) !important; padding: .5rem !important; min-height: 44px; }
+@media (max-width: 768px) {
+  .hero { min-height: 390px; }
+  .hero-shade { background: rgba(15, 24, 18, .72); }
+  .hero .hero-content { padding: 30px 0 35px; width: 90%; }
+  .hero h1, .hero h1#couple-names { font-size: clamp(2.2rem, 9vw, 3.2rem); }
+  .countdown-band .countdown-item { min-width: 40px; }
+  .countdown-band .countdown-value { font-size: 1.7rem; }
+  .countdown-band .countdown { gap: .5rem; }
+  .countdown-band .countdown-item + .countdown-item::before { content: none; }
+}
+@media (max-width: 640px) {
+  .site-header .brand-logo img { width: 88px; }
+  .site-header .btn { font-size: .68rem; padding: .5rem .6rem; max-width: 58%; }
+  .top > .row { gap: .4rem; }
+  .top .brand { font-size: 1.05rem; }
+  .top .btn, .top button { font-size: .7rem; }
+  .bo-panel .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ecard-container { padding: 1.25rem !important; margin: 1.5rem auto !important; }
+  .song-bid-options summary { font-size: .8rem; }
+  #leaderboard-table tr:has(.song-bid-options[open]) .lb-bid { grid-column: 2 / -1; grid-row: 4; max-width: none; }
+  #leaderboard-table td.lb-bid .buy-btn { flex: 1 1 5rem; font-size: .8rem; min-height: 44px; }
+  #color-inputs > div { flex-wrap: wrap; max-width: 100%; }
+  #color-inputs .palette-color-name { flex: 1 1 7rem; min-width: 0; }
+  #pay-dialog { max-height: 90dvh; overflow-y: auto; width: calc(100vw - 24px); }
+}

@@ -156,7 +156,7 @@ export async function checkProviderHealth(provider) {
 
   const endpoint = provider === "stripe"
     ? "https://api.stripe.com/v1/account"
-    : "https://api.paystack.co/integration";
+    : "https://api.paystack.co/integration/payment_session_timeout";
   try {
     const response = await fetch(endpoint, {
       headers: { Authorization: `Bearer ${key}` },
@@ -367,7 +367,10 @@ export async function verifyProviderPayment(provider, reference, contributionId,
     if (String(result.ResponseCode) !== "0" || result.ResultCode === undefined || result.ResultCode === null) {
       return { verified: false };
     }
-    if (String(result.ResultCode) !== "0") return { verified: false, terminal: true };
+    if (String(result.ResultCode) !== "0") {
+      const code = String(result.ResultCode);
+      return { verified: false, terminal: true, resultCode: /^\d{1,6}$/.test(code) ? code : null };
+    }
     return {
       verified: true,
       provider: "daraja",
