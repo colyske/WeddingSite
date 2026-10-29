@@ -40,6 +40,7 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       if (action === "role") data = { role: "owner" };
       if (action === "overview") data = { weddings: 1, published: 1, archived: 0, past: 0, users: 1, admins: 1, rsvps: 1, bids: 0, pending_payouts: 0, test_payments: 0 };
       if (action === "operations") data = { queue: { counts: {} } };
+      if (action === "policies") data = { policies: {} };
       if (action === "options") data = { providers: [], paymentAvailable: false };
       if (action === "payment-controls") data = { enabled: ["daraja", "paystack"],
         providers: [{ id: "daraja", configured: true }, { id: "paystack", configured: true }, { id: "stripe", configured: false }] };
@@ -49,7 +50,7 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       "account.html", "admin.html", "owner.html", `verify.html?code=${id}`,
       `ecard.html?slug=qa-couple&guest_id=${id}`, "privacy.html", "terms.html"];
     for (const surface of pages) {
-      await page.goto(`http://127.0.0.1:${server.address().port}/${surface}`);
+      await page.goto(`http://127.0.0.1:${server.address().port}/${surface}`, { waitUntil: "domcontentloaded" });
       if (surface.startsWith("wedding.html")) await page.locator("#edit-section").waitFor({ state: "visible" });
       if (surface === "admin.html" || surface === "owner.html") await page.locator(".stat-card").first().waitFor();
       for (const width of [320, 375, 768, 1280]) {
@@ -72,7 +73,7 @@ test("public, organizer and back-office surfaces fit small and large screens", a
         });
       }
     }
-    await page.goto(`http://127.0.0.1:${server.address().port}/wedding.html?id=${id}`);
+    await page.goto(`http://127.0.0.1:${server.address().port}/wedding.html?id=${id}`, { waitUntil: "domcontentloaded" });
     await page.locator("#edit-section").waitFor({ state: "visible" });
     await page.setViewportSize({ width: 320, height: 800 });
     await page.click("#edit-colors-btn");
