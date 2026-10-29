@@ -6,6 +6,8 @@ import { isReservedLabel } from "../server/site-hosts.js";
 import { isShowcase } from "../server/showcase.js";
 import { contentError } from "../server/content-policy.js";
 import { handlePublicationPayment } from "../server/publication-payments.js";
+import { publicationQuote } from "../server/publication-fx.js";
+import "../currencies.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
@@ -170,7 +172,7 @@ export default async function handler(req, res) {
       if (!venues.length || venues.some(venue => !venue.eventTime || !validDate(venue.eventDate) || !venue.address)) {
         return sendJson(res, 400, { error: "Every event needs a date, start time, venue name and street address.", field: "venues" });
       }
-      if (names.length < 1 || names.length > 120 || location.length < 1 || location.length > 120 || !/^[A-Z]{3}$/.test(currency) ||
+      if (names.length < 1 || names.length > 120 || location.length < 1 || location.length > 120 || !globalThis.WSCurrencies.supportsAccounting(currency) ||
           !Number.isInteger(capacity) || capacity < 1 || palette.length > 4 || !palette.every(c => COLOR.test(c))) {
         return sendJson(res, 400, { error: "Check the couple names, location, currency, guest capacity and up to four hex colors." });
       }
@@ -276,7 +278,7 @@ export default async function handler(req, res) {
       }
       if (body.currency !== undefined) {
         const currency = String(body.currency).toUpperCase();
-        if (!/^[A-Z]{3}$/.test(currency)) return sendJson(res, 400, { error: "Choose a valid currency." });
+        if (!globalThis.WSCurrencies.supportsAccounting(currency)) return sendJson(res, 400, { error: "Choose a supported two-decimal wedding currency. Other currency exponents are display-only." });
         patch.currency = currency;
       }
       if (body.palette !== undefined) {
@@ -505,7 +507,9 @@ export default async function handler(req, res) {
     if (action === "quote") {
       if (!methodOnly(req, res, "GET")) return;
       if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
-      const quote = await supabaseRequest("/rest/v1/rpc/publication_quote", { ...opts, method: "POST", body: { p_wedding_id: req.query.weddingId } });
+      const rows = await supabaseRequest(`/rest/v1/weddings?id=eq.${req.query.weddingId}&select=currency`, opts);
+      if (!rows?.length) return sendJson(res, 404, { error: "Wedding not found." });
+      const quote = await publicationQuote(req.query.weddingId, session.token, rows[0].currency);
       return sendJson(res, 200, { quote });
     }
 

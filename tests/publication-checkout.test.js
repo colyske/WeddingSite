@@ -23,7 +23,8 @@ test("authenticated publication checkout locks a server quote, blocks duplicates
   let owned = true, enabled = ["paystack"], quoteAmount = 5000, creates = 0, claims = 0, settlements = 0;
   let checkout = null, verifyStatus = "pending", badAmount = false, ambiguous = false;
   const paths = [];
-  const quote = () => ({ fee_minor: quoteAmount, currency: "KES", code: "far_future", reason: "Far-future fee applies." });
+  const quote = () => ({ fee_minor: quoteAmount, usd_amount_minor: 5000, fx_snapshot_id: paymentId,
+    currency: "KES", code: "far_future", reason: "Far-future fee applies." });
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(input);
     paths.push(url.pathname);
@@ -31,6 +32,9 @@ test("authenticated publication checkout locks a server quote, blocks duplicates
     if (url.pathname === "/auth/v1/user") return Response.json({ id: clientId });
     if (url.pathname === "/rest/v1/weddings") return Response.json(owned ? [{ id: weddingId, currency: "KES" }] : []);
     if (url.pathname === "/rest/v1/rpc/publication_quote") return Response.json(quote());
+    if (url.pathname === "/rest/v1/publication_fx_snapshots") return Response.json([
+      { published_at: new Date().toISOString(), rates: { USD: 1, KES: 1 } }
+    ]);
     if (url.pathname === "/rest/v1/platform_policies") return Response.json([{ enabled_payment_providers: enabled }]);
     if (url.pathname === "/integration/payment_session_timeout") return Response.json({ status: true });
     if (url.pathname === "/turnstile/v0/siteverify") return Response.json({ success: true, hostname: "www.joinourwedding.site" });
@@ -79,9 +83,10 @@ test("authenticated publication checkout locks a server quote, blocks duplicates
     return res;
   };
   const body = { weddingId, method: "card", confirmed: true, expectedAmountMinor: 5000, expectedCurrency: "KES",
+    expectedUsdAmountMinor: 5000, expectedFxId: paymentId,
     idempotencyKey: paymentId, email: "sample@example.com", captchaToken: "fixture-token", amountMinor: 1, provider: "daraja" };
   try {
-    assert.deepEqual((await invoke("options")).body.methods, [{ id: "card", label: "Card" }]);
+    assert.deepEqual((await invoke("options")).body.methods.map(({ id, label }) => ({ id, label })), [{ id: "card", label: "Card" }]);
     owned = false;
     assert.equal((await invoke("create", body)).statusCode, 404);
     owned = true;

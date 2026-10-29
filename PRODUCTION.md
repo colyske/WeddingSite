@@ -1,6 +1,67 @@
 # Production setup and readiness
 
-**Do not describe or use this repository as production-ready.** It contains a static browser demo plus a backend foundation. The dedicated WeddingSite Supabase project has both migrations applied, including the verified Colin-only Owner safeguards. The confirmed `colyske@gmail.com` Auth account is now assigned the protected Owner role. The app still has no user-facing sign-in or Auth callback flow, so this database role cannot yet be used through the website. The Vercel Preview is protected by Vercel authentication. Real payments and irreversible financial actions remain disabled.
+## Current operational status
+
+The current public platform is **Join Our Wedding** at
+https://www.joinourwedding.site. The fictional, read-only showcase is
+https://showcase-wedding.joinourwedding.site, pinned on the homepage as
+**View the showcase wedding**. Its sample data is not in wedding finance,
+reporting or payout records, and checkout is disabled server-side.
+
+Authentication/PKCE return, persistent wedding editing/publishing, guest RSVP,
+verified-payment song bids, consented contribution lists, sponsor social cards,
+KYC-gated payout requests and independent Admin/Owner provider switches are
+implemented. The user has confirmed successful Google sign-in. Google's
+Supabase-domain label remains separate, optional paid branding setup; see
+README for the custom auth domain and Google consent-screen steps.
+
+Payment adapters remain **test/sandbox only**. Never enable live payment or
+remove Turnstile as a testing shortcut. A human-assisted test must be staged
+before submission, identify provider/amount/currency/test number and obtain the
+human's explicit confirmation. An embedded-browser widget not appearing is a
+test blocker, not permission to bypass it. A real Safaricom phone can be charged
+even in sandbox; do not substitute a real number for a test number.
+
+Publication checkout is separate from wedding contributions and uses `test_paid`,
+excluded from collected publication revenue. New USD-canonical fee conversion,
+immutable FX evidence, freshness and rounding rules are described in README.
+Historical fee/checkout records are not repriced; already-published unsettled
+quotes are not automatic debt. Publication never requires KYC; payout request
+and staff approval/sent require the existing both-partner KYC model.
+
+### Remaining launch boundaries
+
+- Provider-confirmed end-to-end success is not established by accepting an STK
+  initiation or returning from hosted checkout. Failed sandbox results must
+  produce no paid ledger/song credit. Live collection requires separate
+  implementation/review and explicit approval, not just changing an env flag.
+- Payouts are controlled requests/status records, not an automated money-transfer
+  rail. Confirm the operational settlement, refunds/disputes and reconciliation
+  process with the merchant before promising real disbursement.
+- `/api/reminders` queues reminders and explicitly returns `sent: 0`; there is
+  no outbound notification-delivery integration.
+- WhatsApp group assistant, official business webhook/inbox and approved sync
+  remain integration work. No bot can be claimed to join arbitrary groups.
+- `ai-guidance.js` supplies authored hints/templates, not a connected AI model.
+- Broad display currencies do not imply universal accounting/provider support.
+  Existing wedding monetary contracts use two decimal places. Other exponents
+  must not be enabled without an end-to-end monetary-unit migration.
+- Production assets have been reviewed at 320/375/768/1280px; authenticated
+  dashboard/payment fixtures are not a claim of real provider settlement.
+
+Use **only** Supabase project `lvvtgxspwvmdhqyoyqyy`. Before each approved
+migration, dry-run against that explicit project, inspect the exact pending
+filenames and stop on unexpected changes. CI's migration job uses an isolated
+local database; it never applies Production migrations. Run rollback SQL tests
+only in that isolated database. Keep secrets in provider/environment secret
+stores, never chat/source. Do not run broad Auth/config pushes to fix one URL.
+
+## Historical initial-prototype record (not current operating instructions)
+
+**Everything below records the original prototype state and may be obsolete.**
+Do not use its old preview URL, Auth configuration, migration counts or missing-
+feature statements to configure the current service. Refer to the current
+README and the live, explicitly authorized environment instead.
 
 ## What is present
 
