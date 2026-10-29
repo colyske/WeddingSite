@@ -13,8 +13,8 @@ declare
 begin
   insert into auth.users (id) values (client_id), (staff_id);
   update public.profiles set platform_role = 'admin' where id = staff_id;
-  insert into public.weddings (id, couple_names, client_owner_id, currency)
-    values (wedding_id, 'Local KYC test couple', client_id, 'KES');
+  insert into public.weddings (id, couple_names, client_owner_id, currency, wedding_date)
+    values (wedding_id, 'Local KYC test couple', client_id, 'KES', current_date + 30);
   insert into public.wedding_memberships (wedding_id, user_id, role) values (wedding_id, client_id, 'client');
   perform set_config('request.jwt.claim.sub', client_id::text, true);
   perform set_config('request.jwt.claim.role', 'authenticated', true);
