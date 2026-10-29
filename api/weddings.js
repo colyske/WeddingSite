@@ -5,6 +5,7 @@ import { normalizePhone, isPhoneKeyEmail } from "../server/phone.js";
 import { isReservedLabel } from "../server/site-hosts.js";
 import { isShowcase } from "../server/showcase.js";
 import { contentError } from "../server/content-policy.js";
+import { handlePublicationPayment } from "../server/publication-payments.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
@@ -114,6 +115,9 @@ export default async function handler(req, res) {
   const opts = { token: session.token };
   const action = String(req.query?.action || "list");
   const body = req.body && typeof req.body === "object" ? req.body : {};
+  if (["publication-options", "publication-create", "publication-status"].includes(action)) {
+    return handlePublicationPayment(req, res, session, action);
+  }
 
   try {
     const invalidContent = req.method === "POST" && contentError(body);

@@ -248,7 +248,7 @@
       <p id="past-note" class="fine" hidden>The wedding date has passed. The guest site now shows a thank-you / memories page; RSVPs, bids and new contributions are closed.</p>
       <div id="fee-box" class="fine"></div>
       <div class="row">
-        <button type="button" id="pay-fee-btn" class="ghost" hidden disabled>Publication payment unavailable</button>
+        <button type="button" id="pay-fee-btn" class="ghost" hidden>Pay publication fee (test mode)</button>
         <button type="button" id="unpublish-btn" class="ghost" hidden>Unpublish (reversible)</button>
         <button type="button" id="archive-btn" class="ghost">Archive</button>
       </div>
@@ -1392,7 +1392,7 @@
           if (data.paymentRequired || data.kycRequired) {
             $("publish-section").hidden = true;
             $("edit-section").hidden = false;
-            notice(data.paymentRequired ? (data.error + " No payment was recorded. Publication payment requires a configured test provider; simulated payments are disabled.") : data.error, true);
+            notice(data.paymentRequired ? (data.error + " Complete the verified publication checkout below. The site remains unpublished until you confirm publishing.") : data.error, true);
             refreshOps(window.__wedding || {});
             (data.kycRequired ? $("kyc-section") : $("ops-section")).scrollIntoView({ behavior: "smooth" });
           }
@@ -1447,10 +1447,11 @@
         const q = data.quote || {};
         if (res.ok && q.fee_minor != null) {
           $("fee-box").textContent = q.fee_minor > 0
-            ? `Publication fee: ${WS.money(q.fee_minor, q.currency || "USD", false)}. ${q.reason || ""} A test payment provider is not configured for this fee; simulated payments are disabled.`
+            ? `Publication fee: ${WS.money(q.fee_minor, q.currency || "USD", false)}. ${q.reason || ""} Test-mode checkout is available only through configured payment methods.`
             : `No publication fee. ${q.reason || ""}`;
-          $("pay-fee-btn").hidden = true;
+          $("pay-fee-btn").hidden = !(q.fee_minor > 0) || !!w.published_at || !!w.archived_at;
         }
+        document.addEventListener("ws:publication-verified", () => refreshOps(window.__wedding || {}));
       } catch (_) {}
     }
     async function postAction(action, extra) {
@@ -1769,6 +1770,7 @@
     loadWedding();
 })();
   </script>
+  <script src="publication-checkout.js"></script>
   <script src="footer.js"></script>
 <script src="/feedback.js"></script>
 </body>

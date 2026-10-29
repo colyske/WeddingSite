@@ -5,6 +5,7 @@ import {
   normalizePaystackAdjustment, normalizePaystackPayment, verifyPaystackSignature,
   verifyProviderPayment
 } from "../server/payment-adapters.js";
+import { recordPublicationPayment, reconcilePublicationCallback } from "../server/publication-payments.js";
 
 export const config = { api: { bodyParser: false } };
 
@@ -59,6 +60,10 @@ async function handleStripeWebhook(req, res) {
     }
     const payment = normalizeStripePayment(event);
     if (!payment) return sendJson(res, 200, { received: true, processed: false });
+    if (event.data.object.metadata?.payment_kind === "publication") {
+      const result = await recordPublicationPayment(payment, payment.contributionId);
+      return sendJson(res, 200, { received: true, processed: Boolean(result) });
+    }
     const result = await supabaseRequest("/rest/v1/rpc/record_verified_payment", {
       service: true,
       method: "POST",
@@ -100,6 +105,10 @@ async function handlePaystackWebhook(req, res) {
     }
     const payment = normalizePaystackPayment(event);
     if (!payment) return sendJson(res, 200, { received: true, processed: false });
+    if (event.data.metadata?.payment_kind === "publication") {
+      const result = await recordPublicationPayment(payment, payment.contributionId);
+      return sendJson(res, 200, { received: true, processed: Boolean(result) });
+    }
     const result = await supabaseRequest("/rest/v1/rpc/record_verified_payment", {
       service: true,
       method: "POST",
@@ -131,6 +140,10 @@ async function handleDarajaCallback(req, res) {
   try {
     const raw = await rawBody(req, 64_000);
     const body = JSON.parse(raw.toString("utf8"));
+    if (req.query.kind === "publication") {
+      const processed = await reconcilePublicationCallback(body);
+      return sendJson(res, 200, { received: true, processed });
+    }
     const checkoutRequestId = String(body?.Body?.stkCallback?.CheckoutRequestID || "");
     if (!/^[A-Za-z0-9._-]{1,160}$/.test(checkoutRequestId)) {
       return sendJson(res, 400, { error: "Invalid Daraja callback reference." });

@@ -91,7 +91,7 @@ export function paymentReturnUrl(returnOrigin, slug, key, id) {
   return url.toString();
 }
 
-async function verifyChallenge(token, req, expectedHostname) {
+export async function verifyChallenge(token, req, expectedHostname) {
   if (!process.env.TURNSTILE_SECRET_KEY || !token) return false;
   const body = new URLSearchParams({ secret: process.env.TURNSTILE_SECRET_KEY, response: token });
   if (req.headers["x-forwarded-for"]) body.set("remoteip", String(req.headers["x-forwarded-for"]).split(",")[0].trim());
@@ -101,7 +101,7 @@ async function verifyChallenge(token, req, expectedHostname) {
   return result.success === true && result.hostname === expectedHostname;
 }
 
-async function createStripeCheckout({ id, weddingId, slug, streamName, amountMinor, currency, returnOrigin, idempotencyKey, email }) {
+export async function createStripeCheckout({ id, weddingId, slug, streamName, amountMinor, currency, returnOrigin, idempotencyKey, email, returnUrl, paymentKind }) {
   const form = new URLSearchParams({
     mode: "payment",
     customer_creation: "always",
@@ -112,9 +112,10 @@ async function createStripeCheckout({ id, weddingId, slug, streamName, amountMin
     client_reference_id: id,
     "metadata[contribution_id]": id,
     "metadata[wedding_id]": weddingId,
-    success_url: paymentReturnUrl(returnOrigin, slug, "paymentReturn", id),
-    cancel_url: paymentReturnUrl(returnOrigin, slug, "paymentCancel", id)
+    success_url: returnUrl || paymentReturnUrl(returnOrigin, slug, "paymentReturn", id),
+    cancel_url: returnUrl || paymentReturnUrl(returnOrigin, slug, "paymentCancel", id)
   });
+  if (paymentKind) form.set("metadata[payment_kind]", paymentKind);
   if (isText(email, 254)) form.set("customer_email", email.trim().toLowerCase());
   const response = await fetch("https://api.stripe.com/v1/checkout/sessions", {
     method: "POST",
@@ -131,7 +132,7 @@ async function createStripeCheckout({ id, weddingId, slug, streamName, amountMin
   return { url: result.url, reference: result.id };
 }
 
-async function createPaystackCheckout({ id, weddingId, slug, streamName, amountMinor, currency, returnOrigin, idempotencyKey, email }) {
+export async function createPaystackCheckout({ id, weddingId, slug, streamName, amountMinor, currency, returnOrigin, idempotencyKey, email, returnUrl, paymentKind }) {
   const response = await fetch("https://api.paystack.co/transaction/initialize", {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, "Content-Type": "application/json" },
@@ -140,8 +141,8 @@ async function createPaystackCheckout({ id, weddingId, slug, streamName, amountM
       amount: amountMinor,
       currency,
       reference: idempotencyKey,
-      callback_url: paymentReturnUrl(returnOrigin, slug, "paymentReturn", id),
-      metadata: { contribution_id: id, wedding_id: weddingId, stream: streamName }
+      callback_url: returnUrl || paymentReturnUrl(returnOrigin, slug, "paymentReturn", id),
+      metadata: { contribution_id: id, wedding_id: weddingId, stream: streamName, ...(paymentKind ? { payment_kind: paymentKind } : {}) }
     }),
     cache: "no-store"
   });

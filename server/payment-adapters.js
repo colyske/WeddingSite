@@ -405,7 +405,7 @@ export async function verifyProviderPayment(provider, reference, contributionId,
     if (checkout.metadata?.contribution_id !== contributionId || checkout.client_reference_id !== contributionId) {
       throw new Error("Provider checkout does not match the Join Our Wedding payment.");
     }
-    if (checkout.payment_status !== "paid") return { verified: false };
+    if (checkout.payment_status !== "paid") return { verified: false, ...(checkout.status === "expired" ? { terminal: true } : {}) };
     const amountMinor = Number(checkout.amount_total);
     const currency = String(checkout.currency || "").toUpperCase();
     const fee = checkout.payment_intent?.latest_charge?.balance_transaction?.fee;
@@ -425,7 +425,7 @@ export async function verifyProviderPayment(provider, reference, contributionId,
       String(transaction.reference) !== String(reference)) {
     throw new Error("Provider transaction does not match the Join Our Wedding payment.");
   }
-  if (transaction.status !== "success") return { verified: false };
+  if (transaction.status !== "success") return { verified: false, ...(["failed", "reversed"].includes(transaction.status) ? { terminal: true } : {}) };
   const amountMinor = Number(transaction.amount);
   const currency = String(transaction.currency || "").toUpperCase();
   if (!Number.isSafeInteger(amountMinor) || !/^[A-Z]{3}$/.test(currency)) throw new Error("Provider returned invalid payment details.");
