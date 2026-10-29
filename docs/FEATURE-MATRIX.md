@@ -113,6 +113,8 @@ Google OAuth is implemented in the app but not end-to-end verified in Production
 
 ## Legal pages, Google sign-in and Production status (latest)
 
+Guest song requests now start from a visible title/artist/amount form even when the paid leaderboard is empty. Existing songs retain preset bids and a custom-amount option without retyping the song. Both use `song_bid` through the same provider-verified pipeline; checkout initialization creates only a pending contribution. Titles/artists are whitespace-normalized and matched case-insensitively to existing paid entries. The existing database fulfillment remains service-only and idempotent and aggregates paid bids, never pending requests. Browser/API regressions cover empty/populated lists, request preservation on challenge/provider failure, cancellation, and verified-success rendering; these tests do not establish provider-backed payment or Production ledger settlement.
+
 | Item | Status |
 | --- | --- |
 | Privacy Policy `/privacy.html`, Terms `/terms.html` | Live on www, root (via www redirect) and vercel.app; linked from shared footer (platform root on wedding subdomains), sign-in/sign-up and guest promo footer. Operator identity, contact, governing law, fee rates and retention periods are marked `[to be confirmed]`; no compliance claims. |

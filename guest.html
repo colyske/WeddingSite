@@ -14,6 +14,13 @@
     #pay-dialog { border:1px solid #d8cfb4; border-radius:14px; max-width:min(440px,92vw); padding:1.25rem; }
     #pay-dialog input, #pay-dialog select { width:100%; box-sizing:border-box; }
     .buy-btn { margin-top:.75rem; }
+    .song-request { margin-top:1.5rem; padding:1.25rem; border:1px solid #e3dcc7; border-radius:12px; background:rgba(255,255,255,.55); }
+    .song-request h3 { margin-top:0; }
+    .song-request-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem 1rem; margin-bottom:1rem; }
+    .song-request label { display:flex; flex-direction:column; gap:.35rem; font-weight:600; color:var(--green); }
+    .song-request input { width:100%; box-sizing:border-box; padding:.65rem .75rem; border:1px solid #d8cfb4; border-radius:8px; font:inherit; }
+    #song-request-error { color:#8a2a2a; }
+    .link-btn { background:none; border:0; padding:0; color:var(--gold); font:inherit; font-weight:600; text-decoration:underline; cursor:pointer; }
     .venue-card dl { margin:.5rem 0 0; display:grid; grid-template-columns:auto 1fr; gap:.25rem .75rem; font-size:.95rem; }
     .venue-card dt { color:var(--gold); font-weight:600; }
     .venue-card dd { margin:0; }
@@ -303,11 +310,30 @@
     <!-- DJ song bids -->
     <section id="bids" class="card" hidden>
       <h2>DJ Song Requests</h2>
-      <p class="fine">Choose a song already on the list and make an on-the-spot bid. Paid bids combine into one song total and support the couple&rsquo;s wedding fund, not the DJ.</p>
+      <p class="fine">Request a new song or bid on one already on the list. Paid bids for the same song and artist combine into one total and support the couple&rsquo;s wedding fund, not the DJ. A song appears on the leaderboard only after the payment provider confirms the payment.</p>
+
+      <form id="song-request-form" class="song-request" novalidate>
+        <h3>Request a new song</h3>
+        <div class="song-request-fields">
+          <label>Song title *
+            <input id="song-request-title" type="text" maxlength="160" autocomplete="off" required>
+          </label>
+          <label>Artist *
+            <input id="song-request-artist" type="text" maxlength="100" autocomplete="off" required>
+          </label>
+          <label>Bid amount (<span id="song-request-currency">KES</span>) *
+            <input id="song-request-amount" type="number" min="1" step="1" inputmode="decimal" required>
+          </label>
+        </div>
+        <p id="song-request-error" class="fine" role="alert" hidden></p>
+        <button type="submit" class="btn">Request &amp; pay</button>
+      </form>
+      <p id="song-request-closed" class="fine" hidden>Song requests are closed for this wedding.</p>
 
       <!-- DJ leaderboard -->
       <div style="margin-top: 2rem;">
         <h3>Top Song Requests</h3>
+        <div style="overflow-x:auto;" role="region" aria-label="Paid song leaderboard" tabindex="0">
         <table id="leaderboard-table" style="width: 100%; border-collapse: collapse;">
           <thead>
             <tr style="border-bottom: 2px solid var(--sage);">
@@ -320,7 +346,8 @@
           </thead>
           <tbody id="leaderboard-body"></tbody>
         </table>
-        <p id="no-bids" class="fine">No bids yet. Be the first to request a song!</p>
+        </div>
+        <p id="no-bids" class="fine">No paid song requests yet. <button type="button" id="no-bids-cta" class="link-btn">Be the first to request a song</button></p>
       </div>
     </section>
 
@@ -498,6 +525,10 @@
       document.title = `${wedding.couple_names || "Wedding"} — Wedding`;
       document.dispatchEvent(new CustomEvent("ws:wedding", { detail: wedding }));
       applyRsvpFees();
+      $("song-request-currency").textContent = wedding.currency || "USD";
+      $("song-request-form").hidden = Boolean(wedding.is_past);
+      $("song-request-closed").hidden = !wedding.is_past;
+      $("no-bids-cta").hidden = Boolean(wedding.is_past);
 
       // Couple monogram
       const names = wedding.couple_names?.split(/[&,]|and/).map(n => n.trim().charAt(0).toUpperCase()).join("").slice(0, 3) || "WS";
@@ -938,6 +969,9 @@
             $("pay-error").hidden = false;
           } else toast(message, true);
           $("pay-submit").disabled = false;
+          $("pay-provider").dispatchEvent(new Event("change"));
+          captchaToken = "";
+          if (turnstileWidget !== null && window.turnstile) window.turnstile.reset(turnstileWidget);
           try { sessionStorage.removeItem(`ws-payment:${paymentId}`); } catch (_) {}
           params.delete("paymentReturn");
           history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
@@ -1081,11 +1115,33 @@
       $("pay-error").hidden = false;
     }
   }
+  $("no-bids-cta").addEventListener("click", () => {
+    $("song-request-title").focus();
+    $("song-request-form").scrollIntoView({ block: "center" });
+  });
+  $("song-request-form").addEventListener("submit", e => {
+    e.preventDefault();
+    if (!wedding || wedding.is_past) return;
+    const songTitle = $("song-request-title").value.trim().replace(/\s+/g, " ");
+    const artist = $("song-request-artist").value.trim().replace(/\s+/g, " ");
+    const amountMinor = Math.round(Number($("song-request-amount").value) * 100);
+    if (!songTitle || !artist || !Number.isSafeInteger(amountMinor) || amountMinor < 100) {
+      $("song-request-error").textContent = "Enter the song title, artist and a bid of at least 1 " + (wedding.currency || "USD") + ".";
+      $("song-request-error").hidden = false;
+      return;
+    }
+    $("song-request-error").hidden = true;
+    showPaymentDialog({
+      action: "song_bid", title: "Request a new song", exact: false, amountMinor,
+      summary: `Your request for “${songTitle}” by ${artist} appears only after verified payment and supports the wedding fund, not the DJ.`,
+      data: { songTitle, artist }
+    });
+  });
   document.addEventListener("click", e => {
     const bidBtn = e.target.closest("[data-song-bid]");
     if (bidBtn && wedding) {
       showPaymentDialog({
-        action: "song_bid", title: "Bid on this song", exact: true,
+        action: "song_bid", title: "Bid on this song", exact: false,
         amountMinor: Number(bidBtn.dataset.amount),
         summary: `This paid bid adds to “${bidBtn.dataset.title}” and supports the wedding fund, not the DJ.`,
         data: { songTitle: bidBtn.dataset.title, artist: bidBtn.dataset.artist }
@@ -1297,6 +1353,7 @@
 
       const bids = data.bids || [];
       if (bids.length === 0) {
+        $("leaderboard-body").replaceChildren();
         $("no-bids").hidden = false;
         return;
       }
@@ -1310,7 +1367,7 @@
           <td style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, wedding.currency)}</td>
           <td style="padding: 0.75rem;">${wedding.is_past ? "Closed" : [500, 1000, 2500, 5000].map(amount =>
             `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}" data-amount="${amount}">${esc(wedding.currency || "USD")} ${(amount / 100).toFixed(2)}</button>`
-          ).join(" ")}</td>
+          ).join(" ") + `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}" data-amount="0">Custom amount</button>`}</td>
         </tr>
       `).join("");
     } catch (err) {

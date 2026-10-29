@@ -345,22 +345,22 @@ async function handleCheckout(req, res) {
       };
       if (!purchaseData.companyName) return sendJson(res, 400, { error: "Enter the sponsor's organization name." });
     } else if (purchaseAction === "song_bid") {
-      const songTitle = String(body.songTitle || "").trim().slice(0, 160);
-      const artist = String(body.artist || "").trim().slice(0, 100);
-      if (!songTitle || !artist || !Number.isSafeInteger(body.amountMinor) || requestedAmount < 1) {
-        return sendJson(res, 400, { error: "Choose a listed song and bid amount." });
+      const songTitle = typeof body.songTitle === "string" ? body.songTitle.trim().replace(/\s+/g, " ") : "";
+      const artist = typeof body.artist === "string" ? body.artist.trim().replace(/\s+/g, " ") : "";
+      if (!songTitle || songTitle.length > 160 || !artist || artist.length > 100 ||
+          !Number.isSafeInteger(body.amountMinor) || requestedAmount < 1) {
+        return sendJson(res, 400, { error: "Enter a song title (up to 160 characters), artist (up to 100 characters), and valid bid amount." });
       }
       const leaderboard = await supabaseRequest("/rest/v1/rpc/get_dj_leaderboard", {
         service: true, method: "POST", body: { p_wedding_id: weddingId }
       });
-      const existing = (leaderboard || []).some(row =>
-        String(row.song_title).toLowerCase() === songTitle.toLowerCase() &&
-        String(row.artist_name).toLowerCase() === artist.toLowerCase()
+      const existing = (leaderboard || []).find(row =>
+        String(row.song_title).trim().replace(/\s+/g, " ").toLowerCase() === songTitle.toLowerCase() &&
+        String(row.artist_name).trim().replace(/\s+/g, " ").toLowerCase() === artist.toLowerCase()
       );
-      if (!existing) return sendJson(res, 409, { error: "Choose an existing song from the paid leaderboard." });
       amountMinor = requestedAmount;
       streamName = `Song bid: ${songTitle}`;
-      purchaseData = { songTitle, artist };
+      purchaseData = { songTitle: existing?.song_title || songTitle, artist: existing?.artist_name || artist };
     }
 
     if (body.provider === "daraja") {
