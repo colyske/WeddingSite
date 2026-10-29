@@ -1402,9 +1402,10 @@
           return notice(data.error || "Could not save wedding.", true);
         }
         if (data.wedding?.slug) setGuestSiteLink(data.wedding.slug, !!data.wedding.published_at);
-        window.__wedding = data.wedding || window.__wedding;
-        if (data.wedding) amountPresetEditor.saved(data.wedding);
-        window.__wedding = { ...window.__wedding, ...data.wedding };
+        if (data.wedding) {
+          amountPresetEditor.saved(data.wedding);
+          window.__wedding = { ...window.__wedding, ...data.wedding };
+        }
         if (window.WSSetupProgress && data.wedding) window.WSSetupProgress.render($("setup-progress"), data.wedding);
         notice("Changes saved.");
       } catch (err) {
