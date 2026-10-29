@@ -105,6 +105,22 @@
           <option value="ZAR">ZAR - South African Rand</option>
         </select>
 
+ <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <fieldset>
+          <legend>Suggested guest amounts (<span id="preset-currency"></span>)</legend>
+          <p class="fine">Optional shortcuts for DJ song bids and voluntary celebration, fundraising and registry gifts. Custom amounts stay available. These do not change fees, prices, tiers or minimums. Use 1 to 6 comma-separated amounts per list, at least 1 in this currency to match the guest forms, with up to two decimals.</p>
+          <label for="preset-song">DJ song bid suggestions</label>
+          <input id="preset-song" type="text" maxlength="160" aria-describedby="preset-limit preset-preview">
+          <label for="preset-gift">Voluntary gift suggestions</label>
+          <input id="preset-gift" type="text" maxlength="160" aria-describedby="preset-limit preset-preview">
+          <button type="button" class="link" id="preset-suggest">Review deterministic currency-aware suggestions</button>
+          <label><input id="preset-reset" type="checkbox"> Clear saved suggestions and restore the legacy guest defaults</label>
+          <p id="preset-state" class="fine" role="status"></p>
+          <p id="preset-limit" class="fine"></p>
+          <p id="preset-preview" class="fine" aria-live="polite"></p>
+          <label><input id="preset-reviewed" type="checkbox"> I reviewed these choices and want to apply them on Save changes.</label>
+        </fieldset>
+
         <label for="max-capacity">Maximum guests <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="max-capacity" type="number" min="1" required aria-required="true">
 
@@ -440,6 +456,9 @@
 
   <script src="site-urls.js"></script>
   <script src="currencies.js"></script>
+  <script src="fx.js"></script>
+  <script src="amount-presets.js"></script>
+  <script src="amount-presets-editor.js"></script>
   <script src="auth-client.js"></script>
   <script src="social-links.js"></script>
   <script src="sponsor-cards.js"></script>
@@ -449,6 +468,7 @@
   <script>
 (async () => {
     const $ = id => document.getElementById(id);
+    const amountPresetEditor = WSAmountPresetEditor();
     const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     const notice = (text, bad) => { 
       const el = $("notice");
@@ -1011,6 +1031,7 @@
         $("location").value = w.public_location || "";
         $("background-music-url").value = w.background_music_url || "";
         $("currency").value = w.currency || "USD";
+        amountPresetEditor.load(w, data.amountPresetMaxMinor);
         $("max-capacity").value = w.max_guest_capacity || 150;
         
         // Load palette: store as data attribute and render as spans
@@ -1241,6 +1262,7 @@
       $("edit-form").dataset.submitting = "true";
       notice("");
       try {
+        const presetPatch = amountPresetEditor.payload();
         // Collect venues
         const venues = [];
         $("venues-list").querySelectorAll(".venue-item").forEach(item => {
@@ -1339,6 +1361,7 @@
         const res = await WS.api("/api/weddings?action=update", {
           method: "POST",
           body: JSON.stringify({
+            ...presetPatch,
             weddingId,
             coupleNames: $("couple-names").value,
             slug: $("wedding-slug").value,
@@ -1379,7 +1402,10 @@
           return notice(data.error || "Could not save wedding.", true);
         }
         if (data.wedding?.slug) setGuestSiteLink(data.wedding.slug, !!data.wedding.published_at);
-        window.__wedding = { ...window.__wedding, ...data.wedding };
+        if (data.wedding) {
+          amountPresetEditor.saved(data.wedding);
+          window.__wedding = { ...window.__wedding, ...data.wedding };
+        }
         if (window.WSSetupProgress && data.wedding) window.WSSetupProgress.render($("setup-progress"), data.wedding);
         notice("Changes saved.");
       } catch (err) {

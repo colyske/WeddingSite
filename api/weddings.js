@@ -8,6 +8,7 @@ import { contentError } from "../server/content-policy.js";
 import { handlePublicationPayment } from "../server/publication-payments.js";
 import { publicationQuote } from "../server/publication-fx.js";
 import "../currencies.js";
+import "../amount-presets.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
@@ -37,7 +38,19 @@ const friendlyColorName = hex => {
   return closest[0];
 };
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted";
+const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,amount_presets,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted";
+const canonicalJson = value => Array.isArray(value) ? `[${value.map(canonicalJson).join(",")}]`
+  : value && typeof value === "object" ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`
+    : JSON.stringify(value);
+const currentPresetFilter = value => value == null
+  ? "&amount_presets=is.null"
+  : `&amount_presets=eq.${encodeURIComponent(JSON.stringify(value))}`;
+const amountPresetCap = async () => {
+  const policy = (await supabaseRequest("/rest/v1/platform_policies?id=eq.true&select=max_contribution_minor", { service: true }))?.[0];
+  const cap = Number(policy?.max_contribution_minor);
+  if (!Number.isSafeInteger(cap) || cap < 1) throw new Error("Suggested amount checkout limit is unavailable.");
+  return cap;
+};
 const DEFAULT_ZONE = "Africa/Nairobi";
 const validZone = tz => {
   if (typeof tz !== "string" || !tz || tz.length > 64) return false;
@@ -140,7 +153,8 @@ export default async function handler(req, res) {
       const [wedding] = await loadWeddingDetails(rows, opts);
       const moderation = await supabaseRequest("/rest/v1/rpc/wedding_moderation_status", {
         ...opts, method: "POST", body: { p_wedding_id: req.query.weddingId } });
-      return sendJson(res, 200, { wedding: { ...wedding, moderation: moderation || null } });
+      return sendJson(res, 200, { wedding: { ...wedding, moderation: moderation || null },
+        amountPresetMaxMinor: await amountPresetCap() });
     }
 
     if (action === "moderation-correction") {
@@ -220,6 +234,29 @@ export default async function handler(req, res) {
       if (!methodOnly(req, res, "POST")) return;
       if (!UUID.test(String(body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
       const patch = {};
+      let baseCurrency = null;
+      if (body.currency !== undefined || body.amountPresets !== undefined) {
+        const current = (await supabaseRequest(`/rest/v1/weddings?id=eq.${body.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=currency,amount_presets`, opts))?.[0];
+        if (!current) return sendJson(res, 404, { error: "Wedding not found." });
+        baseCurrency = current.currency;
+        const currency = body.currency === undefined ? current.currency : String(body.currency).toUpperCase();
+        const changingCurrency = currency !== current.currency;
+        if (changingCurrency && body.amountPresets === undefined) {
+          return sendJson(res, 400, { error: "Currency changes require reviewed new suggested amounts or an explicit reset." });
+        }
+        if (body.amountPresets !== undefined) {
+          if (body.amountPresetsReviewed !== true || body.amountPresetsBaseCurrency !== current.currency ||
+              canonicalJson(body.amountPresetsBase ?? null) !== canonicalJson(current.amount_presets ?? null)) {
+            return sendJson(res, 409, { error: "Review suggested amounts again against the current wedding currency." });
+          }
+          try {
+            patch.amount_presets = body.amountPresets === null ? null
+              : globalThis.WSAmountPresets.normalize(body.amountPresets, currency, await amountPresetCap());
+          } catch (error) {
+            return sendJson(res, 400, { error: error.message, field: "preset-song" });
+          }
+        }
+      }
       let normalizedVenues = null;
       if (Array.isArray(body.venues)) {
         try {
@@ -334,9 +371,12 @@ export default async function handler(req, res) {
         patch.background_music_url = url ? url.slice(0, 500) : null;
       }
       if (!Object.keys(patch).length || patch.couple_names === "") return sendJson(res, 400, { error: "Nothing valid to update." });
-      const rows = await supabaseRequest(`/rest/v1/weddings?id=eq.${body.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=${FIELDS}`,
+      const basePresetsFilter = body.amountPresets === undefined ? "" : currentPresetFilter(body.amountPresetsBase);
+      const rows = await supabaseRequest(`/rest/v1/weddings?id=eq.${body.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}${baseCurrency ? `&currency=eq.${baseCurrency}` : ""}${basePresetsFilter}&select=${FIELDS}`,
         { ...opts, method: "PATCH", body: patch, prefer: "return=representation" });
-      if (!rows?.length) return sendJson(res, 404, { error: "Wedding not found." });
+      if (!rows?.length) return sendJson(res, baseCurrency ? 409 : 404, {
+        error: baseCurrency ? "Wedding currency changed while saving. Reload and review suggested amounts again." : "Wedding not found."
+      });
       
       // Update venues if provided
       if (Array.isArray(body.venues)) {

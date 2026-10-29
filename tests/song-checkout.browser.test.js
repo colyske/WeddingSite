@@ -92,10 +92,10 @@ test("empty and populated DJ lists open verified checkout and preserve requests 
     assert.equal(payload.songTitle, "QA Song");
     await page.reload();
     await page.locator("#leaderboard-body summary").first().click();
-    await page.getByRole("button", { name: "Custom amount", exact: true }).click();
+    await page.locator("#leaderboard-body").getByRole("button", { name: "Custom amount", exact: true }).click();
     await page.click("#pay-cancel");
     assert.equal(await page.locator("#leaderboard-body summary").evaluate(el => el === document.activeElement), true);
-    await page.getByRole("button", { name: "Custom amount", exact: true }).click();
+    await page.locator("#leaderboard-body").getByRole("button", { name: "Custom amount", exact: true }).click();
     assert.match(await page.locator("#pay-summary").textContent(), /QA Song/);
     assert.equal(await page.locator("#pay-amount").getAttribute("readonly"), null);
     await page.fill("#pay-amount", "25");

@@ -50,6 +50,13 @@
     const converted = amount / rates[code];
     return Number.isFinite(converted) ? Math.round(converted * 100) / 100 : null;
   }
+  function formatLocalIndicative(amount, code) {
+    const primary = `${code} ${Number(amount).toFixed(2)}`;
+    if (code === "USD") return primary;
+    if (!isFresh() || !hasRate(code)) return `${primary} [USD equivalent unavailable]`;
+    const usd = convertToUsd(amount, code);
+    return `${primary} [approx. USD ${usd.toFixed(2)}; indicative daily FX ${new Date(rateDate).toISOString().slice(0, 10)}]`;
+  }
   function formatUsd(amount, code = currency(), locale = readSettings().config?.locale || "en-US") {
     const converted = convertUsd(amount, code);
     if (converted === null) return `USD ${Number(amount).toLocaleString("en-US")}`;
@@ -131,7 +138,7 @@
   }
   restoreCache();
   window.WeddingSiteFX = {
-    options, currency, choose, hasRate, convertUsd, convertToUsd,
+    options, currency, choose, hasRate, convertUsd, convertToUsd, formatLocalIndicative,
     formatUsd, formatPrimaryUsd, formatDualUsd: formatPrimaryUsd, statusText, refresh,
     isFresh, convertBetween
   };
