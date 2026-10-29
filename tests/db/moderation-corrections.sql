@@ -20,6 +20,14 @@ begin
     values(wid,cid,'Local moderation sample','KES',current_date+30,'local-moderation',now(),now());
   insert into public.wedding_memberships(wedding_id,user_id,role) values(wid,cid,'client');
   insert into public.venues(wedding_id,name,event_date,event_time) values(wid,'Local venue',current_date+30,'12:00');
+  wid := extensions.gen_random_uuid();
+  insert into moderation_actors values('draft',wid);
+  insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date)
+    values(wid,cid,'Local draft moderation sample','KES',current_date+200);
+  wid := extensions.gen_random_uuid();
+  insert into moderation_actors values('staff-wedding',wid);
+  insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date)
+    values(wid,(select id from moderation_actors where kind='admin'),'Local staff-owned sample','KES',current_date+30);
 end $$;
 set local role authenticated;
 select set_config('request.jwt.claim.role','authenticated',true);
@@ -107,6 +115,46 @@ begin
   blocked := false;
   begin update public.moderation_cases set status='resolved' where id=case_id; exception when insufficient_privilege then blocked := true; end;
   if not blocked then raise exception 'Direct case UPDATE bypass'; end if;
+  -- Archiving is a restriction too; review is available to the regular Admin/leadership roles.
+  perform set_config('request.jwt.claim.sub',(select id::text from moderation_actors where kind='admin'),true);
+  perform public.admin_wedding_action(wid,'archive','content_policy','Remove the inaccurate public story.','Correct the story and submit a correction.');
+  select id into case_id from public.moderation_cases where wedding_id=wid and status='open';
+  perform set_config('request.jwt.claim.sub',cid::text,true);
+  blocked := false;
+  begin perform public.archive_wedding(wid,false); exception when raise_exception then blocked := true; end;
+  if not blocked then raise exception 'Staff archive must not be client-restorable'; end if;
+  perform public.submit_moderation_correction(case_id,'I corrected the public story.',1);
+  perform set_config('request.jwt.claim.sub',(select id::text from moderation_actors where kind='owner'),true);
+  perform public.admin_review_moderation_case(case_id,'republish',null,2);
+  -- A never-published draft cannot use moderation review to evade publication fees.
+  select id into wid from moderation_actors where kind='draft';
+  perform public.admin_wedding_action(wid,'archive','other','The wedding details require corrections.','Add the correct wedding information.');
+  select id into case_id from public.moderation_cases where wedding_id=wid and status='open';
+  perform set_config('request.jwt.claim.sub',cid::text,true);
+  perform public.submit_moderation_correction(case_id,'I added the wedding information.',1);
+  perform set_config('request.jwt.claim.sub',(select id::text from moderation_actors where kind='admin'),true);
+  blocked := false;
+  begin perform public.admin_review_moderation_case(case_id,'republish',null,2); exception when raise_exception then blocked := true; end;
+  if not blocked then raise exception 'Never-published draft fee bypass'; end if;
+  perform public.admin_review_moderation_case(case_id,'lift','Restriction lifted; complete normal publication.',2);
+  if (select published_at is not null or archived_at is not null or lifecycle_admin_restricted from public.weddings where id=wid) then
+    raise exception 'Lift must leave a draft unpublished and unrestricted';
+  end if;
+  perform set_config('request.jwt.claim.sub',cid::text,true);
+  if exists(select 1 from public.publication_fees where wedding_id=wid and status='waived') then
+    raise exception 'Moderation must not waive first-publication fees';
+  end if;
+  select id into wid from moderation_actors where kind='staff-wedding';
+  perform set_config('request.jwt.claim.sub',(select id::text from moderation_actors where kind='superadmin'),true);
+  perform public.admin_wedding_action(wid,'archive','other','The wedding details require corrections.','Add the correct wedding information.');
+  select id into case_id from public.moderation_cases where wedding_id=wid and status='open';
+  perform set_config('request.jwt.claim.sub',(select id::text from moderation_actors where kind='admin'),true);
+  perform public.submit_moderation_correction(case_id,'I added the wedding information.',1);
+  blocked := false;
+  begin perform public.admin_review_moderation_case(case_id,'lift',null,2); exception when raise_exception then blocked := true; end;
+  if not blocked then raise exception 'Staff must not approve their own wedding correction'; end if;
+  perform set_config('request.jwt.claim.sub',(select id::text from moderation_actors where kind='owner'),true);
+  perform public.admin_review_moderation_case(case_id,'lift',null,2);
 end $$;
 reset role;
 do $$

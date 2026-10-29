@@ -488,3 +488,20 @@ begin
 end $$;
 revoke all on function public.admin_set_payout_status(uuid, text, text) from public, anon;
 grant execute on function public.admin_set_payout_status(uuid, text, text) to authenticated;
+
+-- Preserve the existing history RPC shape and PR42's leadership-only boundary.
+create or replace function public.admin_payouts() returns table (
+  id uuid, wedding_id uuid, couple_names text, amount_minor bigint, currency text, status text,
+  requested_at timestamptz, note text, own_request boolean)
+language plpgsql stable security definer set search_path = '' set row_security = off
+as $$
+begin
+  perform public.require_staff('superadmin');
+  return query select p.id, p.wedding_id, w.couple_names, p.amount_minor, p.currency::text, p.status::text,
+    p.requested_at, concat_ws(E'\n', nullif(p.note, ''),
+      case when p.staff_reason is not null then 'Staff: ' || p.staff_reason
+        when p.status='cancelled' then 'Staff: cancellation predates recorded reasons.' end),
+    (p.requested_by = auth.uid())
+  from public.payout_records p join public.weddings w on w.id = p.wedding_id
+  order by p.requested_at desc limit 300;
+end $$;

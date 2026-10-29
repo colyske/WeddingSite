@@ -1772,7 +1772,7 @@
           $("withdrawals-body").innerHTML = withdrawals.map(w => `
             <tr style="border-bottom: 1px solid #ddd;">
               <td style="padding: 0.75rem;">${WS.money(w.amount_minor, w.currency)}</td>
-              <td style="padding: 0.75rem;"><span class="tag ${w.status === 'sent' ? 'live' : w.status === 'requested' ? '' : 'warn'}">${WS.esc(w.status)}</span>${w.staff_reason ? `<p>${WS.esc(w.staff_reason)}</p>` : ""}${w.status === "cancelled" ? '<p class="fine">Address the staff note, then submit a new request. This cancelled request cannot be reopened.</p>' : ""}</td>
+              <td style="padding: 0.75rem;"><span class="tag ${w.status === 'sent' ? 'live' : w.status === 'requested' ? '' : 'warn'}">${WS.esc(w.status)}</span>${w.staff_reason ? `<p>${WS.esc(w.staff_reason)}</p>` : w.status === "cancelled" ? '<p>Cancellation predates recorded reasons. Contact platform support for guidance.</p>' : ""}${w.status === "cancelled" ? '<p class="fine">Address the staff guidance, then submit a new request. This cancelled request cannot be reopened.</p>' : ""}</td>
               <td style="padding: 0.75rem; font-size: 0.9rem;">${new Date(w.requested_at).toLocaleDateString()}</td>
             </tr>
           `).join("");
