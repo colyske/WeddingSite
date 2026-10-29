@@ -89,6 +89,17 @@ test("overview conversions preserve source currency and refuse stale or missing 
   assert.match(fx.statusText(), /ExchangeRate-API.*dated/);
 });
 
+test("deployed back-office pages include the production FX helper", async () => {
+  const excluded = (await readFile(new URL("../.vercelignore", import.meta.url), "utf8"))
+    .split(/\r?\n/).map(line => line.trim());
+  assert.ok(!excluded.includes("fx.js"), "FX helper must be deployed, not treated as a prototype-only asset");
+  for (const file of ["admin.html", "owner.html"]) {
+    const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    assert.match(html, /<script src="fx\.js"><\/script>/);
+    assert.ok(html.indexOf('src="fx.js"') < html.indexOf('src="backoffice.js"'));
+  }
+});
+
 test("currency formatter uses major units in the chosen currency and never outputs NaN", async () => {
   const sandbox = { window: {}, console: { error() {} }, Intl, Number, JSON, sessionStorage: { getItem() { return null; } } };
   vm.createContext(sandbox);
