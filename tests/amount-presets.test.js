@@ -98,3 +98,41 @@ test("organizer API persists canonical choices, preserves omitted presets and re
     }
   }
 });
+
+test("organizer wedding read returns both reviewed presets and moderation status", async () => {
+  const env = { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "test-anon", SUPABASE_SERVICE_ROLE_KEY: "test-service" };
+  const oldEnv = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]));
+  Object.assign(process.env, env);
+  const oldFetch = globalThis.fetch;
+  const moderation = { id: "550e8400-e29b-41d4-a716-446655440002", status: "returned", revision: 3 };
+  let moderationCalls = 0;
+  globalThis.fetch = async input => {
+    const url = new URL(input);
+    if (url.pathname === "/auth/v1/user") return json({ id: ownerId });
+    if (url.pathname === "/rest/v1/platform_policies") return json([{ max_contribution_minor: 500000 }]);
+    if (url.pathname === "/rest/v1/weddings") return json([{
+      id: weddingId, slug: "qa-couple", currency: "KES",
+      amount_presets: { currency: "KES", song: [10000, 50000], gift: [50000, 100000] }
+    }]);
+    if (url.pathname === "/rest/v1/rpc/wedding_moderation_status") {
+      moderationCalls++;
+      return json(moderation);
+    }
+    if (url.pathname.startsWith("/rest/v1/")) return json([]);
+    throw new Error(`Unexpected fetch ${url}`);
+  };
+  try {
+    const res = { statusCode: 200, status(n) { this.statusCode = n; return this; }, setHeader() {}, end(text) { this.body = JSON.parse(text); } };
+    await weddings({ method: "GET", query: { action: "get", weddingId }, headers: { authorization: "Bearer fixture" } }, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.amountPresetMaxMinor, 500000);
+    assert.deepEqual(res.body.wedding.amount_presets, { currency: "KES", song: [10000, 50000], gift: [50000, 100000] });
+    assert.deepEqual(res.body.wedding.moderation, moderation);
+    assert.equal(moderationCalls, 1);
+  } finally {
+    globalThis.fetch = oldFetch;
+    for (const [key, value] of Object.entries(oldEnv)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
