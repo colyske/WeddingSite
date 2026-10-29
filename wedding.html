@@ -1171,6 +1171,8 @@
         }
 
         $("edit-section").hidden = false;
+        $("withdrawals-section").hidden = false;
+        loadWithdrawals();
 
         if (w.published_at) {
           $("published-section").hidden = false;
@@ -1178,13 +1180,12 @@
           $("rsvps-section").hidden = false;
           $("bids-section").hidden = false;
           $("seating-section").hidden = false;
-          $("withdrawals-section").hidden = false;
           $("publish-btn").hidden = true;
           loadRsvps();
           loadBids();
-          loadWithdrawals();
         } else {
-          $("publish-btn").hidden = false;
+          $("publish-btn").hidden = !!w.archived_at || !!w.lifecycle_admin_restricted ||
+            ["open", "submitted", "returned"].includes(w.moderation?.status);
         }
       } catch (err) {
         console.error("Load failed:", err);

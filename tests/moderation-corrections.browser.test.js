@@ -56,11 +56,15 @@ test("authenticated correction and staff reason/review surfaces never auto-publi
       if (action === "moderation") data = { cases: [c] };
       if (action === "weddings") data = { weddings: [{ ...wedding, published_at: "2026-01-01" }] };
       if (action === "quote") data = { quote: { fee_minor: 0, currency: "KES" } };
+      if (action === "withdrawals") data = { withdrawals: [{ id, status: "cancelled", amount_minor: 1000, currency: "KES",
+        requested_at: "2026-01-01", staff_reason: "Correct the payout account details." }] };
       await route.fulfill({ contentType: "application/json", body: JSON.stringify(data) });
     });
     const base = `http://127.0.0.1:${server.address().port}`;
     await page.goto(`${base}/wedding.html?id=${id}`, { waitUntil: "domcontentloaded" });
     await page.locator("#moderation-form").waitFor({ state: "visible" });
+    await page.locator("#edit-section").waitFor({ state: "visible" });
+    await page.locator("#withdrawals-body").getByText("Correct the payout account details.").waitFor();
     assert.match(await page.locator("#moderation-details").innerText(), /<venue>/, "reasons rendered as text, not markup");
     assert.ok(await page.locator("#publish-btn").isHidden());
     await page.locator("#edit-form").evaluate(form => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
