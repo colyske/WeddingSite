@@ -73,6 +73,17 @@ begin
   perform public.record_verified_publication_payment(other.id,'daraja','local-second-stk',9000,'KES','local-second-event');
   if not exists(select 1 from public.publication_fees pf where pf.wedding_id=checkout.wedding_id and status='waived') then
     raise exception 'Late verified payment must preserve a staff waiver'; end if;
+  update public.publication_fees pf set status='pending' where pf.wedding_id=checkout.wedding_id;
+  other := public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'daraja',9000,'KES');
+  update public.publication_checkouts set provider_reference='local-currency-stk' where id=other.id;
+  update public.weddings set currency='USD' where id=wedding_id;
+  if public.record_verified_publication_payment(other.id,'daraja','local-currency-stk',9000,'KES','local-currency-event') then
+    raise exception 'Changed wedding currency must require review instead of settling the wrong currency'; end if;
+  if not exists(select 1 from public.publication_checkouts pc where pc.id=other.id and pc.status='review'
+    and pc.provider_event_id='local-currency-event' and pc.paid_at is not null) then
+    raise exception 'Review must retain independently verified payment evidence'; end if;
+  if not exists(select 1 from public.publication_fees pf where pf.wedding_id=checkout.wedding_id and status='pending') then
+    raise exception 'Currency review must not settle the fee'; end if;
   if has_table_privilege('authenticated','public.publication_checkouts','INSERT') or
     has_function_privilege('authenticated','public.record_verified_publication_payment(uuid,text,text,bigint,text,text,bigint)','EXECUTE') then
     raise exception 'Clients must never write settlement records'; end if;

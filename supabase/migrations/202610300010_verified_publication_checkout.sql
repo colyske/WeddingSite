@@ -116,7 +116,11 @@ begin
   end if;
   if checkout.status='paid' then return true; end if;
   if wedding.currency is distinct from checkout.currency then
-    update public.publication_checkouts set status='review' where id=checkout.id;
+    if checkout.status='review' and checkout.provider_event_id=p_event_id then return false; end if;
+    update public.publication_checkouts set status='review',provider_event_id=p_event_id,paid_at=now(),
+      provider_fee_minor=p_provider_fee_minor where id=checkout.id;
+    insert into public.audit_events(wedding_id,source,action,table_name,record_id)
+      values(wedding.id,'provider','publication_test_payment_currency_review','publication_checkouts',checkout.id::text);
     return false;
   end if;
   update public.publication_checkouts set status='paid',paid_at=now(),provider_event_id=p_event_id,
