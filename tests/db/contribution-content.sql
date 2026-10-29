@@ -1,7 +1,7 @@
 -- Local isolated database only; every fixture is rolled back.
 begin;
 do $$
-declare client_id uuid := extensions.gen_random_uuid(); wedding_id uuid := extensions.gen_random_uuid();
+declare client_id uuid := extensions.gen_random_uuid(); staff_id uuid := extensions.gen_random_uuid(); wedding_id uuid := extensions.gen_random_uuid();
   payment_id uuid := extensions.gen_random_uuid(); blocked boolean; row_count integer; amount bigint; person text; kind text;
 begin
   if not public.free_text_has_contact('email name [at] example [dot] com')
@@ -14,9 +14,30 @@ begin
     or not public.content_has_contact('{"story":"email sample@example.com"}') then
     raise exception 'Designated fields must remain exempt; free text must be checked';
   end if;
-  insert into auth.users (id) values (client_id);
+  insert into auth.users (id) values (client_id), (staff_id);
+  update public.profiles set platform_role = 'admin' where id = staff_id;
+  perform set_config('request.jwt.claim.sub', client_id::text, true);
+  blocked := false;
+  begin
+    perform public.admin_set_payment_controls(array['daraja'], true);
+  exception when raise_exception then blocked := true; end;
+  if not blocked then raise exception 'Clients must not control platform payment methods'; end if;
+  perform set_config('request.jwt.claim.sub', staff_id::text, true);
+  perform public.admin_set_payment_controls(array['daraja'], true);
+  if public.admin_get_payment_controls() <> array['daraja'] then raise exception 'Admin must independently enable M-Pesa'; end if;
   insert into public.weddings (id, client_owner_id, couple_names, wedding_date, currency, published_at)
     values (wedding_id, client_id, 'Local sample couple', current_date + 30, 'KES', now());
+  blocked := false;
+  begin
+    insert into public.contributions (wedding_id, stream_name, pledged_amount_minor, currency, payment_status, provider_name)
+      values (wedding_id, 'Local disabled provider check', 100, 'KES', 'pending', 'paystack');
+  exception when check_violation then blocked := true; end;
+  if not blocked then raise exception 'Disabled provider must block new intents at the database boundary'; end if;
+  perform public.admin_set_payment_controls(array['paystack'], true);
+  if public.admin_get_payment_controls() <> array['paystack'] then raise exception 'Admin must independently enable Card'; end if;
+  perform public.admin_set_payment_controls(array[]::text[], true);
+  if cardinality(public.admin_get_payment_controls()) <> 0 then raise exception 'Admin can disable all new payments'; end if;
+  perform public.admin_set_payment_controls(array['stripe','paystack','daraja'], true);
   blocked := false;
   begin
     update public.weddings set welcome_story = 'Call +254700000001' where id = wedding_id;

@@ -52,6 +52,21 @@ export function paymentAdaptersFor(currency, market) {
   return configuredAdapters(currency, market);
 }
 
+const ALL_PROVIDERS = ["stripe", "paystack", "daraja"];
+export function enabledPaymentProviders(policy) {
+  if (!policy) throw new Error("Payment controls could not be loaded.");
+  // Compatibility during migration rollout; the database column has this same default.
+  const enabled = policy.enabled_payment_providers ?? ALL_PROVIDERS;
+  if (!Array.isArray(enabled) || enabled.some(id => !ALL_PROVIDERS.includes(id))) throw new Error("Invalid platform payment controls.");
+  return enabled;
+}
+
+export function paymentProviderReadiness() {
+  const currencies = new Set([...setOf(process.env.STRIPE_SUPPORTED_CURRENCIES), ...setOf(process.env.PAYSTACK_SUPPORTED_CURRENCIES), "KES"]);
+  const ready = new Set([...currencies].flatMap(currency => availableProviderMarkets(currency)).map(item => item.id));
+  return ALL_PROVIDERS.map(id => ({ id, configured: ready.has(id) }));
+}
+
 // Provider availability is derived from platform configuration (test-mode credentials plus
 // each provider's configured markets/currencies). Organizers never choose a processor.
 export function availableProviderMarkets(currency) {
@@ -161,7 +176,9 @@ async function handleOptions(req, res) {
     if (!weddings?.length || weddings[0].currency !== currency) {
       return sendJson(res, 200, { providers: [], paymentAvailable: false, message: "Payments are not available for this wedding or currency." });
     }
-    const candidates = availableProviderMarkets(currency);
+    const policy = (await supabaseRequest("/rest/v1/platform_policies?id=eq.true&select=enabled_payment_providers", { service: true }))?.[0];
+    const enabled = enabledPaymentProviders(policy);
+    const candidates = availableProviderMarkets(currency).filter(item => enabled.includes(item.id));
     const eligible = [...new Set(candidates.map(item => item.id))];
     const health = await Promise.all(eligible.map(async provider =>
       [provider, await checkProviderHealth(provider)]
@@ -218,18 +235,18 @@ async function handleCheckout(req, res) {
     return sendJson(res, 400, { error: "Invalid paid-action details or missing privacy consent." });
   }
   try {
+    const policy = (await supabaseRequest("/rest/v1/platform_policies?id=eq.true&select=contribution_fee_basis_points,contribution_fixed_fee_minor,contribution_fixed_fee_currency,max_contribution_minor,enabled_payment_providers", { service: true }))?.[0];
+    if (!enabledPaymentProviders(policy).includes(body.provider)) {
+      return sendJson(res, 409, { error: "This payment method has been disabled. Reload the payment options before starting a new checkout." });
+    }
     if (!await verifyChallenge(body.captchaToken, req, expectedHostname)) {
       return sendJson(res, 400, { error: "Complete the anti-abuse verification before checkout." });
     }
     const available = configuredAdapters(currency, market).some(item => item.id === body.provider);
     if (!available) return sendJson(res, 409, { error: "That payment option is not configured for this currency and market." });
     if (!await checkProviderHealth(body.provider)) return sendJson(res, 503, { error: "The selected payment provider is not healthy. No checkout was created." });
-    const [weddings, policies] = await Promise.all([
-      supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=id,slug,currency,wedding_date,time_zone,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options`, { service: true }),
-      supabaseRequest("/rest/v1/platform_policies?id=eq.true&select=contribution_fee_basis_points,contribution_fixed_fee_minor,contribution_fixed_fee_currency,max_contribution_minor", { service: true })
-    ]);
+    const weddings = await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=id,slug,currency,wedding_date,time_zone,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options`, { service: true });
     const wedding = weddings?.[0];
-    const policy = policies?.[0];
     if (!wedding || !policy || wedding.currency !== currency) {
       return sendJson(res, 409, { error: "Payments are not available for this wedding or currency." });
     }
@@ -470,6 +487,9 @@ async function handleCheckout(req, res) {
       : { provider: body.provider, checkoutUrl: checkout.url, paymentStatus: "pending", paymentId: contributionId });
   } catch (error) {
     console.error("hosted checkout initialization failed", error.message);
+    if (error.message?.includes("This payment method has been disabled")) {
+      return sendJson(res, 409, { error: "This payment method has been disabled. Reload the payment options before starting a new checkout." });
+    }
     return sendJson(res, error.status || 503, { error: "Checkout was not started. No funds were collected; try again later." });
   }
 }

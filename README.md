@@ -16,6 +16,16 @@ text; browser/API validation and database content triggers enforce this for new
 or changed content without rewriting historical records. This is an abuse
 deterrent, not a guarantee against every creative encoding.
 
+**Admin/Owner → Fees & settings → Enabled payment methods** controls the
+platform-level provider allowlist independently for M-Pesa/Daraja, Card/Paystack
+and Card/Stripe. The default retains all previously eligible test adapters.
+Credentials, markets/currencies, provider health and test-only mode must still
+pass; a switch cannot enable live payments. Options and checkout creation read
+the current database policy, and a database insert guard rejects disabled
+providers even from stale tabs. Disabling affects new intents, never reroutes,
+cancels or prevents verification of an already-created payment. Changes require
+confirmation and are audited. No configuration is silently enabled on save.
+
 Production Supabase Auth uses `https://www.joinourwedding.site` as its Site URL.
 Redirects allow both platform origins and paths, the Production Vercel host and
 existing local development callbacks; the stale preview is removed. Google

@@ -198,7 +198,7 @@
       });
     },
     async fees(el) {
-      const [{ policies: p }, refundPolicy] = await Promise.all([get("policies"), get("refund-policy")]);
+      const [{ policies: p }, refundPolicy, paymentControls] = await Promise.all([get("policies"), get("refund-policy"), get("payment-controls")]);
       const extendedPolicy = ["contribution_fixed_fee_minor", "contribution_fixed_fee_currency", "min_payout_minor", "payout_hold_days"]
         .every((key) => Object.prototype.hasOwnProperty.call(p, key));
       const { history = [] } = role === "owner" && extendedPolicy ? await get("policy-history") : {};
@@ -225,6 +225,12 @@
         <p class="fine">Only the protected Owner can change platform fee and payout policies. Admins can view these settings; transaction eligibility and fee calculation are enforced server-side.</p>
         ${owner && extendedPolicy ? `<details><summary>Recent policy versions (${history.length})</summary>${history.length ? history.map((h) => `<article class="policy-version"><strong>${date(h.changed_at)}</strong><pre>${esc(JSON.stringify({ old: h.old_values, new: h.new_values }, null, 2))}</pre></article>`).join("") : '<p class="fine">No policy changes have been recorded yet.</p>'}</details>` : ""}`;
       const refundAllocation = refundPolicy.allocation || "manual_review";
+      const providerLabels = { daraja: "M-Pesa — Daraja sandbox", paystack: "Card — Paystack test", stripe: "Card — Stripe test" };
+      el.insertAdjacentHTML("beforeend", `<form id="payment-controls-form"><h3>Enabled payment methods</h3>
+        <p class="fine">Admin and Owner controls for new checkouts across all weddings. Enabling a switch never enables live mode or supplies missing credentials. Pending payments remain with their original provider and can still be verified.</p>
+        ${(paymentControls.providers || []).map(provider => `<label><input type="checkbox" name="payment-provider" value="${esc(provider.id)}"${(paymentControls.enabled || []).includes(provider.id) ? " checked" : ""}>
+          ${esc(providerLabels[provider.id] || provider.id)} — ${provider.configured ? "Test adapter configured (health checked at checkout)" : "Setup incomplete or unsupported currency/market"}</label>`).join("")}
+        <button type="submit">Save payment methods</button></form>`);
       el.insertAdjacentHTML("beforeend", `<form id="refund-policy-form"><h3>Refund fee allocation</h3>
         <p class="fine">This applies to new payments only. “Couple” assigns the full provider-confirmed refund to the wedding balance. “Platform” reimburses the couple for the known original platform and provider fees proportionally; unknown provider fees remain held. “Manual review” is the safest default and keeps refund amounts unavailable until an Admin records an allocation.</p>
         <label for="refund-allocation">Default allocation</label><select id="refund-allocation"${owner ? "" : " disabled"}>
@@ -361,6 +367,15 @@
         try {
           await post("refund-policy-save", { allocation, confirmed: true });
           toast("Refund allocation policy saved.");
+          await show("fees");
+        } catch (err) { toast(err.message, true); }
+      }
+      if (e.target.id === "payment-controls-form") {
+        const enabled = [...e.target.querySelectorAll('input[name="payment-provider"]:checked')].map(input => input.value);
+        if (!confirm("Apply these methods to new checkouts? Existing payments remain with their original provider. This does not enable live payments.")) return;
+        try {
+          await post("payment-controls-save", { enabled, confirmed: true });
+          toast("Payment methods saved.");
           await show("fees");
         } catch (err) { toast(err.message, true); }
       }

@@ -1,4 +1,55 @@
 -- Public amounts are confirmed paid minor units; preserve consent and anonymity.
+alter table public.platform_policies add column enabled_payment_providers text[] not null
+  default array['stripe','paystack','daraja']::text[]
+  check (enabled_payment_providers <@ array['stripe','paystack','daraja']::text[]
+    and array_position(enabled_payment_providers, null) is null);
+
+create function public.admin_get_payment_controls() returns text[]
+language plpgsql stable security definer set search_path = '' set row_security = off as $$
+begin
+  perform public.require_staff();
+  return (select enabled_payment_providers from public.platform_policies where id);
+end $$;
+revoke all on function public.admin_get_payment_controls() from public, anon;
+grant execute on function public.admin_get_payment_controls() to authenticated;
+
+create function public.admin_set_payment_controls(p_enabled text[], p_confirmed boolean default false) returns boolean
+language plpgsql security definer set search_path = '' set row_security = off as $$
+declare previous jsonb;
+begin
+  perform public.require_staff();
+  if not coalesce(p_confirmed, false) or p_enabled is null
+    or not (p_enabled <@ array['stripe','paystack','daraja']::text[])
+    or array_position(p_enabled, null) is not null then
+    raise exception 'Choose valid payment methods and confirm the change.';
+  end if;
+  select to_jsonb(p) into previous from public.platform_policies p where id for update;
+  update public.platform_policies set enabled_payment_providers = p_enabled, updated_by = auth.uid(), updated_at = now() where id;
+  if not found then raise exception 'Platform payment policy is unavailable.'; end if;
+  insert into public.platform_policy_history (changed_by, old_values, new_values)
+    select auth.uid(), previous - 'updated_by', to_jsonb(p) - 'updated_by' from public.platform_policies p where id;
+  insert into public.audit_events (actor_id, source, action, table_name, record_id, changed_fields)
+    values (auth.uid(), 'user', 'payment_methods_changed', 'platform_policies', 'true', array['enabled_payment_providers']);
+  return true;
+end $$;
+revoke all on function public.admin_set_payment_controls(text[], boolean) from public, anon;
+grant execute on function public.admin_set_payment_controls(text[], boolean) to authenticated;
+
+create function public.guard_new_checkout_provider() returns trigger
+language plpgsql security definer set search_path = '' set row_security = off as $$
+declare enabled text[];
+begin
+  if new.payment_status = 'pending' and new.provider_name in ('stripe','paystack','daraja') then
+    select enabled_payment_providers into enabled from public.platform_policies where id for share;
+    if enabled is null or not (new.provider_name = any(enabled)) then
+      raise exception 'This payment method has been disabled. Reload the payment options.' using errcode = '23514';
+    end if;
+  end if;
+  return new;
+end $$;
+create trigger guard_new_checkout_provider before insert on public.contributions
+  for each row execute function public.guard_new_checkout_provider();
+
 drop function public.get_published_contributions_page(uuid, integer, integer);
 create function public.get_published_contributions_page(
   p_wedding_id uuid, p_offset integer default 0, p_limit integer default 10
