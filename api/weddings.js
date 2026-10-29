@@ -38,7 +38,7 @@ const friendlyColorName = hex => {
   return closest[0];
 };
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,amount_presets,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,published_at,created_at,archived_at,unpublished_at,first_published_at";
+const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,amount_presets,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted";
 const canonicalJson = value => Array.isArray(value) ? `[${value.map(canonicalJson).join(",")}]`
   : value && typeof value === "object" ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`
     : JSON.stringify(value);
@@ -151,7 +151,22 @@ export default async function handler(req, res) {
         `/rest/v1/weddings?id=eq.${req.query.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=${FIELDS}`, opts);
       if (!rows?.length) return sendJson(res, 404, { error: "Wedding not found." });
       const [wedding] = await loadWeddingDetails(rows, opts);
-      return sendJson(res, 200, { wedding, amountPresetMaxMinor: await amountPresetCap() });
+      const moderation = await supabaseRequest("/rest/v1/rpc/wedding_moderation_status", {
+        ...opts, method: "POST", body: { p_wedding_id: req.query.weddingId } });
+      return sendJson(res, 200, { wedding: { ...wedding, moderation: moderation || null },
+        amountPresetMaxMinor: await amountPresetCap() });
+    }
+
+    if (action === "moderation-correction") {
+      if (!methodOnly(req, res, "POST")) return;
+      const note = typeof body.note === "string" ? body.note.trim() : "";
+      if (!UUID.test(String(body.caseId || "")) || !Number.isSafeInteger(body.expectedRevision)) {
+        return sendJson(res, 400, { error: "Reload the page and try again." });
+      }
+      if (note.length < 10 || note.length > 2000) return sendJson(res, 400, { error: "Describe what you corrected in 10 to 2000 characters." });
+      const result = await supabaseRequest("/rest/v1/rpc/submit_moderation_correction", { ...opts, method: "POST",
+        body: { p_case_id: body.caseId, p_note: note, p_expected_revision: body.expectedRevision } });
+      return sendJson(res, 200, { ok: true, case: result });
     }
 
     if (action === "create") {
@@ -591,6 +606,8 @@ export default async function handler(req, res) {
         let userMessage = msg;
         if (msg.includes("PAYMENT_REQUIRED")) {
           return sendJson(res, 402, { error: msg.replace(/^.*PAYMENT_REQUIRED:?\s*/, "").slice(0, 300) || "A publication fee is required.", paymentRequired: true });
+        } else if (msg.includes("MODERATION_RESTRICTED")) {
+          return sendJson(res, 409, { error: "Platform staff restricted this wedding. Review the reason, submit your correction, and an Admin will review it.", moderationRequired: true });
         } else if (/KYC|identity/i.test(msg)) {
           return sendJson(res, 409, { error: "Submit complete KYC details for both partners. Join Our Wedding does not independently verify identity documents.", kycRequired: true });
         } else if (/date/i.test(msg)) {
@@ -658,7 +675,7 @@ export default async function handler(req, res) {
         });
       }
       if (action === "withdrawals") {
-        const rows = await supabaseRequest(`/rest/v1/payout_records?wedding_id=eq.${weddingId}&select=id,amount_minor,currency,status,requested_at&order=requested_at.desc&limit=100`, opts);
+        const rows = await supabaseRequest(`/rest/v1/payout_records?wedding_id=eq.${weddingId}&select=id,amount_minor,currency,status,requested_at,staff_reason&order=requested_at.desc&limit=100`, opts);
         return sendJson(res, 200, { withdrawals: rows || [] });
       }
       if (action === "withdraw") {
@@ -853,6 +870,10 @@ export default async function handler(req, res) {
 
     // Provide specific error messages instead of generic ones
     let userMessage = "The request could not be completed.";
+    const moderation = errorMsg.match(/MODERATION(?:_RESTRICTED)?:\s*([^\n]{1,300})/);
+    if (moderation) {
+      return sendJson(res, 409, { error: moderation[1].trim(), moderationRequired: errorMsg.includes("MODERATION_RESTRICTED") });
+    }
     if (errorMsg.includes("relation does not exist")) {
       userMessage = "Database table not found. Platform is not fully initialized. Contact admin.";
     } else if (errorMsg.includes("permission denied") || errorMsg.includes("RLS")) {
