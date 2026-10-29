@@ -57,7 +57,7 @@ begin
     raise exception 'Duplicate callbacks must be idempotent'; end if;
   if (select count(*) from public.contributions) <> contributions_before then
     raise exception 'Publication settlement must never credit wedding contributions'; end if;
-  if not exists(select 1 from public.publication_fees where wedding_id=checkout.wedding_id
+  if not exists(select 1 from public.publication_fees pf where pf.wedding_id=checkout.wedding_id
     and status='test_paid' and amount_minor=5000 and provider='daraja-test') then
     raise exception 'Test settlement must not be marked real paid revenue'; end if;
   perform public.publish_wedding_with_fee(wedding_id,true);
@@ -65,13 +65,13 @@ begin
     raise exception 'Verified fee must permit explicit publishing without KYC'; end if;
   -- Staff waiver races must not be overwritten by a late provider confirmation.
   update public.weddings set published_at=null where id=wedding_id;
-  update public.publication_fees set status='pending' where wedding_id=checkout.wedding_id;
+  update public.publication_fees pf set status='pending' where pf.wedding_id=checkout.wedding_id;
   update public.platform_policies set enabled_payment_providers=array['daraja'];
   other := public.begin_publication_checkout(wedding_id,extensions.gen_random_uuid(),'daraja',9000,'KES');
   update public.publication_checkouts set provider_reference='local-second-stk' where id=other.id;
-  update public.publication_fees set status='waived',provider='staff-waiver' where wedding_id=checkout.wedding_id;
+  update public.publication_fees pf set status='waived',provider='staff-waiver' where pf.wedding_id=checkout.wedding_id;
   perform public.record_verified_publication_payment(other.id,'daraja','local-second-stk',9000,'KES','local-second-event');
-  if not exists(select 1 from public.publication_fees where wedding_id=checkout.wedding_id and status='waived') then
+  if not exists(select 1 from public.publication_fees pf where pf.wedding_id=checkout.wedding_id and status='waived') then
     raise exception 'Late verified payment must preserve a staff waiver'; end if;
   if has_table_privilege('authenticated','public.publication_checkouts','INSERT') or
     has_function_privilege('authenticated','public.record_verified_publication_payment(uuid,text,text,bigint,text,text,bigint)','EXECUTE') then
