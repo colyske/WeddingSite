@@ -29,7 +29,14 @@
 
   const moneyMap = (obj) => {
     const keys = Object.keys(obj || {});
-    return keys.length ? keys.map((c) => WS.money(Number(obj[c]), c, false)).join(" · ") : "0";
+    return keys.length ? keys.map(c => {
+      const original = WS.money(Number(obj[c]), c, false);
+      const fx = window.WeddingSiteFX;
+      const usd = fx?.convertBetween(Number(obj[c]) / 100, c, "USD");
+      const kes = fx?.convertBetween(Number(obj[c]) / 100, c, "KES");
+      if (usd == null || kes == null) return `${original} [USD/KES conversion unavailable or stale]`;
+      return `${original} [≈ ${WS.money(usd * 100, "USD", false)} / ${WS.money(kes * 100, "KES", false)}]`;
+    }).join(" · ") : "USD 0.00 / KES 0.00";
   };
   const date = (v) => (v ? new Date(v).toLocaleString() : "-");
   const stat = (label, value) => `<div class="stat-card"><h3>${esc(label)}</h3><div class="number">${value}</div></div>`;
@@ -84,15 +91,17 @@
   }
   const panels = {
     async overview(el) {
-      const o = await get("overview");
+      const o = cache.overview || (cache.overview = await get("overview"));
       el.innerHTML = `<h2>Platform overview</h2><div class="stats">
         ${stat("Weddings", o.weddings)}${stat("Published", o.published)}${stat("Archived", o.archived)}${stat("Past / completed", o.past)}
         ${stat("Users", o.users)}${stat("Staff", o.admins)}${stat("RSVPs", o.rsvps)}${stat("DJ bids", o.bids)}
         ${stat("Pending payouts", o.pending_payouts)}${stat("Test payments", o.test_payments)}</div>
-        <div class="stats">${stat("Contributions collected", esc(moneyMap(o.collected_by_currency)))}
-        ${stat("Platform fees (contributions)", esc(moneyMap(o.fees_by_currency)))}
+        <p class="fine"><strong>Test-provider figures, not collected revenue or withdrawable cash.</strong> Original currency records are shown separately; bracketed USD/KES figures are indicative display conversions, not accounting entries.</p>
+        <details class="context-help"><summary>How to read these currency figures</summary><p>${esc(window.WeddingSiteFX?.statusText() || "FX unavailable. Original currency figures are retained.")} Rates older than 36 hours are not used here. Different original currencies are never added together.</p></details>
+        <div class="stats">${stat("Verified test contributions", esc(moneyMap(o.collected_by_currency)))}
+        ${stat("Simulated platform fees", esc(moneyMap(o.fees_by_currency)))}
         ${stat("Known provider charges", esc(moneyMap(o.provider_fees_by_currency)))}
-        ${stat("Estimated available wedding funds", esc(moneyMap(o.settlement?.available_by_currency)))}
+        ${stat("Simulated net after charges / holds", esc(moneyMap(o.settlement?.available_by_currency)))}
         ${stat("Refund/dispute adjustments", esc(moneyMap(o.settlement?.adjustments_by_currency)))}
         ${stat("Refund/dispute holds", esc(moneyMap(o.settlement?.refund_dispute_holds_by_currency)))}
         ${stat("Held pending provider fee", esc(moneyMap(o.provider_fee_holds_by_currency)))}
@@ -181,17 +190,17 @@
     async users(el) {
       const search = el.dataset.search || "";
       const { users } = await get("users", search ? "&search=" + encodeURIComponent(search) : "");
-      const canRole = role === "owner";
+      const canRole = ["owner", "superadmin"].includes(role);
       const me = WS.session().user?.id;
       mountPaged(el, "users", {
         title: "Users & roles",
-        intro: canRole ? "The protected Owner controls Admin/SuperAdmin delegation. Role changes are audited, and you cannot change your own role." : "Only the protected Owner can change platform roles.",
+        intro: canRole ? "SuperAdmins can manage clients and regular Admins. Only the protected Owner manages SuperAdmins. Self-changes and Owner reassignment are prohibited; changes are audited." : "Client and regular Admin roles are visible for support. Only SuperAdmins and the protected Owner may change roles.",
         head: ["Email", "Name", "Role", "Weddings", "Joined"],
         items: users,
         text: (u) => [u.email, u.display_name, u.platform_role].join(" "),
         row: (u) => {
-          const sel = canRole && u.id !== me && u.platform_role !== "owner"
-            ? `<select data-role-for="${esc(u.id)}" aria-label="Role for ${esc(u.email)}">${["client", "admin", "superadmin"].map((r) => `<option value="${r}"${r === u.platform_role ? " selected" : ""}>${r}</option>`).join("")}</select> ${btn("Apply", `data-setrole="${esc(u.id)}"`)}`
+          const sel = canRole && u.id !== me && u.platform_role !== "owner" && (role === "owner" || u.platform_role !== "superadmin")
+            ? `<select data-role-for="${esc(u.id)}" aria-label="Role for ${esc(u.email)}">${(role === "owner" ? ["client", "admin", "superadmin"] : ["client", "admin"]).map((r) => `<option value="${r}"${r === u.platform_role ? " selected" : ""}>${r}</option>`).join("")}</select> ${btn("Apply", `data-setrole="${esc(u.id)}"`)}`
             : esc(u.platform_role);
           return `<tr><td>${esc(u.email || "-")}</td><td>${esc(u.display_name || "-")}</td><td>${sel}</td><td>${u.wedding_count}</td><td>${date(u.created_at)}</td></tr>`;
         }
@@ -201,7 +210,7 @@
       const [{ policies: p }, refundPolicy, paymentControls] = await Promise.all([get("policies"), get("refund-policy"), get("payment-controls")]);
       const extendedPolicy = ["contribution_fixed_fee_minor", "contribution_fixed_fee_currency", "min_payout_minor", "payout_hold_days"]
         .every((key) => Object.prototype.hasOwnProperty.call(p, key));
-      const { history = [] } = role === "owner" && extendedPolicy ? await get("policy-history") : {};
+      const { history = [] } = extendedPolicy ? await get("policy-history") : {};
       const major = (v) => (v === null || v === undefined ? "" : (Number(v) / 100).toFixed(2));
       const f = (id, label, val, hint, max = "") => `<label for="${id}">${esc(label)}</label><input id="${id}" type="number" min="0" ${max ? `max="${max}"` : ""} step="0.01" value="${esc(major(val))}" required><span class="fine">${esc(hint)}</span>`;
       const g = (id, label, val, hint) => `<label for="${id}">${esc(label)}</label><input id="${id}" type="number" min="0" step="1" value="${esc(val ?? "")}" required><span class="fine">${esc(hint)}</span>`;
@@ -222,12 +231,12 @@
         ${f("p-max-payout", "Maximum withdrawal", p.max_payout_minor, "Per-request limit; available balance and holds are checked separately.")}
         ${extendedPolicy ? `${f("p-min-payout", "Minimum withdrawal", p.min_payout_minor, "Minimum eligible net balance required for a withdrawal request.")}${g("p-hold-days", "Settlement hold (days)", p.payout_hold_days, "Funds remain unavailable until this hold and provider settlement are satisfied.")}` : ""}
         <button type="submit"${owner ? "" : " disabled"}>${owner ? "Save settings" : "Owner access required"}</button></fieldset></form>
-        <p class="fine">Only the protected Owner can change platform fee and payout policies. Admins can view these settings; transaction eligibility and fee calculation are enforced server-side.</p>
-        ${owner && extendedPolicy ? `<details><summary>Recent policy versions (${history.length})</summary>${history.length ? history.map((h) => `<article class="policy-version"><strong>${date(h.changed_at)}</strong><pre>${esc(JSON.stringify({ old: h.old_values, new: h.new_values }, null, 2))}</pre></article>`).join("") : '<p class="fine">No policy changes have been recorded yet.</p>'}</details>` : ""}`;
+        <p class="fine">Only the protected Owner can change platform fee and payout policies. SuperAdmins can view these settings; regular Admins cannot access them. Transaction eligibility and fee calculation are enforced server-side.</p>
+        ${extendedPolicy ? `<details><summary>Recent policy versions (${history.length})</summary>${history.length ? history.map((h) => `<article class="policy-version"><strong>${date(h.changed_at)}</strong><pre>${esc(JSON.stringify({ old: h.old_values, new: h.new_values }, null, 2))}</pre></article>`).join("") : '<p class="fine">No policy changes have been recorded yet.</p>'}</details>` : ""}`;
       const refundAllocation = refundPolicy.allocation || "manual_review";
       const providerLabels = { daraja: "M-Pesa — Daraja sandbox", paystack: "Card — Paystack test", stripe: "Card — Stripe test" };
       el.insertAdjacentHTML("beforeend", `<form id="payment-controls-form"><h3>Enabled payment methods</h3>
-        <p class="fine">Admin and Owner controls for new checkouts across all weddings. Enabling a switch never enables live mode or supplies missing credentials. Pending payments remain with their original provider and can still be verified.</p>
+        <p class="fine">SuperAdmin and Owner controls for new checkouts across all weddings. Enabling a switch never enables live mode or supplies missing credentials. Pending payments remain with their original provider and can still be verified.</p>
         ${(paymentControls.providers || []).map(provider => `<label><input type="checkbox" name="payment-provider" value="${esc(provider.id)}"${(paymentControls.enabled || []).includes(provider.id) ? " checked" : ""}>
           ${esc(providerLabels[provider.id] || provider.id)} — ${provider.configured ? "Test adapter configured (health checked at checkout)" : "Setup incomplete or unsupported currency/market"}</label>`).join("")}
         <button type="submit">Save payment methods</button></form>`);
@@ -301,7 +310,7 @@
     }
     if (opts.ownerOnly && role !== "owner") return location.replace("/account.html");
     $("role-badge").textContent = "Role: " + role;
-    const tabs = opts.ownerOnly ? ["overview", "operations", "users", "fees", "ledger", "payouts", "audit", "weddings", "security"] : ["overview", "operations", "weddings", "users", "fees", "ledger", "payouts", "audit"];
+    const tabs = role === "admin" ? ["operations", "weddings", "users"] : ["overview", "operations", "weddings", "users", "fees", "ledger", "payouts", "audit", "security"];
     $("admin-nav").innerHTML = tabs.map((t, i) => `<button type="button" class="tab-btn${i ? "" : " active"}" role="tab" aria-selected="${i ? "false" : "true"}" data-tab="${t}">${SEC[t]}</button>`).join("");
     $("admin-nav").addEventListener("click", (e) => { const b = e.target.closest(".tab-btn"); if (b) { delete $("panel").dataset.wedding; show(b.dataset.tab); } });
     $("sign-out").addEventListener("click", () => { WS.clear(); location.replace("/signin.html"); });
@@ -380,7 +389,10 @@
         } catch (err) { toast(err.message, true); }
       }
     });
-    show("overview");
+    document.addEventListener("weddingsitefxchange", () => {
+      if ($("panel").dataset.tab === "overview" && role !== "admin") show("overview");
+    });
+    show(tabs[0]);
   }
   window.BO = { init };
 })();

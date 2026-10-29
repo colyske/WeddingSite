@@ -206,47 +206,7 @@ export default async function handler(req, res) {
     }
 
     if (action === "sponsor-enquiry") {
-      if (!methodOnly(req, res, "POST")) return;
-      const body = req.body && typeof req.body === "object" ? req.body : {};
-      const slug = String(body.slug || "").toLowerCase();
-      if (!/^[a-z0-9-]{3,80}$/.test(slug)) return sendJson(res, 400, { error: "Invalid wedding." });
-      if (limited(`sponsor|${clientHash(req, slug)}`, 3, 60 * 60 * 1000)) {
-        return sendJson(res, 429, { error: "Please wait before sending another sponsor enquiry." });
-      }
-      const companyName = text(body.companyName, 100);
-      const contactName = text(body.contactName, 100);
-      const contactEmail = text(body.contactEmail, 254).toLowerCase();
-      const contactPhone = text(body.contactPhone, 30);
-      const location = text(body.location, 160);
-      const offer = text(body.offer, 360);
-      let socialLinks;
-      try { socialLinks = globalThis.WSSocialLinks.parse(body.socialLinks); }
-      catch (error) { return sendJson(res, 400, { error: error.message }); }
-      if (!companyName || !contactName || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail) || !offer) {
-        return sendJson(res, 400, { error: "Enter the organization, contact name, valid email and proposed offer." });
-      }
-      const weddingId = await resolveWeddingId(slug, rpc);
-      if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
-      const wedding = (await supabaseRequest(
-        `/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=allow_in_kind_sponsorship,wedding_date,time_zone`,
-        { service: true }
-      ))?.[0];
-      if (!wedding) return sendJson(res, 404, { error: "Wedding not found." });
-      if (isPastWedding(wedding.wedding_date, wedding.time_zone)) return sendJson(res, 410, { error: "This wedding has passed and is no longer accepting sponsor enquiries." });
-      if (!wedding.allow_in_kind_sponsorship) return sendJson(res, 409, { error: "This couple is not accepting free or in-kind sponsor enquiries right now. You can choose a fixed-price package if one is listed." });
-      await supabaseRequest("/rest/v1/sponsor_enquiries", {
-        service: true, method: "POST", prefer: "return=minimal",
-        body: {
-          wedding_id: weddingId, company_name: companyName, contact_name: contactName,
-          contact_email: contactEmail, contact_phone: contactPhone || null,
-          location: location || null, offer, in_kind: true, public_contact: body.publicContact === true,
-          social_links: socialLinks
-        }
-      });
-      return sendJson(res, 201, {
-        status: "pending",
-        message: "Enquiry sent for organizer review. This is not a confirmed sponsorship and does not imply payment."
-      });
+      return sendJson(res, 410, { error: "Free and in-kind sponsorship enquiries are no longer available. Choose a paid sponsor package if listed." });
     }
 
     if (action === "leaderboard") {

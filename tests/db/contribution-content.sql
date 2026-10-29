@@ -15,7 +15,7 @@ begin
     raise exception 'Designated fields must remain exempt; free text must be checked';
   end if;
   insert into auth.users (id) values (client_id), (staff_id);
-  update public.profiles set platform_role = 'admin' where id = staff_id;
+  update public.profiles set platform_role = 'superadmin' where id = staff_id;
   perform set_config('request.jwt.claim.sub', client_id::text, true);
   blocked := false;
   begin
@@ -24,7 +24,7 @@ begin
   if not blocked then raise exception 'Clients must not control platform payment methods'; end if;
   perform set_config('request.jwt.claim.sub', staff_id::text, true);
   perform public.admin_set_payment_controls(array['daraja'], true);
-  if public.admin_get_payment_controls() <> array['daraja'] then raise exception 'Admin must independently enable M-Pesa'; end if;
+  if public.admin_get_payment_controls() <> array['daraja'] then raise exception 'SuperAdmin must independently enable M-Pesa'; end if;
   insert into public.weddings (id, client_owner_id, couple_names, wedding_date, currency, published_at)
     values (wedding_id, client_id, 'Local sample couple', current_date + 30, 'KES', now());
   blocked := false;

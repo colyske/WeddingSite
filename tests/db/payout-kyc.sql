@@ -1,5 +1,8 @@
 -- Isolated local CI database only. All fixtures and effects are rolled back.
 begin;
+-- Model future real funds only for this isolated KYC regression. The separate
+-- support-boundaries regression verifies the production live-settlement guard.
+alter table public.contributions disable trigger guard_payment_environment;
 
 do $$
 <<payout_kyc_test>>
@@ -54,8 +57,8 @@ begin
 
   update public.wedding_kyc k set consent_at = now() where k.wedding_id = payout_kyc_test.wedding_id;
   insert into public.contributions (wedding_id, stream_name, pledged_amount_minor, paid_amount_minor,
-    platform_fee_minor, net_paid_minor, currency, payment_status, verified_provider_payment, provider_fee_pending, provider_fee_minor)
-  values (wedding_id, 'Local test funds', 100000, 100000, 0, 100000, 'KES', 'paid', true, false, 0);
+    platform_fee_minor, net_paid_minor, currency, payment_status, verified_provider_payment, provider_fee_pending, provider_fee_minor, payment_environment)
+  values (wedding_id, 'Local future live-funds fixture', 100000, 100000, 0, 100000, 'KES', 'paid', true, false, 0, 'live');
   payout_id := public.request_payout(wedding_id, 1000, 'KES', 'Local test', true);
   if payout_id is null then raise exception 'Complete KYC and funds must allow payout request'; end if;
   cancel_id := public.request_payout(wedding_id, 1000, 'KES', 'Local cancellation test', true);

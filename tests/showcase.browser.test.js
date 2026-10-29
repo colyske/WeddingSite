@@ -36,7 +36,12 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     await page.locator("#ledger-body tr").first().waitFor();
     await page.locator(".field-row").first().waitFor();
     await page.locator("#guestbook").waitFor();
-    assert.equal(await page.locator("#prewedding-display > *").count(), 2);
+    assert.equal(await page.locator("#prewedding-display > *").count(), 5);
+    assert.equal(await page.locator("#sponsor-enquiry-link").count(), 0);
+    assert.equal(await page.locator(".sponsor-ad .sponsor-socials a").count(), 2);
+    assert.match(await page.locator(".sponsor-ad").innerText(), /studio@example\.com/);
+    assert.deepEqual(await page.locator('#campaigns-display [data-preset][data-min]').evaluateAll(nodes => nodes.map(n => n.dataset.min)), ["50000", "100000", "500000"]);
+    assert.deepEqual(await page.locator("#leaderboard-body tr:first-child [data-amount]").evaluateAll(nodes => nodes.map(n => n.dataset.amount)), ["10000", "50000", "100000", "0"]);
     assert.equal(await page.locator("#venues-display > *").count(), 2);
     assert.match(await page.locator("#ledger-body").innerText(), /Song bid[\s\S]*2,500[\s\S]*Sample Guest A/);
     assert.doesNotMatch(await page.locator("#ledger-body").innerText(), /NaN|\$/);

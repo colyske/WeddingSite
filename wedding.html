@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#203a31"><link rel="icon" type="image/png" sizes="120x120" href="/assets/brand/icon-120.png"><link rel="apple-touch-icon" sizes="120x120" href="/assets/brand/icon-120.png">
   <title>Join Our Wedding — Wedding Editor</title>
+  <link rel="stylesheet" href="sponsor-cards.css">
   <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><script src="ornaments.js" defer></script>
   <style>
     .venue-item { padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9; margin-bottom: 1rem; }
@@ -73,11 +74,11 @@
         <p class="fine" id="slug-error" style="color: #d9534f; display: none; margin-top: 0.5rem;"></p>
 
         <label for="welcome-story">Welcome message
-          <button type="button" class="link" id="ai-story-btn" style="margin-left: 0.5rem; font-weight: normal;">✨ Get AI suggestions</button>
+          <button type="button" class="link" id="ai-story-btn" style="margin-left: 0.5rem; font-weight: normal;">Explore story starters</button>
         </label>
         <textarea id="welcome-story" maxlength="500" rows="4" placeholder="A brief message for your guests…"></textarea>
         <div id="ai-story-suggestions" class="fine" style="display: none; border-left: 3px solid var(--gold); padding: 0.75rem; margin: 1rem 0; background: #fefcf7;">
-          <p style="margin: 0 0 0.75rem;">💡 AI suggestions:</p>
+          <p style="margin: 0 0 0.75rem;">Local writing templates, not connected AI. Choose one, personalize it, then review before saving.</p>
           <div id="ai-story-list" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
         </div>
 
@@ -189,13 +190,11 @@
               <label>Minimum increment (wedding currency)<input id="featured-sponsor-increment" type="number" min="0.01" step="0.01" value="5"></label>
             </div>
           </fieldset>
-          <label style="display:flex;align-items:flex-start;gap:.6rem;margin:0 0 1rem;">
-            <input id="allow-in-kind-sponsorship" type="checkbox">
-            <span>Accept free / in-kind sponsor enquiries. These remain pending until an organizer reviews and approves them.</span>
-          </label>
+          <details class="context-help"><summary>About sponsor cards and contacts</summary><p>Paid sponsors enter their website and social profiles at checkout. Phone and email appear publicly only with their explicit contact-sharing consent. Keep contact details out of free-text descriptions.</p></details>
+          <div id="sponsor-records" class="card" hidden></div>
           <div id="sponsor-enquiries-panel" class="card" hidden>
-            <h4>In-kind sponsor enquiries</h4>
-            <p class="fine">An enquiry is not a confirmed sponsor. Approval publishes a clearly labeled in-kind sponsor card; no payment is implied.</p>
+            <h4>Historical sponsor enquiries</h4>
+            <p class="fine">Retained for your records. New free or in-kind sponsorship is no longer accepted; pending historical enquiries may be declined.</p>
             <div id="sponsor-enquiries-list"></div>
           </div>
 
@@ -375,7 +374,7 @@
     <!-- Withdrawals / Payouts -->
     <div id="withdrawals-section" class="card" hidden>
       <h2>💰 Payouts & Withdrawals</h2>
-      <p class="fine">View your current payout balance and request withdrawals</p>
+      <p class="fine">Only eligible real settled funds can be withdrawn. Test-provider payments are simulated and never become withdrawable funds.</p>
       <p class="notice" id="payout-kyc-notice" role="status">Complete KYC to receive your payout. <a href="#kyc-section">Complete both partners&rsquo; KYC details</a>. Publishing is not blocked.</p>
       
       <div id="payout-balance" style="padding: 1.5rem; background: #f3faf3; border-radius: 8px; margin-bottom: 1.5rem;">
@@ -430,6 +429,8 @@
   <script src="site-urls.js"></script>
   <script src="currencies.js"></script>
   <script src="auth-client.js"></script>
+  <script src="social-links.js"></script>
+  <script src="sponsor-cards.js"></script>
   <script src="tz.js"></script>
   <script src="share.js"></script>
   <script src="setup-progress.js"></script>
@@ -529,15 +530,13 @@
       }
     }
 
-    // AI Story suggestions
+    // Local templates never send the couple's story to an external AI service.
     $("ai-story-btn").addEventListener("click", async e => {
       e.preventDefault();
       const btn = $("ai-story-btn");
       btn.disabled = true;
       btn.textContent = "💭 Generating...";
       try {
-        const couple = $("couple-names").value || "the couple";
-        const date = $("wedding-date").value || "soon";
         const suggestions = [
           `We're thrilled to share this special day with you. Join us as we celebrate our love and create memories together.`,
           `Celebrate with us as we begin our journey together. Your presence means the world to us.`,
@@ -565,7 +564,7 @@
         notice("Could not generate suggestions.", true);
       } finally {
         btn.disabled = false;
-        btn.textContent = "✨ Get AI suggestions";
+        btn.textContent = "Explore story starters";
       }
     });
 
@@ -934,19 +933,31 @@
             <p>${esc(enquiry.offer || "No offer details")}</p>
             <p class="fine">${esc(enquiry.contact_name)} · ${esc(enquiry.contact_email)}${enquiry.contact_phone ? " · " + esc(enquiry.contact_phone) : ""}${enquiry.location ? " · " + esc(enquiry.location) : ""}</p>
             ${enquiry.public_contact ? "<small>Requested public contact details on the sponsor card.</small>" : "<small>Contact details remain private.</small>"}
-            ${enquiry.status === "pending" ? `<div class="row"><button type="button" class="ghost" data-sponsor-review="approved">Approve in-kind card</button><button type="button" class="ghost" data-sponsor-review="declined">Decline</button></div>` : ""}
+            ${enquiry.status === "pending" ? `<div class="row"><button type="button" class="ghost" data-sponsor-review="declined">Decline</button></div>` : ""}
           </article>`).join("") : "<p class='fine'>No enquiries yet.</p>";
       } catch (error) {
         console.warn("Sponsor enquiries unavailable:", error.message);
+      }
+    }
+    async function loadSponsorCards() {
+        try {
+          const res = await WS.api(`/api/weddings?action=fundraising&weddingId=${encodeURIComponent(weddingId)}`);
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Could not load sponsor cards.");
+          const sponsors = data.sponsors || [];
+          $("sponsor-records").hidden = !sponsors.length;
+          $("sponsor-records").innerHTML = "<h4>Sponsor card previews</h4>" + sponsors.map(s =>
+            WSSponsorCards.render(s, { currency: window.__wedding.currency })).join("");
+        } catch (error) {
+          console.warn("Sponsor cards unavailable:", error.message);
+          notice("Sponsor card previews could not be loaded. Reload to try again.", true);
       }
     }
     $("sponsor-enquiries-list").addEventListener("click", async e => {
       const button = e.target.closest("[data-sponsor-review]");
       if (!button) return;
       const decision = button.dataset.sponsorReview;
-      if (!confirm(decision === "approved"
-        ? "Approve this free/in-kind sponsor card? This will publish the organization's name and offer; it does not represent a payment."
-        : "Decline this sponsor enquiry?")) return;
+      if (decision !== "declined" || !confirm("Decline this historical sponsor enquiry?")) return;
       button.disabled = true;
       try {
         const res = await WS.api("/api/weddings?action=sponsor-enquiry-review", {
@@ -955,8 +966,9 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Could not review this enquiry.");
-        notice(decision === "approved" ? "In-kind sponsor approved and published." : "Sponsor enquiry declined.");
+        notice("Sponsor enquiry declined.");
         await loadSponsorEnquiries();
+        await loadSponsorCards();
       } catch (error) {
         notice(error.message || "Could not review the enquiry.", true);
         button.disabled = false;
@@ -1000,7 +1012,6 @@
         $("premium-diet-fee").value = ((w.premium_diet_fee_minor || 0) / 100).toFixed(2);
         $("premium-diet-options").value = (w.premium_diet_options || []).join(", ");
         $("attire-notes").value = w.attire_notes || "";
-        $("allow-in-kind-sponsorship").checked = w.allow_in_kind_sponsorship === true;
         const featuredCampaign = w.featuredSponsorCampaign || {};
         $("featured-sponsor-enabled").checked = featuredCampaign.enabled === true;
         $("featured-sponsor-starts").value = featuredCampaign.starts_at ? toLocalDateTimeValue(featuredCampaign.starts_at) : "";
@@ -1138,6 +1149,7 @@
         }
         await loadPayoutMethods(w.currency);
         await loadSponsorEnquiries();
+        await loadSponsorCards();
 
         // Load payout preferences
         if (w.payout) {
@@ -1330,7 +1342,6 @@
             extraGuestFee: Number($("extra-guest-fee").value || 0),
             premiumDietFee: Number($("premium-diet-fee").value || 0),
             premiumDietOptions: $("premium-diet-options").value,
-            allowInKindSponsorship: $("allow-in-kind-sponsorship").checked,
             featuredSponsorCampaign: {
               enabled: $("featured-sponsor-enabled").checked,
               startsAt: $("featured-sponsor-starts").value
