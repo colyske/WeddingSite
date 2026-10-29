@@ -71,8 +71,15 @@ test("publication UI retains Turnstile, handles unresolved returns and never pub
     await page.locator("#publication-submit").click();
     assert.equal(await page.evaluate(() => window.created), 1);
     assert.ok(await page.locator("#publication-submit").isDisabled());
-    for (let i = 0; i < 7; i++) await page.clock.runFor(21000);
+    await page.waitForFunction(() => window.reads >= 1 && !document.getElementById("publication-check").disabled);
+    for (let expected = 2; expected <= 7; expected++) {
+      await page.clock.runFor(21000);
+      await page.waitForFunction(count => window.reads >= count && !document.getElementById("publication-check").disabled, expected);
+    }
     await page.waitForFunction(() => document.getElementById("publication-status").textContent.includes("timed out"));
+    const stoppedAt = await page.evaluate(() => window.reads);
+    await page.clock.runFor(60000);
+    assert.equal(await page.evaluate(() => window.reads), stoppedAt, "polling stays bounded after timeout");
     assert.equal(await page.evaluate(() => window.created), 1);
     assert.equal(await page.evaluate(() => window.verified), 0);
     await page.locator("#publication-close").click();
