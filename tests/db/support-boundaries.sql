@@ -67,7 +67,7 @@ begin
     end if;
     update public.platform_policies set publication_fee_minor=publication_fee_minor+1;
     get diagnostics count_rows = row_count;
-    if count_rows <> case when actor.kind='owner' then 1 else 0 end then
+    if count_rows <> (case when actor.kind='owner' then 1 else 0 end) then
       raise exception 'Direct financial-policy UPDATE bypass';
     end if;
     if actor.kind in ('client','admin') then
