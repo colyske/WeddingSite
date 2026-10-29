@@ -77,7 +77,23 @@ begin
   if (select status from public.payout_records where id = payout_id) <> 'requested' then
     raise exception 'Blocked approval must not change the payout';
   end if;
-  perform public.admin_set_payout_status(cancel_id, 'cancelled');
+  blocked := false;
+  begin perform public.admin_set_payout_status(cancel_id, 'cancelled');
+  exception when raise_exception then
+    if sqlerrm not like 'MODERATION:%' then raise; end if;
+    blocked := true;
+  end;
+  if not blocked then raise exception 'Payout cancellation requires a client-visible reason'; end if;
+  perform public.admin_set_payout_status(cancel_id, 'cancelled', 'Local cancellation reason for the Client');
+  perform public.admin_set_payout_status(cancel_id, 'cancelled', 'Local cancellation reason for the Client');
+  if (select note from public.payout_records where id=cancel_id) <> 'Local cancellation test'
+    or (select staff_reason from public.payout_records where id=cancel_id) <> 'Local cancellation reason for the Client' then
+    raise exception 'Cancellation must preserve the request note and staff reason separately';
+  end if;
+  blocked := false;
+  begin perform public.admin_set_payout_status(cancel_id, 'approved');
+  exception when raise_exception then blocked := true; end;
+  if not blocked then raise exception 'Cancelled payout must not reopen'; end if;
 
   update public.wedding_kyc k set partner2_id_number = 'TEST5678' where k.wedding_id = payout_kyc_test.wedding_id;
   perform public.admin_set_payout_status(payout_id, 'approved');
@@ -98,6 +114,10 @@ begin
   if (select status from public.payout_records where id = payout_id) <> 'sent' then
     raise exception 'Complete KYC must allow the normal approved-to-sent transition';
   end if;
+  blocked := false;
+  begin perform public.admin_set_payout_status(payout_id, 'cancelled', 'Cannot cancel a payout already sent.');
+  exception when raise_exception then blocked := true; end;
+  if not blocked then raise exception 'Sent payout must stay immutable'; end if;
 
   if position('kyc' in lower(pg_get_functiondef('public.publish_wedding_with_fee(uuid,boolean)'::regprocedure))) > 0 then
     raise exception 'Publishing must remain independent of KYC';

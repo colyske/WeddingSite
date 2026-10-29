@@ -408,6 +408,7 @@
 })();
 function statusLabel(w) {
   const past = w.wedding_date && String(w.wedding_date).slice(0, 10) < new Date().toISOString().slice(0, 10);
+  if (w.lifecycle_admin_restricted) return "Action needed (restricted by staff)";
   if (w.archived_at) return "Archived";
   if (w.published_at) return past ? "Completed / Past" : "Published";
   if (w.unpublished_at) return "Unpublished";

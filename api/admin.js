@@ -33,10 +33,16 @@ const GET_ACTIONS = {
   "wedding-metrics": async (t, q) => {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(q.weddingId || ""))) throw new Error("Invalid wedding.");
     return { metrics: await rpc("admin_wedding_metrics", t, { p_wedding_id: q.weddingId }) };
-  }
+  },
+  moderation: async (t, q) => ({ cases: await rpc("admin_moderation_cases", t, { p_include_closed: q.closed === "1" }) })
 };
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WEDDING_ACTIONS = new Set(["archive", "restore", "unpublish", "waive_fee"]);
+const RESTRICTING_ACTIONS = new Set(["archive", "unpublish"]);
+const REASON_CODES = new Set(["content_policy", "inaccurate_details", "payment_issue", "legal_request", "safety", "other"]);
+const REVIEW_DECISIONS = new Set(["republish", "lift", "return"]);
+const text = value => typeof value === "string" ? value.trim() : "";
 const ROLES = new Set(["client", "admin", "superadmin"]);
 const PAYOUT_STATUSES = new Set(["approved", "sent", "cancelled"]);
 const LEADERSHIP_ACTIONS = new Set(["overview", "ledger", "payouts", "audit", "policies", "refund-policy", "payment-controls", "policy-history", "set-role", "payment-controls-save"]);
@@ -44,6 +50,8 @@ const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save"]);
 
 function safeMessage(error) {
   const m = String(error?.message || "");
+  const moderation = m.match(/MODERATION:\s*([^\n]{1,300})/);
+  if (moderation) return [409, moderation[1].trim()];
   if (/another staff|different/i.test(m)) return [409, "A different staff member must approve this payout."];
   if (/Access denied|permission|not allowed|only the owner|superadmin/i.test(m)) return [403, "Your role does not allow this action."];
   if (/cannot change your own/i.test(m)) return [400, "You cannot change your own role."];
@@ -82,7 +90,11 @@ export default async function handler(req, res) {
     }
     if (action === "payout-status") {
       if (!PAYOUT_STATUSES.has(body.status) || !body.payout_id) return sendJson(res, 400, { error: "Invalid payout status." });
-      await rpc("admin_set_payout_status", token, { p_payout_id: body.payout_id, p_status: body.status, p_note: body.note || null });
+      const note = text(body.note);
+      if (body.status === "cancelled" && (note.length < 10 || note.length > 240)) {
+        return sendJson(res, 400, { error: "Give the Client a cancellation reason in 10 to 240 characters." });
+      }
+      await rpc("admin_set_payout_status", token, { p_payout_id: body.payout_id, p_status: body.status, p_note: note.slice(0, 240) || null });
       return sendJson(res, 200, { ok: true });
     }
     if (action === "policies-save") {
@@ -127,9 +139,33 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { ok: true });
     }
     if (action === "wedding-action") {
-      if (!WEDDING_ACTIONS.has(body.action) || !body.wedding_id) return sendJson(res, 400, { error: "Invalid wedding action." });
-      await rpc("admin_wedding_action", token, { p_wedding_id: body.wedding_id, p_action: body.action });
+      if (!WEDDING_ACTIONS.has(body.action) || !UUID.test(String(body.wedding_id || ""))) return sendJson(res, 400, { error: "Invalid wedding action." });
+      const params = { p_wedding_id: body.wedding_id, p_action: body.action };
+      if (RESTRICTING_ACTIONS.has(body.action)) {
+        const reason = text(body.reason), requiredAction = text(body.required_action);
+        if (!REASON_CODES.has(body.reason_code)) return sendJson(res, 400, { error: "Choose a reason category." });
+        if (reason.length < 15 || reason.length > 1000) return sendJson(res, 400, { error: "Explain the reason for the Client in 15 to 1000 characters." });
+        if (requiredAction.length < 10 || requiredAction.length > 1000) {
+          return sendJson(res, 400, { error: "Describe what the Client must correct in 10 to 1000 characters." });
+        }
+        Object.assign(params, { p_reason_code: body.reason_code, p_reason: reason, p_required_action: requiredAction });
+      }
+      await rpc("admin_wedding_action", token, params);
       return sendJson(res, 200, { ok: true });
+    }
+    if (action === "moderation-review") {
+      const note = text(body.note);
+      if (!UUID.test(String(body.case_id || "")) || !REVIEW_DECISIONS.has(body.decision) ||
+          !Number.isSafeInteger(body.expected_revision) || body.confirmed !== true) {
+        return sendJson(res, 400, { error: "Choose a case decision and confirm it." });
+      }
+      if (note.length > 1000 || (body.decision === "return" && note.length < 10)) {
+        return sendJson(res, 400, { error: "Tell the Client what is still required in 10 to 1000 characters." });
+      }
+      const result = await rpc("admin_review_moderation_case", token, {
+        p_case_id: body.case_id, p_decision: body.decision, p_note: note || null, p_expected_revision: body.expected_revision
+      });
+      return sendJson(res, 200, { ok: true, case: result });
     }
     return sendJson(res, 404, { error: "Unknown action." });
   } catch (error) {
