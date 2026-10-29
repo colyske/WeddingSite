@@ -65,15 +65,31 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
       const metrics = await page.evaluate(() => ({
         scroll: document.documentElement.scrollWidth,
         palette: [...document.querySelectorAll("#palette-preview > *")].map(el => el.getBoundingClientRect().top),
+        paletteCaptionsFit: [...document.querySelectorAll("#palette-preview figure")].every(figure => {
+          const caption = figure.querySelector("figcaption");
+          return caption.getBoundingClientRect().width <= figure.getBoundingClientRect().width &&
+            caption.scrollWidth <= caption.clientWidth;
+        }),
         field: [...document.querySelectorAll("#rsvp-form .field-row")].map(row => {
           const [label, input] = row.children; return label.getBoundingClientRect().right <= input.getBoundingClientRect().left;
         }),
+        songFields: [...document.querySelectorAll(".song-request-fields > label")].map(row => {
+          const caption = row.firstElementChild, input = row.querySelector("input");
+          return caption.getBoundingClientRect().right <= input.getBoundingClientRect().left &&
+            input.getBoundingClientRect().right <= row.getBoundingClientRect().right + 1;
+        }),
+        songCells: [...document.querySelectorAll("#leaderboard-body tr:first-child :is(.lb-song, .lb-artist, .lb-total)")]
+          .map(cell => Math.round(cell.getBoundingClientRect().top)),
         surfaces: ["details", "story", "rsvp", "bids"].map(id => getComputedStyle(document.getElementById(id)).backgroundColor)
       }));
       assert.ok(metrics.scroll <= width, JSON.stringify({ width, ...metrics }));
       assert.equal(metrics.palette.length, 4);
       assert.equal(new Set(metrics.palette.map(Math.round)).size, 1, "all four swatches align in one row");
+      assert.ok(metrics.paletteCaptionsFit, "palette captions cannot overlap neighbouring colours");
       assert.ok(metrics.field.every(Boolean), "labels beside fields");
+      assert.equal(metrics.songFields.length, 3);
+      assert.ok(metrics.songFields.every(Boolean), "song request labels remain beside their inputs");
+      assert.equal(new Set(metrics.songCells).size, 1, "song title, artist and paid total share one row");
       assert.ok(new Set(metrics.surfaces).size >= 3, "sections are visually differentiated");
       if (process.env.WEDDING_SCREENSHOTS) await page.screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `showcase-${width}.png`), fullPage: true });
     }
