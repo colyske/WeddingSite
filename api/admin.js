@@ -39,6 +39,8 @@ const GET_ACTIONS = {
 const WEDDING_ACTIONS = new Set(["archive", "restore", "unpublish", "waive_fee"]);
 const ROLES = new Set(["client", "admin", "superadmin"]);
 const PAYOUT_STATUSES = new Set(["approved", "sent", "cancelled"]);
+const LEADERSHIP_ACTIONS = new Set(["overview", "ledger", "payouts", "audit", "policies", "refund-policy", "payment-controls", "policy-history", "set-role", "payment-controls-save"]);
+const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save"]);
 
 function safeMessage(error) {
   const m = String(error?.message || "");
@@ -55,6 +57,10 @@ export default async function handler(req, res) {
   const role = session.profile.platform_role;
   const action = String(req.query?.action || "role");
   const token = session.token;
+  if ((LEADERSHIP_ACTIONS.has(action) && !["owner", "superadmin"].includes(role)) ||
+      (OWNER_ACTIONS.has(action) && role !== "owner")) {
+    return sendJson(res, 403, { error: "Your role does not allow this action." });
+  }
 
   try {
     if (req.method === "GET") {
@@ -70,7 +76,6 @@ export default async function handler(req, res) {
     if (invalidContent) return sendJson(res, 400, { error: invalidContent });
 
     if (action === "set-role") {
-      if (role !== "owner") return sendJson(res, 403, { error: "Only the protected Owner can change platform roles." });
       if (!ROLES.has(body.role) || !body.user_id) return sendJson(res, 400, { error: "Choose a user and a valid role." });
       await rpc("admin_set_role", token, { p_user_id: body.user_id, p_role: body.role });
       return sendJson(res, 200, { ok: true });

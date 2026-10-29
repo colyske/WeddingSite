@@ -312,8 +312,8 @@ export default async function handler(req, res) {
         patch.attire_notes = String(body.attireNotes).slice(0, 300);
       }
       if (body.allowInKindSponsorship !== undefined) {
-        if (typeof body.allowInKindSponsorship !== "boolean") return sendJson(res, 400, { error: "Choose whether to accept free/in-kind sponsor enquiries." });
-        patch.allow_in_kind_sponsorship = body.allowInKindSponsorship;
+        if (body.allowInKindSponsorship !== false) return sendJson(res, 400, { error: "Free and in-kind sponsorship enquiries are no longer available." });
+        patch.allow_in_kind_sponsorship = false;
       }
       if (body.backgroundMusicUrl !== undefined) {
         const url = String(body.backgroundMusicUrl).trim();
@@ -664,7 +664,7 @@ export default async function handler(req, res) {
         const [tiers, vip, sponsors] = await Promise.all([
           supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${weddingId}&select=id,name,min_amount_minor,perks,sort_order&order=sort_order`, opts),
           supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${weddingId}&select=id,title,description,seats_total,price_minor&limit=1`, opts),
-          supabaseRequest(`/rest/v1/sponsors?wedding_id=eq.${weddingId}&select=id,company_name,contact_email,contact_phone,website,amount_minor,status,in_kind,location,offer,created_at&order=amount_minor.desc&limit=200`, opts)
+          supabaseRequest(`/rest/v1/sponsors?wedding_id=eq.${weddingId}&select=id,company_name,contact_email,contact_phone,website,social_links,public_contact,amount_minor,status,in_kind,location,offer,created_at&order=amount_minor.desc&limit=200`, opts)
         ]);
         return sendJson(res, 200, { tiers: tiers || [], vip: vip?.[0] || null, sponsors: sponsors || [] });
       }
@@ -682,6 +682,7 @@ export default async function handler(req, res) {
           return sendJson(res, 400, { error: "Choose a valid sponsor enquiry and review decision." });
         }
         const approved = body.status === "approved";
+        if (approved) return sendJson(res, 410, { error: "New in-kind sponsorship cannot be approved. Historical enquiries may be declined." });
         const result = await supabaseRequest("/rest/v1/rpc/review_sponsor_enquiry", {
           ...opts, method: "POST", body: { p_enquiry_id: body.enquiryId, p_approved: approved }
         });

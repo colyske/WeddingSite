@@ -11,8 +11,11 @@ export const showcase = {
   palette: ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"],
   palette_names: ["Forest Green", "Eucalyptus Sage", "Royal Gold", "Ivory"],
   attire_notes: "Formal African elegance or traditional attire. Choose a colour from our shared wedding palette and comfortable shoes for the garden.",
-  max_guest_capacity: 150, rsvp_fee_minor: 0, allow_in_kind_sponsorship: true,
+  max_guest_capacity: 150, rsvp_fee_minor: 0, allow_in_kind_sponsorship: false,
   venues: [
+    { id: id(12), name: "Family introductions & blessing", event_date: "2099-06-07", event_time: "14:00", kind: "pre", address: "Fictional Family Homestead, Diani", description: "A sample introduction of the families and a traditional blessing for the journey ahead.", is_main: false },
+    { id: id(13), name: "Pre-wedding fundraiser", event_date: "2099-07-12", event_time: "14:00", kind: "pre", address: "Fictional Community Hall, Ukunda", description: "A sample afternoon of music, shared plans and voluntary paid contributions toward the celebration.", is_main: false },
+    { id: id(14), name: "Bridal celebration & committee gathering", event_date: "2099-08-02", event_time: "15:00", kind: "pre", address: "Fictional Palm Courtyard, Diani", description: "A sample bridal celebration while the organizing committee confirms the final programme and guest arrangements.", is_main: false },
     { id: id(2), name: "Family welcome & tea", event_date: "2099-08-14", event_time: "15:00", kind: "pre", address: "Sample Family Courtyard, fictional venue", description: "Meet the families, share stories and enjoy an afternoon of music.", is_main: false },
     { id: id(3), name: "Rehearsal & sunset dinner", event_date: "2099-08-15", event_time: "17:00", kind: "pre", address: "Sample Garden Terrace, fictional venue", description: "A relaxed rehearsal for the wedding party, followed by dinner.", is_main: false },
     { id: id(4), name: "Garden ceremony", event_date: "2099-08-16", event_time: "11:00", kind: "main", address: "Fictional Azure Gardens, Diani", description: "Please be seated before the ceremony. An unplugged moment for our vows.", is_main: true },
@@ -32,14 +35,16 @@ export const showcaseLedger = [
   { contribution_type: "Celebration fund", paid_amount_minor: 1000000, currency: "KES", guest_display_name: "Sample Family", created_at: "2026-10-26T10:00:00Z" }
 ];
 export const showcaseFundraising = {
-  allow_in_kind_sponsorship: true,
+  allow_in_kind_sponsorship: false,
   campaigns: [{ id: id(7), name: "Celebration fund", purpose: "A sample campaign for family and friends.", goal_minor: 50000000, raised_minor: 18000000,
     milestones: [{ id: id(8), name: "Garden venue", target_minor: 15000000, reached: true, description: "Space for all our favourite people." },
       { id: id(9), name: "Music & memories", target_minor: 30000000, reached: false, description: "Our next sample milestone." }] }],
   tiers: [{ id: id(10), name: "Golden celebration partner", min_amount_minor: 1000000, perks: "A clearly labelled sponsor card and a warm thank-you." }],
   vip: { id: id(11), title: "Garden lounge", description: "Sample premium seating with a shaded garden view.", seats_total: 12, seats_sold: 4, price_minor: 250000 },
   sponsors: [{ company_name: "Azure Bloom Studio (sample)", offer: "Thoughtfully styled celebrations, garden florals and moments worth remembering.",
-    location: "Fictional Diani studio", amount_minor: 1000000, website: "https://example.com", social_links: {}, in_kind: false }],
+    location: "Fictional Diani studio · sample profiles, not a real business", amount_minor: 1000000, website: "https://example.com",
+    social_links: { facebook: "https://www.facebook.com/JoinOurWeddingFictionalSample2099", instagram: "https://www.instagram.com/jow_fictional_sample_2099/" },
+    public_contact: true, contact_email: "studio@example.com", contact_phone: "+1 202 555 0123", in_kind: false }],
   sponsorAuction: { enabled: false }
 };
 export const showcaseExtras = {

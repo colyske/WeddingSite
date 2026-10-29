@@ -16,7 +16,7 @@ test("platform allowlist preserves configured defaults and rejects malformed con
   assert.throws(() => enabledPaymentProviders({ enabled_payment_providers: ["unsupported"] }));
 });
 
-test("Admin and Owner can save independent provider controls; clients and unconfirmed changes cannot", async () => {
+test("SuperAdmin and Owner can save independent provider controls; regular Admins, clients and unconfirmed changes cannot", async () => {
   const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY"];
   const previous = keys.map(key => process.env[key]);
   const originalFetch = globalThis.fetch;
@@ -46,7 +46,7 @@ test("Admin and Owner can save independent provider controls; clients and unconf
     return result;
   };
   try {
-    for (role of ["admin", "owner"]) {
+    for (role of ["superadmin", "owner"]) {
       for (const combination of [["daraja"], ["paystack"], ["daraja", "paystack"], []]) {
         const result = await invoke({ enabled: combination, confirmed: true });
         assert.equal(result.statusCode, 200);
@@ -57,8 +57,9 @@ test("Admin and Owner can save independent provider controls; clients and unconf
     assert.equal((await invoke({ enabled: ["daraja"], confirmed: false })).statusCode, 400);
     assert.equal((await invoke({ enabled: ["invalid"], confirmed: true })).statusCode, 400);
     assert.equal((await invoke({ enabled: ["daraja", "daraja"], confirmed: true })).statusCode, 400);
-    role = "client";
-    assert.equal((await invoke({ enabled: ["daraja"], confirmed: true })).statusCode, 403);
+    for (role of ["admin", "client"]) {
+      assert.equal((await invoke({ enabled: ["daraja"], confirmed: true })).statusCode, 403);
+    }
     assert.equal(saves, 8);
   } finally {
     globalThis.fetch = originalFetch;

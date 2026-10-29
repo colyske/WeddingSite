@@ -1,0 +1,16 @@
+.sponsor-ad { border: 1px solid var(--gold, #be9b52); border-radius: 18px; overflow: hidden; background: #fcfaf4; color: #203a31; text-align: center; min-width: 0; }
+.sponsor-ad-art { min-height: 100px; display: grid; place-items: center; background: radial-gradient(ellipse at 15% 15%, #a9b5a2 0, transparent 55%), linear-gradient(130deg, #244b3a, #122d26); }
+.sponsor-ad-art span { display: grid; place-items: center; width: 62px; height: 62px; border: 1px solid #e6d3a1; border-radius: 50%; color: #fff1cc; font: 2rem Georgia, serif; }
+.sponsor-ad-copy { padding: 1.25rem; }
+.sponsor-ad h3 { margin: .4rem 0 .8rem; color: #203a31; font-family: Georgia, serif; overflow-wrap: anywhere; }
+.sponsor-ad-offer { font-style: italic; line-height: 1.6; }
+.sponsor-ad-support { font-size: .82rem; color: #665126; }
+.sponsor-ad .sponsor-socials { display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem; margin: .9rem 0; }
+.sponsor-ad .sponsor-socials a { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; border: 1px solid #a9b5a2; color: #203a31; text-decoration: none; font-weight: 700; }
+.sponsor-ad a:hover { background: #ece9dc; }
+.sponsor-ad a:focus-visible, .context-help summary:focus-visible { outline: 3px solid #665126; outline-offset: 3px; }
+.sponsor-ad-contact { display: grid; justify-items: center; gap: .3rem; }
+.sponsor-ad-contact a { padding: .5rem; color: #244b3a; overflow-wrap: anywhere; max-width: 100%; }
+.context-help { margin: .8rem 0; padding: .6rem .8rem; border: 1px solid #c9cdbf; border-radius: 8px; }
+.context-help summary { cursor: pointer; min-height: 32px; font-size: .9rem; font-weight: 600; }
+.context-help p { font-size: .9rem; line-height: 1.6; }

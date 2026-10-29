@@ -16,7 +16,7 @@ text; browser/API validation and database content triggers enforce this for new
 or changed content without rewriting historical records. This is an abuse
 deterrent, not a guarantee against every creative encoding.
 
-**Admin/Owner → Fees & settings → Enabled payment methods** controls the
+**SuperAdmin/Owner → Fees & settings → Enabled payment methods** controls the
 platform-level provider allowlist independently for M-Pesa/Daraja, Card/Paystack
 and Card/Stripe. The default retains all previously eligible test adapters.
 Credentials, markets/currencies, provider health and test-only mode must still
@@ -25,6 +25,22 @@ the current database policy, and a database insert guard rejects disabled
 providers even from stale tabs. Disabling affects new intents, never reroutes,
 cancels or prevents verification of an already-created payment. Changes require
 confirmation and are audited. No configuration is silently enabled on save.
+
+Regular Admins have support weddings/metrics, client/regular-admin role lookup,
+and exception queues, not organization-wide finance, audit, overview or settings.
+SuperAdmins manage client/regular-admin roles; only Owner manages SuperAdmins.
+Fee, payout and refund policy writes remain protected Owner-only, including
+direct SQL/RPC boundaries. Guest test settlements retain their original
+amounts and fulfilment, but are explicitly non-withdrawable; live settlement
+cannot be enabled by an application or environment flag.
+
+New free/in-kind sponsor enquiries and approvals are retired. Historical
+records remain intact. Sponsor ads use the same validated, consent-aware card
+in the guest site and editor, with accessible social/contact links. The
+fictional showcase includes five pre-wedding events, KES 500/1,000/5,000 giving
+suggestions and KES 100/500/1,000 song bids; all sample actions remain disabled.
+Expandable help is usable with keyboard/touch. Story starters and guidance
+are authored local templates, not a connected AI service.
 
 ### Publication checkout (test mode only)
 

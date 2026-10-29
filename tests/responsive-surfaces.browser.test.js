@@ -26,6 +26,10 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       attire_notes: "Traditional or formal - wear what feels comfortable.", venues: [], registry: [], tiers: [] };
     const guest = { rsvp_id: id, wedding_id: id, slug: wedding.slug, couple_names: wedding.couple_names,
       guest_name: "QA Guest", attendance_status: "yes" };
+    let staffRole = "owner";
+    await page.route("https://open.er-api.com/**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
+      result: "success", base_code: "USD", rates: { USD: 1, KES: 130 }, time_last_update_utc: new Date().toUTCString()
+    }) }));
     await page.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "test-token", r: "owner", user: { email: "qa@example.test" } })));
     await page.route("https://cdnjs.cloudflare.com/**", route => route.fulfill({ contentType: "text/javascript", body: "window.QRCode=class {static CorrectLevel={H:2};}" }));
     await page.route("**/api/**", route => {
@@ -37,8 +41,9 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       if (action === "site") data = { wedding };
       if (action === "wedding") data = wedding;
       if (action === "verify-qr") data = { guest };
-      if (action === "role") data = { role: "owner" };
-      if (action === "overview") data = { weddings: 1, published: 1, archived: 0, past: 0, users: 1, admins: 1, rsvps: 1, bids: 0, pending_payouts: 0, test_payments: 0 };
+      if (action === "role") data = { role: staffRole };
+      if (action === "overview") data = { weddings: 1, published: 1, archived: 0, past: 0, users: 1, admins: 1, rsvps: 1, bids: 0, pending_payouts: 0, test_payments: 0,
+        collected_by_currency: { KES: 13000, USD: 100 } };
       if (action === "operations") data = { queue: { counts: {} } };
       if (action === "policies") data = { policies: {} };
       if (action === "options") data = { providers: [], paymentAvailable: false };
@@ -101,6 +106,25 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       for (const width of [320, 375, 768, 1280]) {
         await page.setViewportSize({ width, height: 800 });
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${surface}: payment controls fit ${width}`);
+      }
+    }
+    for (staffRole of ["admin", "superadmin"]) {
+      await page.goto(`http://127.0.0.1:${server.address().port}/admin.html`, { waitUntil: "domcontentloaded" });
+      await page.locator("#admin-nav button").first().waitFor();
+      const tabs = await page.locator("#admin-nav button").evaluateAll(nodes => nodes.map(n => n.dataset.tab));
+      if (staffRole === "admin") {
+        assert.deepEqual(tabs, ["operations", "weddings", "users"]);
+        assert.equal(await page.locator('[data-tab="overview"]').count(), 0);
+      } else {
+        assert.ok(tabs.includes("overview") && tabs.includes("audit") && tabs.includes("fees"));
+        await page.waitForFunction(() => document.getElementById("panel").textContent.includes("≈"));
+        assert.match(await page.locator("#panel").innerText(), /USD|US\$/);
+        assert.match(await page.locator("#panel").innerText(), /KES|Ksh/);
+        await page.locator('[data-tab="fees"]').click();
+        await page.locator("#fees-form").waitFor();
+        assert.ok(await page.locator("#p-fee").isDisabled());
+        assert.ok(await page.locator("#refund-allocation").isDisabled());
+        assert.ok(await page.locator("#payment-controls-form button").isEnabled());
       }
     }
   } finally {

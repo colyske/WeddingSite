@@ -10,7 +10,7 @@ reporting or payout records, and checkout is disabled server-side.
 
 Authentication/PKCE return, persistent wedding editing/publishing, guest RSVP,
 verified-payment song bids, consented contribution lists, sponsor social cards,
-KYC-gated payout requests and independent Admin/Owner provider switches are
+KYC-gated payout requests and independent SuperAdmin/Owner provider switches are
 implemented. The user has confirmed successful Google sign-in. Google's
 Supabase-domain label remains separate, optional paid branding setup; see
 README for the custom auth domain and Google consent-screen steps.
@@ -21,6 +21,24 @@ before submission, identify provider/amount/currency/test number and obtain the
 human's explicit confirmation. An embedded-browser widget not appearing is a
 test blocker, not permission to bypass it. A real Safaricom phone can be charged
 even in sandbox; do not substitute a real number for a test number.
+
+The human normal-browser Paystack test on 2026-10-29 succeeded: KES 5 Atoti song
+bid, one settlement event, one song credit and no fulfilment exception. The
+simulated accounting record is 500 minor gross minus 40 platform fee = 460;
+the separate 15 provider fee leaves 445 after both charges. Provider fees are
+borne by the couple, not silently absorbed by the platform. This is **not**
+real collection. Migration012 labels existing/new guest payments `test`,
+prevents relabelling them live, excludes them and their adjustment credits
+from withdrawable balances, and blocks test-funded payout requests/statuses.
+Historic amounts, song credits and payment events are preserved.
+
+Regular Admins have client support, per-wedding metrics and exception queues,
+not organization overview, global ledger/payout history, audit or fee/settings
+access. SuperAdmins and Owner can read those areas and manage permitted roles.
+Only the protected Owner can change fee/payout/refund policies; provider
+switches may be changed by SuperAdmins or Owner. API, RPC and RLS enforce this.
+New free/in-kind solicitation/approval is retired, including stale-tab/direct
+writes. Historical enquiries and already-approved cards remain on record.
 
 Publication checkout is separate from wedding contributions and uses `test_paid`,
 excluded from collected publication revenue. New USD-canonical fee conversion,
