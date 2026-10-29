@@ -32,6 +32,10 @@
   }
   function isFresh() { return Boolean(rates.USD === 1 && rateDate && rateAgeHours() <= maxAgeHours); }
   function hasRate(code) { return code === "USD" || Number.isFinite(rates[code]); }
+  function convertBetween(amount, from, to) {
+    if (!isFresh() || !Number.isFinite(amount) || !hasRate(from) || !hasRate(to)) return null;
+    return amount / rates[from] * rates[to];
+  }
   function fractionDigits(code) {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: code }).resolvedOptions().maximumFractionDigits;
   }
@@ -135,7 +139,8 @@
   restoreCache();
   window.WeddingSiteFX = {
     options, currency, choose, hasRate, convertUsd, convertToUsd, formatLocalIndicative,
-    formatUsd, formatPrimaryUsd, formatDualUsd: formatPrimaryUsd, statusText, refresh
+    formatUsd, formatPrimaryUsd, formatDualUsd: formatPrimaryUsd, statusText, refresh,
+    isFresh, convertBetween
   };
   window.addEventListener("storage", event => {
     if (event.key === currencyKey || event.key === configKey || event.key === weddingKey || event.key === rateKey) {

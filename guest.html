@@ -7,6 +7,7 @@
   <title>Join Our Wedding — Wedding</title>
   <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><script src="ornaments.js" defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <link rel="stylesheet" href="sponsor-cards.css">
   <style>
     .past-badge { display:inline-block; padding:.25rem .75rem; border-radius:999px; background:var(--green); color:#fff; font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; }
     #toast { position:fixed; left:50%; bottom:1.5rem; transform:translateX(-50%); background:#203a31; color:#fff; padding:.75rem 1.25rem; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.25); z-index:1000; max-width:90vw; }
@@ -390,7 +391,6 @@
       <h2>Sponsorship Levels</h2>
       <p class="fine">Fixed-price packages support the celebration. Sponsor placement appears only after verified payment.</p>
       <div id="tiers-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;"></div>
-      <button type="button" class="link" id="sponsor-enquiry-link" hidden>Ask about free / in-kind support</button>
     </section>
 
     <!-- VIP seating -->
@@ -403,7 +403,7 @@
     <!-- Corporate sponsors -->
     <section id="sponsors" class="card">
       <h2>Our Sponsors</h2>
-      <p class="fine">Thank you to the organizations supporting this celebration. Paid sponsor cards follow verified payment; free/in-kind support is labeled and appears only after organizer approval.</p>
+      <p class="fine">Thoughtful brands, beautiful celebrations. Thank you to our paid sponsors.</p>
       <div id="sponsor-auction" class="card" hidden></div>
       <div id="sponsors-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
         <article style="border: 2px dashed var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
@@ -413,31 +413,6 @@
         </article>
       </div>
     </section>
-
-    <dialog id="sponsor-enquiry-dialog" aria-labelledby="sponsor-enquiry-title">
-      <form id="sponsor-enquiry-form" method="dialog">
-        <h2 id="sponsor-enquiry-title">Become a sponsor</h2>
-        <p id="sponsor-enquiry-status" class="fine">Checking the couple’s sponsor options…</p>
-        <div id="sponsor-enquiry-fields" hidden>
-          <label for="enquiry-company">Organization name *</label>
-          <input id="enquiry-company" required maxlength="100">
-          <label for="enquiry-contact">Contact name *</label>
-          <input id="enquiry-contact" required maxlength="100">
-          <label for="enquiry-email">Email *</label>
-          <input id="enquiry-email" type="email" required maxlength="254" autocomplete="email">
-          <label for="enquiry-phone">Phone</label>
-          <input id="enquiry-phone" type="tel" maxlength="30" autocomplete="tel">
-          <label for="enquiry-location">Location</label>
-          <input id="enquiry-location" maxlength="160">
-          <label for="enquiry-offer">What would you like to offer? *</label>
-          <textarea id="enquiry-offer" required maxlength="360"></textarea>
-          <fieldset id="enquiry-social"><legend>Social profiles (optional)</legend></fieldset>
-          <label><input id="enquiry-public-contact" type="checkbox"> I consent to the selected phone/email being shown on an approved sponsor card.</label>
-          <button type="submit" id="sponsor-enquiry-submit">Send enquiry</button>
-        </div>
-        <button type="button" id="sponsor-enquiry-close" class="link">Close</button>
-      </form>
-    </dialog>
 
     <!-- Seating lookup -->
     <section id="seating" class="card" hidden>
@@ -507,10 +482,11 @@
   <script src="fx.js"></script>
   <script src="amount-presets.js"></script>
   <script src="social-links.js"></script>
+  <script src="sponsor-cards.js"></script>
   <script>
 (async () => {
   const $ = id => document.getElementById(id);
-  for (const prefix of ["pay", "enquiry"]) {
+  for (const prefix of ["pay"]) {
     for (const [platform, label] of Object.entries(WSSocialLinks.labels)) {
       const field = document.createElement("label");
       field.htmlFor = `${prefix}-social-${platform}`;
@@ -552,7 +528,6 @@
 
   let wedding = null;
   let audioEnabled = false;
-  let sponsorEnquiryEnabled = false;
   let sponsorPackageCount = 0;
   let sponsorAuctionOpen = false;
 
@@ -742,13 +717,7 @@
       const res = await fetch(`/api/guest?action=fundraising&slug=${encodeURIComponent(slug)}`);
       if (!res.ok) return;
       const data = await res.json();
-      sponsorEnquiryEnabled = data.allow_in_kind_sponsorship === true;
       sponsorPackageCount = (data.tiers || []).length;
-      $("sponsor-enquiry-link").hidden = !sponsorEnquiryEnabled;
-      $("sponsor-enquiry-fields").hidden = !sponsorEnquiryEnabled;
-      $("sponsor-enquiry-status").textContent = sponsorEnquiryEnabled
-        ? "Free or in-kind enquiries are reviewed by the couple. Sending this form does not confirm sponsorship."
-        : "This couple is not accepting free or in-kind enquiries right now. Fixed-price packages, if listed above, can be selected and paid at checkout.";
 
       // Fundraising campaigns with milestones
       const camps = data.campaigns || [];
@@ -808,26 +777,10 @@
       }).format(new Date(value));
       const featuredNames = new Set((auction?.leaders || []).slice(0, Number(auction?.slot_count) || 0)
         .map(row => String(row.company_name || "").trim().toLowerCase()));
-      const socialIcons = { instagram: "◎", facebook: "f", x: "X", youtube: "▶", tiktok: "♪", linkedin: "in" };
-      const socialHtml = links => {
-        let safe;
-        try { safe = WSSocialLinks.parse(links); } catch { return ""; }
-        return `<div class="sponsor-socials">${Object.entries(safe).map(([platform, url]) =>
-          `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(WSSocialLinks.labels[platform])}"><span aria-hidden="true">${socialIcons[platform]}</span></a>`).join("")}</div>`;
-      };
-      const sponsorCards = (data.sponsors || []).map(sponsor => `
-          <div style="border: 1px solid #d0d5cc; border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
-            ${featuredNames.has(String(sponsor.company_name || "").trim().toLowerCase()) ? `<p class="fine"><strong>${featuredLabel}</strong></p>` : ""}
-            <h4 style="margin: 0 0 0.5rem; color: var(--green);">${esc(sponsor.company_name)}</h4>
-            <p style="margin: 0 0 1rem; color: var(--gold); font-weight: 600;">${sponsor.in_kind ? "Approved in-kind supporter" : WS.money(sponsor.amount_minor, wedding.currency || "USD", false)}</p>
-            ${sponsor.location ? `<p>${esc(sponsor.location)}</p>` : ""}
-            ${sponsor.offer ? `<p>${esc(sponsor.offer)}</p>` : ""}
-            ${socialHtml(sponsor.social_links)}
-            ${safeUrl(sponsor.website) ? `<p style="margin: 0 0 0.5rem;"><a href="${esc(safeUrl(sponsor.website))}" target="_blank" rel="noopener noreferrer" class="link" style="font-size: 0.9rem;">Visit website</a></p>` : ""}
-            ${sponsor.contact_email ? `<p style="margin: 0; font-size: 0.85rem; color: #5a5f5a;"><a href="mailto:${esc(sponsor.contact_email)}">${esc(sponsor.contact_email)}</a></p>` : ""}
-            ${sponsor.contact_phone ? `<p style="margin: 0; font-size: 0.85rem; color: #5a5f5a;"><a href="tel:${esc(sponsor.contact_phone)}">${esc(sponsor.contact_phone)}</a></p>` : ""}
-          </div>
-        `).join("");
+      const sponsorCards = (data.sponsors || []).map(sponsor => WSSponsorCards.render(sponsor, {
+        currency: wedding.currency,
+        featured: featuredNames.has(String(sponsor.company_name || "").trim().toLowerCase()) ? featuredLabel : ""
+      })).join("");
       const placeholder = `<article class="sponsor-sample">
         <p class="eyebrow">Sample advert · your brand here</p>
         <div class="sponsor-emblem" aria-hidden="true">✦</div>
@@ -865,38 +818,7 @@
       $("sponsor-auction").querySelector('[data-buy="sponsor_featured_bid"]')?.focus({ preventScroll: true });
       return;
     }
-    if (sponsorEnquiryEnabled) $("sponsor-enquiry-dialog").showModal();
-    else if (window.WSFeedback) window.WSFeedback.toast("No sponsor package or enquiry is available at the moment.", true);
-  });
-  $("sponsor-enquiry-link").addEventListener("click", () => $("sponsor-enquiry-dialog").showModal());
-  $("sponsor-enquiry-close").addEventListener("click", () => $("sponsor-enquiry-dialog").close());
-  $("sponsor-enquiry-form").addEventListener("submit", async e => {
-    e.preventDefault();
-    if (!sponsorEnquiryEnabled) return;
-    const submit = $("sponsor-enquiry-submit");
-    submit.disabled = true;
-    try {
-      const res = await fetch("/api/guest?action=sponsor-enquiry", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          slug, companyName: $("enquiry-company").value, contactName: $("enquiry-contact").value,
-          contactEmail: $("enquiry-email").value, contactPhone: $("enquiry-phone").value,
-          location: $("enquiry-location").value, offer: $("enquiry-offer").value,
-          socialLinks: readSocialFields("enquiry"),
-          publicContact: $("enquiry-public-contact").checked
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not send this enquiry.");
-      $("sponsor-enquiry-status").textContent = data.message;
-      $("sponsor-enquiry-form").reset();
-      toast("Sponsor enquiry sent for review. It is not yet confirmed.");
-    } catch (error) {
-      $("sponsor-enquiry-status").textContent = error.message || "Could not send this enquiry.";
-      toast(error.message || "Could not send this enquiry.", true);
-    } finally {
-      submit.disabled = false;
-    }
+    if (window.WSFeedback) window.WSFeedback.toast("No paid sponsor package is available at the moment.", true);
   });
 
   // Live countdown

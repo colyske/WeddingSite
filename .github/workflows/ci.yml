@@ -32,6 +32,8 @@ jobs:
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/publication-fx.sql
       - name: Test organizer amount presets without retaining fixtures
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/wedding-amount-presets.sql
+      - name: Test support authorization and sandbox-funds boundaries without retaining fixtures
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/support-boundaries.sql
       - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup
