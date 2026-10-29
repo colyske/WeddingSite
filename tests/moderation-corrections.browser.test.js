@@ -38,6 +38,9 @@ test("authenticated correction and staff reason/review surfaces never auto-publi
         if (action === "moderation-correction") {
           assert.equal(body.expectedRevision, 1);
           c.status = "submitted"; c.revision = 2; c.client_response = body.note;
+        } else if (action === "update") {
+          const { moderation, ...savedWedding } = wedding;
+          data = { wedding: savedWedding };
         } else if (action === "wedding-action") {
           assert.equal(body.action, "archive");
           assert.ok(body.reason.length >= 15 && body.required_action.length >= 10);
@@ -60,6 +63,9 @@ test("authenticated correction and staff reason/review surfaces never auto-publi
     await page.locator("#moderation-form").waitFor({ state: "visible" });
     assert.match(await page.locator("#moderation-details").innerText(), /<venue>/, "reasons rendered as text, not markup");
     assert.ok(await page.locator("#publish-btn").isHidden());
+    await page.locator("#edit-form").evaluate(form => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    await page.waitForFunction(() => document.getElementById("notice").textContent === "Changes saved.");
+    assert.ok(await page.locator("#moderation-form").isVisible(), "saving corrections retains the moderation response form");
     await page.locator("#moderation-note").fill("I corrected the address and the map.");
     await page.locator("#moderation-submit").click();
     await page.waitForFunction(() => document.getElementById("moderation-status").textContent.includes("Correction submitted"));
@@ -78,7 +84,7 @@ test("authenticated correction and staff reason/review surfaces never auto-publi
     await page.locator('#restriction-form [name="required_action"]').fill("Correct the venue name and submit your changes.");
     await page.locator('#restriction-form button').click();
     await page.waitForFunction(() => !document.getElementById("restriction-form"));
-    assert.deepEqual(posts.map(p => p.action), ["moderation-correction", "moderation-review", "wedding-action"]);
+    assert.deepEqual(posts.map(p => p.action), ["update", "moderation-correction", "moderation-review", "wedding-action"]);
     for (const width of [320, 768, 1280]) {
       await page.setViewportSize({ width, height: 800 });
       await page.goto(`${base}/wedding.html?id=${id}`, { waitUntil: "domcontentloaded" });

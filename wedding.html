@@ -926,6 +926,7 @@
         if (!res.ok || !data.wedding) throw new Error(data.error || "Could not reload saved setup data.");
         window.__wedding = data.wedding;
         if (window.WSSetupProgress) window.WSSetupProgress.render($("setup-progress"), data.wedding);
+        renderModeration(data.wedding);
       } catch (error) {
         console.error("Setup progress refresh failed:", error);
         notice("Changes were saved, but setup progress could not be refreshed. Reload this editor to see the latest saved score.", true);
@@ -1377,7 +1378,7 @@
           return notice(data.error || "Could not save wedding.", true);
         }
         if (data.wedding?.slug) setGuestSiteLink(data.wedding.slug, !!data.wedding.published_at);
-        window.__wedding = data.wedding || window.__wedding;
+        window.__wedding = { ...window.__wedding, ...data.wedding };
         if (window.WSSetupProgress && data.wedding) window.WSSetupProgress.render($("setup-progress"), data.wedding);
         notice("Changes saved.");
       } catch (err) {
