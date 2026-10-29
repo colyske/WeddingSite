@@ -259,7 +259,7 @@
     <!-- KYC -->
     <div id="kyc-section" class="card" hidden>
       <h2>Couple identity (KYC) &mdash; private</h2>
-      <p class="fine">Required before publishing. Both partners must submit their own details. IDs are masked in this editor and never shown to guests. Join Our Wedding has no independent ID-verification provider configured; submission does not mean identity is verified.</p>
+      <p class="fine"><strong>Non-blocking:</strong> KYC is required before you can withdraw or receive payouts. It does not affect publishing your wedding site. Current status: <strong id="kyc-notice-status">checking…</strong>. Both partners must submit their own details. IDs are masked in this editor and never shown to guests. Join Our Wedding has no independent ID-verification provider configured; submission does not mean identity is verified.</p>
       <form id="kyc-form" autocomplete="off">
         <label for="kyc-p1">Partner 1 full legal name <span class="req" title="Required">*</span></label><input id="kyc-p1" maxlength="120" required>
         <label for="kyc-p1-type">Partner 1 ID type <span class="req">*</span></label>
@@ -1504,6 +1504,7 @@
         $("kyc-status").textContent = k.complete
           ? "Submission complete; no independent ID-verification provider is configured. ID numbers are masked."
           : "Incomplete — both partners’ required details are needed.";
+        $("kyc-notice-status").textContent = k.complete ? "Submitted (payout eligibility met)" : "Incomplete (required before payouts)";
         $("kyc-consent").checked = !!k.complete;
       } catch (_) {}
     }

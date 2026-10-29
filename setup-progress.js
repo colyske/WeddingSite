@@ -27,9 +27,7 @@
     const publishRequired = [
       { id: "couple-names", label: "Add the couple names and a valid site address", complete: validText(wedding.couple_names) && validSlug(wedding.slug), anchor: "couple-names" },
       { id: "wedding-date", label: "Set the wedding date", complete: validDate(wedding.wedding_date), anchor: "wedding-date" },
-      { id: "venues-section", label: "Add an event with its date and start time", complete: hasEvent, anchor: "venues-section" },
-      { id: "kyc-section", label: "Submit both partners’ KYC details", complete: wedding.kyc_submitted === true, anchor: "kyc-section",
-        help: "Submission is checked for completeness; identity documents are not independently verified by Join Our Wedding." }
+      { id: "venues-section", label: "Add an event with its date and start time", complete: hasEvent, anchor: "venues-section" }
     ].map(item => ({ ...item, required: true }));
     const optional = [
       { id: "welcome-story", label: "Write a welcome story", complete: validText(story), anchor: "welcome-story" },
