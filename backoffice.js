@@ -253,6 +253,14 @@
         <p>Configured environment: <strong>${esc(dj.configuredEnvironment || "unknown")}</strong>. New live collection: <strong>${dj.newLiveCollection === "gates_open" ? "approval gates OPEN — guests can be charged real money if the platform M-Pesa switch below is enabled and provider health/Turnstile pass" : "held (not accepting)"}</strong>. Environment kill switch: ${dj.killSwitchOn ? "on" : "off"}. Owner approval: ${dj.approvalUnavailable ? "unavailable (read failed)" : dj.ownerApproved === true ? "granted" : "not granted"}. Live payouts: off.</p>
         ${dj.reason ? `<p class="fine">${esc(dj.reason)}</p>` : ""}
         <p class="fine">Only the protected Owner can change live approval; SuperAdmin and Admin cannot. Live funds are held with unknown provider fees pending and no automatic payout. Already-admitted live payments are still reconciled while collection is held.</p></section>
+        ${owner ? `<section id="daraja-owner" class="notice" aria-labelledby="daraja-owner-h"><h3 id="daraja-owner-h">Owner: live M-Pesa approval</h3>
+        <p><strong>Warning:</strong> approving live M-Pesa lets guests be charged real money once the environment kill switch is on. Funds are held, provider fees stay pending and payouts remain off. This is a separate step from any real-money test.</p>
+        <button type="button" id="daraja-check">Run readiness check (no payment)</button>
+        <div id="daraja-readiness" class="fine" role="status" aria-live="polite"></div>
+        <form id="daraja-approval-form"><label for="daraja-shortcode">Production shortcode to approve</label>
+        <input id="daraja-shortcode" type="password" inputmode="numeric" autocomplete="off" pattern="[0-9]{5,7}" required>
+        <button type="submit">Approve live M-Pesa collection</button>
+        <button type="button" id="daraja-revoke">Revoke approval</button></form></section>` : ""}
         <form id="payment-controls-form"><h3>Enabled payment methods</h3>
         <p class="fine">SuperAdmin and Owner controls for new checkouts across all weddings. Enabling a switch never enables live mode or supplies missing credentials. Pending payments remain with their original provider and can still be verified.</p>
         ${(paymentControls.providers || []).map(provider => `<label><input type="checkbox" name="payment-provider" value="${esc(provider.id)}"${(paymentControls.enabled || []).includes(provider.id) ? " checked" : ""}>
@@ -336,6 +344,21 @@
 
     const panel = $("panel");
     panel.addEventListener("click", async (e) => {
+      if (e.target.closest("#daraja-check")) {
+        const out = $("daraja-readiness");
+        out.textContent = "Checking…";
+        try {
+          const r = await get("daraja-readiness", "&health=1");
+          const yn = v => v === true ? "yes" : v === false ? "NO" : "unknown";
+          out.textContent = `Environment: ${r.configuredEnvironment}. Mode live: ${yn(r.modeIsLive)}; production: ${yn(r.environmentIsProduction)}; shortcode format valid: ${yn(r.shortcodeFormatValid)}; confirmation matches: ${yn(r.shortcodeConfirmationMatches)}; credentials present: ${yn(r.credentialsPresent.consumerKey && r.credentialsPresent.consumerSecret && r.credentialsPresent.passkey)}; kill switch on: ${yn(r.killSwitchOn)}; Owner approved: ${yn(r.ownerApproved)}; OAuth health: ${r.health.checked ? yn(r.health.healthy) : "not checked (credentials not configured for production)"}. Callback URL to register: ${r.callback.url} (secure origin: ${yn(r.callback.originSecure)}). Payouts: off.`;
+        } catch (err) { out.textContent = ""; toast(err.message, true); }
+        return;
+      }
+      if (e.target.closest("#daraja-revoke")) {
+        if (!confirm("Revoke live M-Pesa approval? New live collection stops; already-admitted payments are still reconciled.")) return;
+        try { await post("daraja-approval", { approved: false }); toast("Live approval revoked."); await show("fees"); } catch (err) { toast(err.message, true); }
+        return;
+      }
       if (e.target.closest("[data-ops-wedding]")) { panel.dataset.wedding = e.target.closest("[data-ops-wedding]").dataset.opsWedding; return show("weddings"); }
       if (e.target.closest("[data-wm]")) { panel.dataset.wedding = e.target.closest("[data-wm]").dataset.wm; return show("weddings"); }
       if (e.target.closest("[data-wm-back]")) { delete panel.dataset.wedding; return show("weddings"); }
@@ -424,6 +447,17 @@
           toast("Refund allocation policy saved.");
           await show("fees");
         } catch (err) { toast(err.message, true); }
+      }
+      if (e.target.id === "daraja-approval-form") {
+        const shortcode = $("daraja-shortcode").value.trim();
+        if (!confirm("Approve LIVE M-Pesa collection? Guests may be charged REAL money once the kill switch is on. Payouts stay off and funds are held.")) return;
+        try {
+          await post("daraja-approval", { approved: true, shortcode, confirmed: true });
+          $("daraja-shortcode").value = "";
+          toast("Live approval granted. The environment kill switch is still a separate step.");
+          await show("fees");
+        } catch (err) { toast(err.message, true); }
+        return;
       }
       if (e.target.id === "payment-controls-form") {
         const enabled = [...e.target.querySelectorAll('input[name="payment-provider"]:checked')].map(input => input.value);

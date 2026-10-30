@@ -43,3 +43,10 @@ Mocked-network tests: `tests/daraja-live-gate.test.js`, `tests/daraja-live-recon
 3. Owner approves via `owner_set_daraja_live_approval` (protected Owner only).
 4. **Separate explicit confirmation required** for (a) enablement and (b) a real-money test.
 
+
+## Owner readiness and approval (protected Owner only)
+
+- Owner-only `GET /api/admin?action=daraja-readiness` returns booleans (mode/environment, shortcode format and confirmation equality, credentials present, kill switch, Owner approval) and the callback URL to register. Adding `&health=1` runs an OAuth token probe only (never STK push or query) and only when credentials are configured for production, so it works with the kill switch off. No secrets, tokens or shortcode values are returned.
+- Owner-only `POST /api/admin?action=daraja-approval` calls the audited `owner_set_daraja_live_approval`. Approving requires explicit confirmation, the exact configured production shortcode, and a passing OAuth readiness probe; revoking needs none of these and never touches the provider. SuperAdmin and Admin are refused.
+- Approval does not turn on collection: the environment kill switch is a separate step, and a real-money test needs its own explicit confirmation. Payouts stay off.
+
