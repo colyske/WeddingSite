@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { sendJson, supabaseRequest } from "../server/supabase.js";
 import {
-  normalizeStripeAdjustment, normalizeStripePayment, verifyStripeSignature,
+  darajaConfiguredEnvironment, normalizeStripeAdjustment, normalizeStripePayment, verifyStripeSignature,
   normalizePaystackAdjustment, normalizePaystackPayment, verifyPaystackSignature,
   verifyProviderPayment
 } from "../server/payment-adapters.js";
@@ -132,15 +132,17 @@ async function handlePaystackWebhook(req, res) {
 }
 
 async function handleDarajaCallback(req, res) {
-  if (process.env.WEDDINGSITE_PAYMENT_MODE !== "test" ||
-      process.env.DARAJA_ENVIRONMENT !== "sandbox") {
-    return sendJson(res, 503, { error: "Daraja callbacks are available only in the configured sandbox." });
+  const environment = darajaConfiguredEnvironment();
+  if (!environment) {
+    return sendJson(res, 503, { error: "Daraja callbacks are not enabled." });
   }
   let contributionId = "";
   try {
     const raw = await rawBody(req, 64_000);
     const body = JSON.parse(raw.toString("utf8"));
     if (req.query.kind === "publication") {
+      // Publication checkout is sandbox-only; never reconcile it with production credentials.
+      if (environment !== "sandbox") return sendJson(res, 200, { received: true, processed: false });
       const processed = await reconcilePublicationCallback(body);
       return sendJson(res, 200, { received: true, processed });
     }
@@ -149,7 +151,7 @@ async function handleDarajaCallback(req, res) {
       return sendJson(res, 400, { error: "Invalid Daraja callback reference." });
     }
     const contributions = await supabaseRequest(
-      `/rest/v1/contributions?provider_name=eq.daraja&provider_reference=eq.${encodeURIComponent(checkoutRequestId)}&select=id,pledged_amount_minor,currency,payment_status&limit=1`,
+      `/rest/v1/contributions?provider_name=eq.daraja&provider_reference=eq.${encodeURIComponent(checkoutRequestId)}&select=id,pledged_amount_minor,currency,payment_status,payment_environment,daraja_shortcode,daraja_merchant_request_id&limit=1`,
       { service: true }
     );
     const contribution = contributions?.[0];
@@ -157,6 +159,16 @@ async function handleDarajaCallback(req, res) {
       return sendJson(res, 200, { received: true, processed: false });
     }
     contributionId = contribution.id;
+    const live = contribution.payment_environment === "live";
+    if (environment !== (live ? "production" : "sandbox")) {
+      return sendJson(res, 200, { received: true, processed: false });
+    }
+    const callbackMerchantId = body?.Body?.stkCallback?.MerchantRequestID;
+    if (live && (!contribution.daraja_merchant_request_id ||
+        (callbackMerchantId !== undefined && String(callbackMerchantId) !== contribution.daraja_merchant_request_id))) {
+      console.error("Daraja callback merchant request mismatch", contribution.id);
+      return sendJson(res, 200, { received: true, processed: false });
+    }
 
     // The callback payload is unsigned. If it carries an Amount that disagrees with the
     // server-created immutable amount, treat it as suspicious and confirm nothing.
@@ -174,7 +186,9 @@ async function handleDarajaCallback(req, res) {
     // contribution amount bound to that CheckoutRequestID at STK Push initiation.
     const payment = await verifyProviderPayment(
       "daraja", checkoutRequestId, contribution.id,
-      contribution.pledged_amount_minor, contribution.currency
+      contribution.pledged_amount_minor, contribution.currency,
+      { environment: contribution.payment_environment, shortcode: contribution.daraja_shortcode,
+        merchantRequestId: contribution.daraja_merchant_request_id }
     );
     if (payment.terminal) {
       console.info("Daraja STK Query terminal result", { resultCode: payment.resultCode || null });

@@ -3,6 +3,11 @@ begin;
 -- Model future real funds only for this isolated KYC regression. The separate
 -- support-boundaries regression verifies the production live-settlement guard.
 alter table public.contributions disable trigger guard_payment_environment;
+alter table public.contributions disable trigger guard_live_payment_context;
+-- Migration 015 keeps live payouts hard OFF. This transaction-local override only lets the KYC
+-- regression exercise downstream KYC rules; tests/db/live-daraja.sql verifies the real gate.
+create or replace function public.live_payouts_enabled() returns boolean
+language sql stable security definer set search_path = '' as $$ select true $$;
 
 do $$
 <<payout_kyc_test>>

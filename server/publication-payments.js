@@ -42,7 +42,7 @@ export async function recordPublicationPayment(payment, checkoutId) {
 
 export async function reconcilePublication(row) {
   if (!row || row.status === "paid" || row.status === "failed" || !row.provider_reference) return row;
-  const payment = await verifyProviderPayment(row.provider, row.provider_reference, row.id, row.amount_minor, row.currency);
+  const payment = await verifyProviderPayment(row.provider, row.provider_reference, row.id, row.amount_minor, row.currency, { environment: "test" });
   if (payment.verified) {
     await recordPublicationPayment(payment, row.id);
   } else if (payment.terminal) {
