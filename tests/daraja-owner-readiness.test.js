@@ -63,7 +63,7 @@ test("only the protected Owner can read readiness or change Daraja approval", as
   const state = setup();
   for (state.role of ["superadmin", "admin", "client"]) {
     assert.equal((await call("GET", "daraja-readiness")).statusCode, 403);
-    assert.equal((await call("POST", "daraja-approval", { approved: true, shortcode: "123456", confirmed: true })).statusCode, 403);
+    assert.equal((await call("POST", "daraja-approval", { approved: true, confirmed: true })).statusCode, 403);
     assert.equal((await call("POST", "daraja-approval", { approved: false })).statusCode, 403);
   }
   assert.equal(state.rpcs.length, 0);
@@ -96,13 +96,15 @@ test("readiness makes no provider call without health=1 or when credentials are 
   assert.equal(state.providerPaths.length, 0);
 });
 
-test("approval requires confirmation and the exact configured shortcode; revoke needs neither", async () => {
+test("approval requires confirmation and a confirmed configured shortcode (bound server-side); revoke needs neither", async () => {
   const state = setup();
-  assert.equal((await call("POST", "daraja-approval", { approved: true, shortcode: "123456" })).statusCode, 400);
-  assert.equal((await call("POST", "daraja-approval", { approved: true, shortcode: "654321", confirmed: true })).statusCode, 400);
+  assert.equal((await call("POST", "daraja-approval", { approved: true })).statusCode, 400);
+  process.env.DARAJA_LIVE_SHORTCODE_CONFIRMED = "999999";
+  assert.equal((await call("POST", "daraja-approval", { approved: true, confirmed: true })).statusCode, 400);
+  process.env.DARAJA_LIVE_SHORTCODE_CONFIRMED = "123456";
   assert.equal((await call("POST", "daraja-approval", { approved: "yes" })).statusCode, 400);
   assert.equal(state.rpcs.length, 0);
-  const approved = await call("POST", "daraja-approval", { approved: true, shortcode: "123456", confirmed: true });
+  const approved = await call("POST", "daraja-approval", { approved: true, confirmed: true });
   assert.equal(approved.statusCode, 200);
   assert.deepEqual(state.rpcs[0], { p_approved: true, p_shortcode: "123456" });
   assert.equal(approved.data.daraja.ownerApproved, true);
@@ -123,7 +125,7 @@ test("approval is refused when the OAuth readiness probe fails; revoke still wor
     if (new URL(String(input)).host === "api.safaricom.co.ke") return json({ error: "bad" }, 401);
     return base(input, init);
   };
-  const refused = await call("POST", "daraja-approval", { approved: true, shortcode: "123456", confirmed: true });
+  const refused = await call("POST", "daraja-approval", { approved: true, confirmed: true });
   assert.equal(refused.statusCode, 409);
   assert.equal(state.rpcs.length, 0);
   assert.equal((await call("POST", "daraja-approval", { approved: false })).statusCode, 200);
@@ -144,13 +146,13 @@ test("public options while live is configured but held name the kill switch, not
   assert.equal(fetched, 0);
 });
 
-test("Owner UI has a real-charge warning, a masked shortcode input, confirmations and an accessible revoke control", async () => {
+test("Owner UI has a real-charge warning, no shortcode input, confirmations and an accessible revoke control", async () => {
   const source = await readFile(new URL("../backoffice.js", import.meta.url), "utf8");
   assert.match(source, /\$\{owner \? `<section id="daraja-owner"/);
-  assert.match(source, /id="daraja-shortcode" type="password"[^>]*autocomplete="off"/);
+  assert.doesNotMatch(source, /daraja-shortcode|Callback URL to register/);
   assert.match(source, /REAL money/);
   assert.match(source, /id="daraja-revoke">Revoke approval/);
   assert.match(source, /aria-live="polite"/);
-  assert.match(source, /post\("daraja-approval", \{ approved: true, shortcode, confirmed: true \}\)/);
+  assert.match(source, /post\("daraja-approval", \{ approved: true, confirmed: true \}\)/);
   assert.doesNotMatch(source, /console\.(log|info|debug)\([^)]*shortcode/);
 });

@@ -148,17 +148,16 @@ export default async function handler(req, res) {
     if (action === "daraja-approval") {
       // Protected-Owner only (OWNER_ACTIONS); the database RPC re-checks the role and audits the change.
       if (typeof body.approved !== "boolean") return sendJson(res, 400, { error: "Choose approve or revoke." });
-      if (body.approved) {
-        const configured = String(process.env.DARAJA_SHORTCODE || "");
-        if (body.confirmed !== true || darajaConfiguredEnvironment() !== "production" ||
-            !/^\d{5,7}$/.test(String(body.shortcode || "")) || body.shortcode !== configured) {
-          return sendJson(res, 400, { error: "Confirm the real-charge warning and enter the exact production shortcode configured for this deployment." });
-        }
+      // Approval binds the deployment's own configured shortcode (already equal to the explicit
+      // confirmation variable for a production environment); the value is never typed or returned.
+      const configured = String(process.env.DARAJA_SHORTCODE || "");
+      if (body.approved && (body.confirmed !== true || darajaConfiguredEnvironment() !== "production" || !/^\d{5,7}$/.test(configured))) {
+        return sendJson(res, 400, { error: "Confirm the real-charge warning. The deployment must be configured for production with a valid, confirmed shortcode." });
       }
       if (body.approved && !await checkProviderHealth("daraja")) {
         return sendJson(res, 409, { error: "Daraja readiness check failed (OAuth health). Approval was not granted; run the readiness check and fix configuration first." });
       }
-      await rpc("owner_set_daraja_live_approval", token, { p_approved: body.approved, p_shortcode: body.approved ? body.shortcode : null });
+      await rpc("owner_set_daraja_live_approval", token, { p_approved: body.approved, p_shortcode: body.approved ? configured : null });
       return sendJson(res, 200, { ok: true, daraja: await darajaCollectionStatus() });
     }
     if (action === "payment-controls-save") {

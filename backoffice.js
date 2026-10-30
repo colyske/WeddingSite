@@ -257,8 +257,7 @@
         <p><strong>Warning:</strong> approving live M-Pesa lets guests be charged real money once the environment kill switch is on. Funds are held, provider fees stay pending and payouts remain off. This is a separate step from any real-money test.</p>
         <button type="button" id="daraja-check">Run readiness check (no payment)</button>
         <div id="daraja-readiness" class="fine" role="status" aria-live="polite"></div>
-        <form id="daraja-approval-form"><label for="daraja-shortcode">Production shortcode to approve</label>
-        <input id="daraja-shortcode" type="password" inputmode="numeric" autocomplete="off" pattern="[0-9]{5,7}" required>
+        <form id="daraja-approval-form"><p class="fine">Approves the PayBill shortcode already configured and confirmed on this deployment (never shown or typed here). Approval requires a passing OAuth readiness probe.</p>
         <button type="submit">Approve live M-Pesa collection</button>
         <button type="button" id="daraja-revoke">Revoke approval</button></form></section>` : ""}
         <form id="payment-controls-form"><h3>Enabled payment methods</h3>
@@ -350,7 +349,7 @@
         try {
           const r = await get("daraja-readiness", "&health=1");
           const yn = v => v === true ? "yes" : v === false ? "NO" : "unknown";
-          out.textContent = `Environment: ${r.configuredEnvironment}. Mode live: ${yn(r.modeIsLive)}; production: ${yn(r.environmentIsProduction)}; shortcode format valid: ${yn(r.shortcodeFormatValid)}; confirmation matches: ${yn(r.shortcodeConfirmationMatches)}; credentials present: ${yn(r.credentialsPresent.consumerKey && r.credentialsPresent.consumerSecret && r.credentialsPresent.passkey)}; kill switch on: ${yn(r.killSwitchOn)}; Owner approved: ${yn(r.ownerApproved)}; OAuth health: ${r.health.checked ? yn(r.health.healthy) : "not checked (credentials not configured for production)"}. Callback URL to register: ${r.callback.url} (secure origin: ${yn(r.callback.originSecure)}). Payouts: off.`;
+          out.textContent = `Environment: ${r.configuredEnvironment}. Mode live: ${yn(r.modeIsLive)}; production: ${yn(r.environmentIsProduction)}; shortcode format valid: ${yn(r.shortcodeFormatValid)}; confirmation matches: ${yn(r.shortcodeConfirmationMatches)}; credentials present: ${yn(r.credentialsPresent.consumerKey && r.credentialsPresent.consumerSecret && r.credentialsPresent.passkey)}; kill switch on: ${yn(r.killSwitchOn)}; Owner approved: ${yn(r.ownerApproved)}; OAuth health: ${r.health.checked ? yn(r.health.healthy) : "not checked (credentials not configured for production)"}. Public origin secure: ${yn(r.callback.originSecure)}. Payouts: off.`;
         } catch (err) { out.textContent = ""; toast(err.message, true); }
         return;
       }
@@ -449,11 +448,9 @@
         } catch (err) { toast(err.message, true); }
       }
       if (e.target.id === "daraja-approval-form") {
-        const shortcode = $("daraja-shortcode").value.trim();
         if (!confirm("Approve LIVE M-Pesa collection? Guests may be charged REAL money once the kill switch is on. Payouts stay off and funds are held.")) return;
         try {
-          await post("daraja-approval", { approved: true, shortcode, confirmed: true });
-          $("daraja-shortcode").value = "";
+          await post("daraja-approval", { approved: true, confirmed: true });
           toast("Live approval granted. The environment kill switch is still a separate step.");
           await show("fees");
         } catch (err) { toast(err.message, true); }
