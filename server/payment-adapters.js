@@ -5,6 +5,7 @@ let darajaAccessToken = "";
 let darajaAccessTokenExpiresAt = 0;
 let darajaAccessTokenKey = "";
 const DARAJA_SANDBOX = "https://sandbox.safaricom.co.ke";
+const DARAJA_PRODUCTION = "https://api.safaricom.co.ke";
 const isoFromSeconds = value => {
   const seconds = Number(value);
   if (!Number.isSafeInteger(seconds) || seconds < 1) return null;
@@ -22,9 +23,31 @@ export function isSecurePublicOrigin(value) {
   }
 }
 
+// Live collection stays off unless every explicit switch below is set; the live
+// shortcode must be re-confirmed by value so a swapped credential set fails closed.
+// Reconciliation environment: where credentials point. Independent of the admission kill
+// switch so already-admitted live payments can still be confirmed after a kill/revoke.
+export function darajaConfiguredEnvironment() {
+  const mode = process.env.WEDDINGSITE_PAYMENT_MODE;
+  const environment = process.env.DARAJA_ENVIRONMENT;
+  if (mode === "test" && environment === "sandbox") return "sandbox";
+  if (mode === "live" && environment === "production" &&
+      Boolean(process.env.DARAJA_SHORTCODE) &&
+      process.env.DARAJA_LIVE_SHORTCODE_CONFIRMED === process.env.DARAJA_SHORTCODE) return "production";
+  return null;
+}
+
+// Admission environment: new payments need the explicit kill switch on as well.
+export function darajaEnvironment() {
+  const configured = darajaConfiguredEnvironment();
+  if (configured === "production" && process.env.DARAJA_LIVE_COLLECTION_ENABLED !== "true") return null;
+  return configured;
+}
+
+const darajaBaseUrl = () => darajaConfiguredEnvironment() === "production" ? DARAJA_PRODUCTION : DARAJA_SANDBOX;
+
 function darajaCredentialsReady() {
-  return process.env.WEDDINGSITE_PAYMENT_MODE === "test" &&
-    process.env.DARAJA_ENVIRONMENT === "sandbox" &&
+  return darajaConfiguredEnvironment() !== null &&
     Boolean(process.env.DARAJA_CONSUMER_KEY) &&
     Boolean(process.env.DARAJA_CONSUMER_SECRET) &&
     /^\d{5,7}$/.test(String(process.env.DARAJA_SHORTCODE || "")) &&
@@ -50,14 +73,14 @@ export function darajaPassword(shortcode, passkey, timestamp) {
 async function getDarajaAccessToken() {
   if (!darajaCredentialsReady()) throw new Error("Daraja sandbox credentials are not fully configured.");
   const cacheKey = createHash("sha256")
-    .update(`${process.env.DARAJA_CONSUMER_KEY}:${process.env.DARAJA_CONSUMER_SECRET}`)
+    .update(`${darajaConfiguredEnvironment()}:${process.env.DARAJA_SHORTCODE}:${process.env.DARAJA_CONSUMER_KEY}:${process.env.DARAJA_CONSUMER_SECRET}`)
     .digest("hex");
   if (darajaAccessTokenKey === cacheKey && darajaAccessToken &&
       darajaAccessTokenExpiresAt > Date.now() + 30_000) return darajaAccessToken;
   const authorization = Buffer.from(
     `${process.env.DARAJA_CONSUMER_KEY}:${process.env.DARAJA_CONSUMER_SECRET}`
   ).toString("base64");
-  const response = await fetch(`${DARAJA_SANDBOX}/oauth/v1/generate?grant_type=client_credentials`, {
+  const response = await fetch(`${darajaBaseUrl()}/oauth/v1/generate?grant_type=client_credentials`, {
     headers: { Authorization: `Basic ${authorization}` },
     cache: "no-store",
     signal: AbortSignal.timeout(8000)
@@ -79,7 +102,7 @@ export async function initiateDarajaStkPush({
 }) {
   const amount = Number(amountMinor) / 100;
   const shortcode = process.env.DARAJA_SHORTCODE;
-  if (!darajaCredentialsReady() || !Number.isSafeInteger(amount) || amount < 1 ||
+  if (darajaEnvironment() === null || !darajaCredentialsReady() || !Number.isSafeInteger(amount) || amount < 1 ||
       !/^254[17]\d{8}$/.test(String(phoneNumber || "")) ||
       !/^[A-Za-z0-9_-]{1,12}$/.test(String(accountReference || ""))) {
     throw new Error("Daraja sandbox checkout details are invalid.");
@@ -94,7 +117,13 @@ export async function initiateDarajaStkPush({
   }
   const timestamp = darajaTimestamp();
   const token = await getDarajaAccessToken();
-  const response = await fetch(`${DARAJA_SANDBOX}/mpesa/stkpush/v1/processrequest`, {
+  // After the request leaves, any failure to read a definite answer is "uncertain": the
+  // customer may already hold a prompt, so callers must not retry or erase the admission.
+  const uncertain = message => Object.assign(new Error(message), { uncertain: true });
+  let response;
+  let result;
+  try {
+    response = await fetch(`${darajaBaseUrl()}/mpesa/stkpush/v1/processrequest`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -112,12 +141,22 @@ export async function initiateDarajaStkPush({
     }),
     cache: "no-store",
     signal: AbortSignal.timeout(12_000)
-  });
-  const result = await response.json();
-  if (!response.ok || String(result.ResponseCode) !== "0" ||
-      typeof result.CheckoutRequestID !== "string" || !result.CheckoutRequestID ||
+    });
+    result = await response.json();
+  } catch {
+    throw uncertain("Daraja STK Push outcome is uncertain.");
+  }
+  if (response.status >= 500) throw uncertain("Daraja STK Push outcome is uncertain.");
+  // Only an explicit non-zero ResponseCode is a definite decline; absence of evidence is uncertain.
+  const code = result && typeof result === "object" ? result.ResponseCode : undefined;
+  if (code !== undefined && code !== null && String(code) !== "0") {
+    throw Object.assign(new Error("Daraja did not accept the STK Push request."), { rejected: true });
+  }
+  if (!response.ok && (code === undefined || code === null)) throw uncertain("Daraja STK Push outcome is uncertain.");
+  if (String(code) !== "0") throw uncertain("Daraja STK Push outcome is uncertain.");
+  if (typeof result.CheckoutRequestID !== "string" || !result.CheckoutRequestID ||
       typeof result.MerchantRequestID !== "string" || !result.MerchantRequestID) {
-    throw new Error("Daraja sandbox did not accept the STK Push request.");
+    throw uncertain("Daraja STK Push outcome is uncertain.");
   }
   return {
     reference: result.CheckoutRequestID,
@@ -132,6 +171,7 @@ export async function checkProviderHealth(provider) {
       process.env.WEDDINGSITE_PAYMENT_MODE, process.env.DARAJA_ENVIRONMENT,
       process.env.DARAJA_CONSUMER_KEY, process.env.DARAJA_CONSUMER_SECRET,
       process.env.DARAJA_SHORTCODE, process.env.DARAJA_PASSKEY,
+      process.env.DARAJA_LIVE_COLLECTION_ENABLED, process.env.DARAJA_LIVE_SHORTCODE_CONFIRMED,
       process.env.WEDDINGSITE_PUBLIC_ORIGIN
     ].join(":")).digest("hex")}`
     : provider;
@@ -335,7 +375,7 @@ export function normalizePaystackAdjustment(event, eventDigest) {
   return null;
 }
 
-export async function verifyProviderPayment(provider, reference, contributionId, expectedAmountMinor, expectedCurrency) {
+export async function verifyProviderPayment(provider, reference, contributionId, expectedAmountMinor, expectedCurrency, bound = null) {
   const mode = process.env.WEDDINGSITE_PAYMENT_MODE;
   const key = provider === "stripe" ? process.env.STRIPE_SECRET_KEY
     : provider === "paystack" ? process.env.PAYSTACK_SECRET_KEY : "";
@@ -343,12 +383,20 @@ export async function verifyProviderPayment(provider, reference, contributionId,
     if (!darajaCredentialsReady() || !reference || !contributionId ||
         !Number.isSafeInteger(Number(expectedAmountMinor)) || Number(expectedAmountMinor) < 100 ||
         Number(expectedAmountMinor) % 100 !== 0 || String(expectedCurrency).toUpperCase() !== "KES") {
-      throw new Error("Daraja sandbox payment verification is not configured.");
+      throw new Error("Daraja payment verification is not configured.");
+    }
+    // A payment is only ever queried in the environment and merchant it was created in.
+    const live = bound?.environment === "live";
+    if (darajaConfiguredEnvironment() !== (live ? "production" : "sandbox")) {
+      throw new Error("Daraja payment belongs to a different environment; it was not queried.");
+    }
+    if (live && (!bound.merchantRequestId || String(bound.shortcode || "") !== String(process.env.DARAJA_SHORTCODE))) {
+      throw new Error("Live Daraja payment is missing its bound merchant context; it was not queried.");
     }
     const shortcode = process.env.DARAJA_SHORTCODE;
     const timestamp = darajaTimestamp();
     const token = await getDarajaAccessToken();
-    const response = await fetch(`${DARAJA_SANDBOX}/mpesa/stkpushquery/v1/query`, {
+    const response = await fetch(`${darajaBaseUrl()}/mpesa/stkpushquery/v1/query`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -361,8 +409,9 @@ export async function verifyProviderPayment(provider, reference, contributionId,
       signal: AbortSignal.timeout(8000)
     });
     const result = await response.json();
-    if (!response.ok || String(result.CheckoutRequestID || "") !== String(reference)) {
-      throw new Error("Daraja sandbox could not verify this STK Push request.");
+    if (!response.ok || String(result.CheckoutRequestID || "") !== String(reference) ||
+        (live && String(result.MerchantRequestID || "") !== String(bound.merchantRequestId))) {
+      throw new Error("Daraja could not verify this STK Push request.");
     }
     if (String(result.ResponseCode) !== "0" || result.ResultCode === undefined || result.ResultCode === null) {
       return { verified: false };

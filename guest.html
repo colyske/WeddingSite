@@ -457,7 +457,7 @@
       <div id="pay-daraja-fields" hidden>
         <label for="pay-mpesa-phone">Safaricom M-Pesa phone number *</label>
         <input id="pay-mpesa-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="18">
-        <p class="fine">Sandbox only. Approve the STK Push on this phone; the action stays pending until payment is confirmed.</p>
+        <p class="fine" id="pay-daraja-note">Sandbox only. Approve the STK Push on this phone; the action stays pending until payment is confirmed.</p>
       </div>
       <div id="pay-sponsor-fields" hidden>
         <label for="pay-phone">Public contact phone (optional)</label><input id="pay-phone" type="tel" maxlength="30">
@@ -481,6 +481,7 @@
   <script src="currencies.js"></script>
   <script src="fx.js"></script>
   <script src="amount-presets.js"></script>
+<script src="payment-intent.js"></script>
   <script src="social-links.js"></script>
   <script src="sponsor-cards.js"></script>
   <script>
@@ -943,6 +944,7 @@
             } catch (_) {}
           }
           toast("Payment verified. Your action is complete.");
+          payIntent.release();
           await Promise.all([loadBids(), loadLedger(), loadFundraising()]);
           if (data.action === "song_bid") highlightSong(saved.songTitle, saved.artist);
           try { sessionStorage.removeItem(`ws-payment:${paymentId}`); } catch (_) {}
@@ -953,7 +955,8 @@
         if (data.paymentStatus === "cancelled") {
           const code = /^\d{1,6}$/.test(String(data.providerResultCode || "")) ? ` (provider code ${data.providerResultCode})` : "";
           const method = saved.provider === "daraja" ? "M-Pesa request" : "payment";
-          const message = `The payment service reported an unsuccessful ${method}${code}. This does not necessarily mean you cancelled it; sandbox tests can also fail. No paid action was completed.`;
+          const message = `The payment service reported an unsuccessful ${method}${code}. This does not necessarily mean you cancelled it${saved.live ? "" : "; sandbox tests can also fail"}. No paid action was completed.`;
+          payIntent.release();
           if ($("pay-dialog").open) {
             $("pay-error").textContent = message;
             $("pay-error").hidden = false;
@@ -1051,6 +1054,8 @@
 
   // Provider-confirmed test checkout for paid guest actions
   let buying = null;
+let payMode = "test";
+const payIntent = WSPaymentIntent.create();
   let captchaToken = "";
   let turnstileWidget = null;
   let turnstileLoad = null;
@@ -1093,7 +1098,7 @@
     $("pay-daraja-fields").hidden = true;
     $("pay-email").required = false;
     $("pay-amount").step = "0.01";
-    $("pay-submit").textContent = "Pay (test mode)";
+    $("pay-submit").textContent = "Pay";
     $("pay-website").value = "";
     $("pay-location").value = "";
     $("pay-offer").value = "";
@@ -1113,7 +1118,8 @@
     try {
       const optionsRes = await fetch(`/api/checkout?action=options&weddingId=${encodeURIComponent(wedding.id)}&currency=${encodeURIComponent(wedding.currency || "USD")}`);
       const options = await optionsRes.json();
-      if (!optionsRes.ok || !options.paymentAvailable) throw new Error(options.message || "Verified test checkout is not available for this wedding.");
+      if (!optionsRes.ok || !options.paymentAvailable) throw new Error(options.message || "Checkout is not available for this wedding.");
+      payMode = options.mode === "live" ? "live" : "test";
       $("pay-provider").replaceChildren(...options.providers.map(p =>
         new Option(p.label || "Pay online", `${p.id}|${p.market}`)
       ));
@@ -1196,7 +1202,9 @@
     $("pay-mpesa-phone").required = isDaraja;
     $("pay-email").required = provider === "paystack";
     $("pay-amount").step = isDaraja ? "1" : "0.01";
-    $("pay-submit").textContent = isDaraja ? "Send M-Pesa prompt" : "Pay (test mode)";
+    $("pay-submit").textContent = WSPaymentIntent.payLabel(provider, payMode);
+    $("pay-daraja-note").textContent = WSPaymentIntent.darajaNote(payMode);
+    $("pay-daraja-note").className = payMode === "live" ? "notice bad" : "fine";
   });
   $("pay-cancel").addEventListener("click", () => $("pay-dialog").close());
   $("pay-dialog").addEventListener("close", () => {
@@ -1225,11 +1233,16 @@
       $("pay-error").hidden = false;
       return;
     }
+    if (payIntent.heldPaymentId) {
+      params.set("paymentReturn", payIntent.heldPaymentId);
+      await handlePaymentReturn();
+      return;
+    }
     $("pay-submit").disabled = true;
     try {
       const payload = {
         weddingId: wedding.id, weddingSlug: slug, currency: wedding.currency || "USD", provider, market,
-        purchaseAction: buying.action, idempotencyKey: crypto.randomUUID(), captchaToken,
+        purchaseAction: buying.action, captchaToken,
         visibility: "hidden", publicConsent: false,
         amountMinor, guestName: name, displayName: name,
         email: $("pay-email").value.trim(), guestEmail: $("pay-email").value.trim(),
@@ -1243,15 +1256,30 @@
         socialLinks: readSocialFields("pay")
       };
       if (buying.action === "rsvp") Object.assign(payload, buying.data);
-      const res = await fetch("/api/checkout?action=create", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Checkout could not be started.");
+      const outcome = await payIntent.submit(payload);
+      const data = outcome.data || {};
+      if (outcome.kind === "held") {
+        // The server retained this payment but could not confirm the prompt: never start another.
+        try {
+          sessionStorage.setItem(`ws-payment:${data.paymentId}`, JSON.stringify({
+            action: buying.action, guestName: buying.data?.guestName || name, amountMinor, provider, live: payMode === "live"
+          }));
+        } catch (_) {}
+        $("pay-error").className = "notice bad";
+        $("pay-error").textContent = `${outcome.message} Do not start another payment.`;
+        $("pay-error").hidden = false;
+        $("pay-submit").textContent = "Checking M-Pesa status…";
+        const heldParams = new URLSearchParams(location.search);
+        heldParams.set("paymentReturn", data.paymentId);
+        params.set("paymentReturn", data.paymentId);
+        history.replaceState(null, "", `${location.pathname}?${heldParams.toString()}`);
+        await handlePaymentReturn();
+        return;
+      }
+      if (outcome.kind !== "started") throw new Error(outcome.message || "Checkout could not be started.");
       try {
         sessionStorage.setItem(`ws-payment:${data.paymentId}`, JSON.stringify({
-          action: buying.action, guestName: buying.data?.guestName || name, amountMinor, provider,
+          action: buying.action, guestName: buying.data?.guestName || name, amountMinor, provider, live: payMode === "live",
           songTitle: buying.data?.songTitle, artist: buying.data?.artist
         }));
       } catch (_) {}
@@ -1259,7 +1287,7 @@
         location.assign(data.checkoutUrl);
       } else if (provider === "daraja" && data.paymentId) {
         $("pay-error").className = "notice";
-        $("pay-error").textContent = data.message || "M-Pesa sandbox prompt sent. Approve it on your phone to continue.";
+        $("pay-error").textContent = data.message || (payMode === "live" ? "M-Pesa prompt sent. Approve it on your phone to continue." : "M-Pesa sandbox prompt sent. Approve it on your phone to continue.");
         $("pay-error").hidden = false;
         $("pay-submit").textContent = "Waiting for M-Pesa…";
         const nextParams = new URLSearchParams(location.search);

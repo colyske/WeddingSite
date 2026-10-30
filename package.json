@@ -8,7 +8,7 @@
   },
   "scripts": {
     "test": "node --test --test-concurrency=1",
-    "check": "node --check platform.js && node --check app.js && node --check fx.js && node --check server/supabase.js && node --check server/payment-adapters.js && node --check auth-client.js && node --check dashboard.js && node --check api/auth.js && node --check api/guest.js && node --check api/weddings.js && node --check api/ledger.js && node --check api/finance.js && node --check api/admin.js && node --check api/reminders.js && node --check api/checkout.js && node --check api/webhooks.js && node --check guest-extras.js && node --check share.js && node --check feedback.js && node --check server/site-hosts.js && node --check site-urls.js && node --check middleware.js"
+    "check": "node --check platform.js && node --check app.js && node --check fx.js && node --check server/supabase.js && node --check server/payment-adapters.js && node --check payment-intent.js && node --check auth-client.js && node --check dashboard.js && node --check api/auth.js && node --check api/guest.js && node --check api/weddings.js && node --check api/ledger.js && node --check api/finance.js && node --check api/admin.js && node --check api/reminders.js && node --check api/checkout.js && node --check api/webhooks.js && node --check guest-extras.js && node --check share.js && node --check feedback.js && node --check server/site-hosts.js && node --check site-urls.js && node --check middleware.js"
   },
   "devDependencies": {
     "playwright": "^1.64.1"

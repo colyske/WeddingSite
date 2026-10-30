@@ -246,7 +246,7 @@
         <p class="fine">Only the protected Owner can change platform fee and payout policies. SuperAdmins can view these settings; regular Admins cannot access them. Transaction eligibility and fee calculation are enforced server-side.</p>
         ${extendedPolicy ? `<details><summary>Recent policy versions (${history.length})</summary>${history.length ? history.map((h) => `<article class="policy-version"><strong>${date(h.changed_at)}</strong><pre>${esc(JSON.stringify({ old: h.old_values, new: h.new_values }, null, 2))}</pre></article>`).join("") : '<p class="fine">No policy changes have been recorded yet.</p>'}</details>` : ""}`;
       const refundAllocation = refundPolicy.allocation || "manual_review";
-      const providerLabels = { daraja: "M-Pesa — Daraja sandbox", paystack: "Card — Paystack test", stripe: "Card — Stripe test" };
+      const providerLabels = { daraja: "M-Pesa — Daraja (sandbox unless Owner-approved live collection is enabled)", paystack: "Card — Paystack test", stripe: "Card — Stripe test" };
       el.insertAdjacentHTML("beforeend", `<form id="payment-controls-form"><h3>Enabled payment methods</h3>
         <p class="fine">SuperAdmin and Owner controls for new checkouts across all weddings. Enabling a switch never enables live mode or supplies missing credentials. Pending payments remain with their original provider and can still be verified.</p>
         ${(paymentControls.providers || []).map(provider => `<label><input type="checkbox" name="payment-provider" value="${esc(provider.id)}"${(paymentControls.enabled || []).includes(provider.id) ? " checked" : ""}>
@@ -295,7 +295,7 @@
         <li>The Owner controls all Admin/SuperAdmin delegation; changes are audited and the protected Owner identity cannot be reassigned from this screen.</li>
         <li>ID/passport numbers are stored privately and masked; only staff can reveal them and each reveal is audited.</li>
         <li>MFA enrolment is not built into Join Our Wedding yet: enable MFA on the email account used for recovery.</li>
-        <li>Payments are in test mode until live provider credentials are configured by the Owner in the hosting environment.</li>
+        <li>Payments are in test mode unless the Owner has enabled live M-Pesa collection (an environment kill switch plus Owner approval). Live funds are held and payouts stay disabled.</li>
         <li>Review the audit log regularly for unexpected role changes or fee waivers.</li></ul>`;
     }
   };

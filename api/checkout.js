@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
-import { checkProviderHealth, initiateDarajaStkPush, isSecurePublicOrigin, verifyProviderPayment } from "../server/payment-adapters.js";
+import { checkProviderHealth, darajaEnvironment, initiateDarajaStkPush, isSecurePublicOrigin, verifyProviderPayment } from "../server/payment-adapters.js";
 import { normalizePhone } from "../server/phone.js";
 import { isPastWedding } from "../server/wedding-time.js";
 import { platformOrigins, weddingOriginSlug } from "../server/site-hosts.js";
@@ -20,7 +20,7 @@ function configuredAdapters(currency, market) {
   const mode = process.env.WEDDINGSITE_PAYMENT_MODE;
   const stripeModeMatches = mode === "test" && process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_");
   const paystackModeMatches = mode === "test" && process.env.PAYSTACK_SECRET_KEY?.startsWith("sk_test_");
-  const darajaSandboxReady = mode === "test" && process.env.DARAJA_ENVIRONMENT === "sandbox" &&
+  const darajaSandboxReady = darajaEnvironment() !== null &&
     Boolean(process.env.DARAJA_CONSUMER_KEY) && Boolean(process.env.DARAJA_CONSUMER_SECRET) &&
     Boolean(process.env.DARAJA_SHORTCODE) && Boolean(process.env.DARAJA_PASSKEY) &&
     isSecurePublicOrigin(process.env.WEDDINGSITE_PUBLIC_ORIGIN);
@@ -38,7 +38,7 @@ function configuredAdapters(currency, market) {
       markets: setOf(process.env.PAYSTACK_SUPPORTED_MARKETS)
     },
     {
-      id: "daraja", name: "M-Pesa · Safaricom Daraja (Sandbox)",
+      id: "daraja", name: darajaEnvironment() === "production" ? "M-Pesa · Safaricom Daraja" : "M-Pesa · Safaricom Daraja (Sandbox)",
       ready: Boolean(darajaSandboxReady),
       currencies: new Set(["KES"]),
       markets: new Set(["KE"])
@@ -82,6 +82,18 @@ export function availableProviderMarkets(currency) {
 // WEDDINGSITE_LIVE_PAYMENTS_ENABLED flag is not required or consulted for test checkout.
 export function testPaymentsEnabled() {
   return process.env.WEDDINGSITE_PAYMENT_MODE === "test";
+}
+
+// Live collection is Daraja-only and requires the environment kill switch, the
+// shortcode confirmation, and (checked against the database) the Owner's approval.
+export function liveDarajaEnabled() {
+  return darajaEnvironment() === "production";
+}
+
+export async function liveDarajaApproved() {
+  if (!liveDarajaEnabled()) return false;
+  const row = (await supabaseRequest("/rest/v1/daraja_live_approval?singleton=eq.true&select=approved,shortcode", { service: true }))?.[0];
+  return row?.approved === true && row.shortcode === process.env.DARAJA_SHORTCODE;
 }
 
 // Returns to the exact origin that started checkout: pending-payment state is kept in that origin's sessionStorage.
@@ -165,7 +177,7 @@ async function handleOptions(req, res) {
     return sendJson(res, 400, { providers: [], paymentAvailable: false, message: "Select a valid wedding, market, and currency." });
   }
   const unmetChecks = [
-    !testPaymentsEnabled() && "WEDDINGSITE_PAYMENT_MODE=test",
+    !(testPaymentsEnabled() || liveDarajaEnabled()) && "WEDDINGSITE_PAYMENT_MODE=test (or the explicit live Daraja switches)",
     !process.env.TURNSTILE_SECRET_KEY && "TURNSTILE_SECRET_KEY",
     !(process.env.TURNSTILE_SITE_KEY || process.env.TURNSTILE_PUBLIC_KEY) && "TURNSTILE_SITE_KEY|TURNSTILE_PUBLIC_KEY",
     !isSecurePublicOrigin(process.env.WEDDINGSITE_PUBLIC_ORIGIN) && "WEDDINGSITE_PUBLIC_ORIGIN"
@@ -181,7 +193,9 @@ async function handleOptions(req, res) {
     }
     const policy = (await supabaseRequest("/rest/v1/platform_policies?id=eq.true&select=enabled_payment_providers", { service: true }))?.[0];
     const enabled = enabledPaymentProviders(policy);
-    const candidates = availableProviderMarkets(currency).filter(item => enabled.includes(item.id));
+    const liveApproved = liveDarajaEnabled() ? await liveDarajaApproved() : true;
+    const candidates = availableProviderMarkets(currency).filter(item => enabled.includes(item.id) &&
+      (item.id !== "daraja" || liveApproved));
     const eligible = [...new Set(candidates.map(item => item.id))];
     const health = await Promise.all(eligible.map(async provider =>
       [provider, await checkProviderHealth(provider)]
@@ -193,6 +207,7 @@ async function handleOptions(req, res) {
     return sendJson(res, 200, {
       providers,
       paymentAvailable: providers.length > 0,
+      mode: darajaEnvironment() === "production" && providers.some(item => item.id === "daraja") ? "live" : "test",
       turnstileSiteKey: process.env.TURNSTILE_SITE_KEY || process.env.TURNSTILE_PUBLIC_KEY || "",
       message: providers.length ? "" : "Payments are not available for this wedding and market yet, or a provider health check failed.",
       providerChecks: health.map(([provider, healthy]) => ({ provider, healthy }))
@@ -210,8 +225,8 @@ async function handleCheckout(req, res) {
   try { globalThis.WSSocialLinks.parse(req.body?.socialLinks); }
   catch (error) { return sendJson(res, 400, { error: error.message }); }
   if (invalidContent) return sendJson(res, 400, { error: invalidContent });
-  if (!testPaymentsEnabled()) {
-    return sendJson(res, 503, { error: "Payments are currently unavailable. Paid actions cannot be completed until a test provider is enabled." });
+  if (!testPaymentsEnabled() && !liveDarajaEnabled()) {
+    return sendJson(res, 503, { error: "Payments are currently unavailable. Paid actions cannot be completed until a provider is enabled." });
   }
   const origin = process.env.WEDDINGSITE_PUBLIC_ORIGIN?.replace(/\/+$/, "");
   if (!isSecurePublicOrigin(origin)) return sendJson(res, 503, { error: "The public site origin must be a valid HTTPS origin (localhost is allowed for testing)." });
@@ -247,6 +262,10 @@ async function handleCheckout(req, res) {
     }
     const available = configuredAdapters(currency, market).some(item => item.id === body.provider);
     if (!available) return sendJson(res, 409, { error: "That payment option is not configured for this currency and market." });
+    const liveDaraja = body.provider === "daraja" && liveDarajaEnabled();
+    if (liveDaraja && !await liveDarajaApproved()) {
+      return sendJson(res, 503, { error: "Live M-Pesa collection has not been approved by the platform Owner. No checkout was created." });
+    }
     if (!await checkProviderHealth(body.provider)) return sendJson(res, 503, { error: "The selected payment provider is not healthy. No checkout was created." });
     const weddings = await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=id,slug,currency,wedding_date,time_zone,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options`, { service: true });
     const wedding = weddings?.[0];
@@ -398,7 +417,7 @@ async function handleCheckout(req, res) {
       const phone = normalizePhone(body.mpesaPhone);
       if (currency !== "KES" || market !== "KE" || amountMinor % 100 !== 0 ||
           !/^254[17]\d{8}$/.test(phone)) {
-        return sendJson(res, 400, { error: "M-Pesa sandbox requires a valid Kenyan mobile number and a whole-KES amount." });
+        return sendJson(res, 400, { error: "M-Pesa requires a valid Kenyan mobile number and a whole-KES amount." });
       }
     }
 
@@ -431,7 +450,8 @@ async function handleCheckout(req, res) {
       visibility: "hidden",
       public_consent_at: null,
       provider_name: body.provider,
-      checkout_idempotency_key: idempotencyKey
+      checkout_idempotency_key: idempotencyKey,
+      ...(liveDaraja ? { payment_environment: "live", daraja_shortcode: process.env.DARAJA_SHORTCODE } : {})
     };
     await supabaseRequest("/rest/v1/contributions", {
       service: true, method: "POST", body: entry, prefer: "return=minimal"
@@ -462,6 +482,7 @@ async function handleCheckout(req, res) {
           });
       const patch = {
         provider_reference: checkout.reference,
+        ...(liveDaraja && checkout.merchantRequestId ? { daraja_merchant_request_id: checkout.merchantRequestId } : {}),
         visibility,
         public_consent_at: body.publicConsent === true ? new Date().toISOString() : null
       };
@@ -472,7 +493,24 @@ async function handleCheckout(req, res) {
       if (checkout) {
         console.error("checkout exists but its reference could not be persisted", contributionId);
         return sendJson(res, 503, {
-          error: "Checkout setup could not be confirmed safely. No paid action was recorded; contact the organizer before retrying."
+          error: liveDaraja
+            ? "The M-Pesa prompt may have been sent but could not be recorded safely. Do not retry; approve it if received and check the payment status, otherwise contact the organizer."
+            : "Checkout setup could not be confirmed safely. No paid action was recorded; contact the organizer before retrying.",
+          ...(liveDaraja ? { paymentId: contributionId, paymentStatus: "pending" } : {})
+        });
+      }
+      if (liveDaraja) {
+        // Live admissions are never erased: an uncertain STK Push may still reach the customer.
+        if (error.rejected) {
+          await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(contributionId)}&payment_status=eq.pending`, {
+            service: true, method: "PATCH", body: { payment_status: "cancelled" }, prefer: "return=minimal"
+          }).catch(cleanupError => console.error("Failed to cancel rejected live checkout", cleanupError.message));
+          return sendJson(res, 503, { error: "M-Pesa did not accept the request. No funds were collected; try again later." });
+        }
+        console.error("live Daraja checkout outcome uncertain", contributionId);
+        return sendJson(res, 503, {
+          error: "We could not confirm whether the M-Pesa prompt was sent. Do not retry; if you receive a prompt, approve it and check the payment status, otherwise contact the organizer.",
+          paymentId: contributionId, paymentStatus: "pending"
         });
       }
       await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(contributionId)}`, {
@@ -485,7 +523,9 @@ async function handleCheckout(req, res) {
         provider: body.provider,
         paymentStatus: "pending",
         paymentId: contributionId,
-        message: "M-Pesa sandbox STK Push sent. Check the phone you entered and approve the prompt; the action remains pending until Safaricom confirms it."
+        message: liveDaraja
+          ? "M-Pesa prompt sent. Check the phone you entered and approve it; the action remains pending until Safaricom confirms it."
+          : "M-Pesa sandbox STK Push sent. Check the phone you entered and approve the prompt; the action remains pending until Safaricom confirms it."
       }
       : { provider: body.provider, checkoutUrl: checkout.url, paymentStatus: "pending", paymentId: contributionId });
   } catch (error) {
@@ -502,7 +542,7 @@ async function handleStatus(req, res) {
   const id = String(req.query.id || "");
   if (!isUuid(id)) return sendJson(res, 400, { error: "Invalid payment reference." });
   try {
-    let rows = await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&select=id,payment_status,provider_name,provider_reference,pledged_amount_minor,currency,purchase_action,action_result,action_completed_at,provider_fee_pending`, { service: true });
+    let rows = await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&select=id,payment_status,provider_name,provider_reference,pledged_amount_minor,currency,purchase_action,action_result,action_completed_at,provider_fee_pending,payment_environment,daraja_shortcode,daraja_merchant_request_id`, { service: true });
     let row = rows?.[0];
     if (!row) return sendJson(res, 404, { error: "Payment reference not found." });
     let providerResultCode = null;
@@ -510,7 +550,11 @@ async function handleStatus(req, res) {
       (row.provider_name !== "daraja" && row.provider_fee_pending);
     if (shouldVerify && row.provider_reference) {
       const payment = await verifyProviderPayment(
-        row.provider_name, row.provider_reference, row.id, row.pledged_amount_minor, row.currency
+        row.provider_name, row.provider_reference, row.id, row.pledged_amount_minor, row.currency,
+        row.provider_name === "daraja" ? {
+          environment: row.payment_environment, shortcode: row.daraja_shortcode,
+          merchantRequestId: row.daraja_merchant_request_id
+        } : null
       );
       if (payment.verified) {
         await supabaseRequest("/rest/v1/rpc/record_verified_payment", {
