@@ -163,4 +163,36 @@ begin
   if not blocked then raise exception 'Anon must not execute the approval RPC'; end if;
   reset role;
 end $$;
+do $$
+declare oid uuid := extensions.gen_random_uuid(); n integer; ok boolean;
+begin
+  insert into auth.users(id, email, email_confirmed_at) values(oid, 'colyske@gmail.com', now());
+  perform public.bootstrap_protected_owner(oid);
+  if position('where singleton' in lower(pg_get_functiondef('public.owner_set_daraja_live_approval(boolean,text)'::regprocedure))) = 0 then
+    raise exception 'Approval RPC must update with a WHERE clause (pg-safeupdate safe)';
+  end if;
+  perform set_config('request.jwt.claim.sub', oid::text, true);
+  perform set_config('request.jwt.claim.role', 'authenticated', true);
+  set local role authenticated;
+  perform public.owner_set_daraja_live_approval(true,'174379');
+  reset role;
+  if not (select approved and shortcode = '174379' and approved_by = oid from public.daraja_live_approval) then
+    raise exception 'Owner approval must persist';
+  end if;
+  set local role authenticated;
+  perform public.owner_set_daraja_live_approval(false);
+  reset role;
+  if (select approved or shortcode is not null or approved_by is not null from public.daraja_live_approval) then
+    raise exception 'Owner revoke must clear approval';
+  end if;
+  select count(*) into n from public.audit_events where actor_id = oid and table_name = 'daraja_live_approval'
+    and action in ('daraja_live_approve','daraja_live_revoke');
+  if n <> 2 then raise exception 'Approve and revoke must each be audited (got %)', n; end if;
+  -- A missing singleton row must fail, never report success.
+  delete from public.daraja_live_approval;
+  ok := false;
+  begin perform public.owner_set_daraja_live_approval(false);
+  exception when raise_exception then ok := true; end;
+  if not ok then raise exception 'Missing approval row must fail'; end if;
+end $$;
 rollback;
