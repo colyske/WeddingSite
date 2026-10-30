@@ -9,6 +9,8 @@ begin
   insert into auth.users(id) values(cid);
   insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date)
     values(wid,cid,'Live guard sample','KES',current_date+30);
+  insert into public.wedding_memberships(wedding_id,user_id,role) values(wid,cid,'client')
+    on conflict do nothing;
 
   if (select approved or payouts_enabled from public.daraja_live_approval) then
     raise exception 'Live approval and payouts must default OFF';
