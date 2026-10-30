@@ -130,6 +130,20 @@ test("approval is refused when the OAuth readiness probe fails; revoke still wor
   assert.deepEqual(state.rpcs, [{ p_approved: false, p_shortcode: null }]);
 });
 
+test("public options while live is configured but held name the kill switch, not payment mode, and fetch nothing", async () => {
+  setup();
+  let fetched = 0;
+  globalThis.fetch = async () => { fetched++; throw new Error("no fetch expected"); };
+  const out = res();
+  const checkout = (await import("../api/checkout.js")).default;
+  await checkout({ method: "GET", query: { action: "options", weddingId: "7c1b33e8-6b41-4f66-9169-54197263db7f", currency: "KES" } }, out);
+  assert.equal(out.data.paymentAvailable, false);
+  assert.ok(out.data.unmetChecks.includes("DARAJA_LIVE_COLLECTION_ENABLED=true"));
+  assert.ok(!out.data.unmetChecks.includes("WEDDINGSITE_PAYMENT_MODE=test"));
+  assert.match(out.data.message, /held/);
+  assert.equal(fetched, 0);
+});
+
 test("Owner UI has a real-charge warning, a masked shortcode input, confirmations and an accessible revoke control", async () => {
   const source = await readFile(new URL("../backoffice.js", import.meta.url), "utf8");
   assert.match(source, /\$\{owner \? `<section id="daraja-owner"/);
