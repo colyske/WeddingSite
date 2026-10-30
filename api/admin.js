@@ -3,8 +3,44 @@ import { requireRole } from "../server/auth-middleware.js";
 import { contentError } from "../server/content-policy.js";
 import { darajaCollectionStatus, paymentProviderReadiness } from "./checkout.js";
 
+import { checkProviderHealth, darajaConfiguredEnvironment, isSecurePublicOrigin } from "../server/payment-adapters.js";
+
 const rpc = (name, token, body = {}) =>
   supabaseRequest(`/rest/v1/rpc/${name}`, { token, method: "POST", body });
+
+// Owner-only diagnostics: booleans and the public callback address only. Never returns
+// credentials, tokens or the shortcode. The optional health probe is OAuth token only
+// (never STK push or query) and runs only when credentials point at production.
+async function darajaReadiness(token, query) {
+  const origin = String(process.env.WEDDINGSITE_PUBLIC_ORIGIN || "").replace(/\/+$/, "");
+  const shortcode = String(process.env.DARAJA_SHORTCODE || "");
+  const configured = darajaConfiguredEnvironment();
+  let approval = null;
+  let approvalUnavailable = false;
+  try { approval = await rpc("owner_get_daraja_live_approval", token); }
+  catch { approvalUnavailable = true; console.error("Daraja Owner approval could not be read."); }
+  const result = {
+    configuredEnvironment: configured || "unconfigured",
+    callback: { origin, path: "/api/webhooks?provider=daraja", url: `${origin}/api/webhooks?provider=daraja`, originSecure: isSecurePublicOrigin(origin) },
+    shortcodeFormatValid: /^\d{5,7}$/.test(shortcode),
+    shortcodeConfirmationMatches: Boolean(shortcode) && process.env.DARAJA_LIVE_SHORTCODE_CONFIRMED === shortcode,
+    credentialsPresent: {
+      consumerKey: Boolean(process.env.DARAJA_CONSUMER_KEY), consumerSecret: Boolean(process.env.DARAJA_CONSUMER_SECRET),
+      passkey: Boolean(process.env.DARAJA_PASSKEY)
+    },
+    modeIsLive: process.env.WEDDINGSITE_PAYMENT_MODE === "live",
+    environmentIsProduction: process.env.DARAJA_ENVIRONMENT === "production",
+    killSwitchOn: process.env.DARAJA_LIVE_COLLECTION_ENABLED === "true",
+    ownerApproved: approvalUnavailable ? null : approval?.approved === true && approval.shortcode === shortcode,
+    approvalUnavailable,
+    payouts: "off",
+    health: { checked: false, healthy: null }
+  };
+  if (query.health === "1" && configured === "production") {
+    result.health = { checked: true, healthy: await checkProviderHealth("daraja") };
+  }
+  return result;
+}
 
 const GET_ACTIONS = {
   overview: async (t) => {
@@ -29,6 +65,7 @@ const GET_ACTIONS = {
   policies: async (t) => ({ policies: await rpc("admin_get_policies", t) }),
   "refund-policy": async (t) => ({ allocation: await rpc("admin_get_refund_policy", t) }),
   "payment-controls": async t => ({ enabled: await rpc("admin_get_payment_controls", t), providers: paymentProviderReadiness(), daraja: await darajaCollectionStatus() }),
+  "daraja-readiness": async (t, q) => darajaReadiness(t, q),
   "policy-history": async (t) => ({ history: await rpc("admin_policy_history", t, { p_limit: 50 }) }),
   "wedding-metrics": async (t, q) => {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(q.weddingId || ""))) throw new Error("Invalid wedding.");
@@ -46,7 +83,7 @@ const text = value => typeof value === "string" ? value.trim() : "";
 const ROLES = new Set(["client", "admin", "superadmin"]);
 const PAYOUT_STATUSES = new Set(["approved", "sent", "cancelled"]);
 const LEADERSHIP_ACTIONS = new Set(["overview", "ledger", "payouts", "audit", "policies", "refund-policy", "payment-controls", "policy-history", "set-role", "payment-controls-save"]);
-const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save"]);
+const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save", "daraja-readiness", "daraja-approval"]);
 
 function safeMessage(error) {
   const m = String(error?.message || "");
@@ -107,6 +144,21 @@ export default async function handler(req, res) {
       }
       await rpc("admin_set_refund_policy", token, { p_allocation: body.allocation, p_confirmed: true });
       return sendJson(res, 200, { ok: true, allocation: await rpc("admin_get_refund_policy", token) });
+    }
+    if (action === "daraja-approval") {
+      // Protected-Owner only (OWNER_ACTIONS); the database RPC re-checks the role and audits the change.
+      if (typeof body.approved !== "boolean") return sendJson(res, 400, { error: "Choose approve or revoke." });
+      // Approval binds the deployment's own configured shortcode (already equal to the explicit
+      // confirmation variable for a production environment); the value is never typed or returned.
+      const configured = String(process.env.DARAJA_SHORTCODE || "");
+      if (body.approved && (body.confirmed !== true || darajaConfiguredEnvironment() !== "production" || !/^\d{5,7}$/.test(configured))) {
+        return sendJson(res, 400, { error: "Confirm the real-charge warning. The deployment must be configured for production with a valid, confirmed shortcode." });
+      }
+      if (body.approved && !await checkProviderHealth("daraja")) {
+        return sendJson(res, 409, { error: "Daraja readiness check failed (OAuth health). Approval was not granted; run the readiness check and fix configuration first." });
+      }
+      await rpc("owner_set_daraja_live_approval", token, { p_approved: body.approved, p_shortcode: body.approved ? configured : null });
+      return sendJson(res, 200, { ok: true, daraja: await darajaCollectionStatus() });
     }
     if (action === "payment-controls-save") {
       if (body.confirmed !== true || !Array.isArray(body.enabled) ||

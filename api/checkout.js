@@ -204,15 +204,16 @@ async function handleOptions(req, res) {
       !/^[A-Z]{3}$/.test(currency)) {
     return sendJson(res, 400, { providers: [], paymentAvailable: false, message: "Select a valid wedding, market, and currency." });
   }
+  const liveHeld = darajaConfiguredEnvironment() === "production" && !liveDarajaEnabled();
   const unmetChecks = [
-    !(testPaymentsEnabled() || liveDarajaEnabled()) && "WEDDINGSITE_PAYMENT_MODE=test",
+    !(testPaymentsEnabled() || liveDarajaEnabled()) && (liveHeld ? "DARAJA_LIVE_COLLECTION_ENABLED=true" : "WEDDINGSITE_PAYMENT_MODE=test"),
     !process.env.TURNSTILE_SECRET_KEY && "TURNSTILE_SECRET_KEY",
     !(process.env.TURNSTILE_SITE_KEY || process.env.TURNSTILE_PUBLIC_KEY) && "TURNSTILE_SITE_KEY|TURNSTILE_PUBLIC_KEY",
     !isSecurePublicOrigin(process.env.WEDDINGSITE_PUBLIC_ORIGIN) && "WEDDINGSITE_PUBLIC_ORIGIN"
   ].filter(Boolean);
   if (unmetChecks.length) {
     // Names of unmet setting checks only; never values.
-    return sendJson(res, 200, { providers: [], paymentAvailable: false, unmetChecks, message: "Payments are not available yet. No payment gateway is enabled." });
+    return sendJson(res, 200, { providers: [], paymentAvailable: false, unmetChecks, message: liveHeld ? "Live M-Pesa collection is configured but held (environment kill switch off). No payment gateway is enabled." : "Payments are not available yet. No payment gateway is enabled." });
   }
   try {
     const weddings = await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=id,currency`, { service: true });
