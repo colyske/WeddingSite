@@ -118,8 +118,38 @@ test("an uncertain create response retains the payment id, reuses the key and bl
   assert.notEqual(bodies[3].idempotencyKey, bodies[2].idempotencyKey);
 });
 
+test("successful pending starts and transport uncertainty are held; storage survives reload; different actions get new keys", async () => {
+  const store = new Map();
+  const storage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k) };
+  const payload = { weddingId: "w", provider: "daraja", purchaseAction: "song_bid", songTitle: "A", artist: "B", amountMinor: 10000, captchaToken: "t1" };
+  const bodies = [];
+  const ok = async (_u, init) => { bodies.push(JSON.parse(init.body)); return json({ paymentId: "pay-9", paymentStatus: "pending" }); };
+  let intent = paymentIntent.create({ name: "s", storage });
+  assert.equal((await intent.submit(payload, ok)).kind, "started");
+  assert.equal(intent.heldPaymentId, "pay-9");
+  assert.equal((await intent.submit(payload, ok)).kind, "blocked");
+  assert.equal(bodies.length, 1);
+  intent = paymentIntent.create({ name: "s", storage });
+  assert.equal(intent.heldPaymentId, "pay-9", "outstanding payment is recovered after reload");
+  intent.release();
+  assert.equal(paymentIntent.create({ name: "s", storage }).heldPaymentId, "");
+  const down = async (_u, init) => { bodies.push(JSON.parse(init.body)); throw new Error("network"); };
+  assert.equal((await intent.submit(payload, down)).kind, "uncertain");
+  assert.equal((await intent.submit({ ...payload, captchaToken: "t2" }, down)).kind, "uncertain");
+  assert.equal(bodies[1].idempotencyKey, bodies[2].idempotencyKey, "retry reuses the key");
+  assert.equal((await intent.submit({ ...payload, songTitle: "Other" }, down)).kind, "blocked");
+  assert.equal(bodies.length, 3);
+  intent.release();
+  await intent.submit(payload, ok);
+  const firstKey = bodies.at(-1).idempotencyKey;
+  intent.release();
+  await intent.submit({ ...payload, songTitle: "Other" }, ok);
+  assert.notEqual(bodies.at(-1).idempotencyKey, firstKey, "a different same-price action never reuses a key");
+});
+
 test("guest copy comes from trusted options mode and never calls live prompts test", () => {
   assert.match(paymentIntent.darajaNote("live"), /real money/i);
+  assert.match(paymentIntent.darajaNote("test"), /real phone can still be prompted and charged/i);
   assert.doesNotMatch(paymentIntent.payLabel("daraja", "live"), /test|sandbox/i);
   assert.match(paymentIntent.payLabel("daraja", "test"), /sandbox/i);
 });

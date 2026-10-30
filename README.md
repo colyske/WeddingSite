@@ -20,7 +20,7 @@ deterrent, not a guarantee against every creative encoding.
 platform-level provider allowlist independently for M-Pesa/Daraja, Card/Paystack
 and Card/Stripe. The default retains all previously eligible test adapters.
 Credentials, markets/currencies, provider health and test-only mode must still
-pass; a switch cannot enable live payments. Options and checkout creation read
+pass; a switch cannot enable live payments (an unreleased, default-OFF live Daraja path is described in docs/LIVE-DARAJA-READINESS.md and is not active). Options and checkout creation read
 the current database policy, and a database insert guard rejects disabled
 providers even from stale tabs. Disabling affects new intents, never reroutes,
 cancels or prevents verification of an already-created payment. Changes require

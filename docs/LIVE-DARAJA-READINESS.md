@@ -11,12 +11,12 @@ Production is selected only when ALL are true; otherwise the adapter fails close
 | `WEDDINGSITE_PAYMENT_MODE` | `live` |
 | `DARAJA_ENVIRONMENT` | `production` |
 | `DARAJA_LIVE_COLLECTION_ENABLED` | `true` (kill switch; unset/anything else = off) |
-| `DARAJA_SHORTCODE` | production PayBill/Till, 5–7 digits |
+| `DARAJA_SHORTCODE` | approved production **PayBill** shortcode, 5–7 digits (the adapter sends `CustomerPayBillOnline` with `PartyB` = shortcode; Till/Buy Goods is NOT supported or reviewed) |
 | `DARAJA_LIVE_SHORTCODE_CONFIRMED` | exactly equal to `DARAJA_SHORTCODE` |
-| `DARAJA_CONSUMER_KEY` / `DARAJA_CONSUMER_SECRET` / `DARAJA_PASSKEY` | production values from the Safaricom portal Go Live step (never shown in UI/logs) |
+| `DARAJA_CONSUMER_KEY` / `DARAJA_CONSUMER_SECRET` / `DARAJA_PASSKEY` | production values for the SAME approved PayBill, from an approved Go Live app with the M-Pesa Express (STK Push) product enabled (never shown in UI/logs) |
 | `WEDDINGSITE_PUBLIC_ORIGIN` | https origin; callback must be `<origin>/api/webhooks?provider=daraja` |
 
-Endpoints (https://api.safaricom.co.ke vs https://sandbox.safaricom.co.ke), per Safaricom's SDK at commit `678e3c33b20c1447c209eb88eded89f1bb751e11` (`safaricom/mpesa-node-library`):
+Endpoints (https://api.safaricom.co.ke vs https://sandbox.safaricom.co.ke), per Safaricom's SDK at pinned commit `678e3c33b20c1447c209eb88eded89f1bb751e11` ([m-pesa.js](https://github.com/safaricom/mpesa-node-library/blob/678e3c33b20c1447c209eb88eded89f1bb751e11/src/m-pesa.js), [endpoints/oauth.js](https://github.com/safaricom/mpesa-node-library/blob/678e3c33b20c1447c209eb88eded89f1bb751e11/src/endpoints/oauth.js), [endpoints/lipa-na-mpesa-online.js](https://github.com/safaricom/mpesa-node-library/blob/678e3c33b20c1447c209eb88eded89f1bb751e11/src/endpoints/lipa-na-mpesa-online.js), [endpoints/query.js](https://github.com/safaricom/mpesa-node-library/blob/678e3c33b20c1447c209eb88eded89f1bb751e11/src/endpoints/query.js)):
 `GET /oauth/v1/generate?grant_type=client_credentials`, `POST /mpesa/stkpush/v1/processrequest`, `POST /mpesa/stkpushquery/v1/query`; password = base64(shortcode+passkey+timestamp); `CustomerPayBillOnline`.
 Token and health caches are keyed by environment + shortcode + credentials, so a sandbox token is never reused for production.
 
@@ -43,4 +43,3 @@ Mocked-network tests: `tests/daraja-live-gate.test.js`, `tests/daraja-live-recon
 3. Owner approves via `owner_set_daraja_live_approval` (protected Owner only).
 4. **Separate explicit confirmation required** for (a) enablement and (b) a real-money test.
 
-Validation status: no tests were run (shell unavailable in the authoring session).

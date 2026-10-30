@@ -102,9 +102,14 @@ test("checkout endpoint stays disabled outside provider TEST mode", async () => 
   try {
     process.env.WEDDINGSITE_PAYMENT_MODE = "live";
     const res = responseRecorder();
-    await checkoutHandler({ method: "POST", query: { action: "create" }, body: {} }, res);
+    const originalFetch = globalThis.fetch;
+    let fetched = 0;
+    globalThis.fetch = async () => { fetched += 1; throw new Error("network must not be used"); };
+    try { await checkoutHandler({ method: "POST", query: { action: "create" }, body: {} }, res); }
+    finally { globalThis.fetch = originalFetch; }
+    assert.equal(fetched, 0, "live mode with the Daraja switches unset must not reach any provider or database");
     assert.equal(res.statusCode, 503);
-    assert.equal(JSON.parse(res.body).error, "Payments are currently unavailable. Paid actions cannot be completed until a test provider is enabled.");
+    assert.equal(JSON.parse(res.body).error, "Payments are currently unavailable. Paid actions cannot be completed until a provider is enabled.");
   } finally {
     if (previous === undefined) delete process.env.WEDDINGSITE_PAYMENT_MODE;
     else process.env.WEDDINGSITE_PAYMENT_MODE = previous;

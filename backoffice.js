@@ -246,11 +246,17 @@
         <p class="fine">Only the protected Owner can change platform fee and payout policies. SuperAdmins can view these settings; regular Admins cannot access them. Transaction eligibility and fee calculation are enforced server-side.</p>
         ${extendedPolicy ? `<details><summary>Recent policy versions (${history.length})</summary>${history.length ? history.map((h) => `<article class="policy-version"><strong>${date(h.changed_at)}</strong><pre>${esc(JSON.stringify({ old: h.old_values, new: h.new_values }, null, 2))}</pre></article>`).join("") : '<p class="fine">No policy changes have been recorded yet.</p>'}</details>` : ""}`;
       const refundAllocation = refundPolicy.allocation || "manual_review";
-      const providerLabels = { daraja: "M-Pesa — Daraja (sandbox unless Owner-approved live collection is enabled)", paystack: "Card — Paystack test", stripe: "Card — Stripe test" };
-      el.insertAdjacentHTML("beforeend", `<form id="payment-controls-form"><h3>Enabled payment methods</h3>
+      const dj = paymentControls.daraja || {};
+      const djLive = dj.configuredEnvironment === "production";
+      const providerLabels = { daraja: djLive ? "M-Pesa — Daraja (LIVE credentials configured)" : "M-Pesa — Daraja sandbox", paystack: "Card — Paystack test", stripe: "Card — Stripe test" };
+      el.insertAdjacentHTML("beforeend", `<section id="daraja-status" class="notice${dj.newLiveCollection === "gates_open" ? " bad" : ""}"><h3>M-Pesa collection status</h3>
+        <p>Configured environment: <strong>${esc(dj.configuredEnvironment || "unknown")}</strong>. New live collection: <strong>${dj.newLiveCollection === "gates_open" ? "approval gates OPEN — guests can be charged real money if the platform M-Pesa switch below is enabled and provider health/Turnstile pass" : "held (not accepting)"}</strong>. Environment kill switch: ${dj.killSwitchOn ? "on" : "off"}. Owner approval: ${dj.approvalUnavailable ? "unavailable (read failed)" : dj.ownerApproved === true ? "granted" : "not granted"}. Live payouts: off.</p>
+        ${dj.reason ? `<p class="fine">${esc(dj.reason)}</p>` : ""}
+        <p class="fine">Only the protected Owner can change live approval; SuperAdmin and Admin cannot. Live funds are held with unknown provider fees pending and no automatic payout. Already-admitted live payments are still reconciled while collection is held.</p></section>
+        <form id="payment-controls-form"><h3>Enabled payment methods</h3>
         <p class="fine">SuperAdmin and Owner controls for new checkouts across all weddings. Enabling a switch never enables live mode or supplies missing credentials. Pending payments remain with their original provider and can still be verified.</p>
         ${(paymentControls.providers || []).map(provider => `<label><input type="checkbox" name="payment-provider" value="${esc(provider.id)}"${(paymentControls.enabled || []).includes(provider.id) ? " checked" : ""}>
-          ${esc(providerLabels[provider.id] || provider.id)} — ${provider.configured ? "Test adapter configured (health checked at checkout)" : "Setup incomplete or unsupported currency/market"}</label>`).join("")}
+          ${esc(providerLabels[provider.id] || provider.id)} — ${provider.configured ? (provider.id === "daraja" && djLive ? "Configured for live reconciliation (new collection per status above)" : "Test adapter configured (health checked at checkout)") : "Setup incomplete or unsupported currency/market"}</label>`).join("")}
         <button type="submit">Save payment methods</button></form>`);
       el.insertAdjacentHTML("beforeend", `<form id="refund-policy-form"><h3>Refund fee allocation</h3>
         <p class="fine">This applies to new payments only. “Couple” assigns the full provider-confirmed refund to the wedding balance. “Platform” reimburses the couple for the known original platform and provider fees proportionally; unknown provider fees remain held. “Manual review” is the safest default and keeps refund amounts unavailable until an Admin records an allocation.</p>

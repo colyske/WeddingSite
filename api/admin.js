@@ -1,7 +1,7 @@
 import { sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireRole } from "../server/auth-middleware.js";
 import { contentError } from "../server/content-policy.js";
-import { paymentProviderReadiness } from "./checkout.js";
+import { darajaCollectionStatus, paymentProviderReadiness } from "./checkout.js";
 
 const rpc = (name, token, body = {}) =>
   supabaseRequest(`/rest/v1/rpc/${name}`, { token, method: "POST", body });
@@ -28,7 +28,7 @@ const GET_ACTIONS = {
   },
   policies: async (t) => ({ policies: await rpc("admin_get_policies", t) }),
   "refund-policy": async (t) => ({ allocation: await rpc("admin_get_refund_policy", t) }),
-  "payment-controls": async t => ({ enabled: await rpc("admin_get_payment_controls", t), providers: paymentProviderReadiness() }),
+  "payment-controls": async t => ({ enabled: await rpc("admin_get_payment_controls", t), providers: paymentProviderReadiness(), daraja: await darajaCollectionStatus() }),
   "policy-history": async (t) => ({ history: await rpc("admin_policy_history", t, { p_limit: 50 }) }),
   "wedding-metrics": async (t, q) => {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(q.weddingId || ""))) throw new Error("Invalid wedding.");

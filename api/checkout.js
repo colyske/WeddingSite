@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
-import { checkProviderHealth, darajaEnvironment, initiateDarajaStkPush, isSecurePublicOrigin, verifyProviderPayment } from "../server/payment-adapters.js";
+import { checkProviderHealth, darajaConfiguredEnvironment, darajaEnvironment, initiateDarajaStkPush, isSecurePublicOrigin, verifyProviderPayment } from "../server/payment-adapters.js";
 import { normalizePhone } from "../server/phone.js";
 import { isPastWedding } from "../server/wedding-time.js";
 import { platformOrigins, weddingOriginSlug } from "../server/site-hosts.js";
@@ -96,6 +96,34 @@ export async function liveDarajaApproved() {
   return row?.approved === true && row.shortcode === process.env.DARAJA_SHORTCODE;
 }
 
+// Booleans/labels only: no secrets, no provider calls. Used by staff controls.
+export async function darajaCollectionStatus() {
+  const configured = darajaConfiguredEnvironment();
+  const killSwitchOn = process.env.DARAJA_LIVE_COLLECTION_ENABLED === "true";
+  let ownerApproved = null;
+  let approvalUnavailable = false;
+  try {
+    const row = (await supabaseRequest("/rest/v1/daraja_live_approval?singleton=eq.true&select=approved,shortcode", { service: true }))?.[0];
+    ownerApproved = row?.approved === true && row.shortcode === process.env.DARAJA_SHORTCODE;
+  } catch {
+    approvalUnavailable = true;
+    console.error("Daraja live approval status could not be read.");
+  }
+  const gatesOpen = darajaEnvironment() === "production" && ownerApproved === true;
+  const credentialsReady = Boolean(process.env.DARAJA_CONSUMER_KEY && process.env.DARAJA_CONSUMER_SECRET &&
+    process.env.DARAJA_SHORTCODE && process.env.DARAJA_PASSKEY && isSecurePublicOrigin(process.env.WEDDINGSITE_PUBLIC_ORIGIN));
+  return {
+    configuredEnvironment: configured || "unconfigured", killSwitchOn, ownerApproved, approvalUnavailable, credentialsReady,
+    // Gates only: the platform provider switch, Turnstile and live provider health are still checked at checkout.
+    newLiveCollection: gatesOpen && credentialsReady ? "gates_open" : "held",
+    reason: gatesOpen && credentialsReady ? "" : configured !== "production" ? "Live collection is not configured; Daraja is sandbox/test only."
+      : !killSwitchOn ? "Environment kill switch is off."
+      : approvalUnavailable ? "Owner approval status is unavailable (database read failed); treated as held."
+      : ownerApproved !== true ? "Protected Owner approval is missing." : "Daraja credentials or public origin are incomplete.",
+    payouts: "off"
+  };
+}
+
 // Returns to the exact origin that started checkout: pending-payment state is kept in that origin's sessionStorage.
 export function paymentReturnUrl(returnOrigin, slug, key, id) {
   const onWeddingHost = Boolean(weddingOriginSlug(returnOrigin));
@@ -177,7 +205,7 @@ async function handleOptions(req, res) {
     return sendJson(res, 400, { providers: [], paymentAvailable: false, message: "Select a valid wedding, market, and currency." });
   }
   const unmetChecks = [
-    !(testPaymentsEnabled() || liveDarajaEnabled()) && "WEDDINGSITE_PAYMENT_MODE=test (or the explicit live Daraja switches)",
+    !(testPaymentsEnabled() || liveDarajaEnabled()) && "WEDDINGSITE_PAYMENT_MODE=test",
     !process.env.TURNSTILE_SECRET_KEY && "TURNSTILE_SECRET_KEY",
     !(process.env.TURNSTILE_SITE_KEY || process.env.TURNSTILE_PUBLIC_KEY) && "TURNSTILE_SITE_KEY|TURNSTILE_PUBLIC_KEY",
     !isSecurePublicOrigin(process.env.WEDDINGSITE_PUBLIC_ORIGIN) && "WEDDINGSITE_PUBLIC_ORIGIN"

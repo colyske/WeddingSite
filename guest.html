@@ -447,7 +447,7 @@
   <dialog id="pay-dialog">
     <form method="dialog" id="pay-form">
       <h3 id="pay-title">Complete your contribution</h3>
-      <p class="fine"><strong>Test checkout:</strong> the action completes only after the provider confirms payment. No live payment keys are accepted.</p>
+      <p class="fine" id="pay-mode-note"><strong>Checkout:</strong> the action completes only after the provider confirms payment.</p>
       <p id="pay-summary"></p>
       <label for="pay-provider">Payment method *</label><select id="pay-provider" required></select>
       <label for="pay-name">Your name / organization *</label><input id="pay-name" maxlength="100" autocomplete="name">
@@ -457,7 +457,7 @@
       <div id="pay-daraja-fields" hidden>
         <label for="pay-mpesa-phone">Safaricom M-Pesa phone number *</label>
         <input id="pay-mpesa-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="18">
-        <p class="fine" id="pay-daraja-note">Sandbox only. Approve the STK Push on this phone; the action stays pending until payment is confirmed.</p>
+        <p class="fine" id="pay-daraja-note">Sandbox test: use only a Safaricom test number; a real phone can still be charged. The action stays pending until payment is confirmed.</p>
       </div>
       <div id="pay-sponsor-fields" hidden>
         <label for="pay-phone">Public contact phone (optional)</label><input id="pay-phone" type="tel" maxlength="30">
@@ -671,6 +671,7 @@
       loadFundraising();
       $("seating").hidden = false;
       if (!wedding.is_past) startCountdown();
+      if (payIntent.heldPaymentId && !params.get("paymentReturn")) params.set("paymentReturn", payIntent.heldPaymentId);
       await handlePaymentReturn();
     } catch (err) {
       console.error("Load failed:", err);
@@ -1055,7 +1056,7 @@
   // Provider-confirmed test checkout for paid guest actions
   let buying = null;
 let payMode = "test";
-const payIntent = WSPaymentIntent.create();
+const payIntent = WSPaymentIntent.create({ name: slug });
   let captchaToken = "";
   let turnstileWidget = null;
   let turnstileLoad = null;
@@ -1120,6 +1121,9 @@ const payIntent = WSPaymentIntent.create();
       const options = await optionsRes.json();
       if (!optionsRes.ok || !options.paymentAvailable) throw new Error(options.message || "Checkout is not available for this wedding.");
       payMode = options.mode === "live" ? "live" : "test";
+      $("pay-mode-note").textContent = payMode === "live"
+        ? "LIVE checkout: real money will be charged. The action completes only after the provider confirms payment."
+        : "Test checkout: the action completes only after the provider confirms payment. No live payment is possible here.";
       $("pay-provider").replaceChildren(...options.providers.map(p =>
         new Option(p.label || "Pay online", `${p.id}|${p.market}`)
       ));
@@ -1276,6 +1280,15 @@ const payIntent = WSPaymentIntent.create();
         await handlePaymentReturn();
         return;
       }
+      if (outcome.kind === "uncertain" || outcome.kind === "blocked") {
+        $("pay-error").className = "notice bad";
+        $("pay-error").textContent = outcome.message;
+        $("pay-error").hidden = false;
+        $("pay-submit").disabled = false;
+        if (turnstileWidget !== null && window.turnstile) window.turnstile.reset(turnstileWidget);
+        captchaToken = "";
+        return;
+      }
       if (outcome.kind !== "started") throw new Error(outcome.message || "Checkout could not be started.");
       try {
         sessionStorage.setItem(`ws-payment:${data.paymentId}`, JSON.stringify({
@@ -1321,7 +1334,7 @@ const payIntent = WSPaymentIntent.create();
     if (Number(wedding.extra_guest_fee_minor) > 0) bits.push(feeMoney(wedding.extra_guest_fee_minor) + " per extra guest");
     if (opts.length && Number(wedding.premium_diet_fee_minor) > 0) bits.push("premium dietary choices " + feeMoney(wedding.premium_diet_fee_minor));
     const note = $("rsvp-fee-note");
-    if (bits.length) { note.hidden = false; note.textContent = "Regular wedding food is included at no charge. Fees apply only to the base RSVP, extra guests and premium dietary options selected above. The exact total is charged through test checkout before your RSVP is completed."; }
+    if (bits.length) { note.hidden = false; note.textContent = "Regular wedding food is included at no charge. Fees apply only to the base RSVP, extra guests and premium dietary options selected above. The exact total is charged through the payment checkout (shown with its test or live label) before your RSVP is completed."; }
   }
 
   // RSVP submit

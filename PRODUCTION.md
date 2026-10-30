@@ -15,7 +15,7 @@ implemented. The user has confirmed successful Google sign-in. Google's
 Supabase-domain label remains separate, optional paid branding setup; see
 README for the custom auth domain and Google consent-screen steps.
 
-Payment adapters remain **test/sandbox only**. Never enable live payment or
+Payment adapters remain **test/sandbox only in the released/applied state**. An unreleased, default-OFF live M-Pesa (Daraja PayBill) path is being prepared in [docs/LIVE-DARAJA-READINESS.md](docs/LIVE-DARAJA-READINESS.md); it is NOT activated, its migration is not applied, and it needs separate explicit confirmation to enable and again for any real-money test. Never enable live payment or
 remove Turnstile as a testing shortcut. A human-assisted test must be staged
 before submission, identify provider/amount/currency/test number and obtain the
 human's explicit confirmation. An embedded-browser widget not appearing is a
