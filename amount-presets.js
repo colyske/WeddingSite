@@ -27,12 +27,26 @@
     // Never reinterpret a saved list in another currency, even on a stale public response.
     return wedding.amount_presets.currency === wedding.currency ? wedding.amount_presets[kind] : [];
   };
-  const label = (minor, currency) => root.WeddingSiteFX?.formatLocalIndicative
-    ? root.WeddingSiteFX.formatLocalIndicative(minor / 100, currency)
-    : `${currency} ${(minor / 100).toFixed(2)}`;
-  const refreshLabels = () => document.querySelectorAll("[data-preset-money]").forEach(el => {
-    el.textContent = label(Number(el.dataset.presetMoney), el.dataset.currency);
+  // Buttons show the wedding currency only; any USD equivalent lives in a nearby fxNote.
+  const label = (minor, currency) => {
+    const units = minor / 100;
+    return `${currency} ${units.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(units) ? 0 : 2, maximumFractionDigits: 2 })}`;
+  };
+  const fxNote = (minors, currency) => {
+    const fx = root.WeddingSiteFX;
+    if (currency === "USD" || !minors.length) return "";
+    if (!fx?.isFresh?.() || !fx.hasRate?.(currency)) return "USD equivalent unavailable (no current exchange rate).";
+    const usd = minors.map(minor => fx.convertToUsd(minor / 100, currency)).filter(Number.isFinite);
+    if (usd.length !== minors.length) return "USD equivalent unavailable (no current exchange rate).";
+    const low = Math.min(...usd).toFixed(2), high = Math.max(...usd).toFixed(2);
+    const date = fx.rateDateIso?.() || "";
+    return `≈ USD ${low === high ? low : `${low}–${high}`}; indicative daily FX${date ? ` ${date}` : ""}. You pay in ${currency}.`;
+  };
+  const refreshLabels = () => document.querySelectorAll("[data-preset-fx]").forEach(el => {
+    const minors = el.dataset.presetFx.split(",").map(Number).filter(n => Number.isSafeInteger(n) && n > 0);
+    el.textContent = fxNote(minors, el.dataset.currency);
+    el.hidden = !el.textContent;
   });
-  root.WSAmountPresets = Object.freeze({ defaults, normalize, parse, amounts, label });
+  root.WSAmountPresets = Object.freeze({ defaults, normalize, parse, amounts, label, fxNote });
   if (typeof document !== "undefined") document.addEventListener("weddingsitefxchange", refreshLabels);
 })(globalThis);
