@@ -5,12 +5,24 @@ import { contentError } from "../server/content-policy.js";
 
 const GENERIC_LINK_MESSAGE = "If that email belongs to a Join Our Wedding account, a sign-in link is on its way.";
 const isEmail = value => typeof value === "string" && value.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
+const SAFE_RETURN_PATHS = new Set(["/dashboard.html", "/wedding.html", "/account.html", "/admin.html", "/owner.html", "/team.html", "/team-invite.html", "/verify.html"]);
 
 function siteOrigin(req) {
   const configured = process.env.WEDDINGSITE_PUBLIC_ORIGIN;
   if (configured && /^https:\/\//.test(configured)) return configured.replace(/\/+$/, "");
   const host = req.headers["x-forwarded-host"] || req.headers.host;
   return `https://${host}`;
+}
+
+function safeReturnPath(value, req) {
+  try {
+    const origin = siteOrigin(req);
+    const destination = new URL(value || "/dashboard.html", origin);
+    if (destination.origin !== origin || !SAFE_RETURN_PATHS.has(destination.pathname)) return "/dashboard.html";
+    return destination.pathname + destination.search + destination.hash;
+  } catch {
+    return "/dashboard.html";
+  }
 }
 
 function validOAuthOrigin(value) {
@@ -165,7 +177,7 @@ export default async function handler(req, res) {
       if (!methodOnly(req, res, "POST")) return;
       if (!isEmail(body.email)) return sendJson(res, 400, { error: "Enter a valid email address." });
       const email = body.email.trim().toLowerCase();
-      const redirectTo = `${siteOrigin(req)}/signin.html`;
+      const redirectTo = `${siteOrigin(req)}/signin.html?next=${encodeURIComponent(safeReturnPath(body.returnTo, req))}`;
       if (body.mode === "recovery") {
         await authCall(`/recover?redirect_to=${encodeURIComponent(redirectTo)}`, { body: { email } });
       } else {

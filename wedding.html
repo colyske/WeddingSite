@@ -387,6 +387,7 @@
     <div id="seating-section" class="card" hidden>
       <h2>Guest List & Seating</h2>
       <p class="fine">Import guest list and manage seating arrangements.</p>
+      <p class="fine">Need help on the day? <a id="team-management-link" class="btn ghost" href="#">Manage wedding helpers</a></p>
       
       <div style="margin-bottom: 2rem; padding: 1rem; background: #f8f9f7; border: 2px dashed var(--sage); border-radius: 8px; text-align: center;">
         <p class="fine" style="margin: 0 0 1rem;">Import CSV with guest names, emails, dietary preferences, and table assignments</p>
@@ -510,6 +511,7 @@
       return Number.isNaN(date.getTime()) ? "" : new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     };
     const weddingId = params.get("id");
+    $("team-management-link").href = `/team.html?weddingId=${encodeURIComponent(weddingId || "")}`;
     const setGuestSiteLink = (slug, published) => {
       const guestUrl = WSShare.guestUrl(slug || "");
       $("guest-site-url").textContent = `Guest site: ${guestUrl}`;

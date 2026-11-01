@@ -444,12 +444,21 @@ export default async function handler(req, res) {
 
     if (action === "verify-qr") {
       if (req.method === "GET") {
+        const session = await requireAuth(req, res);
+        if (!session) return;
         const code = String(req.query.code || "");
         if (!UUID.test(code)) return sendJson(res, 400, { error: "Invalid pass code." });
-        const result = await rpc("get_guest_verification", { p_code: code });
-        const guest = Array.isArray(result) ? result[0] : result;
-        if (!guest?.rsvp_id) return sendJson(res, 404, { error: "Pass not found or wedding is unpublished." });
-        return sendJson(res, 200, { guest });
+        try {
+          const result = await rpc("get_guest_verification", { p_code: code }, { token: session.token });
+          const guest = Array.isArray(result) ? result[0] : result;
+          if (!guest?.rsvp_id) return sendJson(res, 404, { error: "Pass not found or wedding is unpublished." });
+          return sendJson(res, 200, { guest });
+        } catch (error) {
+          if (error.status === 401 || /access denied|authentication required/i.test(error.message || "")) {
+            return sendJson(res, 403, { error: "You do not have check-in access for this wedding." });
+          }
+          throw error;
+        }
       }
       if (!methodOnly(req, res, "POST")) return;
       const session = await requireAuth(req, res);
