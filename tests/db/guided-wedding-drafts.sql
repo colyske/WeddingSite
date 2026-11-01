@@ -1,4 +1,4 @@
--- Isolated local/CI database only. Fixtures, synthetic referral adapter and all writes roll back.
+-- Isolated local/CI database only. Fixtures and all writes roll back.
 begin;
 create temporary table draft_actors(kind text, id uuid);
 grant select on draft_actors to authenticated;
@@ -21,11 +21,24 @@ declare key uuid := extensions.gen_random_uuid(); result jsonb; replay jsonb; w 
     'weddingDate',null,'location',null,'currency','USD','maxCapacity',150,
     'palette',jsonb_build_array('#244b3a'),'paletteNames',jsonb_build_array('Forest Green'),
     'timeZone','Africa/Nairobi','venues','[]'::jsonb,'referral',null);
-  blocked boolean; missing text[]; case_id uuid; before_publish jsonb;
+  blocked boolean; missing text[]; case_id uuid; before_publish jsonb; consent jsonb; disclosure jsonb;
 begin
+  perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='stranger'),true);
+  consent := public.referral_set_consent(true,'client-referrals-v1');
+  perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='client'),true);
+  perform public.referral_capture(consent->>'code');
+  blocked := false;
+  begin perform public.create_wedding_draft(key,payload);
+  exception when raise_exception then blocked := sqlerrm like 'REFERRAL_CONFLICT:%'; end;
+  if not blocked then raise exception 'Draft creation without a referral body bypassed a pending intent'; end if;
+  disclosure := public.referral_disclosure();
+  payload := payload || jsonb_build_object('referral',jsonb_build_object(
+    'intentId',disclosure->>'intent_id','decision','accept',
+    'revision',disclosure->>'revision','termsVersion',disclosure->>'terms_version'));
   result := public.create_wedding_draft(key,payload);
   replay := public.create_wedding_draft(key,payload);
   if result <> replay then raise exception 'An identical create retry must return the same wedding'; end if;
+  if public.referral_disclosure()->>'intent_id' is not null then raise exception 'Created draft did not consume referral intent'; end if;
   select * into w from public.weddings where id=(result->>'weddingId')::uuid;
   if w.wedding_date is not null or w.public_location is not null or w.published_at is not null
       or exists(select 1 from public.venues where wedding_id=w.id) then raise exception 'No fabricated draft answers'; end if;

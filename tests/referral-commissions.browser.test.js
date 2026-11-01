@@ -36,6 +36,7 @@ async function context(authenticated = true) {
   return { ctx, page };
 }
 async function fillWedding(page) {
+  await page.locator("[data-guide-all]").click();
   await page.fill("#couple-names", "Local couple");
   await page.fill("#location", "Nairobi");
   await page.fill("#wedding-date", "2027-06-12");
@@ -94,6 +95,7 @@ test("couple declines atomically; stale disclosure requires another deliberate d
   await page.waitForFunction(() => document.querySelector("#created").textContent.includes("Local couple"));
   assert.equal(creations[1].referral.decision, "decline");
   assert.equal(creations[1].referral.revision, revision);
+  assert.equal(creations[1].requestKey, creations[0].requestKey, "stale referral retry retains the creation key");
   await ctx.close();
 });
 
