@@ -72,8 +72,11 @@ test("landing page is responsive, themed per wedding, accessible and honest", as
     assert.ok(links.includes("/terms.html"));
     await page.waitForSelector("footer a[href*='privacy']");
     const text = await page.locator("body").innerText();
-    assert.match(text, /8%/);
-    assert.doesNotMatch(text, /free forever|testimonial|\b\d[\d,]* (couples|users|weddings created)|in minutes|AI assistant|B2C/i, "no invented claims");
+    assert.doesNotMatch(text, /\d+(\.\d+)?\s?%|18 months|free allowance/i, "no exact fee figures in landing copy");
+    assert.match(text, /fees apply/i);
+    assert.match(await page.locator("#hero-title").innerText(), /budget/i, "hero leads with fundraising");
+    assert.ok((await page.locator(".lp-fab h3").allTextContents()).slice(0, 4).every(t => /fundrais|gift|song|sponsor/i.test(t)), "money features lead");
+    assert.doesNotMatch(text, /free forever|testimonial|\b\d[\d,]* (couples|users|weddings created)|in minutes|AI assistant|B2C|guaranteed (income|funding)|fully funded|automatic payout/i, "no invented claims");
 
     const faq = page.locator(".lp-faq summary").first();
     await faq.focus();
