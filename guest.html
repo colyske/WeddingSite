@@ -15,8 +15,8 @@
     #pay-dialog { border:1px solid #d8cfb4; border-radius:14px; max-width:min(440px,92vw); padding:1.25rem; }
     #pay-dialog input, #pay-dialog select { width:100%; box-sizing:border-box; }
     .buy-btn { margin-top:.75rem; }
-    [data-song-bid], [data-new-song-amount], [data-pay-preset], [data-preset] { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
-    #song-request-presets, #pay-presets { display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:.75rem; }
+    [data-song-bid], [data-new-song-amount], [data-preset] { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
+    #song-request-presets { display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:.75rem; }
     .song-request { margin-top:1.5rem; padding:1.25rem; border:1px solid #e3dcc7; border-radius:12px; background:rgba(255,255,255,.55); }
     .song-request h3 { margin-top:0; }
     .song-highlight td { background:#fff3c4; transition:background .6s; }
@@ -447,13 +447,12 @@
   <dialog id="pay-dialog">
     <form method="dialog" id="pay-form">
       <h3 id="pay-title">Complete your contribution</h3>
-      <p class="fine" id="pay-mode-note"><strong>Checkout:</strong> the action completes only after the provider confirms payment.</p>
+      <p class="fine" id="pay-mode-note" hidden></p>
       <p id="pay-summary"></p>
       <label for="pay-provider">Payment method *</label><select id="pay-provider" required></select>
       <label for="pay-name">Your name / organization *</label><input id="pay-name" maxlength="100" autocomplete="name">
       <label for="pay-email">Email (required by some providers)</label><input id="pay-email" type="email" maxlength="200" autocomplete="email">
       <label for="pay-amount">Amount (<span id="pay-currency"></span>) *</label><input id="pay-amount" type="number" min="1" step="0.01" required>
-      <div id="pay-presets" role="group" aria-label="Suggested voluntary amounts"></div>
       <div id="pay-daraja-fields" hidden>
         <label for="pay-mpesa-phone">Safaricom M-Pesa phone number *</label>
         <input id="pay-mpesa-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="18">
@@ -1107,10 +1106,6 @@ const payIntent = WSPaymentIntent.create({ name: slug });
     $("pay-sponsor-fields").hidden = !["sponsor", "sponsor_featured_bid"].includes(next.action);
     $("pay-amount").value = next.amountMinor ? String(next.amountMinor / 100) : "";
     $("pay-amount").readOnly = next.exact === true;
-    const presetKind = next.action === "song_bid" ? "song" : ["fundraiser", "registry"].includes(next.action) ? "gift" : null;
-    $("pay-presets").innerHTML = presetKind ? WSAmountPresets.amounts(wedding, presetKind).map(amount =>
-      `<button type="button" class="buy-btn" data-pay-preset="${amount}">${presetLabel(amount)}</button>`).join(" ") +
-      '<button type="button" class="buy-btn" data-pay-preset="0">Custom amount</button>' : "";
     $("pay-error").hidden = true;
     $("pay-submit").disabled = true;
     $("pay-summary").textContent = next.summary || "Your action will be saved only after the payment provider confirms the charge.";
@@ -1121,9 +1116,8 @@ const payIntent = WSPaymentIntent.create({ name: slug });
       const options = await optionsRes.json();
       if (!optionsRes.ok || !options.paymentAvailable) throw new Error(options.message || "Checkout is not available for this wedding.");
       payMode = options.mode === "live" ? "live" : "test";
-      $("pay-mode-note").textContent = payMode === "live"
-        ? "LIVE checkout: real money will be charged. The action completes only after the provider confirms payment."
-        : "Test checkout: the action completes only after the provider confirms payment. No live payment is possible here.";
+      $("pay-mode-note").textContent = payMode === "live" ? "" : "TEST checkout: no real money is collected.";
+      $("pay-mode-note").hidden = payMode === "live";
       $("pay-provider").replaceChildren(...options.providers.map(p =>
         new Option(p.label || "Pay online", `${p.id}|${p.market}`)
       ));
@@ -1159,10 +1153,9 @@ const payIntent = WSPaymentIntent.create({ name: slug });
   });
   document.addEventListener("click", e => {
     const newSongPreset = e.target.closest("[data-new-song-amount]");
-    const paymentPreset = e.target.closest("[data-pay-preset]");
-    if (newSongPreset || paymentPreset) {
-      const input = $(newSongPreset ? "song-request-amount" : "pay-amount");
-      const amount = Number(newSongPreset ? newSongPreset.dataset.newSongAmount : paymentPreset.dataset.payPreset);
+    if (newSongPreset) {
+      const input = $("song-request-amount");
+      const amount = Number(newSongPreset.dataset.newSongAmount);
       input.value = amount ? String(amount / 100) : "";
       input.focus();
       return;
@@ -1208,7 +1201,7 @@ const payIntent = WSPaymentIntent.create({ name: slug });
     $("pay-amount").step = isDaraja ? "1" : "0.01";
     $("pay-submit").textContent = WSPaymentIntent.payLabel(provider, payMode);
     $("pay-daraja-note").textContent = WSPaymentIntent.darajaNote(payMode);
-    $("pay-daraja-note").className = payMode === "live" ? "notice bad" : "fine";
+    $("pay-daraja-note").hidden = !$("pay-daraja-note").textContent;
   });
   $("pay-cancel").addEventListener("click", () => $("pay-dialog").close());
   $("pay-dialog").addEventListener("close", () => {

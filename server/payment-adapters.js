@@ -375,6 +375,11 @@ export function normalizePaystackAdjustment(event, eventDigest) {
   return null;
 }
 
+// Daraja STK result codes that definitively end a request without payment:
+// insufficient funds, subscriber busy, expired, push error, cancelled by user,
+// unreachable/timeout, wrong PIN, and generic push failure.
+export const DARAJA_FINAL_FAILURE_CODES = new Set(["1", "1001", "1019", "1025", "1032", "1037", "2001", "9999"]);
+
 export async function verifyProviderPayment(provider, reference, contributionId, expectedAmountMinor, expectedCurrency, bound = null) {
   const mode = process.env.WEDDINGSITE_PAYMENT_MODE;
   const key = provider === "stripe" ? process.env.STRIPE_SECRET_KEY
@@ -418,7 +423,10 @@ export async function verifyProviderPayment(provider, reference, contributionId,
     }
     if (String(result.ResultCode) !== "0") {
       const code = String(result.ResultCode);
-      return { verified: false, terminal: true, resultCode: /^\d{1,6}$/.test(code) ? code : null };
+      // Only documented final failures cancel a request. 4999 ("still under processing")
+      // and any unrecognised code mean the customer may still complete it, so keep polling.
+      if (!DARAJA_FINAL_FAILURE_CODES.has(code)) return { verified: false };
+      return { verified: false, terminal: true, resultCode: code };
     }
     return {
       verified: true,

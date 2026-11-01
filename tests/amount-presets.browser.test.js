@@ -55,9 +55,7 @@ test("KES and USD saved arrays drive new/existing songs, registry, campaigns and
       assert.equal(await page.locator("#song-request-amount").inputValue(), String(amounts.song[0] / 100));
       await page.locator("[data-song-bid]").first().click();
       assert.equal(await page.locator("#pay-amount").inputValue(), String(amounts.song[0] / 100));
-      assert.deepEqual(await page.locator("[data-pay-preset]").evaluateAll(buttons => buttons.map(b => Number(b.dataset.payPreset))), [...amounts.song, 0]);
-      await page.locator("[data-pay-preset='0']").click();
-      assert.equal(await page.locator("#pay-amount").inputValue(), "");
+      assert.equal(await page.locator("[data-pay-preset]").count(), 0, "payment dialog has no amount suggestions");
       await page.locator("#pay-cancel").click();
       for (const kind of ["registry", "fund"]) {
         const buttons = page.locator(`[data-buy="${kind}"][data-preset][data-min]`);
@@ -69,7 +67,7 @@ test("KES and USD saved arrays drive new/existing songs, registry, campaigns and
         await page.locator("#pay-cancel").click();
       }
       await page.locator("[data-milestone]").click();
-      assert.deepEqual(await page.locator("[data-pay-preset]").evaluateAll(buttons => buttons.map(b => Number(b.dataset.payPreset))), [...amounts.gift, 0]);
+      assert.equal(await page.locator("[data-pay-preset]").count(), 0);
       await page.locator("#pay-cancel").click();
       await page.locator('[data-buy="vip"]').click();
       assert.equal(await page.locator("#pay-amount").inputValue(), "654");

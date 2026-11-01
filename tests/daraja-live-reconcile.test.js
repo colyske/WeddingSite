@@ -148,7 +148,7 @@ test("successful pending starts and transport uncertainty are held; storage surv
 });
 
 test("guest copy comes from trusted options mode and never calls live prompts test", () => {
-  assert.match(paymentIntent.darajaNote("live"), /real money/i);
+  assert.equal(paymentIntent.darajaNote("live"), "", "live dialog carries no repeated charge warning");
   assert.match(paymentIntent.darajaNote("test"), /real phone can still be prompted and charged/i);
   assert.doesNotMatch(paymentIntent.payLabel("daraja", "live"), /test|sandbox/i);
   assert.match(paymentIntent.payLabel("daraja", "test"), /sandbox/i);

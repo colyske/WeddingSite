@@ -50,3 +50,8 @@ Mocked-network tests: `tests/daraja-live-gate.test.js`, `tests/daraja-live-recon
 - Owner-only `POST /api/admin?action=daraja-approval` calls the audited `owner_set_daraja_live_approval`. Approving requires explicit confirmation and a passing OAuth readiness probe, and binds the deployment's own configured shortcode server-side (nothing typed or returned); revoking needs none of these and never touches the provider. SuperAdmin and Admin are refused.
 - Approval does not turn on collection: the environment kill switch is a separate step, and a real-money test needs its own explicit confirmation. Payouts stay off.
 
+
+## STK "still processing" handling and verified recovery
+- STK Query `ResultCode` 4999 ("under processing") and other unknown non-zero codes are **non-terminal**: status polls keep the payment `pending`. Only codes in `DARAJA_FINAL_FAILURE_CODES` (e.g. 1032 cancelled, 1037 timeout, 1 insufficient funds, 2001 wrong PIN) cancel it.
+- If a Daraja row was cancelled but Safaricom later confirms the exact bound CheckoutRequestID with ResultCode 0 (callback or status query), `recover_verified_daraja_payment` (service role only) reopens and settles it once through `record_verified_payment`, which fulfils the purchase action (e.g. adds the song bid). Rows older than 30 days, with a different reference, already-recorded events, or any amount/currency mismatch are rejected and stay cancelled.
+- Incident hold: set `DARAJA_LIVE_COLLECTION_ENABLED=false` in Production and redeploy to stop new prompts; callbacks and status-query reconciliation keep working. Re-enable by setting it back to `true` and redeploying, then confirm checkout options list `daraja` in live mode.
