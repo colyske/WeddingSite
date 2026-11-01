@@ -38,10 +38,10 @@
       { id: "travel-info", label: "Add travel information for guests", complete: validText(travel), anchor: "travel-info" }
     ].map(item => ({ ...item, required: false }));
     const payoutItem = paidFeatures ? [{
-      id: "payout-method", label: "Set up a payout method for paid features",
+      id: "payout-method", label: "Prepare a receiving option for payouts",
       complete: wedding.payout?.verified === true, anchor: "payout-method",
       required: false,
-      help: "Only included because at least one paid feature is configured."
+      help: "Payout readiness is separate from publishing; both partners’ identity details may be needed."
     }] : [];
     const items = [...publishRequired, ...payoutItem, ...optional];
     const completed = items.filter(item => item.complete).length;
@@ -112,7 +112,7 @@
             ${item.help ? `<small>${escapeHtml(item.help)}</small>` : ""}
           </span>
         </li>`).join("")}</ul>`}
-      <p class="ws-setup-footnote">Progress reflects saved wedding details. Optional paid features are excluded unless you configure one.</p>`;
+      <p class="ws-setup-footnote">Progress reflects saved details. You can return to every feature and setup area whenever your plans change.</p>`;
   }
 
   function escapeHtml(value) {

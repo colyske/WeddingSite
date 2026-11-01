@@ -80,7 +80,7 @@ test("empty and populated DJ lists open verified checkout and preserve requests 
     await page.waitForFunction(() => document.getElementById("pay-submit").textContent.includes("Waiting"));
     assert.equal(await page.locator("#leaderboard-body tr").count(), 0, "pending STK acceptance creates no leaderboard entry");
     status = "cancelled";
-    await page.waitForFunction(() => document.getElementById("pay-error").textContent.includes("unsuccessful M-Pesa"));
+    await page.waitForFunction(() => document.getElementById("pay-error").textContent.includes("M-Pesa request could not be confirmed"));
     assert.equal(await page.locator("#leaderboard-body tr").count(), 0, "declined payments create no entry");
     bids = [{ song_title: "QA Song", artist_name: "QA Artist", bid_amount_minor: 1000, bid_count: 1 }];
     status = "paid";

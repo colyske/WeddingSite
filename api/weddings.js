@@ -832,8 +832,9 @@ export default async function handler(req, res) {
     if (action === "bids") {
       if (!methodOnly(req, res, "GET")) return;
       if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
-      const rows = await supabaseRequest(
-        `/rest/v1/dj_song_bids?wedding_id=eq.${req.query.weddingId}&select=id,song_title,artist_name,bid_amount_minor,bidder_name,currency,rank_position,created_at&order=bid_amount_minor.desc,created_at.asc&limit=200`, opts);
+      const rows = await supabaseRequest("/rest/v1/rpc/get_dj_bid_ledger", {
+        ...opts, method: "POST", body: { p_wedding_id: req.query.weddingId }
+      });
       return sendJson(res, 200, { bids: rows || [] });
     }
 

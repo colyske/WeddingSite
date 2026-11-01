@@ -472,6 +472,9 @@ async function handleCheckout(req, res) {
       const auction = await supabaseRequest("/rest/v1/rpc/get_public_sponsor_auction", {
         service: true, method: "POST", body: { p_slug: wedding.slug }
       });
+      if (auction?.currency && auction.currency !== currency) {
+        return sendJson(res, 409, { error: "This featured sponsor campaign uses a different wedding currency and is paused." });
+      }
       if (!auction?.enabled || auction.status !== "open") {
         return sendJson(res, 409, { error: "Featured sponsor bidding is not currently open." });
       }

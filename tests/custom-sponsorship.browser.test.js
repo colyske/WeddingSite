@@ -45,7 +45,7 @@ test("sponsor CTA without packages opens a paid-only custom sponsorship with the
     assert.equal(await page.locator("#pay-amount").getAttribute("min"), "5000");
     assert.equal(await page.locator("#pay-amount").getAttribute("readonly"), null, "sponsor chooses the amount");
     assert.equal(await page.locator("#pay-sponsor-fields").isHidden(), false);
-    assert.match(await page.locator("#pay-summary").textContent(), /not a package and does not guarantee featured placement/);
+    assert.match(await page.locator("#pay-summary").textContent(), /not a package or a featured-bid placement/);
     await page.waitForFunction(() => document.getElementById("pay-submit").classList.contains("pay-mpesa"));
     await page.waitForFunction(() => ["rgb(0, 112, 60)", "rgb(63, 125, 92)"].includes(getComputedStyle(document.getElementById("pay-submit")).backgroundColor));
     const style = await page.locator("#pay-submit").evaluate(el => ({ disabled: el.disabled, bg: getComputedStyle(el).backgroundColor, color: getComputedStyle(el).color, h: el.getBoundingClientRect().height }));

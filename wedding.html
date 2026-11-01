@@ -6,8 +6,7 @@
   <meta name="theme-color" content="#203a31"><link rel="icon" type="image/png" sizes="120x120" href="/assets/brand/icon-120.png"><link rel="apple-touch-icon" sizes="120x120" href="/assets/brand/icon-120.png">
   <title>Join Our Wedding — Wedding Editor</title>
   <link rel="stylesheet" href="sponsor-cards.css">
-  <link rel="stylesheet" href="guided-setup.css">
-  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><script src="ornaments.js" defer></script>
+  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><link rel="stylesheet" href="guided-setup.css"><script src="ornaments.js" defer></script>
   <style>
     .venue-item { padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9; margin-bottom: 1rem; }
     .venue-item input[type="text"], .venue-item input[type="url"], .venue-item textarea {
@@ -67,7 +66,7 @@
     <!-- Wedding details form -->
     <div id="edit-section" class="card" hidden>
       <form id="edit-form" novalidate>
-        <section data-guide-step="couple" data-guide-title="How would you welcome your guests?">
+        <section data-guide-step="couple" data-guide-title="Couple & welcome">
         <p class="fine">Start with your names and site address. Your welcome message can wait.</p>
         <label for="couple-names">Couple names <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="couple-names" type="text" maxlength="120" required aria-required="true">
@@ -86,7 +85,7 @@
         </div>
 
         </section>
-        <section data-guide-step="date" data-guide-title="When and where is your wedding?">
+        <section data-guide-step="date" data-guide-title="Wedding date & location">
         <p class="fine">Still deciding? Leave date or location unanswered on your draft and return later. Both are required before publishing.</p>
         <label for="wedding-date">Date <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="wedding-date" type="date" required aria-required="true">
@@ -101,43 +100,15 @@
         <input id="background-music-url" type="url" maxlength="500" placeholder="Link to your wedding ceremony or cocktail music (MP3, WAV, OGG)">
 
         </section>
-        <section data-guide-step="guests" data-guide-title="How will guests RSVP?">
-        <p class="fine">Set your currency and guest limit. RSVPs can stay free; all paid settings below are optional.</p>
-        <label for="currency">Currency <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
-        <select id="currency" data-wedding-currency required aria-required="true">
-          <option value="USD">USD - US Dollar</option>
-          <option value="KES">KES - Kenyan Shilling</option>
-          <option value="EUR">EUR - Euro</option>
-          <option value="GBP">GBP - British Pound</option>
-          <option value="NGN">NGN - Nigerian Naira</option>
-          <option value="UGX">UGX - Ugandan Shilling</option>
-          <option value="ZAR">ZAR - South African Rand</option>
-        </select>
-
-        <details class="guide-advanced"><summary>Optional suggested giving amounts</summary>
-        <fieldset>
-          <legend>Suggested guest amounts (<span id="preset-currency"></span>)</legend>
-          <p class="fine">Optional shortcuts for DJ song bids and voluntary celebration, fundraising and registry gifts. Custom amounts stay available. These do not change fees, prices, tiers or minimums. Use 1 to 6 comma-separated amounts per list, at least 1 in this currency to match the guest forms, with up to two decimals.</p>
-          <label for="preset-song">DJ song bid suggestions</label>
-          <input id="preset-song" type="text" maxlength="160" aria-describedby="preset-limit preset-preview">
-          <label for="preset-gift">Voluntary gift suggestions</label>
-          <input id="preset-gift" type="text" maxlength="160" aria-describedby="preset-limit preset-preview">
-          <button type="button" class="link" id="preset-suggest">Review deterministic currency-aware suggestions</button>
-          <label><input id="preset-reset" type="checkbox"> Clear saved suggestions and restore the legacy guest defaults</label>
-          <p id="preset-state" class="fine" role="status"></p>
-          <p id="preset-limit" class="fine"></p>
-          <p id="preset-preview" class="fine" aria-live="polite"></p>
-          <label><input id="preset-reviewed" type="checkbox"> I reviewed these choices and want to apply them on Save changes.</label>
-        </fieldset>
-        </details>
-
+        <section data-guide-step="guests" data-guide-title="Guest RSVP & attendance">
+        <p class="fine">Set how many people you can host and how guests can respond. You can keep RSVPs free; any charges are always shown before a guest confirms.</p>
         <label for="max-capacity">Maximum guests <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="max-capacity" type="number" min="1" required aria-required="true">
 
-        <details class="guide-advanced"><summary>Optional RSVP fees and premium dietary choices</summary>
+        <details class="guide-advanced"><summary>Guest charges and premium meal choices</summary>
         <fieldset id="rsvp-fees-fieldset" style="border:1px solid #d0d5cc; border-radius:8px; padding:1rem; margin:1rem 0;">
-          <legend>RSVP fees (optional, in your wedding currency)</legend>
-          <p class="fine">Leave at 0 for free RSVPs. Guests see the exact fee quote before checkout. A paid RSVP is saved only after a configured test provider verifies payment; no simulator records payments.</p>
+          <legend>RSVP fees (in your wedding currency)</legend>
+          <p class="fine">Guests see the exact charge before confirming. Enter 0 to keep RSVPs free.</p>
           <label for="rsvp-fee">Base RSVP fee</label>
           <input id="rsvp-fee" type="number" min="0" step="0.01" value="0.00">
           <label for="extra-guest-fee">Fee per extra guest (a party of 3 pays base + 2 &times; this)</label>
@@ -150,15 +121,48 @@
         </details>
 
         </section>
-        <section data-guide-step="venues" data-guide-title="What is the plan for the day?">
-        <p class="fine">Add wedding-day and pre-wedding events as plans take shape. Partial answers can be saved now; before publishing every event needs a name, date, start time and street address.</p>
-        <label for="venues-section" id="venues-section">Venues & Itinerary (including pre-wedding events)
-          <button type="button" class="link" id="add-venue-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add event / venue</button>
-        </label>
-        <div id="venues-list" style="margin-bottom: 1.5rem;"></div>
+        <section data-guide-step="money" data-guide-title="Currency & receiving funds">
+        <p class="fine">Choose the currency for guest contributions and records. Saving these preferences does not request or enable a payout; both partners’ private identity details are available in the next setup step.</p>
+        <label for="currency">Wedding currency <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <select id="currency" data-wedding-currency required aria-required="true">
+          <option value="USD">USD - US Dollar</option>
+          <option value="KES">KES - Kenyan Shilling</option>
+          <option value="EUR">EUR - Euro</option>
+          <option value="GBP">GBP - British Pound</option>
+          <option value="NGN">NGN - Nigerian Naira</option>
+          <option value="UGX">UGX - Ugandan Shilling</option>
+          <option value="ZAR">ZAR - South African Rand</option>
+        </select>
+        <label for="payout-method">Preferred way to receive eligible funds</label>
+        <select id="payout-method" aria-describedby="payout-method-help">
+          <option value="">Choose an available option…</option>
+        </select>
+        <p class="fine" id="payout-method-help">Available options depend on your currency. Saving a preference does not collect account details or transfer money. Payouts remain subject to review.</p>
+        <p class="fine">Complete both partners’ private identity details for payout readiness. This is separate from publishing your wedding site.</p>
+        <p><a href="#withdrawals-section">Review balances and payout requests</a></p>
+        </section>
+
+        <section data-guide-step="venues" data-guide-title="Pre-wedding & wedding-day plans">
+        <p class="fine">Organize pre-wedding gatherings and the wedding-day schedule in separate groups. You can save partial plans; before publishing, each wedding-day event needs a name, date, start time and street address.</p>
+        <div id="venues-section">
+          <div id="venues-list">
+            <fieldset class="event-group" aria-labelledby="pre-events-title">
+              <legend id="pre-events-title">Pre-wedding activities</legend>
+              <p class="fine">Rehearsals, parties, fundraisers or other gatherings before the wedding.</p>
+              <button type="button" class="ghost" id="add-pre-event">+ Add pre-wedding activity</button>
+              <div id="pre-events-list"></div>
+            </fieldset>
+            <fieldset class="event-group" aria-labelledby="wedding-day-events-title">
+              <legend id="wedding-day-events-title">Wedding-day schedule</legend>
+              <p class="fine">Ceremony, reception, procession and other events on the day.</p>
+              <button type="button" class="ghost" id="add-venue-btn">+ Add wedding-day event</button>
+              <div id="wedding-day-events-list"></div>
+            </fieldset>
+          </div>
+        </div>
 
         </section>
-        <section data-guide-step="theme" data-guide-title="What should your celebration look like?" data-guide-optional>
+        <section data-guide-step="theme" data-guide-title="Wedding theme & attire" data-guide-optional>
         <label>Wedding theme &mdash; decor and dress inspiration
           <button type="button" class="link" id="edit-colors-btn" style="margin-left: 0.5rem; font-weight: normal;">🎨 Edit colours</button>
         </label>
@@ -187,33 +191,40 @@
         </div>
 
         </section>
-        <section data-guide-step="giving" data-guide-title="Would you like to include optional giving?" data-guide-optional>
-        <p class="fine">You can skip this whole section. No new paid offer is enabled or priced by the guide. Existing saved offers are kept unless you edit them.</p>
-        <details class="guide-advanced"><summary>Gift registry and receiving preferences</summary>
+        <section data-guide-step="giving" data-guide-title="Fundraising & celebration features">
+        <p class="fine">Give guests several meaningful ways to support your celebration. Set up gifts, fundraising milestones, song bid suggestions, sponsorship and VIP options in one place. You choose the amounts and terms; nothing is priced or changed without your input.</p>
+        <details class="guide-advanced" open><summary>Gift registry & suggested guest amounts</summary>
+        <fieldset>
+          <legend>Suggested guest amounts (<span id="preset-currency"></span>)</legend>
+          <p class="fine">Set welcoming starting amounts for DJ song bids and voluntary gifts. Guests can still choose another amount. These suggestions do not change fees, prices, tiers or minimums. Use 1 to 6 comma-separated amounts for each list, in your wedding currency, with up to two decimals.</p>
+          <label for="preset-song">Suggested DJ song bid amounts</label>
+          <input id="preset-song" type="text" maxlength="160" aria-describedby="preset-limit preset-preview">
+          <label for="preset-gift">Suggested gift amounts</label>
+          <input id="preset-gift" type="text" maxlength="160" aria-describedby="preset-limit preset-preview">
+          <button type="button" class="link" id="preset-suggest">Suggest amounts for my currency</button>
+          <label><input id="preset-reset" type="checkbox"> Clear saved suggestions and restore the guest defaults</label>
+          <p id="preset-state" class="fine" role="status"></p>
+          <p id="preset-limit" class="fine"></p>
+          <p id="preset-preview" class="fine" aria-live="polite"></p>
+          <label><input id="preset-reviewed" type="checkbox"> I have reviewed these amounts and want to save them.</label>
+        </fieldset>
         <label>Registry & Crowdfunding Milestones
           <button type="button" class="link" id="add-registry-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add item</button>
         </label>
         <div id="registry-list" style="margin-bottom: 1.5rem;"></div>
 
-        <p class="fine">Contribution payment methods are configured by Join Our Wedding. Guests choose among available methods at checkout.</p>
-
-        <label for="payout-method">How would you like to receive funds?</label>
-        <select id="payout-method" aria-describedby="payout-method-help">
-          <option value="">Choose payment method…</option>
-        </select>
-        <p class="fine" id="payout-method-help">Only currently configured payment services are shown. Payout account details and live disbursements are not enabled in this demo.</p>
         </details>
 
-          <details class="guide-advanced"><summary>Sponsorship tiers, featured campaigns and VIP seating</summary>
-          <p class="fine">Create tiered giving levels, offer VIP seating, and showcase corporate sponsors.</p>
+          <details class="guide-advanced" open><summary>Sponsorship, featured campaigns & VIP seating</summary>
+          <p class="fine">Offer sponsor packages, highlight a campaign, or reserve VIP seating. Add the dates, prices and details that fit your plans.</p>
 
           <label>Sponsorship Tiers
             <button type="button" class="link" id="add-tier-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add tier</button>
           </label>
           <div id="tiers-list" style="margin-bottom: 1.5rem;"></div>
           <fieldset style="border:1px solid #d0d5cc;border-radius:6px;padding:1rem;margin:0 0 1.5rem;">
-            <legend>Optional featured sponsor campaign</legend>
-            <p class="fine">Fixed packages are the reliable base. This optional, time-limited campaign ranks sponsors by verified paid bids; bids support the wedding fund and do not guarantee placement before payment and campaign close. Enter dates in your local time.</p>
+            <legend>Featured sponsor campaign</legend>
+            <p class="fine">Set your campaign dates, number of featured places and starting bid. Paid bids support the wedding fund; placement is confirmed only after verified payment and campaign close. Enter dates in your local time.</p>
             <label style="display:flex;align-items:flex-start;gap:.6rem;">
               <input id="featured-sponsor-enabled" type="checkbox">
               <span>Enable featured sponsor bidding</span>
@@ -260,10 +271,15 @@
 
           </details>
         </section>
+        <section data-guide-step="team" data-guide-title="Wedding helpers">
+          <p>Invite trusted people to help with guest check-in, seating, RSVP support, coordination or the DJ playlist. Each helper receives access only to the task you assign, and never to payouts or financial totals.</p>
+          <a id="team-setup-link" class="btn ghost" href="#">Invite wedding helpers</a>
+          <p class="fine"><a href="#seating-section">Manage your guest list and seating</a></p>
+        </section>
         <section data-guide-step="review" data-guide-title="Does everything look right?">
-          <p>Review your answers, save changes, then publish when you are ready. Optional sections can stay unfinished. Identity and payout readiness are separate from wedding setup.</p>
+          <p>Review your answers, save changes, then publish when you are ready. You can return to any setup section whenever your plans change. Identity details support payout readiness and do not block publishing.</p>
           <div data-guide-review></div>
-          <p class="fine"><a href="#travel-info">FAQ &amp; travel information</a> &middot; <a href="#seating-section">Guest list &amp; helpers</a> &middot; <a href="#campaigns-section">Optional fundraising campaigns</a> &middot; <a href="#ops-section">Status, moderation &amp; publication fees</a> &middot; <a href="#kyc-section">Private identity details</a></p>
+          <p class="fine"><a href="#campaigns-section">Fundraising campaigns &amp; milestones</a> &middot; <a href="#bids-section">DJ song requests</a> &middot; <a href="#rsvps-section">Guest RSVPs</a> &middot; <a href="#engage-section">Guestbook, referrals &amp; FAQs</a> &middot; <a href="#seating-section">Guest list &amp; seating</a> &middot; <a href="#withdrawals-section">Balances &amp; payouts</a> &middot; <a href="#ops-section">Status &amp; publication</a> &middot; <a href="#published-section">Guest site &amp; QR pass</a></p>
         </section>
           <div class="row">
             <button type="submit">Save changes</button>
@@ -310,9 +326,9 @@
     </div>
 
     <!-- KYC -->
-    <div id="kyc-section" class="card" hidden>
-      <h2>Couple identity (KYC) &mdash; private</h2>
-      <p class="fine"><strong>Non-blocking:</strong> KYC is required before you can withdraw or receive payouts. It does not affect publishing your wedding site. Current status: <strong id="kyc-notice-status">checking…</strong>. Both partners must submit their own details. IDs are masked in this editor and never shown to guests. Join Our Wedding has no independent ID-verification provider configured; submission does not mean identity is verified.</p>
+    <div id="kyc-section" class="card" hidden data-guide-step="kyc" data-guide-title="Private identity details">
+      <h3>Couple identity &mdash; private</h3>
+      <p class="fine"><strong>Private and separate from publishing:</strong> Both partners&rsquo; details are needed before a payout can be requested. Current status: <strong id="kyc-notice-status">checking…</strong>. ID numbers are masked in this editor and never shown to guests. Saving these details does not independently verify identity.</p>
       <form id="kyc-form" autocomplete="off">
         <label for="kyc-p1">Partner 1 full legal name <span class="req" title="Required">*</span></label><input id="kyc-p1" maxlength="120" required>
         <label for="kyc-p1-type">Partner 1 ID type <span class="req">*</span></label>
@@ -333,13 +349,13 @@
         <label for="kyc-kname">Next of kin</label><input id="kyc-kname" maxlength="120">
         <label for="kyc-kphone">Next of kin phone</label><input id="kyc-kphone" type="tel" maxlength="30">
         <label for="kyc-krel">Relationship</label><input id="kyc-krel" maxlength="60">
-        <label class="row" style="gap:.5rem"><input id="kyc-consent" type="checkbox" required> <span>Both partners consent to Join Our Wedding processing these details for organizer review and fraud prevention. This is not a claim that Join Our Wedding independently verifies identity. We can request correction or deletion through support.</span></label>
-        <div class="row"><button type="submit">Save identity details</button> <span id="kyc-status" class="fine"></span></div>
+        <label class="row" style="gap:.5rem"><input id="kyc-consent" type="checkbox" required> <span>Both partners consent to Join Our Wedding processing these details for organizer review and fraud prevention. Saving does not independently verify identity. We can request correction or deletion through support.</span></label>
+        <div class="row"><button type="submit">Save private details</button> <span id="kyc-status" class="fine"></span></div>
       </form>
     </div>
     <div id="campaigns-section" class="card" hidden>
       <h2>Fundraising campaigns</h2>
-      <p class="fine">Optional giving goals (e.g. "Home fund", "Honeymoon"). Each campaign has its own goal and milestones that tick off as guests give. Guests see these on your site; this is separate from the gift registry. Amounts are in your wedding currency. Campaigns you remove are switched off, never deleted, so your ledger is kept.</p>
+      <p class="fine">Invite guests to support meaningful goals such as a home or honeymoon. Set each campaign&rsquo;s goal and milestones; guests will see them on your site. This is separate from the gift registry. Amounts are in your wedding currency. Campaigns you remove are switched off, never deleted, so your ledger is kept.</p>
       <div id="campaign-list"></div>
       <div class="row"><button type="button" class="ghost" id="add-campaign">+ Add campaign</button> <button type="button" id="save-campaigns">Save campaigns</button> <span id="campaign-status" class="fine"></span></div>
       <h3>Campaign ledger</h3>
@@ -430,14 +446,14 @@
     <!-- Withdrawals / Payouts -->
     <div id="withdrawals-section" class="card" hidden>
       <h2>💰 Payouts & Withdrawals</h2>
-      <p class="fine">Only eligible real settled funds can be withdrawn. Test-provider payments are simulated and never become withdrawable funds.</p>
-      <p class="notice" id="payout-kyc-notice" role="status">Complete KYC to receive your payout. <a href="#kyc-section">Complete both partners&rsquo; KYC details</a>. Publishing is not blocked.</p>
+      <p class="fine">Only eligible completed payments can be withdrawn. Test payments never become withdrawable funds.</p>
+      <p class="notice" id="payout-kyc-notice" role="status">Add both partners&rsquo; private identity details before requesting a payout. <a href="#kyc-section">Complete identity details</a>. Publishing is not blocked.</p>
       
       <section id="paystack-onboarding" class="notice" aria-labelledby="paystack-onboarding-title">
-        <h3 id="paystack-onboarding-title">Paystack direct settlement</h3>
-        <p>Paystack onboarding verifies the receiving subaccount separately from our required-details-and-consent KYC. Publishing is not blocked by either. Money Paystack routes to you is never withdrawable again from Join Our Wedding.</p>
+        <h3 id="paystack-onboarding-title">Direct settlement to your verified account</h3>
+        <p>The receiving account is verified separately from the identity details collected here. Publishing is not blocked by either. Money sent directly to your account is not part of the balance available to withdraw through Join Our Wedding.</p>
         <p id="paystack-onboarding-status" role="status">Checking onboarding status...</p>
-        <label><input id="paystack-destination-consent" type="checkbox" disabled> I have confirmed the receiving account with the platform Owner and consent to Paystack routing the wedding proceeds there, less platform and applicable provider fees.</label>
+        <label><input id="paystack-destination-consent" type="checkbox" disabled> I have confirmed the receiving account with the platform Owner and consent to direct settlement there, less platform and applicable payment fees.</label>
         <button id="paystack-consent-submit" type="button" disabled>Consent to verified destination</button>
         <button id="paystack-onboarding-reload" type="button">Refresh onboarding status</button>
         <div id="paystack-settlement-rows" aria-live="polite"></div>
@@ -450,7 +466,7 @@
         <p class="fine" style="margin: 0.6rem 0 0;">Settling: <strong id="settling-display">$0.00</strong>
           &middot; Held for fee/refund/dispute review: <strong id="held-display">$0.00</strong></p>
         <p class="fine" style="margin: 0.75rem 0 0; color: #666;">
-          💡 Amounts exclude pending or failed checkouts. Refunds, open disputes and unknown provider fees reduce available funds until they are resolved. Provider settlement holds also apply.
+          💡 Amounts exclude pending or failed payments. Refunds, open disputes and unconfirmed payment fees reduce available funds until they are resolved. Transfer holds also apply.
         </p>
       </div>
 
@@ -542,6 +558,7 @@
     };
     const weddingId = params.get("id");
     $("team-management-link").href = `/team.html?weddingId=${encodeURIComponent(weddingId || "")}`;
+    $("team-setup-link").href = `/team.html?weddingId=${encodeURIComponent(weddingId || "")}`;
     const setGuestSiteLink = (slug, published) => {
       const guestUrl = WSShare.guestUrl(slug || "");
       $("guest-site-url").textContent = `Guest site: ${guestUrl}`;
@@ -647,7 +664,14 @@
           <select class="venue-kind" aria-label="Event type"><option value="main"${kind === "pre" ? "" : " selected"}>Wedding day event</option><option value="pre"${kind === "pre" ? " selected" : ""}>Before the wedding (fundraiser, rehearsal, party)</option></select>
           <input type="text" class="venue-addr" value="${esc(address || "")}" placeholder="Street address (shown with Get directions)" maxlength="200" required>`;
     let venueCount = 0;
-    function addVenueEditor() {
+    function eventGroup(kind) {
+      return $(kind === "pre" ? "pre-events-list" : "wedding-day-events-list");
+    }
+    function moveVenueToGroup(item) {
+      const kind = item.querySelector(".venue-kind").value;
+      eventGroup(kind).appendChild(item);
+    }
+    function addVenueEditor(kind = "main") {
       const id = `venue-${venueCount++}`;
       const html = `
         <div class="venue-item" data-venue-id="${id}">
@@ -656,19 +680,19 @@
           </div>
           <input type="text" class="venue-name" placeholder="Venue / event name (e.g. Cathedral, Reception)" maxlength="80" required>
           <input type="text" class="venue-time" placeholder="Time (e.g. 10:00 AM)" required>
-          ${window.venueExtra("main", "", $("wedding-date").value)}
+          ${window.venueExtra(kind, "", $("wedding-date").value)}
           <input type="url" class="venue-address" placeholder="Address or map link (e.g. Google Maps URL)">
           <textarea class="venue-notes" placeholder="Details (e.g. Dress code, parking info)" maxlength="240"></textarea>
           <button type="button" class="remove-venue" data-venue-id="${id}">Remove</button>
         </div>
       `;
-      $("venues-list").insertAdjacentHTML("beforeend", html);
-      
-      const item = $("venues-list").querySelector(`[data-venue-id="${id}"]`);
+      eventGroup(kind).insertAdjacentHTML("beforeend", html);
+      const item = eventGroup(kind).querySelector(`[data-venue-id="${id}"]`);
       item.querySelector(".remove-venue").addEventListener("click", e => {
         e.preventDefault();
         item.remove();
       });
+      item.querySelector(".venue-kind").addEventListener("change", () => moveVenueToGroup(item));
       
       // Only one main venue at a time
       item.querySelector(".venue-main-cb").addEventListener("change", e => {
@@ -680,6 +704,10 @@
     $("add-venue-btn").addEventListener("click", e => {
       e.preventDefault();
       addVenueEditor();
+    });
+    $("add-pre-event").addEventListener("click", e => {
+      e.preventDefault();
+      addVenueEditor("pre");
     });
 
     // Color palette editor
@@ -973,11 +1001,17 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not load payout methods.");
       select.replaceChildren(new Option("Choose payout method…", ""));
-      for (const method of data.methods || []) select.add(new Option(method.name, method.id));
+      const methodLabels = {
+        paystack: "Direct transfer to your verified account",
+        stripe: "Verified bank transfer"
+      };
+      for (const method of data.methods || []) {
+        select.add(new Option(methodLabels[method.id] || "Available payout option", method.id));
+      }
       select.disabled = !(data.methods || []).length;
       $("payout-method-help").textContent = (data.methods || []).length
-        ? "Only currently configured payment services are shown. Payout account details and live disbursements are not enabled in this demo."
-        : "No payout service is currently configured for this wedding's currency. No account details are collected.";
+        ? "Available receiving options depend on your currency. Saving a preference does not collect account details or move money."
+        : "No receiving option is currently available for this wedding currency. No account details are collected.";
     }
 
     async function refreshSetupProgress() {
@@ -1100,7 +1134,8 @@
 
         // Load venues
         if (w.venues && Array.isArray(w.venues)) {
-          $("venues-list").innerHTML = "";
+          $("pre-events-list").replaceChildren();
+          $("wedding-day-events-list").replaceChildren();
           w.venues.forEach((venue, idx) => {
             const id = `venue-${idx}`;
             const html = `
@@ -1117,13 +1152,14 @@
                 <button type="button" class="remove-venue" data-venue-id="${id}">Remove</button>
               </div>
             `;
-            $("venues-list").insertAdjacentHTML("beforeend", html);
-            
-            const item = $("venues-list").querySelector(`[data-venue-id="${id}"]`);
+            const group = eventGroup(venue.kind === "pre" ? "pre" : "main");
+            group.insertAdjacentHTML("beforeend", html);
+            const item = group.querySelector(`[data-venue-id="${id}"]`);
             item.querySelector(".remove-venue").addEventListener("click", e => {
               e.preventDefault();
               item.remove();
             });
+            item.querySelector(".venue-kind").addEventListener("change", () => moveVenueToGroup(item));
             
             item.querySelector(".venue-main-cb").addEventListener("change", e => {
               $("venues-list").querySelectorAll(".venue-main-cb").forEach(cb => cb.checked = false);
@@ -1252,14 +1288,19 @@
         if (!weddingGuide) {
           weddingGuide = WSGuidedSetup.create($("edit-form"), {
             mode: "edit",
+            externalSteps: [$("kyc-section")],
+            externalStepsAfter: "money",
             summaries: {
               couple: () => `${$("couple-names").value || "Names not answered yet"}; site address ${$("wedding-slug").value || "not answered yet"}\n${$("welcome-story").value || "Welcome message can wait"}`,
               date: () => `${$("wedding-date").value || "Date not answered yet"}; ${$("wedding-timezone").value}; ${$("location").value || "Location not answered yet"}`,
-              guests: () => `${$("currency").value}; capacity ${$("max-capacity").value || "not answered yet"}; base RSVP fee ${$("rsvp-fee").value}`,
+              guests: () => `Capacity ${$("max-capacity").value || "not answered yet"}; base RSVP fee ${$("rsvp-fee").value}; extra-guest fee ${$("extra-guest-fee").value}`,
+              money: () => `${$("currency").value}; ${$("payout-method").selectedOptions[0]?.textContent || "No receiving option selected"}`,
               venues: () => [...$("venues-list").querySelectorAll(".venue-item")].map(item =>
-                `${item.querySelector(".venue-name").value || "Event not named"}: ${item.querySelector(".venue-date").value} ${item.querySelector(".venue-time").value}; ${item.querySelector(".venue-addr").value}`).join("\n") || "Add a wedding-day event before publishing",
+                `${item.querySelector(".venue-kind").value === "pre" ? "Pre-wedding" : "Wedding day"}: ${item.querySelector(".venue-name").value || "Event not named"}: ${item.querySelector(".venue-date").value} ${item.querySelector(".venue-time").value}; ${item.querySelector(".venue-addr").value}`).join("\n") || "Add a wedding-day event before publishing",
               theme: () => `${JSON.parse($("palette-preview").dataset.palette || "[]").join(", ") || "No palette selected"}\n${$("attire-notes").value || "Attire guidance can wait"}`,
-              giving: () => `${$("registry-list").children.length} registry item(s); ${$("tiers-list").children.length} sponsorship tier(s). No new paid extras are selected by the guide.`
+              giving: () => `${$("registry-list").children.length} gift registry item(s); ${$("tiers-list").children.length} sponsor package(s); ${$("preset-song").value || "Song bid amounts not set"}; ${$("preset-gift").value || "Gift amounts not set"}`,
+              team: () => "Invite helpers for RSVP support, guest seating, check-in, coordination or the DJ playlist.",
+              kyc: () => $("kyc-notice-status").textContent || "Both partners can add private identity details for payout readiness."
             }
           });
         }
@@ -1618,7 +1659,7 @@
           $("pay-fee-btn").hidden = true;
         } else if (res.ok && q.fee_minor != null) {
           $("fee-box").textContent = q.fee_minor > 0
-            ? `Publication fee: ${WS.money(q.fee_minor, q.currency || "USD", false)}${q.currency !== "USD" && q.usd_amount_minor != null ? ` [USD ${(q.usd_amount_minor / 100).toFixed(2)} base]` : ""}. ${q.reason || ""}${q.fx_published_at ? ` Indicative FX published ${new Date(q.fx_published_at).toLocaleString()}; final payment-method rounding is shown before confirmation.` : ""} Test-mode checkout is available only through configured payment methods.`
+            ? `Publication fee: ${WS.money(q.fee_minor, q.currency || "USD", false)}${q.currency !== "USD" && q.usd_amount_minor != null ? ` [USD ${(q.usd_amount_minor / 100).toFixed(2)} base]` : ""}. ${q.reason || ""}${q.fx_published_at ? ` Indicative FX published ${new Date(q.fx_published_at).toLocaleString()}; final payment rounding is shown before confirmation.` : ""} Test payments are available only when a payment option is configured.`
             : `No publication fee. ${q.reason || ""}`;
           $("pay-fee-btn").hidden = restricted || !(q.fee_minor > 0) || !!w.published_at || !!w.archived_at;
         }
@@ -1678,15 +1719,17 @@
           $(id).value = masked || k[key] || "";
         }
         $("kyc-status").textContent = k.complete
-          ? "Submission complete; no independent ID-verification provider is configured. ID numbers are masked."
+          ? "Details saved privately. No independent identity check is performed; ID numbers are masked."
           : "Incomplete — both partners’ required details are needed.";
-        $("kyc-notice-status").textContent = k.complete ? "Submitted (KYC requirement complete)" : "Incomplete (required before payouts)";
+        $("kyc-notice-status").textContent = k.complete ? "Details complete" : "Incomplete (needed before payouts)";
         $("payout-kyc-notice").hidden = !!k.complete;
         $("kyc-consent").checked = !!k.complete;
+        weddingGuide?.markExternalSaved("kyc");
       } catch (error) {
         console.error("KYC status failed:", error);
         $("kyc-notice-status").textContent = "Unavailable; reload to check before requesting a payout";
         $("payout-kyc-notice").hidden = false;
+        weddingGuide?.refresh();
       }
     }
     $("kyc-form").addEventListener("submit", async e => {
@@ -1698,7 +1741,7 @@
         const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(d.error || "Could not save identity details.");
         notice("Identity details saved privately.");
-        loadKyc();
+        await loadKyc();
         await refreshSetupProgress();
       } catch (err) { notice(err.message, true); }
     });
@@ -1740,11 +1783,11 @@
         const r = await WS.api(`/api/weddings?action=campaigns&weddingId=${encodeURIComponent(weddingId)}`); const d = await r.json();
         campaignCurrency = d.currency || "USD";
         $("campaign-list").innerHTML = "";
-        (d.campaigns || []).filter(c => c.enabled).forEach(c => $("campaign-list").appendChild(campaignCard(c)));
+        (d.campaigns || []).forEach(c => $("campaign-list").appendChild(campaignCard(c)));
         const sum = d.summary || [];
         $("campaign-summary").innerHTML = sum.length ? sum.map(s => `<strong>${WS.esc(s.name)}</strong>: ${WS.money(s.raised_minor, campaignCurrency, true)} of ${WS.money(s.goal_minor, campaignCurrency, true)} · ${s.pledges} gift${s.pledges === 1 ? "" : "s"}${s.enabled ? "" : " (hidden)"}`).join("<br>") : "No campaigns yet.";
         const rows = d.rows || [];
-        $("campaign-ledger").innerHTML = rows.length ? '<table><thead><tr><th>Guest</th><th>Amount</th><th>Campaign</th><th>Milestone</th><th>Status</th><th>Date</th></tr></thead><tbody>' + rows.map(x => `<tr><td>${WS.esc(x.guest)}</td><td>${WS.money(x.amount_minor, campaignCurrency, true)}</td><td>${WS.esc(x.campaign)}</td><td>${WS.esc(x.milestone || "—")}</td><td>${WS.esc(x.status)}${x.provider === "test-simulator" ? " (test)" : ""}</td><td>${WS.esc(String(x.created_at).slice(0, 10))}</td></tr>`).join("") + "</tbody></table>" : "No gifts yet.";
+        $("campaign-ledger").innerHTML = rows.length ? '<table><thead><tr><th>Guest</th><th>Amount</th><th>Campaign</th><th>Milestone</th><th>Status</th><th>Date</th></tr></thead><tbody>' + rows.map(x => `<tr><td>${WS.esc(x.guest)}</td><td>${WS.money(x.amount_minor, campaignCurrency, true)}</td><td>${WS.esc(x.campaign)}</td><td>${WS.esc(x.milestone || "—")}</td><td>${WS.esc(x.status)}${x.provider === "test-simulator" ? " (test payment)" : ""}</td><td>${WS.esc(String(x.created_at).slice(0, 10))}</td></tr>`).join("") + "</tbody></table>" : "No gifts yet.";
       } catch (_) {}
     }
     $("add-campaign").addEventListener("click", () => $("campaign-list").appendChild(campaignCard()));

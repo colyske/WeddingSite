@@ -245,7 +245,8 @@ test("weddings list renders escaped data; list failure shows a message", { skip 
 test("sign out clears the session; no session redirects to sign in", { skip }, async () => {
   const { page, close } = await openDashboard();
   await page.route("**/signin.html", (r) => r.fulfill({ status: 200, contentType: "text/html", body: "signin" }));
-  await page.click("#sign-out");
+  await page.click("#account-menu-btn");
+  await page.click("#account-sign-out");
   await page.waitForURL("**/signin.html");
   assert.equal(await page.evaluate(() => sessionStorage.getItem("ws-session")), null);
   await close();
