@@ -1,5 +1,12 @@
 # M-Pesa B2C payout automation (default OFF)
 
+**Revision after coordinator review:** this is default-OFF scaffolding, not a
+verified provider integration. The guessed v3 request, callback parser and
+SecurityCredential encryption code have been removed. Dispatch cannot be enabled
+by environment flags; both provider-contract implementation and verified
+destination ownership are hard-blocked prerequisites. No merge or activation
+is requested.
+
 Join Our Wedding's B2C implementation is separate from STK collection approval.
 The reported production app's B2C capability is **user-reported**, not a verified
 credential, shortcode, initiator, command entitlement or funding configuration.
@@ -45,6 +52,8 @@ changes credentials, or applies a migration to production.
   Final outcomes are immutable. Duplicate callbacks are journal-idempotent;
   conflicting terminal evidence is separately audited for review.
 - Failed dispatches do not optimistically credit the utility account budget.
+  A failed principal also does not prove zero provider fee: the outbound fee
+  remains held even after failure. No unsupported fee-release assumption is made.
   A new independently verified utility balance is necessary. Budget replacement
   is blocked while any dispatch is submitting, accepted or uncertain.
   The Owner records an official utility balance statement reference, timestamp
@@ -52,21 +61,20 @@ changes credentials, or applies a migration to production.
   External account activity can invalidate that allocation: reserve funds for
   this dispatcher operationally and stop dispatch if account funding changes.
 
-## Recipient verification chosen
+## Documented account-review evidence (not verified destination ownership)
 
 The existing model's KYC is submission completeness and consent, **not**
 independent identity verification. An STK receipt reference alone does not prove
 its payer phone or that the payer is a couple partner.
 
-The implementation therefore fails closed until the protected Owner performs
-an independent statement-based review:
+The account-review workflow only documents the following evidence; it does not
+verify partner identity or destination ownership:
 
 1. Obtain the official M-Pesa statement through an authorized channel outside
    the application. Match the verified live inbound contribution's M-Pesa receipt
    against that statement; establish the actual sending MSISDN.
-2. Independently establish that this MSISDN belongs to one of this wedding's
-   couple partners (staff review of the official payer evidence and partner
-   identity, not merely submitted KYC text). Obtain partner consent.
+2. Record the claimed partner association separately; a payer MSISDN and KYC
+   submission do not establish that association or partner identity.
 3. Record only the secured evidence reference, contribution UUID and canonical
    `2541...`/`2547...` MSISDN using the Owner review action. Do not paste an ID
    document, statement contents or credentials into the application/chat.
@@ -76,9 +84,25 @@ Daraja inbound receipt and a matching partner KYC phone. It does **not** invent
 an API-generated `verified` KYC status. Changes to the destination can be revoked;
 dispatch rechecks an exact hash of the reviewed KYC snapshot as well as phone
 matching and snapshots the reviewed recipient. KYC edits require renewed review.
-If the official statement cannot establish phone and partner ownership,
-**do not record the attestation; payout stays blocked**. No undocumented
-Safaricom name/ID lookup or SMS OTP service has been invented.
+A different **SuperAdmin user id** must confirm the protected Owner's documented
+account review. A second role on the same user id does not count. Updates revoke
+that confirmation. There is only one protected Owner, not two Owners.
+
+**Dispatch is now hard-blocked even after both account reviews**:
+`b2c_destination_ownership_verified` unconditionally returns false, and no
+environment flag or policy field can change it. A suitable verified
+destination-ownership process is an explicit unimplemented prerequisite.
+It must bind actual control of the payout MSISDN to the authenticated partner
+and reviewed identity/consent (for example, a separately implemented, rate-limited
+OTP verification bound to that partner plus suitable identity review).
+No OTP provider, independent identity service or official name/ID API is
+configured or verified here. Such an implementation requires a separately
+reviewed migration; statement evidence alone must never clear this gate.
+
+Migration `202611020002_b2c_review_prerequisites.sql` adds this hard gate and
+different-person controls. Reconciliation checks opposite Owner/SuperAdmin roles
+and different user ids; a scheduled dispatch requires a SuperAdmin reviewer.
+Outcomes remain uncertain when evidence is insufficient.
 
 ## Official-document evidence and limitations
 
@@ -99,7 +123,8 @@ evidence here that a Transaction Status response confirms recipient or amount.
 No such query is implemented or accepted as settlement proof.
 The exact official fields of those responses cannot responsibly be asserted.
 
-The adapter contains a **candidate v3** request:
+The previous commit contained the following **unverified candidate v3** request,
+now removed rather than presenting guessed schemas as an implementation:
 `POST https://api.safaricom.co.ke/mpesa/b2c/v3/paymentrequest`, with
 `OriginatorConversationID`, `InitiatorName`, `SecurityCredential`, `CommandID`,
 `Amount`, `PartyA`, `PartyB`, `Remarks`, `QueueTimeOutURL`, `ResultURL`, `Occasion`.
@@ -109,14 +134,14 @@ Candidate acceptance uses `ResponseCode`, `ConversationID`,
 `ResultParameters.ResultParameter`. These are implementation assumptions,
 **not claims of officially verified response fields**.
 
-Before any activation, an authorized operator must inspect the actual official
+Before any integration implementation or activation, an authorized operator must inspect the actual official
 account documentation and record its reference in the Owner policy, confirm this
 entire candidate contract (including v3 originator echo) and the allowed
 `BusinessPayment` / `SalaryPayment` / `PromotionPayment` command for the
 shortcode. v1 and sandbox dispatch are deliberately unsupported/fail-closed;
 their credential/correlation differences have not been verified.
 
-There is no bundled certificate. The candidate credential encryption is RSA
+There is no bundled certificate. The removed candidate credential encryption was RSA
 PKCS#1 v1.5 of the initiator password with the supplied X.509 public key, encoded
 as Base64. Runtime checks RSA type, certificate dates and the independently
 confirmed SHA-256 fingerprint. The operator must verify the **correct official
@@ -124,7 +149,9 @@ production certificate, algorithm and initiator entitlement**; a sandbox
 certificate must never be substituted. A matching fingerprint establishes
 configuration consistency, **not provenance**.
 
-Result settlement also requires explicitly configured official parameter names
+The removed Result parser required configured parameter names, but configuration
+cannot substitute for officially verified evidence. A future implemented
+Result settlement would require explicitly verified official parameter names
 for amount, exact recipient MSISDN and receipt. There is **no default mapping**.
 Recipient public-name text or a registered-customer flag is not accepted as
 an exact MSISDN. If the actual B2C contract supplies no independently usable
@@ -158,8 +185,9 @@ Owner policy activation requires a fresh revision, explicit user approval
 reference, official contract reference, shortcode/command binding, known payout
 fee and verified utility-budget allocation with official statement reference.
 The live collection approval record remains unchanged and cannot activate B2C.
-The daily Vercel worker processes at most one eligible payout; it does no provider
-work with closed deployment/Owner gates.
+The daily Vercel worker currently performs only stale-hold housekeeping and never
+processes a payout. It cannot initiate provider work even if deployment flags and
+Owner policy are changed.
 
 Every dispatch has an independent 256-bit callback capability, stored only as
 a hash and carried in the private callback URL. Both provider conversation IDs
@@ -189,9 +217,10 @@ SuperAdmin; the initiator cannot self-resolve an uncertain payout.
 | `recipient-review` (POST) | Owner-only independent statement attestation or revocation. |
 | `status` (GET) | Owner/SuperAdmin; capabilities and recipient phones redacted. |
 | `controls` (GET) | Owner/SuperAdmin; only dispatch/approval booleans and revision, no full Owner policy. |
-| `dispatch` (POST) | Owner/SuperAdmin, approved payout and UUID idempotency key; deployment and DB gates. |
-| `worker` (GET) | Exact scheduler bearer secret; stale-hold housekeeping, then gated dispatch. |
-| `result`, `timeout` (POST) | Per-dispatch capability plus both bound conversation IDs; idempotent journal. |
+| `dispatch` (POST) | Hard-blocked: verified contract and destination ownership implementation missing. No provider or reservation call. |
+| `worker` (GET) | Exact scheduler bearer secret; stale-hold housekeeping only, no dispatch. |
+| `result`, `timeout` (POST) | Capability authentication and rejected-contract audit only; unverified callback schema not interpreted or settled. |
+| `account-review-confirm` (POST) | A different SuperAdmin confirms the protected Owner's exact account-evidence reference; not destination verification. |
 | `reconcile` (POST) | Owner/SuperAdmin independent official-statement review, not the dispatch initiator. Inconclusive review retains funds. |
 
 Successful statement reconciliation must supply the bound amount/MSISDN and

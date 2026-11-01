@@ -31,7 +31,9 @@ export default async function handler(req, res) {
     if (action === "readiness" || action === "policy") {
       if (!methodOnly(req, res, "GET")) return;
       const policy = await rpc("owner_get_b2c_policy", session.token);
-      return sendJson(res, 200, { policy, readiness: b2cReadiness(), recipientVerification: "independent_statement_review_required" });
+      return sendJson(res, 200, { policy, readiness: b2cReadiness(),
+        recipientVerification: "verified_destination_ownership_process_not_implemented",
+        accountEvidence: "documented_account_review_only" });
     }
     if (action === "controls") {
       if (!methodOnly(req, res, "GET")) return;
@@ -57,6 +59,12 @@ export default async function handler(req, res) {
         p_statement_reference: body.statementReference || null, p_revoke: body.revoke === true
       });
       return sendJson(res, 200, { reviewed: true });
+    }
+    if (action === "account-review-confirm") {
+      if (!uuid(body.weddingId)) return sendJson(res, 400, { error: "Wedding required." });
+      await rpc("staff_confirm_b2c_account_review",session.token,
+        { p_wedding: body.weddingId,p_reference: body.statementReference });
+      return sendJson(res, 200, { reviewed: true, ownershipVerified: false });
     }
     if (action === "dispatch") {
       if (!uuid(body.payoutId) || !uuid(body.idempotencyKey)) return sendJson(res, 400, { error: "Payout and idempotency key required." });

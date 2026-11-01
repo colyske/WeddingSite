@@ -1,5 +1,14 @@
 -- Local Supabase only; synthetic funds, no provider calls, every effect rolled back.
 begin;
+-- Exercise already-tested reservation plumbing separately from the new hard
+-- destination-ownership prerequisite (tests/db/b2c-prerequisites.sql).
+create or replace function public.b2c_destination_ownership_verified(p_wedding uuid) returns boolean
+language sql stable security definer set search_path = '' as $$ select true $$;
+create or replace function public.b2c_reserve(p_payout uuid,p_key uuid,p_originator uuid,p_callback_hash text,
+  p_shortcode text,p_command text,p_allow_auto boolean default false) returns jsonb
+language sql security definer set search_path = '' as $$
+  select public.b2c_reserve_reviewed_internal(p_payout,p_key,p_originator,p_callback_hash,p_shortcode,p_command,p_allow_auto)
+$$;
 create function pg_temp.b2c_reject(statement text, expected text) returns void language plpgsql as $$
 begin
   begin execute statement;
@@ -77,6 +86,9 @@ begin
   perform pg_temp.b2c_reject(format('select public.b2c_reserve(%L,%L,%L,repeat(''a'',64),''123456'',''BusinessPayment'')',payout,k,originator),'Recipient');
   update public.wedding_kyc set partner1_legal_name='Synthetic One' where wedding_id=wid;
   perform public.owner_review_b2c_recipient(wid,'254700000001',receipt,'Synthetic renewed official statement review');
+  perform set_config('request.jwt.claim.sub',sid::text,true);
+  perform public.staff_confirm_b2c_account_review(wid,'Synthetic renewed official statement review');
+  perform set_config('request.jwt.claim.sub',oid::text,true);
   second:=public.request_payout(wid,1000,'KES','Synthetic Owner self-request',true);
   perform pg_temp.b2c_reject(format('select public.admin_set_payout_status(%L,''approved'')',second),'Another staff');
   perform public.admin_set_payout_status(second,'cancelled','Synthetic independent approval required.');
@@ -164,5 +176,16 @@ begin
   if (select count(*) from public.b2c_events where dispatch_id=(d->>'id')::uuid and event_key='second-result')<>1 then
     raise exception 'Success duplicate must not settle twice'; end if;
   if (select count(*) from public.b2c_policy_history)<3 then raise exception 'Policy history must preserve exact old/new settings'; end if;
+  -- A failed transfer releases principal only; its unknown outbound fee stays held.
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',sid::text,true);
+  perform public.admin_set_payout_status(payout,'approved');
+  d:=public.b2c_reserve(payout,extensions.gen_random_uuid(),extensions.gen_random_uuid(),repeat('e',64),'123456','BusinessPayment');
+  before_budget:=public.b2c_available_minor(wid);
+  perform set_config('request.jwt.claim.sub',oid::text,true);
+  state:=public.staff_reconcile_b2c((d->>'id')::uuid,'Synthetic official failed principal statement',
+    'failed','SYNFAILED','254700000001',6000);
+  if state<>'failed' or public.b2c_available_minor(wid)<>before_budget+6000 then
+    raise exception 'Failed principal must not release unverified provider fee'; end if;
 end $$;
 rollback;

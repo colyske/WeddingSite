@@ -12,7 +12,8 @@
     const [{ policy, readiness }, { dispatches }] = await Promise.all([request(owner ? "readiness" : "controls"), request("status")]);
     el.innerHTML = `<h2>M-Pesa B2C payouts</h2>
       <p><strong>Default OFF.</strong> Collection approval does not approve payouts. KYC completeness is not identity verification.
-      Transfers require independently reviewed recipient evidence, settled live Daraja funds, known fees, verified utility funding and deployment capability checks.</p>
+      Documented account-review evidence does not prove partner identity or destination ownership.
+      Dispatch is hard-blocked pending a suitable verified destination-ownership process and verified official provider contract.</p>
       <p>Dispatch policy: <strong>${policy.dispatch_enabled ? "enabled" : "OFF"}</strong>.
       Approval: <strong>${policy.require_four_eyes ? "four-eyes required" : "explicit limited auto-approval"}</strong>.
       Deployment: <strong>${readiness.ready ? "prerequisites configured" : "held"}</strong>. Policy revision: ${esc(policy.revision)}.</p>
@@ -28,15 +29,20 @@
         <label>Audit reason<input name="reason" minlength="10" maxlength="240" required></label>
         <button type="submit">Save approval policy</button>
         <button type="button" id="b2c-stop">Stop new dispatch</button></form>
-      <form id="b2c-recipient"><h3>Independent recipient review</h3>
-        <p>Obtain the official inbound statement independently, match its receipt and payer MSISDN to a couple partner, and review identity ownership.
-        A receipt ID or submitted KYC phone alone is insufficient. Never paste ID documents or credentials here.</p>
+      <form id="b2c-recipient"><h3>Documented account-review evidence</h3>
+        <p>Match an authorized inbound statement to its receipt and documented payer account.
+        This does not verify partner identity or destination ownership and cannot authorize payouts.
+        A different SuperAdmin user must confirm the Owner review. Never paste ID documents or credentials here.</p>
         <label>Wedding UUID<input name="weddingId" required></label>
         <label>Verified inbound contribution UUID<input name="contributionId" required></label>
         <label>Statement-proven MSISDN (254...)<input name="msisdn" pattern="254[17][0-9]{8}" required></label>
         <label>Secure statement evidence reference<input name="statementReference" minlength="10" maxlength="240" required></label>
-        <label><input type="checkbox" name="reviewed" required> I independently checked the official statement and partner ownership.</label>
-        <button type="submit">Record independent review</button></form>
+        <label><input type="checkbox" name="reviewed" required> I checked the documented account evidence, not verified ownership.</label>
+        <button type="submit">Record account-review evidence</button></form>
+      <form id="b2c-account-confirm"><h3>Different-person account review</h3>
+        <label>Wedding UUID<input name="weddingId" required></label>
+        <label>Exact Owner account-evidence reference<input name="statementReference" required></label>
+        <button type="submit">SuperAdmin: confirm documented account review</button></form>
       <h3>Reserved dispatches</h3><p>Timeouts and inconclusive evidence retain funds. Never retry an uncertain payout.
       Use an independent official statement to reconcile; transaction-status observations alone cannot prove recipient or amount.</p>
       <form id="b2c-dispatch"><label>Approved payout UUID<input name="payoutId" required></label>
@@ -57,6 +63,7 @@
     const notice = message => { el.querySelector("#b2c-notice").textContent = message; };
     el.querySelector("#b2c-policy").hidden = !owner;
     el.querySelector("#b2c-recipient").hidden = !owner;
+    el.querySelector("#b2c-account-confirm").hidden = owner;
     if (owner) {
       el.querySelector('#b2c-policy [name="mode"]').value = policy.require_four_eyes ? "human" : "limited";
       el.querySelector('#b2c-policy [name="limits"]').value = policy.auto_approval_limits ? JSON.stringify(policy.auto_approval_limits) : "";
@@ -82,6 +89,7 @@
       return { revision: policy.revision, changes, reason: values.reason };
     });
     submit("#b2c-recipient", "recipient-review", values => values);
+    submit("#b2c-account-confirm", "account-review-confirm", values => values);
     submit("#b2c-dispatch", "dispatch", values => ({ ...values, idempotencyKey: crypto.randomUUID() }));
     submit("#b2c-reconcile", "reconcile", values => ({ ...values, amountMinor: values.amountMinor ? Number(values.amountMinor) : null }));
     el.querySelector("#b2c-stop").addEventListener("click", async () => {
