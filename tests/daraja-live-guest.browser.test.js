@@ -51,11 +51,11 @@ test("live Daraja: uncertain 503 retains the payment, never starts a second prom
     await page.fill("#song-request-amount", "10");
     await page.click('#song-request-form button[type="submit"]');
     await page.waitForFunction(() => !document.getElementById("pay-submit").disabled);
-    const note = await page.locator("#pay-mode-note").textContent();
-    assert.match(note, /LIVE/);
-    assert.doesNotMatch(note, /sandbox|test checkout/i);
-    assert.match(await page.locator("#pay-submit").textContent(), /real money/i);
-    assert.match(await page.locator("#pay-daraja-note").textContent(), /real money/i);
+    assert.equal(await page.locator("#pay-mode-note").isVisible(), false, "live dialog has no mode banner");
+    assert.equal(await page.locator("#pay-daraja-note").isVisible(), false, "live dialog has no repeated charge warning");
+    assert.equal(await page.locator("#pay-submit").textContent(), "Send M-Pesa prompt");
+    assert.equal(await page.locator("#pay-dialog [data-pay-preset]").count(), 0, "no amount presets in the dialog");
+    assert.doesNotMatch(await page.locator("#pay-dialog").innerText(), /real money|sandbox|test checkout/i);
     await page.fill("#pay-name", "QA Guest");
     await page.fill("#pay-mpesa-phone", "254712345678");
     await page.click("#pay-submit");
@@ -78,6 +78,73 @@ test("live Daraja: uncertain 503 retains the payment, never starts a second prom
     await page.evaluate(() => document.getElementById("pay-form").requestSubmit());
     await page.waitForTimeout(500);
     assert.equal(creates.length, 1, "no second initiation after reload while the first is unresolved");
+  } finally {
+    await browser?.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
+
+test("live Daraja: 4999-style pending polls then verified payment refreshes, adds and highlights the song", async () => {
+  const server = http.createServer(async (req, res) => {
+    try {
+      const path = new URL(req.url, "http://localhost").pathname;
+      if (path.includes("..")) throw new Error("Invalid path");
+      const data = await readFile(new URL(`..${path}`, import.meta.url));
+      res.writeHead(200, { "Content-Type": ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css" })[extname(path)] || "application/octet-stream" }).end(data);
+    } catch { res.writeHead(404).end(); }
+  });
+  let browser;
+  try {
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    try { browser = await chromium.launch({ channel: "msedge" }); } catch { browser = await chromium.launch(); }
+    const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
+    await page.route("https://**", route => route.fulfill({ body: "" }));
+    const wedding = { id: "550e8400-e29b-41d4-a716-446655440000", slug: "qa-couple", couple_names: "QA Couple",
+      wedding_date: "2099-01-01", currency: "KES", published_at: "2026-01-01", palette: ["#244b3a"] };
+    await page.route("https://challenges.cloudflare.com/**", route => route.fulfill({
+      contentType: "text/javascript",
+      body: "window.turnstile={render(el,opts){opts.callback('test-token');return 1},reset(){}}"
+    }));
+    let paid = false;
+    let statusCalls = 0;
+    await page.route("**/api/guest**", route => {
+      const action = new URL(route.request().url()).searchParams.get("action");
+      const bids = paid ? [{ song_title: "QA Song", artist_name: "QA Artist", bid_amount_minor: 1000, bid_count: 1 }] : [];
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify(action === "site" ? { wedding } : action === "leaderboard" ? { bids } : {}) });
+    });
+    await page.route("**/api/checkout**", route => {
+      const action = new URL(route.request().url()).searchParams.get("action");
+      let data, code = 200;
+      if (action === "options") data = { mode: "live", providers: [{ id: "daraja", label: "M-Pesa", market: "KE" }], paymentAvailable: true, turnstileSiteKey: "test" };
+      else if (action === "status") {
+        statusCalls++;
+        if (statusCalls >= 3) paid = true;
+        data = paid
+          ? { paymentStatus: "paid", actionStatus: "completed", action: "song_bid", actionResult: { completed: true, kind: "song_bid" } }
+          : { paymentStatus: "pending", actionStatus: "pending", action: "song_bid" };
+      } else { code = 201; data = { provider: "daraja", paymentStatus: "pending", paymentId: "550e8400-e29b-41d4-a716-446655440003" }; }
+      return route.fulfill({ status: code, contentType: "application/json", body: JSON.stringify(data) });
+    });
+    await page.goto(`http://127.0.0.1:${server.address().port}/guest.html?slug=qa-couple`);
+    await page.locator("#song-request-form").waitFor({ state: "visible" });
+    await page.evaluate(() => {
+      window.qaHighlighted = false;
+      new MutationObserver(() => {
+        if (document.querySelector("#leaderboard-body tr.song-highlight")) window.qaHighlighted = true;
+      }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["class"] });
+    });
+    await page.fill("#song-request-title", "QA Song");
+    await page.fill("#song-request-artist", "QA Artist");
+    await page.fill("#song-request-amount", "10");
+    await page.click('#song-request-form button[type="submit"]');
+    await page.waitForFunction(() => !document.getElementById("pay-submit").disabled);
+    await page.fill("#pay-name", "QA Guest");
+    await page.fill("#pay-mpesa-phone", "254712345678");
+    await page.click("#pay-submit");
+    await page.waitForFunction(() => window.qaHighlighted === true, null, { timeout: 40000 });
+    assert.ok(statusCalls >= 3, "client kept polling through pending results");
+    assert.equal(await page.locator("#pay-dialog").evaluate(d => d.open), false);
+    assert.equal(await page.locator('#leaderboard-body tr[data-title="QA Song"]').count(), 1);
   } finally {
     await browser?.close();
     await new Promise(resolve => server.close(resolve));

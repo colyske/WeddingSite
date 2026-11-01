@@ -132,6 +132,70 @@ begin
   if not blocked then raise exception 'payouts_enabled must be constrained to false'; end if;
 end $$;
 
+-- Processing-recovery regression (Nov 1 incident): STK Query 4999 wrongly cancelled a live
+-- song bid; only the provider-verified recovery RPC may reopen and settle it, exactly once.
+do $$
+declare cid uuid := (select id from auth.users where email is null order by created_at desc limit 1);
+  wid uuid := extensions.gen_random_uuid(); rid uuid; old_id uuid; blocked boolean;
+begin
+  insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date,published_at)
+    values(wid,cid,'Recovery sample','KES',current_date+30,now());
+  insert into public.contributions(wedding_id,stream_name,pledged_amount_minor,currency,payment_status,
+      provider_name,payment_environment,daraja_shortcode,purchase_action,purchase_data)
+    values(wid,'Song bid: Recovery Song',500,'KES','pending','daraja','live','174379','song_bid',
+      '{"songTitle":"Recovery Song","artist":"Recovery Artist"}') returning id into rid;
+  update public.contributions set provider_reference='ws_CO_REC', daraja_merchant_request_id='MR-REC' where id=rid;
+  update public.contributions set payment_status='cancelled' where id=rid and payment_status='pending';
+
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  blocked := false;
+  begin perform public.recover_verified_daraja_payment('stk-query:ws_CO_REC',rid,500,'KES','ws_CO_REC','ws_CO_REC');
+  exception when raise_exception then blocked := sqlerrm = 'Service role required.'; end;
+  if not blocked then raise exception 'Recovery must require the service role'; end if;
+
+  perform set_config('request.jwt.claim.role','service_role',true);
+  blocked := false;
+  begin perform public.recover_verified_daraja_payment('stk-query:ws_CO_X',rid,500,'KES','ws_CO_X','ws_CO_X');
+  exception when raise_exception then blocked := true; end;
+  if not blocked or (select payment_status <> 'cancelled' from public.contributions where id=rid) then
+    raise exception 'Recovery with another checkout reference must fail and leave the row cancelled';
+  end if;
+  blocked := false;
+  begin perform public.recover_verified_daraja_payment('stk-query:ws_CO_REC',rid,600,'KES','ws_CO_REC','ws_CO_REC');
+  exception when raise_exception then blocked := true; end;
+  if not blocked or (select payment_status <> 'cancelled' from public.contributions where id=rid) then
+    raise exception 'Recovery with a wrong amount must roll back to cancelled';
+  end if;
+
+  if not public.recover_verified_daraja_payment('stk-query:ws_CO_REC',rid,500,'KES','ws_CO_REC','ws_CO_REC') then
+    raise exception 'Verified recovery must settle the wrongly cancelled payment';
+  end if;
+  if not exists(select 1 from public.contributions where id=rid and payment_status='paid'
+      and verified_provider_payment and provider_fee_pending and action_completed_at is not null) then
+    raise exception 'Recovered payment must be paid, verified, fee-held and fulfilled';
+  end if;
+  if (select count(*) from public.dj_song_bids where wedding_id=wid and song_title='Recovery Song') <> 1 then
+    raise exception 'Recovered song bid must be on the leaderboard exactly once';
+  end if;
+  if public.recover_verified_daraja_payment('stk-query:ws_CO_REC',rid,500,'KES','ws_CO_REC','ws_CO_REC') then
+    raise exception 'Repeated recovery must be idempotent';
+  end if;
+  if (select count(*) from public.dj_song_bids where wedding_id=wid and song_title='Recovery Song') <> 1 then
+    raise exception 'Repeated recovery must not duplicate the song bid';
+  end if;
+
+  -- Stale (>30 days) cancelled rows are not eligible.
+  insert into public.contributions(wedding_id,stream_name,pledged_amount_minor,currency,payment_status,
+      provider_name,payment_environment,daraja_shortcode)
+    values(wid,'Old',500,'KES','pending','daraja','live','174379') returning id into old_id;
+  update public.contributions set provider_reference='ws_CO_OLD', daraja_merchant_request_id='MR-OLD',
+    payment_status='cancelled', created_at=now()-interval '31 days' where id=old_id;
+  blocked := false;
+  begin perform public.recover_verified_daraja_payment('stk-query:ws_CO_OLD',old_id,500,'KES','ws_CO_OLD','ws_CO_OLD');
+  exception when raise_exception then blocked := true; end;
+  if not blocked then raise exception 'Stale cancelled rows must not be recoverable'; end if;
+end $$;
+
 -- Real GRANT/RLS coverage as the authenticated and anon roles.
 do $$
 declare cid uuid := (select id from auth.users where email is null order by created_at desc limit 1);

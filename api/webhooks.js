@@ -6,6 +6,7 @@ import {
   verifyProviderPayment
 } from "../server/payment-adapters.js";
 import { recordPublicationPayment, reconcilePublicationCallback } from "../server/publication-payments.js";
+import { recoverVerifiedDaraja } from "../server/daraja-recovery.js";
 
 export const config = { api: { bodyParser: false } };
 
@@ -155,7 +156,9 @@ async function handleDarajaCallback(req, res) {
       { service: true }
     );
     const contribution = contributions?.[0];
-    if (!contribution || contribution.payment_status !== "pending") {
+    if (!contribution) return sendJson(res, 200, { received: true, processed: false });
+    const recoverable = contribution.payment_status === "cancelled";
+    if (contribution.payment_status !== "pending" && !recoverable) {
       return sendJson(res, 200, { received: true, processed: false });
     }
     contributionId = contribution.id;
@@ -192,6 +195,7 @@ async function handleDarajaCallback(req, res) {
     );
     if (payment.terminal) {
       console.info("Daraja STK Query terminal result", { resultCode: payment.resultCode || null });
+      if (recoverable) return sendJson(res, 200, { received: true, processed: false });
       await supabaseRequest(
         `/rest/v1/contributions?id=eq.${encodeURIComponent(contribution.id)}&payment_status=eq.pending`,
         { service: true, method: "PATCH", body: { payment_status: "cancelled" }, prefer: "return=minimal" }
@@ -199,6 +203,10 @@ async function handleDarajaCallback(req, res) {
       return sendJson(res, 200, { received: true, processed: false });
     }
     if (!payment.verified) return sendJson(res, 200, { received: true, processed: false });
+    if (recoverable) {
+      const recovered = await recoverVerifiedDaraja(payment, contribution.id);
+      return sendJson(res, 200, { received: true, processed: Boolean(recovered) });
+    }
     const recorded = await supabaseRequest("/rest/v1/rpc/record_verified_payment", {
       service: true,
       method: "POST",

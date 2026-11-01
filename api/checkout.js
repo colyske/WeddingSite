@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
 import { checkProviderHealth, darajaConfiguredEnvironment, darajaEnvironment, initiateDarajaStkPush, isSecurePublicOrigin, verifyProviderPayment } from "../server/payment-adapters.js";
 import { normalizePhone } from "../server/phone.js";
+import { recoverVerifiedDaraja } from "../server/daraja-recovery.js";
 import { isPastWedding } from "../server/wedding-time.js";
 import { platformOrigins, weddingOriginSlug } from "../server/site-hosts.js";
 import { isShowcase } from "../server/showcase.js";
@@ -571,11 +572,14 @@ async function handleStatus(req, res) {
   const id = String(req.query.id || "");
   if (!isUuid(id)) return sendJson(res, 400, { error: "Invalid payment reference." });
   try {
-    let rows = await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&select=id,payment_status,provider_name,provider_reference,pledged_amount_minor,currency,purchase_action,action_result,action_completed_at,provider_fee_pending,payment_environment,daraja_shortcode,daraja_merchant_request_id`, { service: true });
+    let rows = await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&select=id,payment_status,provider_name,provider_reference,pledged_amount_minor,currency,purchase_action,action_result,action_completed_at,    provider_fee_pending,payment_environment,daraja_shortcode,daraja_merchant_request_id,created_at`, { service: true });
     let row = rows?.[0];
     if (!row) return sendJson(res, 404, { error: "Payment reference not found." });
     let providerResultCode = null;
-    const shouldVerify = row.payment_status === "pending" ||
+    let stillProcessing = false;
+    const recoverableDaraja = row.provider_name === "daraja" && row.payment_status === "cancelled" &&
+      Date.now() - Date.parse(row.created_at) < 30 * 24 * 3600 * 1000;
+    const shouldVerify = row.payment_status === "pending" || recoverableDaraja ||
       (row.provider_name !== "daraja" && row.provider_fee_pending);
     if (shouldVerify && row.provider_reference) {
       const payment = await verifyProviderPayment(
@@ -585,7 +589,9 @@ async function handleStatus(req, res) {
           merchantRequestId: row.daraja_merchant_request_id
         } : null
       );
-      if (payment.verified) {
+      if (payment.verified && recoverableDaraja) {
+        await recoverVerifiedDaraja(payment, row.id);
+      } else if (payment.verified) {
         await supabaseRequest("/rest/v1/rpc/record_verified_payment", {
           service: true, method: "POST",
           body: {
@@ -604,6 +610,9 @@ async function handleStatus(req, res) {
             `/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&payment_status=eq.pending`,
             { service: true, method: "PATCH", body: { payment_status: "cancelled" }, prefer: "return=minimal" }
         );
+      } else if (recoverableDaraja && !payment.terminal) {
+        // Cancelled by the earlier premature-4999 handling but Safaricom still reports it in progress.
+        stillProcessing = true;
       }
       if (payment.verified || payment.terminal) {
         rows = await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&select=id,payment_status,purchase_action,action_result,action_completed_at,provider_fee_pending`, { service: true });
@@ -613,7 +622,7 @@ async function handleStatus(req, res) {
     return sendJson(res, 200, {
       paymentStatus: row.payment_status === "paid" ? "paid" :
         row.payment_status === "refunded" ? "refunded" :
-          row.payment_status === "cancelled" ? "cancelled" : "pending",
+          row.payment_status === "cancelled" && !stillProcessing ? "cancelled" : "pending",
       action: row.purchase_action || null,
       providerResultCode,
       actionStatus: row.action_completed_at ? "completed" : row.payment_status === "paid" ? "review_required" : "pending",
