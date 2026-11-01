@@ -20,12 +20,23 @@ begin
   end loop;
 end $$;
 select pg_temp.assert_true((select not enabled and rate_basis_points=0 and first_effective_at is null from public.referral_policy),'default OFF');
-select pg_temp.assert_true(public.referral_available_cap(5000,8880,2000,500,300,6000,100,400,1000)=4000,'cost/loss/commitment cap');
+select pg_temp.assert_true(public.referral_available_cap(5000,8880,2000,500,300,6000,100,400,1000)=4500,'cost/loss/commitment cap');
 select pg_temp.assert_true(public.referral_available_cap(10000,8880,2000,0,0,100000,0,0,0)=6880,'rate cannot exceed net fee reserve');
 select pg_temp.assert_true(public.referral_available_cap(10000,8880,null,0,0,100000,0,0,0)=0,'unknown cost');
 select pg_temp.assert_true(public.referral_available_cap(10000,8880,2000,0,0,null,0,0,0)=0,'unknown platform settlement');
 select pg_temp.assert_true(public.referral_available_cap(10000,8880,2000,0,0,100000,0,null,0)=0,'unknown commitments');
 select pg_temp.assert_true(public.referral_available_cap(10000,8880,2000,0,0,100000,0,0,9000)=0,'committed commission reserve');
+do $$
+declare signature text; role_name text;
+begin
+  foreach role_name in array array['anon','authenticated','service_role'] loop
+    foreach signature in array array['referral_reconcile_estimate(uuid)','referral_snapshot_contribution()',
+      'referral_available_cap(bigint,bigint,bigint,bigint,bigint,bigint,bigint,bigint,bigint)'] loop
+      perform pg_temp.assert_true(not has_function_privilege(role_name,'public.'||signature,'execute'),
+        'internal function not externally executable: '||role_name||'/'||signature);
+    end loop;
+  end loop;
+end $$;
 
 set local role authenticated;
 select set_config('request.jwt.claim.role','authenticated',true);
@@ -169,7 +180,7 @@ begin
     values('stripe','refund','fixture-refund',cid,wid,50000,'KES','processed','platform') returning id into aid;
   insert into public.financial_adjustment_ledger(adjustment_id,wedding_id,contribution_id,entry_type,
     couple_net_delta_minor,currency,allocation,provider,provider_adjustment_id)
-    values(aid,wid,cid,'refund',-45560,'KES','platform','stripe','fixture-refund');
+    values(aid,wid,cid,'refund',-44560,'KES','platform','stripe','fixture-refund');
 end $$;
 set constraints all immediate;
 set constraints all deferred;
@@ -188,9 +199,70 @@ begin
   insert into public.wedding_memberships(wedding_id,user_id,role)
     values((select id from referral_actors where kind='wedding'),(select id from referral_actors where kind='referrer'),'admin');
 end $$;
+do $$
+declare cid uuid:=(select id from referral_actors where kind='paid'); wid uuid; aid uuid;
+begin
+  select wedding_id into wid from public.contributions where id=cid;
+  insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
+    amount_minor,currency,status,hold_minor,refund_fee_allocation)
+    values('stripe','refund','reviewed-refund',cid,wid,10000,'KES','review',10000,'manual_review') returning id into aid;
+end $$;
 set constraints all immediate;
 set constraints all deferred;
-select pg_temp.assert_true((select held_estimate_minor=500 from public.referral_balances where contribution_id=(select id from referral_actors where kind='paid')),'later admin/helper authority not client identity');
+select pg_temp.assert_true((select held_estimate_minor=500 from public.referral_balances where contribution_id=(select id from referral_actors where kind='paid')),'unconfirmed review does not invent refund principal');
+insert into public.provider_adjustment_events(provider,provider_event_id,provider_adjustment_id,event_type,contribution_id,
+  wedding_id,amount_minor,currency,provider_state,outcome)
+  select 'stripe','reviewed-refund-event','reviewed-refund','refund.processed',id,wedding_id,10000,'KES','refund_processed','held'
+  from public.contributions where id=(select id from referral_actors where kind='paid');
+set constraints all immediate;
+set constraints all deferred;
+select pg_temp.assert_true((select held_estimate_minor=400 from public.referral_balances where contribution_id=(select id from referral_actors where kind='paid')),'event-only refund confirmation changes source digest and nets basis');
+do $$
+declare cid uuid:=(select id from referral_actors where kind='paid'); wid uuid; aid uuid;
+begin
+  select wedding_id into wid from public.contributions where id=cid;
+  insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
+    amount_minor,currency,status)
+    values('stripe','dispute','lost-dispute',cid,wid,20000,'KES','lost') returning id into aid;
+  insert into public.financial_adjustment_ledger(adjustment_id,wedding_id,contribution_id,entry_type,
+    couple_net_delta_minor,currency,allocation,provider,provider_adjustment_id)
+    values(aid,wid,cid,'dispute_debit',-20000,'KES','provider_verified','stripe','lost-dispute');
+end $$;
+set constraints all immediate;
+set constraints all deferred;
+select pg_temp.assert_true((select held_estimate_minor=200 from public.referral_balances where contribution_id=(select id from referral_actors where kind='paid')),'lost dispute negative netting');
+insert into public.financial_adjustment_ledger(adjustment_id,wedding_id,contribution_id,entry_type,
+  couple_net_delta_minor,currency,allocation,provider,provider_adjustment_id)
+  select id,wedding_id,contribution_id,'dispute_reversal',20000,'KES','provider_verified','stripe','lost-dispute'
+  from public.payment_adjustments where provider_adjustment_id='lost-dispute';
+update public.payment_adjustments set status='won' where provider_adjustment_id='lost-dispute';
+set constraints all immediate;
+set constraints all deferred;
+select pg_temp.assert_true((select held_estimate_minor=400 from public.referral_balances where contribution_id=(select id from referral_actors where kind='paid')),'won dispute restores only previous debit');
+select pg_temp.assert_true((select held_estimate_minor=400 from public.referral_balances where contribution_id=(select id from referral_actors where kind='paid')),'later admin/helper authority not client identity');
+do $$
+declare cid uuid; wid uuid; p jsonb;
+begin
+  cid:=(select id from referral_actors where kind='new-rate');
+  select wedding_id into wid from public.contributions where id=cid;
+  insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
+    amount_minor,currency,status,refund_fee_allocation)
+    values('stripe','refund','full-refund',cid,wid,100000,'KES','processed','couple');
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='referrer'),true);
+  perform public.referral_set_consent(false,'client-referrals-v1');
+  cid:=pg_temp.payment('withdrawn',true,wid);
+  perform pg_temp.assert_true((select rate_basis_points=0 from public.referral_contribution_policy where contribution_id=cid),'withdrawal stops prospective snapshots');
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='owner'),true);
+  p:=public.referral_admin_policy();
+  perform public.referral_owner_policy(false,0,(p->>'revision')::uuid,true);
+  cid:=pg_temp.payment('policy-off',true,wid);
+  perform pg_temp.assert_true((select rate_basis_points=0 from public.referral_contribution_policy where contribution_id=cid),'OFF stops prospective snapshots');
+  perform pg_temp.assert_true((select rate_basis_points=100 from public.referral_contribution_policy
+    where contribution_id=(select id from referral_actors where kind='paid')),'OFF does not reprice old snapshots');
+end $$;
+set constraints all immediate;
+set constraints all deferred;
+select pg_temp.assert_true((select held_estimate_minor=0 from public.referral_balances where contribution_id=(select id from referral_actors where kind='new-rate')),'full refund removes entire estimate');
 update public.wedding_memberships set role='client' where wedding_id=(select id from referral_actors where kind='wedding')
   and user_id=(select id from referral_actors where kind='referrer');
 set constraints all immediate;

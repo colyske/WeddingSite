@@ -50,6 +50,7 @@ async function openDashboard(handlers = {}) {
     sessionStorage.setItem("seeded", "1");
     sessionStorage.setItem("ws-session", JSON.stringify({ a: "test-token", r: "client", n: "Test User", e: "test@example.com" }));
   });
+  await page.route("**/api/referrals*", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ intent_id: null }) }));
   
   await page.route("**/api/weddings*", async (route) => {
     const url = new URL(route.request().url());

@@ -48,6 +48,10 @@ jobs:
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/wedding-team.sql
       - name: Test held client referrals without retaining fixtures
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/referral-commissions.sql
+      - name: Test concurrent first-valid client referral capture
+        env:
+          REFERRAL_TEST_DB_CONTAINER: supabase_db_weddingsite
+        run: node tests/db/referral-concurrency.mjs
       - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup
