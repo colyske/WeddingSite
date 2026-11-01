@@ -52,14 +52,17 @@ test("DJ song list precedes the request form, fits 320/375px and highlights a pa
         listTop: document.getElementById("leaderboard-table").getBoundingClientRect().top + scrollY,
         formTop: document.getElementById("song-request-form").getBoundingClientRect().top + scrollY,
         navLinks: [...document.querySelectorAll(".sticky-nav .nav-links a")].map(a => { const r = a.getBoundingClientRect(); return { l:r.left, r:r.right }; }),
-        buttons: [...document.querySelectorAll("#leaderboard-body summary")].map(b => { const r = b.getBoundingClientRect(); return { l: r.left, r: r.right, h: r.height }; })
+        buttons: [...document.querySelectorAll("#leaderboard-body summary")].map(b => { const r = b.getBoundingClientRect(); return { l: r.left, r: r.right, h: r.height, t: r.top }; }),
+        songTop: document.querySelector("#leaderboard-body .lb-song").getBoundingClientRect().top,
+        songBottom: document.querySelector("#leaderboard-body .lb-song").getBoundingClientRect().bottom
       }));
       assert.ok(metrics.scrollW <= metrics.clientW, `no horizontal page overflow at ${width}px`);
       assert.ok(metrics.navH < 125, `compact nav at ${width}px (${metrics.navH})`);
       assert.ok(metrics.listTop < metrics.formTop, "song list comes before the request form");
       for (const b of metrics.buttons) {
         assert.ok(b.l >= 0 && b.r <= width, "bid buttons stay inside the viewport");
-        assert.ok(b.h >= 36, "bid buttons remain tappable");
+        assert.ok(b.h >= 44, "bid buttons keep a 44px tap target");
+        assert.ok(b.t < metrics.songBottom && b.t >= metrics.songTop - 16, `bid button shares the song row at ${width}px`);
       }
       for (const link of metrics.navLinks) assert.ok(link.l >= 0 && link.r <= width, `all nav links visible at ${width}`);
       assert.equal(await page.locator("#leaderboard-body [data-song-bid]").first().isVisible(), false);

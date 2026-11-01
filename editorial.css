@@ -255,6 +255,9 @@ button.link { min-height: 44px; padding: .5rem .7rem; box-shadow: none; }
 .song-bid-amounts { display: flex; flex-wrap: wrap; gap: .4rem; padding-top: .5rem; }
 .song-bid-amounts .buy-btn { margin: 0; min-height: 44px; padding: .5rem .65rem !important; letter-spacing: .02em; }
 #leaderboard-table td { vertical-align: top; }
+#leaderboard-table td.lb-bid { text-align: right; }
+#leaderboard-table td.lb-bid .song-bid-amounts { text-align: left; justify-content: flex-end; }
+.preset-fx { flex-basis: 100%; margin: .35rem 0 0; font-size: .75rem; color: #4a554b; }
 #leaderboard-table .lb-song { overflow-wrap: anywhere; }
 body.guest-page #leaderboard-table .lb-artist { color: #4a554b !important; }
 body.guest-page .song-request { margin-top: 1rem; padding: 1rem; }
@@ -278,7 +281,6 @@ body.guest-page #bids .link-btn { background: transparent !important; color: var
   .bo-panel .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ecard-container { padding: 1.25rem !important; margin: 1.5rem auto !important; }
   .song-bid-options summary { font-size: .8rem; }
-  #leaderboard-table tr:has(.song-bid-options[open]) .lb-bid { grid-column: 2 / -1; grid-row: 4; max-width: none; }
   #leaderboard-table td.lb-bid .buy-btn { flex: 1 1 5rem; font-size: .8rem; min-height: 44px; }
   #color-inputs > div { flex-wrap: wrap; max-width: 100%; }
   #color-inputs .palette-color-name { flex: 1 1 7rem; min-width: 0; }
@@ -332,17 +334,28 @@ body.guest-page #sponsors { background-image: linear-gradient(135deg, #e2e9df, #
   .showcase-pin { flex-direction: column; align-items: stretch; gap: .5rem; }
 }
 @media (max-width: 640px) {
-  #leaderboard-table tr { grid-template-columns: 1rem minmax(0, 1fr) minmax(3.2rem, .65fr) minmax(4rem, auto) !important; gap: .2rem .35rem; }
+  #leaderboard-table tr { grid-template-columns: 1.1rem minmax(0, 1fr) minmax(0, .7fr) auto auto !important; gap: .15rem .35rem; align-items: start; }
   body.guest-page #leaderboard-table .lb-rank { grid-column: 1; grid-row: 1; }
   body.guest-page #leaderboard-table .lb-song { grid-column: 2; grid-row: 1; font-size: .82rem; line-height: 1.4; }
-  body.guest-page #leaderboard-table .lb-artist { grid-column: 3; grid-row: 1; font-size: .76rem; line-height: 1.4; }
-  body.guest-page #leaderboard-table .lb-total { grid-column: 4; grid-row: 1; font-size: .76rem; line-height: 1.4; text-align: right !important; }
-  body.guest-page #leaderboard-table td.lb-bid { grid-column: 2 / -1; grid-row: 2 !important; max-width: none; }
+  body.guest-page #leaderboard-table .lb-artist { grid-column: 3; grid-row: 1; font-size: .76rem; line-height: 1.4; overflow-wrap: anywhere; }
+  body.guest-page #leaderboard-table .lb-total { grid-column: 4; grid-row: 1; font-size: .76rem; line-height: 1.4; text-align: right !important; white-space: nowrap; }
+  body.guest-page #leaderboard-table td.lb-bid { grid-column: 5; grid-row: 1 !important; max-width: none; }
+  body.guest-page #leaderboard-table tr:has(.song-bid-options[open]) td.lb-bid { grid-column: 1 / -1; grid-row: 2 !important; }
   .song-bid-options { min-width: 0; }
   .song-bid-options:not([open]) { width: max-content; margin-left: auto; }
-  .song-bid-options summary { min-height: 44px; padding: .45rem .65rem; font-size: .75rem; }
+  .song-bid-options summary { min-height: 44px; padding: .45rem .55rem; font-size: .75rem; }
   #ledger-table { font-size: .75rem; table-layout: fixed; }
   #ledger-table :is(td, th) { padding: .45rem .2rem !important; overflow-wrap: anywhere; }
   .field-row { grid-template-columns: minmax(5.2rem, 32%) minmax(0, 1fr); gap: .4rem; }
   .field-row > label { font-size: .8rem; }
 }
+@media (max-width: 400px) {
+  .song-bid-options:not([open]) summary { white-space: normal; max-width: 4.75rem; line-height: 1.2; text-align: center; list-style: none; }
+  .song-bid-options summary::-webkit-details-marker { display: none; }
+}
+
+/* M-Pesa prompt action: plain-text label, accessible green (white text over 6:1; disabled over 4.5:1). */
+#pay-dialog #pay-submit.pay-mpesa { background: #00703c !important; border-color: #00703c !important; color: #fff !important; text-transform: none; letter-spacing: .02em; font-size: .85rem; min-height: 44px; }
+#pay-dialog #pay-submit.pay-mpesa:not([disabled]):hover { background: #005a30 !important; box-shadow: 3px 3px 0 #9fd3a8 !important; }
+#pay-dialog #pay-submit.pay-mpesa:focus-visible { outline: 3px solid #1d3b2f; outline-offset: 2px; }
+#pay-dialog #pay-submit.pay-mpesa[disabled] { background: #3f7d5c !important; border-color: #3f7d5c !important; color: #fff !important; cursor: progress; }

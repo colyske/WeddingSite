@@ -3,6 +3,7 @@ import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
 import { checkProviderHealth, darajaConfiguredEnvironment, darajaEnvironment, initiateDarajaStkPush, isSecurePublicOrigin, verifyProviderPayment } from "../server/payment-adapters.js";
 import { normalizePhone } from "../server/phone.js";
 import { recoverVerifiedDaraja } from "../server/daraja-recovery.js";
+import { CUSTOM_SPONSOR_FLOOR, CustomSponsorFxUnavailable, customSponsorMinimum, sponsorPackageCount } from "../server/custom-sponsorship.js";
 import { isPastWedding } from "../server/wedding-time.js";
 import { platformOrigins, weddingOriginSlug } from "../server/site-hosts.js";
 import { isShowcase } from "../server/showcase.js";
@@ -388,6 +389,32 @@ async function handleCheckout(req, res) {
       streamName = `VIP: ${offer.title}`;
       purchaseData = { refId: offer.id, guestName: String(body.guestName || "").trim().slice(0, 100), guestEmail: String(body.email || body.guestEmail || "").trim().slice(0, 200) };
       if (!purchaseData.guestName) return sendJson(res, 400, { error: "Enter your name for the VIP reservation." });
+    } else if (purchaseAction === "sponsor" && body.custom === true) {
+      if (body.refId) return sendJson(res, 400, { error: "A custom sponsorship cannot also select a package." });
+      if (await sponsorPackageCount(weddingId)) {
+        return sendJson(res, 409, { error: "This couple has sponsor packages. Choose one of their packages instead." });
+      }
+      let floor;
+      try { floor = await customSponsorMinimum(currency); }
+      catch (error) {
+        if (!(error instanceof CustomSponsorFxUnavailable)) throw error;
+        return sendJson(res, 503, { error: "A current exchange rate for the sponsorship minimum is unavailable. No checkout was created." });
+      }
+      if (!Number.isSafeInteger(body.amountMinor) || requestedAmount < floor.minimumMinor || requestedAmount % 100 !== 0) {
+        return sendJson(res, 400, { error: `Custom sponsorship starts at ${floor.minimumMinor / 100} ${currency} (whole amounts only).` });
+      }
+      amountMinor = requestedAmount;
+      streamName = "Sponsor: custom sponsorship";
+      purchaseData = {
+        custom: true, customMinimumMinor: floor.minimumMinor, fxSnapshotId: floor.fxSnapshotId,
+        floorCurrency: CUSTOM_SPONSOR_FLOOR.currency, floorAmountMinor: CUSTOM_SPONSOR_FLOOR.amountMinor,
+        companyName: String(body.companyName || body.guestName || "").trim().slice(0, 100),
+        email: String(body.email || "").trim().slice(0, 200), phone: String(body.phone || "").trim().slice(0, 20),
+        website: String(body.website || "").trim().slice(0, 300), socialLinks: globalThis.WSSocialLinks.parse(body.socialLinks),
+        location: String(body.location || "").trim().slice(0, 160),
+        offer: String(body.offer || "").trim().slice(0, 360), publicContact: body.publicContact === true
+      };
+      if (!purchaseData.companyName) return sendJson(res, 400, { error: "Enter the sponsor's organization name." });
     } else if (purchaseAction === "sponsor") {
       if (!isUuid(body.refId)) return sendJson(res, 400, { error: "Choose a sponsor package." });
       const tiers = await supabaseRequest(`/rest/v1/sponsor_tiers?id=eq.${encodeURIComponent(body.refId)}&wedding_id=eq.${encodeURIComponent(weddingId)}&select=id,name,min_amount_minor`, { service: true });
@@ -634,10 +661,38 @@ async function handleStatus(req, res) {
   }
 }
 
+async function handleCustomSponsor(req, res) {
+  if (!methodOnly(req, res, "GET")) return;
+  const weddingId = String(req.query.weddingId || "");
+  if (!isUuid(weddingId) || isShowcase(weddingId)) return sendJson(res, 200, { available: false, message: "Custom sponsorship is not available here." });
+  try {
+    const wedding = (await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=id,currency,wedding_date,time_zone`, { service: true }))?.[0];
+    if (!wedding || isPastWedding(wedding.wedding_date, wedding.time_zone)) {
+      return sendJson(res, 200, { available: false, message: "Sponsorship is closed for this wedding." });
+    }
+    if (await sponsorPackageCount(weddingId)) {
+      return sendJson(res, 200, { available: false, hasPackages: true, message: "Choose one of the couple's sponsor packages." });
+    }
+    const floor = await customSponsorMinimum(wedding.currency);
+    return sendJson(res, 200, {
+      available: true, currency: wedding.currency, minimumMinor: floor.minimumMinor,
+      floorCurrency: CUSTOM_SPONSOR_FLOOR.currency, floorAmountMinor: CUSTOM_SPONSOR_FLOOR.amountMinor,
+      fxPublishedAt: floor.fxPublishedAt, fxSource: floor.fxSource
+    });
+  } catch (error) {
+    if (error instanceof CustomSponsorFxUnavailable) {
+      return sendJson(res, 200, { available: false, message: "A current exchange rate for the sponsorship minimum is unavailable. Try again later." });
+    }
+    console.error("custom sponsorship availability failed", error.message);
+    return sendJson(res, 503, { available: false, message: "Sponsorship availability could not be checked." });
+  }
+}
+
 export default async function handler(req, res) {
   const action = String(req.query.action || "create").toLowerCase();
   if (action === "options") return handleOptions(req, res);
   if (action === "create") return handleCheckout(req, res);
   if (action === "status") return handleStatus(req, res);
+  if (action === "custom-sponsor") return handleCustomSponsor(req, res);
   return sendJson(res, 400, { error: "Unknown action." });
 }

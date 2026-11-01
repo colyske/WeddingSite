@@ -137,10 +137,14 @@
     return hasRate(code);
   }
   restoreCache();
+  const rateDateIso = () => {
+    const date = new Date(rateDate);
+    return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+  };
   window.WeddingSiteFX = {
     options, currency, choose, hasRate, convertUsd, convertToUsd, formatLocalIndicative,
     formatUsd, formatPrimaryUsd, formatDualUsd: formatPrimaryUsd, statusText, refresh,
-    isFresh, convertBetween
+    isFresh, convertBetween, rateDateIso
   };
   window.addEventListener("storage", event => {
     if (event.key === currencyKey || event.key === configKey || event.key === weddingKey || event.key === rateKey) {

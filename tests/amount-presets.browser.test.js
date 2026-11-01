@@ -75,19 +75,25 @@ test("KES and USD saved arrays drive new/existing songs, registry, campaigns and
       assert.notEqual(await page.locator("#pay-amount").getAttribute("readonly"), null);
       await page.locator("#pay-cancel").click();
       if (currency === "KES") {
-        await page.waitForFunction(() => document.querySelector("[data-preset-money]").textContent.includes("approx. USD"));
-        assert.match(await page.locator("#song-request-presets").innerText(), /KES 100\.00 \[approx\. USD 0\.80/i);
+        const songPresets = page.locator("#song-request-presets");
+        const note = songPresets.locator("[data-preset-fx]");
+        await page.waitForFunction(() => document.querySelector("#song-request-presets [data-preset-fx]").textContent.includes("≈ USD"));
+        assert.deepEqual(await songPresets.locator("button").allTextContents(), ["KES 100", "KES 500", "KES 1,000", "Custom amount"],
+          "preset buttons show wedding-currency amounts only");
+        assert.match(await note.innerText(), /≈ USD 0\.80–8\.00; indicative daily FX \d{4}-\d{2}-\d{2}\. You pay in KES\./);
         await page.evaluate(() => {
           localStorage.setItem("weddingsite-demo-fx-rates", JSON.stringify({
             base: "USD", rates: { USD: 1, KES: 125 }, rateDate: new Date(Date.now() - 37 * 3600000).toUTCString()
           }));
           window.dispatchEvent(new StorageEvent("storage", { key: "weddingsite-demo-fx-rates" }));
         });
-        assert.match(await page.locator("#song-request-presets").innerText(), /USD equivalent unavailable/i);
+        await page.waitForFunction(() => /unavailable/i.test(document.querySelector("#song-request-presets [data-preset-fx]").textContent));
+        assert.doesNotMatch((await songPresets.locator("button").allInnerTexts()).join(" "), /USD/);
         assert.deepEqual(await songValues(), [...amounts.song, 0], "FX display cannot reprice presets");
       } else {
-        assert.doesNotMatch(await page.locator("#song-request-presets").innerText(), /approx/);
+        assert.doesNotMatch(await page.locator("#song-request-presets").innerText(), /approx|≈/);
         assert.match(await page.locator("#song-request-presets").innerText(), /USD 7\.25/i);
+        assert.equal(await page.locator("#song-request-presets [data-preset-fx]").isHidden(), true);
       }
       await page.close();
     }
