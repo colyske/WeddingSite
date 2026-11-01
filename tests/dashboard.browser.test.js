@@ -53,6 +53,7 @@ async function openDashboard(handlers = {}) {
     return h ? h(route, body) : route.fulfill({ status: 404, body: "{}" });
   });
   await page.goto(`${base}/dashboard.html`);
+  await page.locator("[data-guide-all]").click();
   await page.waitForSelector("#venues-container .venue-item");
   return { page, calls, errors, close: () => context.close() };
 }
@@ -194,8 +195,9 @@ test("client validation: shows messages, keeps values, sends nothing", { skip },
   assert.match(await page.textContent("#notice"), /required/i);
   assert.equal(await page.locator("#couple-names").evaluate(el => el === document.activeElement), true);
   await page.fill("#couple-names", "A & B");
+  await page.fill("#max-capacity", "");
   await page.click("#create-submit");
-  assert.match(await page.textContent("#notice"), /location|required/i);
+  assert.match(await page.textContent("#notice"), /capacity|required/i);
   await page.fill("#location", "Kisumu");
   for (const bad of ["0", "-3", "2.5", ""]) {
     await page.fill("#max-capacity", bad);

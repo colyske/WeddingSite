@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#203a31"><link rel="icon" type="image/png" sizes="120x120" href="/assets/brand/icon-120.png"><link rel="apple-touch-icon" sizes="120x120" href="/assets/brand/icon-120.png">
   <title>Join Our Wedding — Workspace</title>
   <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><script src="ornaments.js" defer></script>
+  <link rel="stylesheet" href="guided-setup.css">
   <style>
     .color-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin: 1.5rem 0; }
     .color-grid small { color: #7a8580; }
@@ -52,8 +53,10 @@
 
     <div id="create-section" class="card">
       <h2>✨ Plan a new wedding</h2>
-      <p style="color: #7a8580; margin: 0 0 2rem;">Start your wedding journey with us</p>
+      <p>Answer a few questions at your own pace. You can skip and return later.</p>
       <form id="create-form" novalidate onsubmit="return false">
+        <section data-guide-step="couple" data-guide-title="Who is getting married?">
+        <p class="fine">Only the couple names are needed to create your server-saved draft. The date can wait until you are ready to publish.</p>
         <label for="couple-names">👰 Couple names <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="couple-names" type="text" maxlength="120" placeholder="e.g. Sarah &amp; John" autocomplete="off" required aria-required="true">
 
@@ -61,10 +64,19 @@
         <input id="wedding-date" type="date" required>
         <label for="wedding-timezone">🌍 Time zone <span class="fine">(venue times, countdown and calendar use this zone)</span></label>
         <select id="wedding-timezone"></select>
+        </section>
 
+        <section data-guide-step="venues" data-guide-title="Where will you celebrate?">
+        <p class="fine">Optional for your draft. Before publishing, add a location and a wedding-day event with a name, date, start time and street address.</p>
         <label for="location">📍 Location <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="location" type="text" maxlength="120" placeholder="City, venue, or coordinates" autocomplete="off" required aria-required="true">
+        <label>Events and venues</label>
+        <div id="venues-container"></div>
+        <button type="button" id="add-venue" data-action="add-venue">+ Add another venue</button>
+        </section>
 
+        <section data-guide-step="guests" data-guide-title="What should we know about your guests?">
+        <p class="fine">Choose your accounting currency and a guest capacity estimate before creation. These do not enable any paid extras.</p>
         <label for="currency">💵 Primary currency <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <select id="currency" data-wedding-currency required aria-required="true">
           <option value="USD">USD - US Dollar</option>
@@ -78,7 +90,10 @@
 
         <label for="max-capacity">👥 Maximum guest capacity <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="max-capacity" type="number" min="1" step="1" value="150" required aria-required="true">
+        </section>
 
+        <section data-guide-step="theme" data-guide-title="Which colours feel like you?" data-guide-optional>
+        <p class="fine">Optional. Keep the current palette or personalize it later in the editor.</p>
         <label>🎨 Wedding colour palette (4 colours)</label>
         <div class="swatches" id="palette-preview">
           <span id="swatch-1" style="background: #244b3a;" title="Colour 1"></span>
@@ -99,9 +114,12 @@
           <button type="button" class="link" id="reset-palette" data-action="reset-palette">Reset to defaults</button>
         </div>
 
-        <label>📍 Venues (optional) — choose one as the main venue</label>
-        <div id="venues-container"></div>
-        <button type="button" id="add-venue" data-action="add-venue">+ Add another venue</button>
+        </section>
+
+        <section data-guide-step="review" data-guide-title="Ready to start your wedding draft?">
+          <p>Create a draft with just your names. Your answers will be saved to your account so you can resume on another device. It does not publish the site; unanswered dates, venues and optional extras can wait.</p>
+          <div data-guide-review></div>
+        </section>
 
         <fieldset id="client-referral-disclosure" hidden>
           <legend>Client referral disclosure</legend>
@@ -132,6 +150,7 @@
   <script src="share.js"></script>
   <script src="setup-progress.js"></script>
   <script src="referral-client.js"></script>
+  <script src="guided-setup.js"></script>
   <script src="dashboard.js"></script>
   <script src="footer.js"></script>
 <script src="/feedback.js"></script>

@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#203a31"><link rel="icon" type="image/png" sizes="120x120" href="/assets/brand/icon-120.png"><link rel="apple-touch-icon" sizes="120x120" href="/assets/brand/icon-120.png">
   <title>Join Our Wedding — Wedding Editor</title>
   <link rel="stylesheet" href="sponsor-cards.css">
+  <link rel="stylesheet" href="guided-setup.css">
   <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><script src="ornaments.js" defer></script>
   <style>
     .venue-item { padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9; margin-bottom: 1rem; }
@@ -65,7 +66,9 @@
 
     <!-- Wedding details form -->
     <div id="edit-section" class="card" hidden>
-      <form id="edit-form">
+      <form id="edit-form" novalidate>
+        <section data-guide-step="couple" data-guide-title="How would you welcome your guests?">
+        <p class="fine">Start with your names and site address. Your welcome message can wait.</p>
         <label for="couple-names">Couple names <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="couple-names" type="text" maxlength="120" required aria-required="true">
 
@@ -82,6 +85,9 @@
           <div id="ai-story-list" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
         </div>
 
+        </section>
+        <section data-guide-step="date" data-guide-title="When and where is your wedding?">
+        <p class="fine">Still deciding? Leave date or location unanswered on your draft and return later. Both are required before publishing.</p>
         <label for="wedding-date">Date <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="wedding-date" type="date" required aria-required="true">
 
@@ -94,6 +100,9 @@
         <label for="background-music-url">Background music URL (optional)</label>
         <input id="background-music-url" type="url" maxlength="500" placeholder="Link to your wedding ceremony or cocktail music (MP3, WAV, OGG)">
 
+        </section>
+        <section data-guide-step="guests" data-guide-title="How will guests RSVP?">
+        <p class="fine">Set your currency and guest limit. RSVPs can stay free; all paid settings below are optional.</p>
         <label for="currency">Currency <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <select id="currency" data-wedding-currency required aria-required="true">
           <option value="USD">USD - US Dollar</option>
@@ -105,7 +114,7 @@
           <option value="ZAR">ZAR - South African Rand</option>
         </select>
 
- <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
+        <details class="guide-advanced"><summary>Optional suggested giving amounts</summary>
         <fieldset>
           <legend>Suggested guest amounts (<span id="preset-currency"></span>)</legend>
           <p class="fine">Optional shortcuts for DJ song bids and voluntary celebration, fundraising and registry gifts. Custom amounts stay available. These do not change fees, prices, tiers or minimums. Use 1 to 6 comma-separated amounts per list, at least 1 in this currency to match the guest forms, with up to two decimals.</p>
@@ -120,10 +129,12 @@
           <p id="preset-preview" class="fine" aria-live="polite"></p>
           <label><input id="preset-reviewed" type="checkbox"> I reviewed these choices and want to apply them on Save changes.</label>
         </fieldset>
+        </details>
 
         <label for="max-capacity">Maximum guests <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="max-capacity" type="number" min="1" required aria-required="true">
 
+        <details class="guide-advanced"><summary>Optional RSVP fees and premium dietary choices</summary>
         <fieldset id="rsvp-fees-fieldset" style="border:1px solid #d0d5cc; border-radius:8px; padding:1rem; margin:1rem 0;">
           <legend>RSVP fees (optional, in your wedding currency)</legend>
           <p class="fine">Leave at 0 for free RSVPs. Guests see the exact fee quote before checkout. A paid RSVP is saved only after a configured test provider verifies payment; no simulator records payments.</p>
@@ -136,12 +147,18 @@
           <label for="premium-diet-fee">Premium dietary fee</label>
           <input id="premium-diet-fee" type="number" min="0" step="0.01" value="0.00">
         </fieldset>
+        </details>
 
+        </section>
+        <section data-guide-step="venues" data-guide-title="What is the plan for the day?">
+        <p class="fine">Add wedding-day and pre-wedding events as plans take shape. Partial answers can be saved now; before publishing every event needs a name, date, start time and street address.</p>
         <label for="venues-section" id="venues-section">Venues & Itinerary (including pre-wedding events)
           <button type="button" class="link" id="add-venue-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add event / venue</button>
         </label>
         <div id="venues-list" style="margin-bottom: 1.5rem;"></div>
 
+        </section>
+        <section data-guide-step="theme" data-guide-title="What should your celebration look like?" data-guide-optional>
         <label>Wedding theme &mdash; decor and dress inspiration
           <button type="button" class="link" id="edit-colors-btn" style="margin-left: 0.5rem; font-weight: normal;">🎨 Edit colours</button>
         </label>
@@ -169,6 +186,10 @@
           <textarea id="attire-notes" maxlength="300" rows="3" placeholder="E.g. Official, traditional, African elegance or casual. Choose something comfortable in the shared wedding colours."></textarea>
         </div>
 
+        </section>
+        <section data-guide-step="giving" data-guide-title="Would you like to include optional giving?" data-guide-optional>
+        <p class="fine">You can skip this whole section. No new paid offer is enabled or priced by the guide. Existing saved offers are kept unless you edit them.</p>
+        <details class="guide-advanced"><summary>Gift registry and receiving preferences</summary>
         <label>Registry & Crowdfunding Milestones
           <button type="button" class="link" id="add-registry-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add item</button>
         </label>
@@ -181,10 +202,9 @@
           <option value="">Choose payment method…</option>
         </select>
         <p class="fine" id="payout-method-help">Only currently configured payment services are shown. Payout account details and live disbursements are not enabled in this demo.</p>
+        </details>
 
-          <hr style="margin: 2rem 0; border: none; border-top: 2px solid #d0d5cc;">
-
-          <h3>Fundraising & Sponsorships</h3>
+          <details class="guide-advanced"><summary>Sponsorship tiers, featured campaigns and VIP seating</summary>
           <p class="fine">Create tiered giving levels, offer VIP seating, and showcase corporate sponsors.</p>
 
           <label>Sponsorship Tiers
@@ -238,6 +258,13 @@
             </div>
           </div>
 
+          </details>
+        </section>
+        <section data-guide-step="review" data-guide-title="Does everything look right?">
+          <p>Review your answers, save changes, then publish when you are ready. Optional sections can stay unfinished. Identity and payout readiness are separate from wedding setup.</p>
+          <div data-guide-review></div>
+          <p class="fine"><a href="#travel-info">FAQ &amp; travel information</a> &middot; <a href="#seating-section">Guest list &amp; helpers</a> &middot; <a href="#campaigns-section">Optional fundraising campaigns</a> &middot; <a href="#ops-section">Status, moderation &amp; publication fees</a> &middot; <a href="#kyc-section">Private identity details</a></p>
+        </section>
           <div class="row">
             <button type="submit">Save changes</button>
             <button type="button" id="publish-btn" class="ghost">Publish wedding site</button>
@@ -475,10 +502,12 @@
   <script src="tz.js"></script>
   <script src="share.js"></script>
   <script src="setup-progress.js"></script>
+  <script src="guided-setup.js"></script>
   <script>
 (async () => {
     const $ = id => document.getElementById(id);
     const amountPresetEditor = WSAmountPresetEditor();
+    let weddingGuide;
     const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     const notice = (text, bad) => { 
       const el = $("notice");
@@ -489,8 +518,9 @@
     };
     const focusInvalidField = field => {
       const target = field === "venues" ? $("venues-list") : $(field);
+      weddingGuide?.reveal(target);
       const input = field === "venues"
-        ? $("venues-list").querySelector("input[required]:invalid, textarea[required]:invalid")
+        ? $("venues-list").querySelector("input:invalid, textarea:invalid, [data-publish-required]:placeholder-shown, input:not([type=hidden])")
         : target;
       if (input) {
         input.setAttribute("aria-invalid", "true");
@@ -1219,6 +1249,20 @@
           $("publish-btn").hidden = !!w.archived_at || !!w.lifecycle_admin_restricted ||
             ["open", "submitted", "returned"].includes(w.moderation?.status);
         }
+        if (!weddingGuide) {
+          weddingGuide = WSGuidedSetup.create($("edit-form"), {
+            mode: "edit",
+            summaries: {
+              couple: () => `${$("couple-names").value || "Names not answered yet"}; site address ${$("wedding-slug").value || "not answered yet"}\n${$("welcome-story").value || "Welcome message can wait"}`,
+              date: () => `${$("wedding-date").value || "Date not answered yet"}; ${$("wedding-timezone").value}; ${$("location").value || "Location not answered yet"}`,
+              guests: () => `${$("currency").value}; capacity ${$("max-capacity").value || "not answered yet"}; base RSVP fee ${$("rsvp-fee").value}`,
+              venues: () => [...$("venues-list").querySelectorAll(".venue-item")].map(item =>
+                `${item.querySelector(".venue-name").value || "Event not named"}: ${item.querySelector(".venue-date").value} ${item.querySelector(".venue-time").value}; ${item.querySelector(".venue-addr").value}`).join("\n") || "Add a wedding-day event before publishing",
+              theme: () => `${JSON.parse($("palette-preview").dataset.palette || "[]").join(", ") || "No palette selected"}\n${$("attire-notes").value || "Attire guidance can wait"}`,
+              giving: () => `${$("registry-list").children.length} registry item(s); ${$("tiers-list").children.length} sponsorship tier(s). No new paid extras are selected by the guide.`
+            }
+          });
+        }
       } catch (err) {
         console.error("Load failed:", err);
         notice("Could not load wedding: " + (err.message || "network error"), true);
@@ -1257,6 +1301,8 @@
     $("edit-form").addEventListener("submit", async e => {
       e.preventDefault();
       if ($("edit-form").dataset.submitting) return;
+      if (weddingGuide && !weddingGuide.validate()) return;
+      const payoutWasUnavailable = $("payout-method").disabled;
       if ($("featured-sponsor-enabled").checked) {
         const invalid = featuredFields.map(id => $(id)).find(input => !input.checkValidity());
         if (invalid) {
@@ -1271,6 +1317,7 @@
         }
       }
       $("edit-form").dataset.submitting = "true";
+      weddingGuide?.saving();
       notice("");
       try {
         const presetPatch = amountPresetEditor.payload();
@@ -1278,7 +1325,9 @@
         const venues = [];
         $("venues-list").querySelectorAll(".venue-item").forEach(item => {
           const name = item.querySelector(".venue-name").value.trim();
-          if (name) {
+          if (name || item.querySelector(".venue-time").value || item.querySelector(".venue-date").value ||
+              item.querySelector(".venue-addr").value || item.querySelector(".venue-address").value ||
+              item.querySelector(".venue-notes").value || item.querySelector(".venue-id")?.value) {
             venues.push({
               id: item.querySelector(".venue-id")?.value || null,
               name: name,
@@ -1319,8 +1368,8 @@
         
         // Validate palette
         const COLOR_REGEX = /^#[0-9a-f]{6}$/i;
-        if (!palette.length || palette.length > 4 || !palette.every(c => COLOR_REGEX.test(c))) {
-          throw new Error("Choose one to four hex colors for your wedding palette.");
+        if (palette.length > 4 || !palette.every(c => COLOR_REGEX.test(c))) {
+          throw new Error("Choose up to four hex colors for your wedding palette, or remove all colours.");
         }
 
         // Collect registry items
@@ -1365,7 +1414,7 @@
 
         // Collect payout details
         const payoutMethod = $("payout-method").value;
-        const payoutDetails = $("payout-method").disabled
+        const payoutDetails = payoutWasUnavailable
           ? undefined
           : payoutMethod ? { method: payoutMethod, fields: {}, verified: false } : null;
 
@@ -1412,23 +1461,43 @@
           if (data.field) focusInvalidField(data.field);
           return notice(data.error || "Could not save wedding.", true);
         }
+        const answersUnchanged = weddingGuide?.unchangedSinceSave();
         if (data.wedding?.slug) setGuestSiteLink(data.wedding.slug, !!data.wedding.published_at);
         if (data.wedding) {
+          if (answersUnchanged) {
+            [["venues-list", ".venue-id", data.wedding.venues],
+              ["registry-list", ".registry-id", data.wedding.registry],
+              ["tiers-list", ".tier-id", data.wedding.tiers]].forEach(([container, selector, rows]) => {
+              $(container).querySelectorAll(selector).forEach((input, index) => {
+                if (rows?.[index]?.id) input.value = rows[index].id;
+              });
+            });
+          }
           amountPresetEditor.saved(data.wedding);
           window.__wedding = { ...window.__wedding, ...data.wedding };
         }
         if (window.WSSetupProgress && data.wedding) window.WSSetupProgress.render($("setup-progress"), data.wedding);
         notice("Changes saved.");
+        weddingGuide?.saved(answersUnchanged);
       } catch (err) {
         console.error("Save failed:", err);
         notice("Could not save wedding: " + (err.message || "network error"), true);
       } finally {
+        weddingGuide?.failed();
         delete $("edit-form").dataset.submitting;
       }
     });
 
     // Publish
     $("publish-btn").addEventListener("click", () => {
+      if (weddingGuide && !weddingGuide.validate("publish")) return;
+      if (weddingGuide?.dirty()) return notice("Save your changes before publishing. Your answers are still on this page.", true);
+      const missing = window.WSSetupProgress?.calculate(window.__wedding || {}).items.filter(item => item.required && !item.complete) || [];
+      if (missing.length) {
+        weddingGuide?.blockPublication(missing.map(item => item.anchor));
+        return;
+      }
+      if (weddingGuide && !weddingGuide.reviewBeforePublish()) return;
       $("edit-section").hidden = true;
       $("publish-section").hidden = false;
       $("publish-message").hidden = true;
@@ -1450,6 +1519,12 @@
         });
         const data = await res.json();
         if (!res.ok) {
+          if (data.missingFields?.length) {
+            $("publish-section").hidden = true;
+            $("edit-section").hidden = false;
+            weddingGuide?.blockPublication(data.missingFields);
+            return;
+          }
           $("publish-message").textContent = data.error || "Could not publish. Please check required fields and try again.";
           $("publish-message").hidden = false;
           if (data.paymentRequired || data.kycRequired) {
@@ -1538,7 +1613,10 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not load the publication quote.");
         const q = data.quote || {};
-        if (res.ok && q.fee_minor != null) {
+        if (q.pending_date) {
+          $("fee-box").textContent = q.reason;
+          $("pay-fee-btn").hidden = true;
+        } else if (res.ok && q.fee_minor != null) {
           $("fee-box").textContent = q.fee_minor > 0
             ? `Publication fee: ${WS.money(q.fee_minor, q.currency || "USD", false)}${q.currency !== "USD" && q.usd_amount_minor != null ? ` [USD ${(q.usd_amount_minor / 100).toFixed(2)} base]` : ""}. ${q.reason || ""}${q.fx_published_at ? ` Indicative FX published ${new Date(q.fx_published_at).toLocaleString()}; final payment-method rounding is shown before confirmation.` : ""} Test-mode checkout is available only through configured payment methods.`
             : `No publication fee. ${q.reason || ""}`;

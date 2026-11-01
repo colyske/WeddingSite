@@ -40,16 +40,17 @@ test("organizer API persists canonical choices, preserves omitted presets and re
     const url = new URL(input);
     if (url.pathname === "/auth/v1/user") return json({ id: ownerId });
     if (url.pathname === "/rest/v1/platform_policies") return json([{ max_contribution_minor: cap }]);
+    if (url.pathname === "/rest/v1/rpc/save_wedding_content") {
+      const data = JSON.parse(init.body);
+      assert.equal(data.p_expected_currency, wedding.currency);
+      const patch = data.p_patch;
+      if (patch.amount_presets !== undefined) assert.deepEqual(data.p_expected_presets, wedding.amount_presets);
+      patches.push(patch);
+      wedding = { ...wedding, ...patch };
+      return json(wedding);
+    }
     if (url.pathname === "/rest/v1/weddings") {
       if (!owned) return json([]);
-      if (init.method === "PATCH") {
-        assert.equal(url.searchParams.get("currency"), `eq.${wedding.currency}`);
-        const patch = JSON.parse(init.body);
-        if (patch.amount_presets !== undefined) assert.ok(url.searchParams.get("amount_presets") === "is.null" ||
-          url.searchParams.get("amount_presets").startsWith("eq."));
-        patches.push(patch);
-        wedding = { ...wedding, ...patch };
-      }
       return json([wedding]);
     }
     if (url.pathname.startsWith("/rest/v1/")) return json([]);

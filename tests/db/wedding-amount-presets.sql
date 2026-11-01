@@ -5,8 +5,10 @@ declare owner_id uuid := extensions.gen_random_uuid(); wedding_id uuid := extens
   actual jsonb; candidate jsonb; blocked boolean;
 begin
   insert into auth.users(id) values(owner_id);
-  insert into public.weddings(id,client_owner_id,slug,couple_names,wedding_date,currency)
-    values(wedding_id,owner_id,'amount-presets-local','Local amount sample',current_date+90,'KES');
+  insert into public.weddings(id,client_owner_id,slug,couple_names,wedding_date,currency,public_location)
+    values(wedding_id,owner_id,'amount-presets-local','Local amount sample',current_date+90,'KES','Local city');
+  insert into public.venues(wedding_id,name,event_date,event_time,address)
+    values(wedding_id,'Local event',current_date+90,'12:00','Local street');
   insert into public.wedding_memberships(wedding_id,user_id,role)
     values(wedding_id,owner_id,'client');
   perform set_config('qa.amount_wedding_id',wedding_id::text,true);

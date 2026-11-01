@@ -223,6 +223,7 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     });
     await editor.goto(`${base}/wedding.html?id=${weddingId}`);
     await editor.waitForFunction(() => !document.querySelector("#edit-section").hidden);
+    await editor.locator("[data-guide-all]").click();
     await editor.click("#account-menu-btn");
     assert.equal(await editor.locator('a[href="/account.html"]').isVisible(), true);
     assert.equal(await editor.locator("#payment-mpesa").count(), 0);
@@ -244,6 +245,7 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     assert.deepEqual(savedBody.payoutDetails, { method: "mpesa", fields: {}, verified: false });
     await editor.reload();
     await editor.waitForFunction(() => !document.querySelector("#edit-section").hidden);
+    await editor.locator("[data-guide-all]").click();
     assert.equal(await editor.locator("#welcome-story").inputValue(), "Atieno & Otieno <forever>.");
     assert.equal(await editor.locator(".venue-name").first().inputValue(), "Garden & Hall");
     assert.equal(await editor.locator("#attire-notes").inputValue(), "Formal African elegance");
@@ -254,6 +256,13 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     assert.deepEqual(loadedPalettes.at(-1), ["#123abc", "#a9b5a2"], JSON.stringify(loadedPalettes));
     assert.deepEqual(await editor.locator("#palette-preview").evaluate(el => JSON.parse(el.dataset.palette)), ["#123abc", "#a9b5a2"]);
     await editor.click("#publish-btn");
+    assert.equal(await editor.locator("#publish-section").isVisible(), true, JSON.stringify(await editor.evaluate(() => ({
+      notice: document.getElementById("notice").textContent,
+      state: document.querySelector("[data-guide-state]").textContent,
+      errors: document.querySelector(".guide-errors").textContent,
+      invalid: [...document.querySelectorAll("#edit-form input, #edit-form select, #edit-form textarea")]
+        .filter(input => input.willValidate && !input.validity.valid).map(input => [input.id, input.validationMessage])
+    }))));
     await editor.click("#confirm-publish");
     await editor.waitForFunction(() => !document.querySelector("#published-section").hidden);
     assert.equal(await editor.locator("#view-guest-site").getAttribute("target"), "_blank");

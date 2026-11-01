@@ -20,9 +20,9 @@
       <p class="fine">Helpers get only the wedding task you assign. Invitations are single-use, expire after 7 days, and are bound to the email address you enter. A secure link is created for you to copy and share; it is not emailed.</p>
       <p class="fine">Helper access normally ends at midnight after the wedding date plus one full buffer day, in the wedding's time zone. If no event date is set, it ends in 30 days. Choose a custom date or explicitly choose no expiry. You can change a helper's expiry later.</p>
       <form id="invite-form">
-        <label for="invite-email">Helper's sign-in email</label>
+        <label for="invite-email">Who would you like to invite? (sign-in email)</label>
         <input id="invite-email" type="email" autocomplete="email" maxlength="254" required>
-        <label for="invite-role">Wedding role</label>
+        <label for="invite-role">What should they help with?</label>
         <select id="invite-role" required>
           <option value="checkin">Entrance check-in — scan passes and check guests in</option>
           <option value="usher">Usher — see guest names, assigned tables and check-in status</option>
@@ -30,7 +30,7 @@
           <option value="rsvp_support">RSVP support — see guest contact details and RSVP status</option>
           <option value="dj">DJ — see the paid song playlist only</option>
         </select>
-        <label for="invite-expiry-mode">Helper access ends</label>
+        <label for="invite-expiry-mode">When should their access end?</label>
         <select id="invite-expiry-mode">
           <option value="event">After the wedding (30 days if no date is set)</option>
           <option value="custom">Choose a date and time</option>
