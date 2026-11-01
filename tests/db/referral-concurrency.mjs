@@ -51,6 +51,7 @@ try {
     delete from public.referral_consent_history where user_id in ('${first}','${second}');
     alter table public.referral_consent_history enable trigger referral_consent_history_immutable;
     delete from public.referral_accounts where user_id in ('${first}','${second}');
+    delete from public.profiles where id in ('${actor}','${first}','${second}');
     delete from auth.users where id in ('${actor}','${first}','${second}');
     delete from public.audit_events where table_name='profiles' and record_id in ('${actor}','${first}','${second}');
     commit;`);
