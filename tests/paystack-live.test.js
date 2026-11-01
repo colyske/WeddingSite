@@ -38,7 +38,7 @@ function context(kind = "guest", bearer = "subaccount") {
   return {
     kind, environment: "live", merchant_id: "123", credential_fingerprint: paystackCredentialFingerprint(),
     amount_minor: 10005, currency: "KES", policy_revision: KEY, wedding_id: WID, platform_fee_minor: kind === "publication" ? 10005 : 501,
-    fee_bearer: bearer, ...(kind === "guest" ? { settlement_mode:"split",settlement_route:"paystack_direct",subaccount_code: "ACCT_fixture", subaccount_id: "456",
+    fee_bearer: kind === "publication" ? "account" : bearer, ...(kind === "guest" ? { settlement_mode:"split",settlement_route:"paystack_direct",subaccount_code: "ACCT_fixture", subaccount_id: "456",
       policy_revision: KEY, destination_revision: KEY, fee_basis_points: 500, fixed_fee_minor: 1 } : {})
   };
 }
@@ -303,7 +303,8 @@ test("standard independent verification rejects split, mixed mode, unknown fees 
   const ctx=standardContext();
   for (const change of [tx=>{tx.domain="test";},tx=>{tx.amount++;},tx=>{tx.fees=null;},
     tx=>{tx.fees=9505;},tx=>{tx.split={id:1};},tx=>{tx.subaccount={id:456};},tx=>{tx.fees_split={paystack:100};},
-    tx=>{tx.split=1;},tx=>{tx.subaccount=[];},tx=>{tx.fees_split="unknown";},tx=>{tx.integration=999;}]) {
+    tx=>{tx.split=1;},tx=>{tx.subaccount=[];},tx=>{tx.fees_split="unknown";},tx=>{tx.integration=999;},
+    tx=>{delete tx.id;},tx=>{tx.id=0;},tx=>{tx.id=Number.MAX_SAFE_INTEGER+1;},tx=>{tx.id="18446744073709551616";}]) {
     const tx=standardTransaction(ctx);change(tx);assert.throws(()=>verifyPaystackContext(tx,ctx));
   }
   assert.throws(()=>verifyPaystackContext(standardTransaction(ctx),ctx,transaction(context()).split));

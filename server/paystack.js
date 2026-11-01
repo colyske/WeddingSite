@@ -148,6 +148,15 @@ export async function validatePaystackInitialization(context) {
 
 export function verifyPaystackContext(transaction, context, signedSplit = null) {
   if (!["guest","publication"].includes(context?.kind)) throw new Error("Unsupported Paystack payment context.");
+  const transactionId = String(transaction?.id ?? "");
+  if (!["number","string"].includes(typeof transaction?.id) || !/^[1-9]\d{0,19}$/.test(transactionId) ||
+      (typeof transaction.id === "number" && !Number.isSafeInteger(transaction.id)) ||
+      BigInt(transactionId) > 18446744073709551615n ||
+      !Number.isSafeInteger(context.amount_minor) || context.amount_minor < 1 ||
+      !Number.isSafeInteger(context.platform_fee_minor) || context.platform_fee_minor < 0 ||
+      context.platform_fee_minor > context.amount_minor) {
+    throw new Error("Paystack transaction identity or monetary context is missing or invalid.");
+  }
   if (context.environment !== paystackEnvironment() || context.merchant_id !== paystackMerchant() ||
       context.credential_fingerprint !== paystackCredentialFingerprint() ||
       transaction.domain !== context.environment || transaction.currency !== context.currency ||
@@ -158,6 +167,9 @@ export function verifyPaystackContext(transaction, context, signedSplit = null) 
   }
   const standard = context.kind === "guest" && paystackSettlementMode(context) === "standard";
   if (context.kind === "publication" || standard) {
+    if (context.kind === "publication" && (context.platform_fee_minor !== context.amount_minor || context.fee_bearer !== "account")) {
+      throw new Error("Publication proceeds must belong entirely to the platform.");
+    }
     if (!Number.isSafeInteger(transaction.fees) || transaction.fees < 0 || transaction.fees > context.amount_minor) {
       throw new Error("Platform-collected provider fee evidence is missing or invalid.");
     }

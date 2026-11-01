@@ -44,6 +44,7 @@ Sources reviewed 1 November 2026:
 - [Transaction API](https://paystack.com/docs/api/transaction/): server
   initialization and authenticated independent verification; transaction IDs
   are unsigned 64-bit. A lossless JSON parser retains these as strings.
+  Live contexts reject missing/invalid IDs instead of inventing a checkout-reference fallback.
 - [Settlements API](https://paystack.com/docs/api/settlement/): subaccount-filtered
   statements and paginated constituent transactions.
 

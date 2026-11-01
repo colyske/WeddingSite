@@ -75,10 +75,11 @@ begin
   quote:=public.paystack_contribution_quote(wid,gross,'KES','KE');
   insert into public.contributions(id,wedding_id,stream_name,pledged_amount_minor,currency,provider_name,
     payment_environment,settlement_route,paystack_context,provider_reference,checkout_idempotency_key,
-    platform_fixed_fee_minor,platform_fee_basis_points)
-    values(cid,wid,'Standard collection',gross,'KES','paystack','live','platform_wallet',quote,key::text,key,131,500);
-  insert into public.contribution_line_items(contribution_id,wedding_id,action,amount_minor,currency,metadata)
-    values(cid,wid,'song_bid',gross,'KES','{"song_title":"Synthetic standard song","artist":"Fixture"}');
+    platform_fixed_fee_minor,platform_fee_basis_points,purchase_action,purchase_data,action_idempotency_key)
+    values(cid,wid,'Standard collection',gross,'KES','paystack','live','platform_wallet',quote,key::text,key,131,500,
+      'song_bid','{"songTitle":"Synthetic standard song","artist":"Fixture"}',key);
+  insert into public.contribution_line_items(contribution_id,category,label,amount_minor,currency)
+    values(cid,'song_bid','Synthetic standard song',gross,'KES');
   perform pg_temp.standard_must_reject(format('update public.contributions set payment_status=''paid'' where id=%L',cid));
   perform pg_temp.standard_must_reject(format('update public.contributions set settlement_route=''paystack_direct'' where id=%L',cid));
   perform pg_temp.standard_must_reject(format('update public.contributions set payment_environment=''test'' where id=%L',cid));
@@ -98,13 +99,13 @@ begin
     (select p.revision from public.paystack_live_policy p where singleton));
   perform pg_temp.standard_must_reject(format('select public.paystack_contribution_quote(%L,10010,''KES'',''KE'')',wid));
   perform pg_temp.standard_must_reject(format($q$select public.record_verified_paystack_payment(%L,'bad',%L,10010,'KES',100,
-    now(),'standard-provider','{"couple_minor":9274,"platform_minor":631,"provider_fee_minor":100}')$q$,cid,key));
-  if not public.record_verified_paystack_payment(cid,'verified:standard',key::text,gross,'KES',provider_fee,now(),
-    'standard-provider',jsonb_build_object('couple_minor',gross-fee-provider_fee,'platform_minor',fee,'provider_fee_minor',provider_fee)) then
+    now(),'791','{"couple_minor":9274,"platform_minor":631,"provider_fee_minor":100}')$q$,cid,key));
+  if not public.record_verified_paystack_payment(cid,'verified:791',key::text,gross,'KES',provider_fee,now(),
+    '791',jsonb_build_object('couple_minor',gross-fee-provider_fee,'platform_minor',fee,'provider_fee_minor',provider_fee)) then
     raise exception 'Admitted standard payment must settle after admission revocation.';
   end if;
-  if public.record_verified_paystack_payment(cid,'verified:standard',key::text,gross,'KES',provider_fee,now(),
-    'standard-provider',jsonb_build_object('couple_minor',gross-fee-provider_fee,'platform_minor',fee,'provider_fee_minor',provider_fee)) then
+  if public.record_verified_paystack_payment(cid,'verified:791',key::text,gross,'KES',provider_fee,now(),
+    '791',jsonb_build_object('couple_minor',gross-fee-provider_fee,'platform_minor',fee,'provider_fee_minor',provider_fee)) then
     raise exception 'Duplicate standard callback must not credit twice.';
   end if;
   if (select count(*) from public.dj_song_bids where wedding_id=wid and song_title='Synthetic standard song'
