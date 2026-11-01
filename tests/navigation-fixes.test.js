@@ -87,7 +87,7 @@ test("Account Settings link is accessible from dashboard", { skip }, async () =>
   // Click Account menu
   await page.click("#account-menu-btn");
   // Check if Account Settings link exists
-  const accountSettingsLink = await page.locator('a[href="/account.html"]');
+  const accountSettingsLink = await   page.locator('a[href="/account.html"]:not(#owner-profile)');
   assert.ok(await accountSettingsLink.isVisible(), "Account Settings link should be visible in menu");
   
   // Click it and verify navigation

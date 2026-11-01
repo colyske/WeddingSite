@@ -386,11 +386,7 @@
     if (role === "owner") {
       $("owner-profile").style.display = "block";
       $("owner-profile").textContent = "Owner Profile (You)";
-      $("owner-profile").href = "#"; // TODO: create owner profile page
-      $("owner-profile").addEventListener("click", (e) => {
-        e.preventDefault();
-        alert("Owner profile coming soon");
-      });
+      $("owner-profile").href = "/account.html";
     }
   }
 

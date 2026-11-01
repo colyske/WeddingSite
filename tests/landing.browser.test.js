@@ -69,6 +69,13 @@ test("landing page is responsive, themed per wedding, accessible and honest", as
     const links = await page.$$eval("a", els => els.map(a => a.getAttribute("href")));
     assert.ok(links.filter(h => h === "/signin.html").length >= 3, "repeated create-site CTAs");
     assert.ok(links.includes("https://showcase-wedding.joinourwedding.site/"));
+    const showcase = await page.$$eval("main a[href^='https://showcase-wedding']", els => els.map(a => ({ t: a.target, rel: a.rel, txt: a.textContent })));
+    assert.ok(showcase.length >= 3, "showcase entry points present");
+    for (const s of showcase) {
+      assert.equal(s.t, "_blank");
+      assert.match(s.rel, /noopener/); assert.match(s.rel, /noreferrer/);
+      assert.match(s.txt, /opens in a new tab/);
+    }
     assert.ok(links.includes("/terms.html"));
     await page.waitForSelector("footer a[href*='privacy']");
     const text = await page.locator("body").innerText();
