@@ -6,6 +6,11 @@ were performed for this change. Fixture success is not merchant eligibility or
 evidence of live operation. Daraja collection/reconciliation and its separate
 hard-OFF payout gate remain independent.
 
+**Release held:** reconcile reserved migrations `017`/`018` against fresh main
+and the Daraja incident patch before release. Isolated PGlite regression success
+is supplementary evidence, not a substitute for the actual Supabase migration,
+schema-lint and rollback-regression CI job.
+
 ## Official capabilities and account prerequisites
 
 Sources reviewed 1 November 2026:
@@ -30,6 +35,17 @@ Sources reviewed 1 November 2026:
   are unsigned 64-bit. A lossless JSON parser retains these as strings.
 - [Settlements API](https://paystack.com/docs/api/settlement/): subaccount-filtered
   statements and paginated constituent transactions.
+
+Schema re-review: the multi-split guide documents the initialization fields and
+signed webhook `formula`/`shares` structure used here, but its allocation example
+is **percentage**, not flat, and does not establish this merchant's fee behavior.
+The Settlements API transaction example has `split: {}`, `subaccount: {}` and
+`fees_split: null`; it does **not** document populated per-destination
+`split.shares` for settlement transactions. This implementation deliberately
+rejects that empty evidence and cannot claim automatic split-settlement
+reconciliation works for the account. Account-specific supported evidence must
+be confirmed before activation. Statement totals alone must never substitute
+for a verified beneficiary allocation.
 
 These public documents **do not prove** that this merchant can use Kenyan
 couple subaccounts/dynamic splits, accept every displayed currency or onboard
