@@ -119,6 +119,9 @@ begin
   perform pg_temp.assert_true((select eligible from public.referral_attributions where wedding_id=wid),'new wedding eligible');
   declined:=pg_temp.create_referred('other','declined-referral',false);
   perform pg_temp.assert_true(not exists(select 1 from public.referral_attributions where wedding_id=declined),'couple decline no attribution');
+  perform pg_temp.assert_true(exists(select 1 from public.referral_intents where creator_id=
+    (select id from referral_actors where kind='other') and state='declined' and consumed_at is not null
+    and disclosed_revision is not null and disclosed_terms_version='client-referrals-v1'),'declined disclosure receipt retained');
   blocked:=false;
   begin update public.referral_attributions set creator_id=(select id from referral_actors where kind='other') where wedding_id=wid;
   exception when raise_exception then blocked:=true; end;
@@ -267,6 +270,10 @@ update public.wedding_memberships set role='client' where wedding_id=(select id 
   and user_id=(select id from referral_actors where kind='referrer');
 set constraints all immediate;
 select pg_temp.assert_true((select held_estimate_minor=0 from public.referral_balances where contribution_id=(select id from referral_actors where kind='paid')),'later provable client self link reverses');
+select set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='referrer'),true);
+select pg_temp.assert_true(exists(select 1 from jsonb_array_elements(public.referral_my_summary()->'weddings') item
+  where item->>'reference'=(select id::text from referral_actors where kind='wedding')
+  and (item->>'excluded_by_account_link')::boolean),'own summary discloses provable account-link exclusion');
 select pg_temp.assert_true((select net_paid_minor=91120 and provider_fee_minor=2000 from public.contributions where id=(select id from referral_actors where kind='paid')),'couple/provider amounts unchanged');
 select pg_temp.assert_true((select count(*)=0 from public.payout_records),'no payouts');
 do $$

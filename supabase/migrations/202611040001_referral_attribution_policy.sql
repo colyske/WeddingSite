@@ -43,8 +43,13 @@ create table public.referral_intents (
   state text not null default 'pending' check (state in ('pending','consumed','declined')),
   captured_at timestamptz not null default clock_timestamp(),
   consumed_at timestamptz,
+  disclosed_revision uuid,
+  disclosed_terms_version text,
   check (creator_id <> referrer_id),
-  check ((state='pending') = (consumed_at is null))
+  check ((state='pending') = (consumed_at is null)),
+  check ((state='pending' and disclosed_revision is null and disclosed_terms_version is null)
+    or (state<>'pending' and disclosed_revision is not null and disclosed_terms_version is not null
+      and disclosed_terms_version='client-referrals-v1'))
 );
 create unique index referral_first_pending on public.referral_intents(creator_id) where state='pending';
 create table public.referral_attributions (
@@ -185,7 +190,7 @@ begin
           clock_timestamp() >= greatest(p.feature_shipped_at,p.first_effective_at));
     end if;
     update public.referral_intents set state=case when p_decision='accept' then 'consumed' else 'declined' end,
-      consumed_at=clock_timestamp() where id=i.id;
+      consumed_at=clock_timestamp(),disclosed_revision=p.revision,disclosed_terms_version=p.terms_version where id=i.id;
   end if;
   return w;
 end $$;

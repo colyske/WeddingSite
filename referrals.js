@@ -20,7 +20,9 @@
     $("referral-count").textContent = `${summary.referral_count} wedding referral(s). Payable: zero.`;
     $("referral-results").replaceChildren(...summary.weddings.map(row => {
       const p = document.createElement("p");
-      p.textContent = `Reference ${row.reference}: ${row.eligible ? "eligible for prospective estimates" : "ineligible (created before program activation)"}. ` +
+      const eligibility = row.excluded_by_account_link ? "ineligible (provable owner/client account link)" :
+        row.eligible ? "eligible for prospective estimates" : "ineligible (created before program activation)";
+      p.textContent = `Reference ${row.reference}: ${eligibility}. ` +
         (row.currency ? `Verified net basis ${WSReferrals.money(row.verified_basis_minor, row.currency)}; HELD estimate ${WSReferrals.money(row.held_estimate_minor, row.currency)}; payable ${WSReferrals.money("0", row.currency)}.` : "No contributions recorded.");
       return p;
     }));

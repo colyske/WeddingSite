@@ -184,6 +184,7 @@ begin
     'referral_count',(select count(*) from public.referral_attributions where referrer_id=auth.uid()),
     'weddings',coalesce((select jsonb_agg(x) from (
       select a.wedding_id as reference,a.eligible,b.currency,
+        exists(select 1 from public.referral_eligibility_events e where e.wedding_id=a.wedding_id) as excluded_by_account_link,
         coalesce(sum(b.basis_minor),0)::text as verified_basis_minor,
         coalesce(sum(b.held_estimate_minor),0)::text as held_estimate_minor,
         '0'::text as payable_minor,'held'::text as status
