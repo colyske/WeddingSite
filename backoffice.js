@@ -2,7 +2,7 @@
 (function () {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => WS.esc(s);
-  const SEC = { overview: "Overview", operations: "Operations", weddings: "Weddings", users: "Users & roles", fees: "Fees & settings", ledger: "Ledger", payouts: "Payouts", audit: "Audit log", security: "Security" };
+  const SEC = { overview: "Overview", operations: "Operations", weddings: "Weddings", users: "Users & roles", fees: "Fees & settings", ledger: "Ledger", payouts: "Payouts", b2c: "M-Pesa B2C", audit: "Audit log", security: "Security" };
   let role = "";
   let cache = {};
 
@@ -335,13 +335,16 @@
       });
     },    async payouts(el) {
       const { payouts } = await get("payouts");
-      el.innerHTML = `<h2>Payouts / withdrawals</h2><p class="fine">Complete KYC to receive your payout. Both partners' required details and consent must be submitted before requesting, approving or marking a payout sent; this is not independent identity verification. Four-eyes rule: you cannot approve a payout you requested. No money moves automatically; "sent" records a manual transfer.</p>` +
+      el.innerHTML = `<h2>Payouts / withdrawals</h2><p class="fine">Complete KYC to receive your payout. Both partners' required details and consent must be submitted before requesting, approving or marking a payout sent; this is not independent identity verification. Four-eyes rule: you cannot approve a payout you requested. B2C automation has separate default-OFF gates and independent recipient verification. "Mark sent" applies only to unmanaged manual transfers; managed B2C payouts require verified provider evidence or independent statement reconciliation in the Owner's M-Pesa B2C tab.</p>` +
         table(["Requested", "Wedding", "Amount", "Status", "Note", "Actions"], payouts.map((p) => {
           const acts = [];
           if (p.status === "requested") acts.push(btn("Approve", `data-ps="approved" data-id="${esc(p.id)}"`), btn("Cancel", `data-ps="cancelled" data-id="${esc(p.id)}"`));
           if (p.status === "approved") acts.push(btn("Mark sent", `data-ps="sent" data-id="${esc(p.id)}"`), btn("Cancel", `data-ps="cancelled" data-id="${esc(p.id)}"`));
           return `<tr><td>${date(p.requested_at)}</td><td>${esc(p.couple_names)} <a href="/wedding.html?id=${encodeURIComponent(p.wedding_id)}#kyc-section">KYC details</a></td><td>${esc(WS.money(Number(p.amount_minor), p.currency, false))}</td><td>${esc(p.status)}</td><td>${esc(p.note || "")}</td><td class="acts">${acts.join(" ") || "-"}</td></tr>`;
         }));
+    },
+    async b2c(el) {
+      await window.B2CBackoffice.mount(el, role === "owner");
     },
     async audit(el) {
       const { audit } = await get("audit");
@@ -388,6 +391,7 @@
     if (opts.ownerOnly && role !== "owner") return location.replace("/account.html");
     $("role-badge").textContent = "Role: " + role;
     const tabs = role === "admin" ? ["operations", "weddings", "users"] : ["overview", "operations", "weddings", "users", "fees", "ledger", "payouts", "audit", "security"];
+    if (["owner", "superadmin"].includes(role) && window.B2CBackoffice) tabs.splice(tabs.indexOf("audit"), 0, "b2c");
     $("admin-nav").innerHTML = tabs.map((t, i) => `<button type="button" class="tab-btn${i ? "" : " active"}" role="tab" aria-selected="${i ? "false" : "true"}" data-tab="${t}">${SEC[t]}</button>`).join("");
     $("admin-nav").addEventListener("click", (e) => { const b = e.target.closest(".tab-btn"); if (b) { delete $("panel").dataset.wedding; show(b.dataset.tab); } });
     $("sign-out").addEventListener("click", () => { WS.clear(); location.replace("/signin.html"); });

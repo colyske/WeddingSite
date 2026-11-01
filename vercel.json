@@ -4,12 +4,17 @@
     { "source": "/w/:slug", "destination": "/api/guest?action=og&slug=:slug" }
   ],
   "functions": {
-    "api/guest.js": { "includeFiles": "{guest,index}.html" }
+    "api/guest.js": { "includeFiles": "{guest,index}.html" },
+    "api/b2c.js": { "maxDuration": 60 }
   },
   "crons": [
     {
       "path": "/api/reminders",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/b2c?action=worker",
+      "schedule": "0 15 * * *"
     }
   ],
   "headers": [

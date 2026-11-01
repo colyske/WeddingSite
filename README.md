@@ -250,3 +250,9 @@ npm test
 ```
 
 See [PRODUCTION.md](PRODUCTION.md) for implementation gaps, dashboard configuration names, safe provider setup, and deployment steps. Never paste credentials into chat, commit them, enable live payments, or publish publicly without owner approval.
+## Default-off M-Pesa B2C payouts
+
+Approved-payout dispatch, recipient-evidence review and reconciliation are implemented
+behind separate default-OFF payout gates. Four-eyes remains required by default; no
+auto-approval limits or utility funding are configured. See [B2C prerequisites and
+official-contract limitations](docs/B2C-PAYOUTS.md) before any future activation.
