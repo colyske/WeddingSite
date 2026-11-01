@@ -164,10 +164,9 @@ begin
   reset role;
 end $$;
 do $$
-declare oid uuid := extensions.gen_random_uuid(); n integer; ok boolean;
+declare oid uuid; n integer; ok boolean;
 begin
-  insert into auth.users(id, email, email_confirmed_at) values(oid, 'colyske@gmail.com', now());
-  perform public.bootstrap_protected_owner(oid);
+  select id into oid from auth.users where email = 'colyske@gmail.com';
   if position('where singleton' in lower(pg_get_functiondef('public.owner_set_daraja_live_approval(boolean,text)'::regprocedure))) = 0 then
     raise exception 'Approval RPC must update with a WHERE clause (pg-safeupdate safe)';
   end if;
