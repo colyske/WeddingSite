@@ -192,8 +192,16 @@ test("signed publication webhook routes only to dedicated settlement, never to t
   Object.assign(process.env, env);
   const paths = [];
   globalThis.fetch = async (input, init) => {
-    paths.push(new URL(input).pathname);
-    assert.equal(new URL(input).pathname, "/rest/v1/rpc/record_verified_publication_payment");
+    const path = new URL(input).pathname;
+    paths.push(path);
+    if (path === "/rest/v1/publication_checkouts") return Response.json([{
+      id: paymentId, provider_reference: "fixture-reference", amount_minor: 5000, currency: "KES", payment_mode: "test"
+    }]);
+    if (path === "/transaction/verify/fixture-reference") return Response.json({ status: true, data: {
+      id: 1, status: "success", reference: "fixture-reference", amount: 5000, currency: "KES", fees: 100,
+      metadata: { contribution_id: paymentId, payment_kind: "publication" }
+    } });
+    assert.equal(path, "/rest/v1/rpc/record_verified_publication_payment");
     const body = JSON.parse(init.body);
     assert.equal(body.p_checkout_id, paymentId);
     assert.equal(body.p_amount_minor, 5000);
@@ -211,7 +219,7 @@ test("signed publication webhook routes only to dedicated settlement, never to t
       await webhooks(req, res);
       assert.equal(res.statusCode, signature === "invalid" ? 400 : 200);
     }
-    assert.equal(paths.length, 1);
+    assert.equal(paths.length, 3);
   } finally {
     globalThis.fetch = originalFetch;
     for (const [key, value] of Object.entries(previous)) {

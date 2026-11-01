@@ -58,7 +58,7 @@
   };
   const payLabel = (provider, mode) => provider === "daraja"
     ? (mode === "live" ? "Send M-Pesa prompt" : "Send M-Pesa prompt (sandbox)")
-    : "Pay (test mode)";
+    : (mode === "live" ? "Pay (real money)" : "Pay (test mode)");
   const darajaNote = mode => mode === "live"
     ? ""
     : "Sandbox test: use only a Safaricom test number. A real phone can still be prompted and charged even in sandbox, so do not enter a real personal number. The action stays pending until payment is confirmed.";

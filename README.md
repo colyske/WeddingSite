@@ -19,8 +19,12 @@ deterrent, not a guarantee against every creative encoding.
 **SuperAdmin/Owner → Fees & settings → Enabled payment methods** controls the
 platform-level provider allowlist independently for M-Pesa/Daraja, Card/Paystack
 and Card/Stripe. The default retains all previously eligible test adapters.
-Credentials, markets/currencies, provider health and test-only mode must still
-pass; a switch cannot enable live payments (an unreleased, default-OFF live Daraja path is described in docs/LIVE-DARAJA-READINESS.md and is not active). Options and checkout creation read
+Credentials, markets/currencies, provider health and mode-specific gates must still
+pass; a provider switch cannot by itself enable live payments. Daraja has its
+separate [live collection gates](docs/LIVE-DARAJA-READINESS.md). The additive
+[Paystack live Split Payments path](docs/LIVE-PAYSTACK-READINESS.md) is implemented
+but remains default-OFF pending account eligibility and separate activation.
+Options and checkout creation read
 the current database policy, and a database insert guard rejects disabled
 providers even from stale tabs. Disabling affects new intents, never reroutes,
 cancels or prevents verification of an already-created payment. Changes require
@@ -74,7 +78,7 @@ suggestions and KES 100/500/1,000 song bids; all sample actions remain disabled.
 Expandable help is usable with keyboard/touch. Story starters and guidance
 are authored local templates, not a connected AI service.
 
-### Publication checkout (test mode only)
+### Publication checkout (test mode and separately approved live Paystack)
 
 Nonzero publication quotes now have an authenticated checkout in the wedding
 editor. The platform derives ownership, fee, currency and payment-method routing
@@ -99,10 +103,33 @@ timeout/query errors do not imply cancellation or permit a fresh charge.
 Ambiguous initialization is held for review, not retried automatically. Support
 can inspect the retained checkout reference and audit events; do not clear a
 review hold without reconciling the recorded provider request. Provider refunds
-or disputes continue through the existing unmatched-event staff review flow:
+or disputes retain separate staff review:
 they do not credit wedding balances, automatically reverse fees or unpublish
 an existing wedding. Historical published/unsettled quotes are not automatic debt.
-Live publication collection is deliberately unsupported.
+Live Paystack publication uses its own environment/Owner gates, immutable
+merchant/mode/quote context, independent verification and platform-only settlement
+without splits. Live publication refunds/disputes hold new publication actions
+until an audited Owner entitlement decision; no provider refund is initiated.
+Live Daraja publication remains unsupported and is not enabled by Paystack.
+
+### Paystack direct settlement
+
+Live guest Paystack checkout uses one dynamic flat subaccount share: the platform
+receives its Owner-configured fee and Paystack routes the remainder to the couple.
+Actual provider fees and the Owner-selected fee bearer are verified, not estimated.
+The receiving subaccount must be provider-verified for the exact merchant/mode/
+currency, and the couple must consent to its current revision after completing
+required-details-and-consent KYC (not independent ID verification). Publication
+is not blocked by onboarding.
+
+SQL and provider verification bind immutable amount/currency, fee policy,
+USD-canonical fixed-fee FX, merchant/key fingerprint and destination context.
+Direct allocations and statement reconciliation are reported separately and
+**never become WeddingSite withdrawable funds**, including subsequent refunds or
+disputes. Publication fees remain platform-only. All live Paystack controls stay
+OFF by default; public documents and fixtures do not establish this account's
+Kenya/currency/split eligibility. See the [readiness checklist](docs/LIVE-PAYSTACK-READINESS.md)
+for prerequisites, unsupported evidence handling and separately approved activation.
 
 ### USD publication fees and supported currencies
 

@@ -1,6 +1,12 @@
 # Feature-to-surface matrix
 
-Status: features below are implemented where marked. Production payments fail closed until a test provider is fully configured; no live payment processing is enabled or claimed.
+Status: entries include historical implementation snapshots. Provider-specific
+runtime activation must be checked separately; this document is not evidence of
+live operation. [Paystack live Split Payments](LIVE-PAYSTACK-READINESS.md) is
+implemented with default-OFF controls, provider-verified/consented destinations,
+immutable USD/FX fee context, platform-only publication and no double payout.
+Its new API, browser and rollback SQL regressions use isolated synthetic evidence,
+not live transactions. Existing Daraja gates and reconciliation are preserved.
 
 | Feature | Configured (organizer) | Shown (guest site) | Recorded | Who sees it |
 |---|---|---|---|---|

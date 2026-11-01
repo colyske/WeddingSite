@@ -137,6 +137,26 @@ export default async function handler(req, res) {
   try {
     const invalidContent = req.method === "POST" && contentError(body);
     if (invalidContent) return sendJson(res, 400, { error: invalidContent });
+    if (action === "paystack-onboarding" || action === "paystack-consent") {
+      if (!methodOnly(req, res, action === "paystack-consent" ? "POST" : "GET")) return;
+      const weddingId = action === "paystack-consent" ? body.weddingId : req.query.weddingId;
+      if (!UUID.test(weddingId || "") || (action === "paystack-consent" &&
+          (!UUID.test(body.revision || "") || body.confirmed !== true))) {
+        return sendJson(res, 400, { error: "Confirm the current verified Paystack destination." });
+      }
+      if (action === "paystack-consent") {
+        await supabaseRequest("/rest/v1/rpc/consent_paystack_destination", {
+          ...opts, method: "POST", body: { p_wedding_id: weddingId, p_revision: body.revision, p_confirmed: true }
+        });
+      }
+      const onboarding = await supabaseRequest("/rest/v1/rpc/paystack_destination_status", {
+        ...opts, method: "POST", body: { p_wedding_id: weddingId }
+      });
+      const settlements = await supabaseRequest("/rest/v1/rpc/paystack_finance_summary", {
+        ...opts, method: "POST", body: { p_wedding_id: weddingId }
+      });
+      return sendJson(res, 200, { onboarding, settlements });
+    }
     if (action === "list") {
       if (!methodOnly(req, res, "GET")) return;
       const rows = await supabaseRequest(

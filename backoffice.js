@@ -238,7 +238,7 @@
         ${f("p-ff-fee", "Far-future fee (USD)", p.far_future_fee_minor, "USD base; applies before the free allowance.")}
         ${g("p-free", "Free publications per client", p.free_publications_per_client, "First N published weddings per client are free.")}
         <label for="p-percent">Platform commission (%)</label><input id="p-percent" type="number" min="0" max="100" step="0.01" value="${esc(percent)}" required><span class="fine">Deducted from each verified payment. Stored to the nearest 0.01% (basis points).</span>
-        ${extendedPolicy ? `${f("p-fixed-fee", "Optional fixed commission", p.contribution_fixed_fee_minor, "Also deducted per verified payment when its currency matches the currency below.")}<label for="p-fixed-currency">Fixed commission currency</label><input id="p-fixed-currency" type="text" minlength="3" maxlength="3" pattern="[A-Za-z]{3}" value="${esc(p.contribution_fixed_fee_currency || "USD")}" required><span class="fine">Three-letter ISO currency code; fixed commission is not applied in other currencies.</span>` : '<p class="fine">Fixed commission and settlement-hold controls will appear after the financial policy migration is validated and applied.</p>'}
+        ${extendedPolicy ? `${f("p-fixed-fee", "Optional fixed commission", p.contribution_fixed_fee_minor, "Wallet payments apply this only in the policy currency. Live Paystack requires a USD base and converts it at immutable quoted FX.")}<label for="p-fixed-currency">Fixed commission currency</label><input id="p-fixed-currency" type="text" minlength="3" maxlength="3" pattern="[A-Za-z]{3}" value="${esc(p.contribution_fixed_fee_currency || "USD")}" required><span class="fine">Live Paystack holds a nonzero non-USD fixed-fee policy; historical payments and other providers are not converted or repriced.</span>` : '<p class="fine">Fixed commission and settlement-hold controls will appear after the financial policy migration is validated and applied.</p>'}
         ${f("p-max", "Max single contribution", p.max_contribution_minor, "Safety cap per payment.")}
         ${f("p-max-payout", "Maximum withdrawal", p.max_payout_minor, "Per-request limit; available balance and holds are checked separately.")}
         ${extendedPolicy ? `${f("p-min-payout", "Minimum withdrawal", p.min_payout_minor, "Minimum eligible net balance required for a withdrawal request.")}${g("p-hold-days", "Settlement hold (days)", p.payout_hold_days, "Funds remain unavailable until this hold and provider settlement are satisfied.")}` : ""}
@@ -248,7 +248,11 @@
       const refundAllocation = refundPolicy.allocation || "manual_review";
       const dj = paymentControls.daraja || {};
       const djLive = dj.configuredEnvironment === "production";
-      const providerLabels = { daraja: djLive ? "M-Pesa — Daraja (LIVE credentials configured)" : "M-Pesa — Daraja sandbox", paystack: "Card — Paystack test", stripe: "Card — Stripe test" };
+      const ps = paymentControls.paystack || {};
+      let publicationAdjustments = [], publicationReviewUnavailable = false;
+      try { publicationAdjustments = (await get("paystack-publication-adjustments")).adjustments || []; }
+      catch { publicationReviewUnavailable = true; }
+      const providerLabels = { daraja: djLive ? "M-Pesa — Daraja (LIVE credentials configured)" : "M-Pesa — Daraja sandbox", paystack: ps.environment === "live" ? "Card — Paystack (live, separate approval gates)" : "Card — Paystack test", stripe: "Card — Stripe test" };
       el.insertAdjacentHTML("beforeend", `<section id="daraja-status" class="notice${dj.newLiveCollection === "gates_open" ? " bad" : ""}"><h3>M-Pesa collection status</h3>
         <p>Configured environment: <strong>${esc(dj.configuredEnvironment || "unknown")}</strong>. New live collection: <strong>${dj.newLiveCollection === "gates_open" ? "approval gates OPEN — guests can be charged real money if the platform M-Pesa switch below is enabled and provider health/Turnstile pass" : "held (not accepting)"}</strong>. Environment kill switch: ${dj.killSwitchOn ? "on" : "off"}. Owner approval: ${dj.approvalUnavailable ? "unavailable (read failed)" : dj.ownerApproved === true ? "granted" : "not granted"}. Live payouts: off.</p>
         ${dj.reason ? `<p class="fine">${esc(dj.reason)}</p>` : ""}
@@ -263,8 +267,45 @@
         <form id="payment-controls-form"><h3>Enabled payment methods</h3>
         <p class="fine">SuperAdmin and Owner controls for new checkouts across all weddings. Enabling a switch never enables live mode or supplies missing credentials. Pending payments remain with their original provider and can still be verified.</p>
         ${(paymentControls.providers || []).map(provider => `<label><input type="checkbox" name="payment-provider" value="${esc(provider.id)}"${(paymentControls.enabled || []).includes(provider.id) ? " checked" : ""}>
-          ${esc(providerLabels[provider.id] || provider.id)} — ${provider.configured ? (provider.id === "daraja" && djLive ? "Configured for live reconciliation (new collection per status above)" : "Test adapter configured (health checked at checkout)") : "Setup incomplete or unsupported currency/market"}</label>`).join("")}
+          ${esc(providerLabels[provider.id] || provider.id)} — ${provider.configured ? (provider.id === "daraja" && djLive ? "Configured for live reconciliation (new collection per status above)" : provider.id === "paystack" && ps.environment === "live" ? "Live Paystack configured (new collection per approval status)" : "Test adapter configured (health checked at checkout)") : "Setup incomplete or unsupported currency/market"}</label>`).join("")}
         <button type="submit">Save payment methods</button></form>`);
+      el.insertAdjacentHTML("beforeend", `<section class="notice" id="paystack-finance">
+        <h3>Paystack live Split Payments</h3>
+        <p>Environment: ${esc(ps.environment || "unconfigured")}. Owner approval: ${ps.approved ? "granted" : "held"}.
+        New collection: ${esc(ps.newCollection || "held")}. Collection kill switch: ${ps.collectionKillSwitchOn ? "on" : "off"}.
+        Publication kill switch: ${ps.publicationKillSwitchOn ? "on" : "off"}. Independent reconciliation: ${ps.reconciliationEnabled ? "on" : "off"}.</p>
+        ${ps.approvalUnavailable ? `<p class="notice">${esc(ps.reason)}</p>` : ""}
+        <p>Couple proceeds are settled by Paystack, never credited to a withdrawable Join Our Wedding balance. Publication fees are platform-only.
+        Activated merchant status alone does not prove Kenya, currency or Split Payments eligibility. Fixed live Paystack commission uses USD policy and a fresh immutable FX snapshot.</p>
+        ${owner ? `<form id="paystack-policy-form"><h4>Owner approval (does not change environment switches)</h4>
+          <label>Account-confirmed market/currency pairs (JSON)<textarea name="capabilities" required placeholder='[{"market":"KE","currency":"KES"}]'>${esc(JSON.stringify(ps.capabilities || []))}</textarea></label>
+          <label>Provider fee bearer<select name="feeBearer"><option value="subaccount"${ps.feeBearer === "account" ? "" : " selected"}>Couple/subaccount (platform receives its fee)</option><option value="account"${ps.feeBearer === "account" ? " selected" : ""}>Platform (provider charge reduces platform fee)</option></select></label>
+          <label><input name="splitEnabled" type="checkbox"${ps.splitApproved ? " checked" : ""}> Approve guest Split Payments</label>
+          <label><input name="publicationEnabled" type="checkbox"${ps.publicationApproved ? " checked" : ""}> Approve platform-only live publication payments</label>
+          <label><input name="eligibilityConfirmed" type="checkbox" required> I verified this merchant's supported pairs, Split Payments eligibility and account settlement requirements with Paystack, and understand activation can charge real money.</label>
+          <button type="submit">Save Owner approval</button><button id="paystack-revoke" type="button">Revoke approval</button>
+        </form>
+        <form id="paystack-destination-form"><h4>Verify a pre-existing couple subaccount</h4>
+          <p>This performs a read-only Paystack verification. It never creates a provider subaccount or changes bank details; couple consent is reset after re-verification.</p>
+          <label>Wedding ID<input name="weddingId" type="text" required></label>
+          <label>Existing subaccount code<input name="subaccountCode" type="text" pattern="ACCT_[A-Za-z0-9]+" required autocomplete="off"></label>
+          <button type="submit">Verify destination (no financial operation)</button>
+        </form>` : ""}
+        <form id="paystack-settlement-form"><h4>Reconcile provider settlement statement</h4>
+          <p>Read-only provider checks plus an immutable internal record. Missing allocation data, deductions and mismatches remain for review; no transfer or refund is initiated.</p>
+          <label>Contribution ID<input name="contributionId" type="text" required></label>
+          <label>Provider settlement ID<input name="settlementId" type="text" pattern="[1-9][0-9]*" required></label>
+          <button type="submit">Verify settlement statement</button>
+        </form>
+        <h4>Publication refund/dispute review (${publicationReviewUnavailable ? "unavailable" : publicationAdjustments.length})</h4>
+        ${publicationReviewUnavailable ? '<p class="notice">Paystack publication review could not be loaded. Resolve this before reviewing cases; other provider controls remain available.</p>' : ""}
+        <p>These cases hold new publication actions. Historical checkout and adjustment evidence is retained. This decision does not move funds or unpublish an existing wedding.</p>
+        ${publicationAdjustments.map(a => `<article><p>${esc(a.provider_state)}: ${esc(WS.money(a.amount_minor,a.currency,false))} — checkout ${esc(a.checkout_id)}</p>
+          ${owner ? `<form class="paystack-publication-resolution" data-event="${esc(a.event_id)}">
+            <label>Entitlement decision<select name="outcome"><option value="require_payment">Require a new payment after review</option><option value="waive">Owner waives the fee</option><option value="retain_paid">Retain paid entitlement (restored/failed adjustment only)</option></select></label>
+            <label>Reason<input name="reason" minlength="10" maxlength="240" required></label>
+            <button type="submit">Resolve publication entitlement</button></form>` : ""}</article>`).join("")}
+        </section>`);
       el.insertAdjacentHTML("beforeend", `<form id="refund-policy-form"><h3>Refund fee allocation</h3>
         <p class="fine">This applies to new payments only. “Couple” assigns the full provider-confirmed refund to the wedding balance. “Platform” reimburses the couple for the known original platform and provider fees proportionally; unknown provider fees remain held. “Manual review” is the safest default and keeps refund amounts unavailable until an Admin records an allocation.</p>
         <label for="refund-allocation">Default allocation</label><select id="refund-allocation"${owner ? "" : " disabled"}>
@@ -308,7 +349,7 @@
         <li>The Owner controls all Admin/SuperAdmin delegation; changes are audited and the protected Owner identity cannot be reassigned from this screen.</li>
         <li>ID/passport numbers are stored privately and masked; only staff can reveal them and each reveal is audited.</li>
         <li>MFA enrolment is not built into Join Our Wedding yet: enable MFA on the email account used for recovery.</li>
-        <li>Payments are in test mode unless the Owner has enabled live M-Pesa collection (an environment kill switch plus Owner approval). Live funds are held and payouts stay disabled.</li>
+        <li>Live M-Pesa and Paystack each require independent environment switches and protected Owner approval. M-Pesa wallet funds remain held with payouts disabled; Paystack direct proceeds can never be withdrawn again here. Publication is platform-only.</li>
         <li>Review the audit log regularly for unexpected role changes or fee waivers.</li></ul>`;
     }
   };
@@ -343,6 +384,12 @@
 
     const panel = $("panel");
     panel.addEventListener("click", async (e) => {
+      if (e.target.closest("#paystack-revoke")) {
+        if (!confirm("Revoke Paystack live approval? New guest and publication payments stop. Existing payments still reconcile unless the independent reconciliation switch is off.")) return;
+        try { await post("paystack-policy", { approved: false, confirmed: true }); await show("fees"); }
+        catch (error) { toast(error.message, true); }
+        return;
+      }
       if (e.target.closest("#daraja-check")) {
         const out = $("daraja-readiness");
         out.textContent = "Checking…";
@@ -404,6 +451,27 @@
     });
     panel.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (["paystack-policy-form","paystack-destination-form","paystack-settlement-form"].includes(e.target.id) ||
+          e.target.classList.contains("paystack-publication-resolution")) {
+        const form = e.target, button = form.querySelector('button[type="submit"]');
+        if (button.disabled || !confirm("Confirm this Paystack configuration or read-only verification? No provider financial operation is initiated.")) return;
+        button.disabled = true;
+        const values = Object.fromEntries(new FormData(form));
+        try {
+          const action = form.classList.contains("paystack-publication-resolution") ? "paystack-publication-resolution"
+            : form.id === "paystack-policy-form" ? "paystack-policy"
+            : form.id === "paystack-destination-form" ? "paystack-destination" : "paystack-settlement";
+          const body = action === "paystack-policy" ? {
+            approved: true, capabilities: JSON.parse(values.capabilities), feeBearer: values.feeBearer,
+            splitEnabled: values.splitEnabled === "on", publicationEnabled: values.publicationEnabled === "on",
+            eligibilityConfirmed: values.eligibilityConfirmed === "on"
+          } : { ...values, ...(action === "paystack-publication-resolution" ? { eventId: form.dataset.event } : {}) };
+          await post(action, { ...body, confirmed: true });
+          toast("Paystack configuration or verification saved.");
+          await show("fees");
+        } catch (error) { toast(error.message, true); button.disabled = false; }
+        return;
+      }
       if (e.target.id === "restriction-form" || e.target.dataset.moderationReview) {
         const form = e.target, button = form.querySelector('button[type="submit"]');
         if (button.disabled) return;

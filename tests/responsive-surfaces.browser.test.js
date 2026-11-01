@@ -26,7 +26,7 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       attire_notes: "Traditional or formal - wear what feels comfortable.", venues: [], registry: [], tiers: [] };
     const guest = { rsvp_id: id, wedding_id: id, slug: wedding.slug, couple_names: wedding.couple_names,
       guest_name: "QA Guest", attendance_status: "yes" };
-    let staffRole = "owner";
+    let staffRole = "owner", paystackReviewUnavailable = false;
     await page.route("https://open.er-api.com/**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
       result: "success", base_code: "USD", rates: { USD: 1, KES: 130 }, time_last_update_utc: new Date().toUTCString()
     }) }));
@@ -35,6 +35,9 @@ test("public, organizer and back-office surfaces fit small and large screens", a
     await page.route("**/api/**", route => {
       const action = new URL(route.request().url()).searchParams.get("action");
       assert.equal(route.request().method(), "GET", "layout review never submits forms, emails or payments");
+      if (action === "paystack-publication-adjustments" && paystackReviewUnavailable) {
+        return route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:"Synthetic review unavailable"})});
+      }
       let data = {};
       if (action === "get") data = { wedding };
       if (action === "list") data = { weddings: [wedding] };
@@ -88,7 +91,7 @@ test("public, organizer and back-office surfaces fit small and large screens", a
     const paletteFits = await page.locator("#color-inputs").evaluate(el => el.scrollWidth <= el.clientWidth);
     assert.ok(paletteFits, "palette name/hex controls wrap on mobile");
     await page.locator("#pay-fee-btn").click();
-    await page.waitForFunction(() => document.getElementById("publication-status").textContent.includes("No configured test payment method"));
+    await page.waitForFunction(() => document.getElementById("publication-status").textContent.includes("No configured payment method"));
     assert.ok(await page.locator("#publication-submit").isDisabled(), "editor fails closed without a configured publication method");
     for (const width of [320, 375, 768, 1280]) {
       await page.setViewportSize({ width, height: 800 });
@@ -108,6 +111,13 @@ test("public, organizer and back-office surfaces fit small and large screens", a
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${surface}: payment controls fit ${width}`);
       }
     }
+    paystackReviewUnavailable = true;
+    await page.goto(`http://127.0.0.1:${server.address().port}/owner.html`, { waitUntil: "domcontentloaded" });
+    await page.locator('[data-tab="fees"]').click();
+    await page.locator("#payment-controls-form").waitFor();
+    assert.match(await page.locator("#paystack-finance").innerText(), /review could not be loaded/);
+    assert.ok(await page.locator("#payment-controls-form button").isEnabled(), "Paystack review failures preserve Daraja controls");
+    paystackReviewUnavailable = false;
     for (staffRole of ["admin", "superadmin"]) {
       await page.goto(`http://127.0.0.1:${server.address().port}/admin.html`, { waitUntil: "domcontentloaded" });
       await page.locator("#admin-nav button").first().waitFor();

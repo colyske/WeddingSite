@@ -40,6 +40,8 @@ jobs:
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/live-daraja.sql
       - name: Test paid custom sponsorship without retaining fixtures
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/custom-sponsorship.sql
+      - name: Test live Paystack split and publication guards without retaining fixtures
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/paystack-live.sql
       - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup

@@ -275,7 +275,7 @@
       <p id="past-note" class="fine" hidden>The wedding date has passed. The guest site now shows a thank-you / memories page; RSVPs, bids and new contributions are closed.</p>
       <div id="fee-box" class="fine"></div>
       <div class="row">
-        <button type="button" id="pay-fee-btn" class="ghost" hidden>Pay publication fee (test mode)</button>
+        <button type="button" id="pay-fee-btn" class="ghost" hidden>Review publication fee &amp; payment</button>
         <button type="button" id="unpublish-btn" class="ghost" hidden>Unpublish (reversible)</button>
         <button type="button" id="archive-btn" class="ghost">Archive</button>
       </div>
@@ -405,6 +405,15 @@
       <p class="fine">Only eligible real settled funds can be withdrawn. Test-provider payments are simulated and never become withdrawable funds.</p>
       <p class="notice" id="payout-kyc-notice" role="status">Complete KYC to receive your payout. <a href="#kyc-section">Complete both partners&rsquo; KYC details</a>. Publishing is not blocked.</p>
       
+      <section id="paystack-onboarding" class="notice" aria-labelledby="paystack-onboarding-title">
+        <h3 id="paystack-onboarding-title">Paystack direct settlement</h3>
+        <p>Paystack onboarding verifies the receiving subaccount separately from our required-details-and-consent KYC. Publishing is not blocked by either. Money Paystack routes to you is never withdrawable again from Join Our Wedding.</p>
+        <p id="paystack-onboarding-status" role="status">Checking onboarding status...</p>
+        <label><input id="paystack-destination-consent" type="checkbox" disabled> I have confirmed the receiving account with the platform Owner and consent to Paystack routing the wedding proceeds there, less platform and applicable provider fees.</label>
+        <button id="paystack-consent-submit" type="button" disabled>Consent to verified destination</button>
+        <button id="paystack-onboarding-reload" type="button">Refresh onboarding status</button>
+        <div id="paystack-settlement-rows" aria-live="polite"></div>
+      </section>
       <div id="payout-balance" style="padding: 1.5rem; background: #f3faf3; border-radius: 8px; margin-bottom: 1.5rem;">
         <p class="fine" style="margin: 0 0 0.5rem;">Available balance:</p>
         <p style="margin: 0; font-size: 1.5rem; font-weight: bold; color: #244b3a;">
@@ -1857,6 +1866,7 @@
 })();
   </script>
   <script src="publication-checkout.js"></script>
+  <script src="paystack-onboarding.js"></script>
   <script src="footer.js"></script>
 <script src="/feedback.js"></script>
 </body>

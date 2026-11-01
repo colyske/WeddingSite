@@ -7,6 +7,7 @@ import {
 } from "../server/payment-adapters.js";
 import { recordPublicationPayment, reconcilePublicationCallback } from "../server/publication-payments.js";
 import { recoverVerifiedDaraja } from "../server/daraja-recovery.js";
+import { paystackEnvironment, recordPaystackPayment, fetchPaystack, verifyPaystackContext, parsePaystackJson } from "../server/paystack.js";
 
 export const config = { api: { bodyParser: false } };
 
@@ -89,40 +90,82 @@ async function handleStripeWebhook(req, res) {
 
 async function handlePaystackWebhook(req, res) {
   const secret = process.env.PAYSTACK_SECRET_KEY;
-  if (process.env.WEDDINGSITE_PAYMENT_MODE !== "test" || !secret?.startsWith("sk_test_")) {
-    return sendJson(res, 503, { error: "Test payment webhooks are unavailable until Paystack test mode is configured." });
+  if (!paystackEnvironment() || (paystackEnvironment() === "live" && process.env.PAYSTACK_RECONCILIATION_ENABLED !== "true")) {
+    return sendJson(res, 503, { error: "Paystack webhook reconciliation is not configured for this mode." });
   }
   try {
     const raw = await rawBody(req);
     if (!verifyPaystackSignature(raw, req.headers["x-paystack-signature"], secret)) {
       return sendJson(res, 400, { error: "Invalid Paystack signature." });
     }
-    const event = JSON.parse(raw.toString("utf8"));
+    const event = parsePaystackJson(raw.toString("utf8"));
     const digest = createHash("sha256").update(raw).digest("hex");
     const adjustment = normalizePaystackAdjustment(event, digest);
     if (adjustment) {
+      if (paystackEnvironment() === "live") {
+        if (!adjustment.paymentReference) throw new Error("Paystack adjustment lacks a transaction reference.");
+        const original = (await fetchPaystack(`/transaction/verify/${encodeURIComponent(adjustment.paymentReference)}`)).data;
+        const contribution = (await supabaseRequest(
+          `/rest/v1/contributions?provider_name=eq.paystack&provider_reference=eq.${encodeURIComponent(adjustment.paymentReference)}&select=id,paystack_context`, { service: true }
+        ))?.[0];
+        const publication = contribution ? null : (await supabaseRequest(
+          `/rest/v1/publication_checkouts?provider=eq.paystack&provider_reference=eq.${encodeURIComponent(adjustment.paymentReference)}&select=*`, { service: true }
+        ))?.[0];
+        const context = contribution?.paystack_context || publication?.paystack_context;
+        if (!context || original?.reference !== adjustment.paymentReference) throw new Error("Paystack adjustment has no matching live admission.");
+        verifyPaystackContext(original, context);
+        if (publication) {
+          await supabaseRequest("/rest/v1/rpc/record_paystack_publication_adjustment", {
+            service: true, method: "POST", body: {
+              p_checkout_id: publication.id, p_event_id: digest, p_state: adjustment.state,
+              p_adjustment_id: adjustment.adjustmentId, p_amount_minor: adjustment.amountMinor,
+              p_currency: adjustment.currency, p_occurred_at: adjustment.occurredAt
+            }
+          });
+          return sendJson(res, 200, { received: true, processed: true });
+        }
+      }
       const result = await recordAdjustment(adjustment);
       return sendJson(res, 200, { received: true, processed: Boolean(result) });
     }
     const payment = normalizePaystackPayment(event);
     if (!payment) return sendJson(res, 200, { received: true, processed: false });
     if (event.data.metadata?.payment_kind === "publication") {
-      const result = await recordPublicationPayment(payment, payment.contributionId);
+      const row = (await supabaseRequest(`/rest/v1/publication_checkouts?id=eq.${encodeURIComponent(payment.contributionId)}&select=*`, { service: true }))?.[0];
+      if (!row) throw new Error("Paystack publication checkout was not found.");
+      const verified = await verifyProviderPayment("paystack", row.provider_reference, row.id, row.amount_minor, row.currency,
+        row.paystack_context ? { context: row.paystack_context } : null);
+      if (!verified.verified) throw new Error("Paystack publication payment is not independently verified.");
+      const result = await recordPublicationPayment(verified, row.id);
+      return sendJson(res, 200, { received: true, processed: Boolean(result) });
+    }
+    const row = (await supabaseRequest(
+      `/rest/v1/contributions?id=eq.${encodeURIComponent(payment.contributionId)}&select=id,provider_reference,pledged_amount_minor,currency,paystack_context`, { service: true }
+    ))?.[0];
+    if (!row) throw new Error("Paystack contribution was not found.");
+    if (payment.reference !== row.provider_reference || payment.amountMinor !== Number(row.pledged_amount_minor) ||
+        payment.currency !== row.currency) throw new Error("Signed Paystack event differs from admission.");
+    if (row.paystack_context) verifyPaystackContext(event.data, row.paystack_context);
+    const verified = await verifyProviderPayment("paystack", row.provider_reference, row.id, row.pledged_amount_minor, row.currency,
+      row.paystack_context ? { context: row.paystack_context, signedSplit: event.data.split } : null);
+    if (!verified.verified) throw new Error("Paystack contribution is not independently verified.");
+    if (row.paystack_context) {
+      const result = await recordPaystackPayment(verified, row.id);
       return sendJson(res, 200, { received: true, processed: Boolean(result) });
     }
     const result = await supabaseRequest("/rest/v1/rpc/record_verified_payment", {
       service: true,
       method: "POST",
       body: {
-        p_provider: payment.provider,
-        p_provider_event_id: payment.eventId,
-        p_contribution_id: payment.contributionId,
-        p_amount_minor: payment.amountMinor,
-        p_currency: payment.currency,
-        p_provider_reference: payment.reference,
-        p_provider_fee_minor: payment.providerFeeMinor,
-        p_provider_paid_at: payment.providerPaidAt,
-        p_provider_payment_reference: payment.providerPaymentReference
+        p_provider: verified.provider,
+        p_provider_event_id: verified.eventId,
+        p_contribution_id: row.id,
+        p_amount_minor: verified.amountMinor,
+        p_currency: verified.currency,
+        p_provider_reference: verified.reference,
+        p_provider_fee_minor: verified.providerFeeMinor,
+        p_provider_paid_at: verified.providerPaidAt,
+        p_provider_payment_reference: verified.providerPaymentReference
       }
     });
     return sendJson(res, 200, { received: true, processed: Boolean(result) });

@@ -10,6 +10,11 @@ import { isShowcase } from "../server/showcase.js";
 import "../social-links.js";
 import { contentError } from "../server/content-policy.js";
 import "../currencies.js";
+import { ensurePublicationFx } from "../server/publication-fx.js";
+import {
+  paystackEnvironment, paystackAdmissionEnabled, paystackApproval, paystackDestination,
+  livePaystackContext, paystackSplit, contextDigest, recordPaystackPayment, validatePaystackInitialization
+} from "../server/paystack.js";
 
 const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 const isText = (value, max) => typeof value === "string" && value.trim().length > 0 && value.trim().length <= max;
@@ -21,7 +26,7 @@ function configuredAdapters(currency, market) {
   const options = [];
   const mode = process.env.WEDDINGSITE_PAYMENT_MODE;
   const stripeModeMatches = mode === "test" && process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_");
-  const paystackModeMatches = mode === "test" && process.env.PAYSTACK_SECRET_KEY?.startsWith("sk_test_");
+  const paystackModeMatches = paystackEnvironment() === "test" || paystackAdmissionEnabled();
   const darajaSandboxReady = darajaEnvironment() !== null &&
     Boolean(process.env.DARAJA_CONSUMER_KEY) && Boolean(process.env.DARAJA_CONSUMER_SECRET) &&
     Boolean(process.env.DARAJA_SHORTCODE) && Boolean(process.env.DARAJA_PASSKEY) &&
@@ -71,7 +76,7 @@ export function paymentProviderReadiness() {
   return ALL_PROVIDERS.map(id => ({ id, configured: ready.has(id) }));
 }
 
-// Provider availability is derived from platform configuration (test-mode credentials plus
+// Provider availability is derived from platform configuration (mode-matched credentials plus
 // each provider's configured markets/currencies). Organizers never choose a processor.
 export function availableProviderMarkets(currency) {
   const markets = new Set([
@@ -80,13 +85,12 @@ export function availableProviderMarkets(currency) {
   return [...markets].flatMap(market => configuredAdapters(currency, market).map(item => ({ ...item, market })));
 }
 
-// Only provider TEST/sandbox mode is supported; live mode is never accepted. The
-// WEDDINGSITE_LIVE_PAYMENTS_ENABLED flag is not required or consulted for test checkout.
+// Test checkout does not consult live admission switches.
 export function testPaymentsEnabled() {
   return process.env.WEDDINGSITE_PAYMENT_MODE === "test";
 }
 
-// Live collection is Daraja-only and requires the environment kill switch, the
+// Live Daraja collection requires the environment kill switch, the
 // shortcode confirmation, and (checked against the database) the Owner's approval.
 export function liveDarajaEnabled() {
   return darajaEnvironment() === "production";
@@ -176,7 +180,17 @@ export async function createStripeCheckout({ id, weddingId, slug, streamName, am
   return { url: result.url, reference: result.id };
 }
 
-export async function createPaystackCheckout({ id, weddingId, slug, streamName, amountMinor, currency, returnOrigin, idempotencyKey, email, returnUrl, paymentKind }) {
+export async function createPaystackCheckout({ id, weddingId, slug, streamName, amountMinor, currency, returnOrigin, idempotencyKey, email, returnUrl, paymentKind, paystackContext }) {
+  if (paystackEnvironment() === "live" && (!paystackContext ||
+      !paystackAdmissionEnabled(paymentKind === "publication" ? "publication" : "guest"))) {
+    throw new Error("Live Paystack checkout is held or missing its immutable context.");
+  }
+  if (paystackContext) {
+    if (paystackContext.amount_minor !== amountMinor || paystackContext.currency !== currency) {
+      throw new Error("Paystack initialization differs from the immutable quote.");
+    }
+    await validatePaystackInitialization(paystackContext);
+  }
   const response = await fetch("https://api.paystack.co/transaction/initialize", {
     method: "POST",
     headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, "Content-Type": "application/json" },
@@ -186,12 +200,16 @@ export async function createPaystackCheckout({ id, weddingId, slug, streamName, 
       currency,
       reference: idempotencyKey,
       callback_url: returnUrl || paymentReturnUrl(returnOrigin, slug, "paymentReturn", id),
-      metadata: { contribution_id: id, wedding_id: weddingId, stream: streamName, ...(paymentKind ? { payment_kind: paymentKind } : {}) }
+      metadata: { contribution_id: id, wedding_id: weddingId, stream: streamName,
+        ...(paymentKind ? { payment_kind: paymentKind } : {}),
+        ...(paystackContext ? { ws_context: contextDigest(paystackContext) } : {}) },
+      ...(paystackContext?.kind === "guest" ? { split: paystackSplit(paystackContext, idempotencyKey) } : {})
     }),
-    cache: "no-store"
+    cache: "no-store", signal: AbortSignal.timeout(12_000)
   });
   const result = await response.json();
-  if (!response.ok || result.status !== true || !result.data?.authorization_url || !result.data?.reference) {
+  if (!response.ok || result.status !== true || !result.data?.authorization_url || result.data?.reference !== idempotencyKey ||
+      new URL(result.data.authorization_url).origin !== "https://checkout.paystack.com") {
     throw new Error("Paystack could not initialize the hosted checkout.");
   }
   return { url: result.data.authorization_url, reference: result.data.reference };
@@ -208,7 +226,7 @@ async function handleOptions(req, res) {
   }
   const liveHeld = darajaConfiguredEnvironment() === "production" && !liveDarajaEnabled();
   const unmetChecks = [
-    !(testPaymentsEnabled() || liveDarajaEnabled()) && (liveHeld ? "DARAJA_LIVE_COLLECTION_ENABLED=true" : "WEDDINGSITE_PAYMENT_MODE=test"),
+    !(testPaymentsEnabled() || liveDarajaEnabled() || paystackAdmissionEnabled()) && (liveHeld ? "DARAJA_LIVE_COLLECTION_ENABLED=true" : "WEDDINGSITE_PAYMENT_MODE=test"),
     !process.env.TURNSTILE_SECRET_KEY && "TURNSTILE_SECRET_KEY",
     !(process.env.TURNSTILE_SITE_KEY || process.env.TURNSTILE_PUBLIC_KEY) && "TURNSTILE_SITE_KEY|TURNSTILE_PUBLIC_KEY",
     !isSecurePublicOrigin(process.env.WEDDINGSITE_PUBLIC_ORIGIN) && "WEDDINGSITE_PUBLIC_ORIGIN"
@@ -225,8 +243,23 @@ async function handleOptions(req, res) {
     const policy = (await supabaseRequest("/rest/v1/platform_policies?id=eq.true&select=enabled_payment_providers", { service: true }))?.[0];
     const enabled = enabledPaymentProviders(policy);
     const liveApproved = liveDarajaEnabled() ? await liveDarajaApproved() : true;
+    let paystackApproved = paystackEnvironment() !== "live", destination = null;
+    let paystackApprovalUnavailable = false;
+    if (paystackEnvironment() === "live") {
+      try {
+        paystackApproved = await paystackApproval("guest", currency);
+        destination = paystackApproved ? await paystackDestination(weddingId, currency) : null;
+      } catch {
+        paystackApproved = false;
+        paystackApprovalUnavailable = true;
+        console.error("Paystack checkout eligibility could not be read; Paystack is held independently.");
+      }
+    }
     const candidates = availableProviderMarkets(currency).filter(item => enabled.includes(item.id) &&
-      (item.id !== "daraja" || liveApproved));
+      (item.id !== "daraja" || liveApproved) &&
+      (item.id !== "paystack" || (paystackApproved && (paystackEnvironment() !== "live" ||
+        (destination?.verified_at && destination?.consent_at &&
+          paystackApproved.capabilities.some(pair => pair.currency === currency && pair.market === item.market))))));
     const eligible = [...new Set(candidates.map(item => item.id))];
     const health = await Promise.all(eligible.map(async provider =>
       [provider, await checkProviderHealth(provider)]
@@ -238,7 +271,8 @@ async function handleOptions(req, res) {
     return sendJson(res, 200, {
       providers,
       paymentAvailable: providers.length > 0,
-      mode: darajaEnvironment() === "production" && providers.some(item => item.id === "daraja") ? "live" : "test",
+      ...(paystackApprovalUnavailable ? { providerHolds: [{ provider: "paystack", reason: "Paystack eligibility is unavailable." }] } : {}),
+      mode: process.env.WEDDINGSITE_PAYMENT_MODE,
       turnstileSiteKey: process.env.TURNSTILE_SITE_KEY || process.env.TURNSTILE_PUBLIC_KEY || "",
       message: providers.length ? "" : "Payments are not available for this wedding and market yet, or a provider health check failed.",
       providerChecks: health.map(([provider, healthy]) => ({ provider, healthy }))
@@ -256,7 +290,7 @@ async function handleCheckout(req, res) {
   try { globalThis.WSSocialLinks.parse(req.body?.socialLinks); }
   catch (error) { return sendJson(res, 400, { error: error.message }); }
   if (invalidContent) return sendJson(res, 400, { error: invalidContent });
-  if (!testPaymentsEnabled() && !liveDarajaEnabled()) {
+  if (!testPaymentsEnabled() && !liveDarajaEnabled() && !paystackAdmissionEnabled()) {
     return sendJson(res, 503, { error: "Payments are currently unavailable. Paid actions cannot be completed until a provider is enabled." });
   }
   const origin = process.env.WEDDINGSITE_PUBLIC_ORIGIN?.replace(/\/+$/, "");
@@ -294,6 +328,7 @@ async function handleCheckout(req, res) {
     const available = configuredAdapters(currency, market).some(item => item.id === body.provider);
     if (!available) return sendJson(res, 409, { error: "That payment option is not configured for this currency and market." });
     const liveDaraja = body.provider === "daraja" && liveDarajaEnabled();
+    const livePaystack = body.provider === "paystack" && paystackEnvironment() === "live";
     if (liveDaraja && !await liveDarajaApproved()) {
       return sendJson(res, 503, { error: "Live M-Pesa collection has not been approved by the platform Owner. No checkout was created." });
     }
@@ -481,9 +516,17 @@ async function handleCheckout(req, res) {
     if (!Number.isSafeInteger(amountMinor) || amountMinor < 1 || amountMinor > Number(policy.max_contribution_minor)) {
       return sendJson(res, 400, { error: "The amount is outside the configured per-payment limit." });
     }
+    if (livePaystack && (!Number.isSafeInteger(body.amountMinor) || body.amountMinor !== amountMinor)) {
+      return sendJson(res, 409, { error: "The wedding price changed. Reload and confirm the current amount before paying." });
+    }
     const contributionId = randomUUID();
     const fixedFeeMinor = currency === policy.contribution_fixed_fee_currency ? Number(policy.contribution_fixed_fee_minor || 0) : 0;
     if (lines.length === 0) lines = [{ category: purchaseAction, label: streamName, amount_minor: amountMinor }];
+    let paystackContext = null;
+    if (livePaystack) {
+      await ensurePublicationFx(currency);
+      paystackContext = await livePaystackContext(weddingId, amountMinor, currency, market);
+    }
     const entry = {
       id: contributionId,
       wedding_id: weddingId,
@@ -508,7 +551,12 @@ async function handleCheckout(req, res) {
       public_consent_at: null,
       provider_name: body.provider,
       checkout_idempotency_key: idempotencyKey,
-      ...(liveDaraja ? { payment_environment: "live", daraja_shortcode: process.env.DARAJA_SHORTCODE } : {})
+      ...(liveDaraja ? { payment_environment: "live", daraja_shortcode: process.env.DARAJA_SHORTCODE } : {}),
+      ...(livePaystack ? {
+        payment_environment: "live", paystack_context: paystackContext, settlement_route: "paystack_direct",
+        provider_reference: idempotencyKey, platform_fixed_fee_minor: paystackContext.fixed_fee_minor,
+        platform_fee_basis_points: paystackContext.fee_basis_points
+      } : {})
     };
     await supabaseRequest("/rest/v1/contributions", {
       service: true, method: "POST", body: entry, prefer: "return=minimal"
@@ -524,7 +572,8 @@ async function handleCheckout(req, res) {
       });
       const arguments_ = {
         id: contributionId, weddingId, slug: wedding.slug, streamName, amountMinor,
-        currency, returnOrigin: requestOrigin, idempotencyKey, email: body.email || body.guestEmail
+        currency, returnOrigin: requestOrigin, idempotencyKey, email: body.email || body.guestEmail,
+        paystackContext
       };
       checkout = body.provider === "stripe"
         ? await createStripeCheckout(arguments_)
@@ -553,8 +602,13 @@ async function handleCheckout(req, res) {
           error: liveDaraja
             ? "The M-Pesa prompt may have been sent but could not be recorded safely. Do not retry; approve it if received and check the payment status, otherwise contact the organizer."
             : "Checkout setup could not be confirmed safely. No paid action was recorded; contact the organizer before retrying.",
-          ...(liveDaraja ? { paymentId: contributionId, paymentStatus: "pending" } : {})
+          ...(liveDaraja || livePaystack ? { paymentId: contributionId, paymentStatus: "pending" } : {})
         });
+      }
+      if (livePaystack) {
+        console.error("Live Paystack initialization requires reconciliation", contributionId);
+        return sendJson(res, 503, { paymentId: contributionId, paymentStatus: "pending",
+          error: "Paystack checkout initialization could not be confirmed. Do not retry; check this payment or contact support." });
       }
       if (liveDaraja) {
         // Live admissions are never erased: an uncertain STK Push may still reach the customer.
@@ -599,7 +653,7 @@ async function handleStatus(req, res) {
   const id = String(req.query.id || "");
   if (!isUuid(id)) return sendJson(res, 400, { error: "Invalid payment reference." });
   try {
-    let rows = await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&select=id,payment_status,provider_name,provider_reference,pledged_amount_minor,currency,purchase_action,action_result,action_completed_at,    provider_fee_pending,payment_environment,daraja_shortcode,daraja_merchant_request_id,created_at`, { service: true });
+    let rows = await supabaseRequest(`/rest/v1/contributions?id=eq.${encodeURIComponent(id)}&select=id,payment_status,provider_name,provider_reference,pledged_amount_minor,currency,purchase_action,action_result,action_completed_at,provider_fee_pending,payment_environment,daraja_shortcode,daraja_merchant_request_id,paystack_context,created_at`, { service: true });
     let row = rows?.[0];
     if (!row) return sendJson(res, 404, { error: "Payment reference not found." });
     let providerResultCode = null;
@@ -614,12 +668,13 @@ async function handleStatus(req, res) {
         row.provider_name === "daraja" ? {
           environment: row.payment_environment, shortcode: row.daraja_shortcode,
           merchantRequestId: row.daraja_merchant_request_id
-        } : null
+        } : row.paystack_context ? { context: row.paystack_context } : null
       );
       if (payment.verified && recoverableDaraja) {
         await recoverVerifiedDaraja(payment, row.id);
       } else if (payment.verified) {
-        await supabaseRequest("/rest/v1/rpc/record_verified_payment", {
+        if (row.paystack_context) await recordPaystackPayment(payment, row.id);
+        else await supabaseRequest("/rest/v1/rpc/record_verified_payment", {
           service: true, method: "POST",
           body: {
             p_provider: payment.provider, p_provider_event_id: payment.eventId,

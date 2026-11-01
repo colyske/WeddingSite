@@ -4,6 +4,10 @@ import { contentError } from "../server/content-policy.js";
 import { darajaCollectionStatus, paymentProviderReadiness } from "./checkout.js";
 
 import { checkProviderHealth, darajaConfiguredEnvironment, isSecurePublicOrigin } from "../server/payment-adapters.js";
+import {
+  paystackEnvironment, paystackMerchant, paystackCredentialFingerprint, paystackReadiness,
+  verifiedSubaccount, reconcilePaystackSettlement
+} from "../server/paystack.js";
 
 const rpc = (name, token, body = {}) =>
   supabaseRequest(`/rest/v1/rpc/${name}`, { token, method: "POST", body });
@@ -64,7 +68,9 @@ const GET_ACTIONS = {
   },
   policies: async (t) => ({ policies: await rpc("admin_get_policies", t) }),
   "refund-policy": async (t) => ({ allocation: await rpc("admin_get_refund_policy", t) }),
-  "payment-controls": async t => ({ enabled: await rpc("admin_get_payment_controls", t), providers: paymentProviderReadiness(), daraja: await darajaCollectionStatus() }),
+  "payment-controls": async t => ({ enabled: await rpc("admin_get_payment_controls", t), providers: paymentProviderReadiness(), daraja: await darajaCollectionStatus(), paystack: await paystackReadiness() }),
+  "paystack-readiness": async () => paystackReadiness(),
+  "paystack-publication-adjustments": async t => ({ adjustments: await rpc("admin_paystack_publication_adjustments", t) }),
   "daraja-readiness": async (t, q) => darajaReadiness(t, q),
   "policy-history": async (t) => ({ history: await rpc("admin_policy_history", t, { p_limit: 50 }) }),
   "wedding-metrics": async (t, q) => {
@@ -82,8 +88,8 @@ const REVIEW_DECISIONS = new Set(["republish", "lift", "return"]);
 const text = value => typeof value === "string" ? value.trim() : "";
 const ROLES = new Set(["client", "admin", "superadmin"]);
 const PAYOUT_STATUSES = new Set(["approved", "sent", "cancelled"]);
-const LEADERSHIP_ACTIONS = new Set(["overview", "ledger", "payouts", "audit", "policies", "refund-policy", "payment-controls", "policy-history", "set-role", "payment-controls-save"]);
-const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save", "daraja-readiness", "daraja-approval"]);
+const LEADERSHIP_ACTIONS = new Set(["overview", "ledger", "payouts", "audit", "policies", "refund-policy", "payment-controls", "policy-history", "set-role", "payment-controls-save", "paystack-settlement", "paystack-publication-adjustments"]);
+const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save", "daraja-readiness", "daraja-approval", "paystack-readiness", "paystack-policy", "paystack-destination", "paystack-publication-resolution"]);
 
 function safeMessage(error) {
   const m = String(error?.message || "");
@@ -159,6 +165,51 @@ export default async function handler(req, res) {
       }
       await rpc("owner_set_daraja_live_approval", token, { p_approved: body.approved, p_shortcode: body.approved ? configured : null });
       return sendJson(res, 200, { ok: true, daraja: await darajaCollectionStatus() });
+    }
+    if (action === "paystack-policy") {
+      if (typeof body.approved !== "boolean" || body.confirmed !== true ||
+          (body.approved && (body.eligibilityConfirmed !== true || paystackEnvironment() !== "live" ||
+            !paystackMerchant() || process.env.PAYSTACK_LIVE_MERCHANT_CONFIRMED !== paystackMerchant() ||
+            !Array.isArray(body.capabilities) || body.capabilities.some(pair =>
+              !/^[A-Z]{2}$/.test(pair?.market || "") || !globalThis.WSCurrencies.supportsAccounting(pair?.currency)) ||
+            typeof body.splitEnabled !== "boolean" || typeof body.publicationEnabled !== "boolean" ||
+            !["account","subaccount"].includes(body.feeBearer)))) {
+        return sendJson(res, 400, { error: "Confirm the account-specific eligible currencies/markets, Split Payments capability, fee bearer and live-charge warning." });
+      }
+      await rpc("owner_set_paystack_policy", token, {
+        p_approved: body.approved, p_merchant_id: paystackMerchant(),
+        p_credential_fingerprint: paystackCredentialFingerprint(), p_capabilities: body.capabilities || [],
+        p_split_enabled: body.splitEnabled === true, p_publication_enabled: body.publicationEnabled === true,
+        p_fee_bearer: body.feeBearer || "subaccount", p_confirmed: true
+      });
+      return sendJson(res, 200, { ok: true, paystack: await paystackReadiness() });
+    }
+    if (action === "paystack-destination") {
+      if (!UUID.test(body.weddingId || "") || body.confirmed !== true || paystackEnvironment() !== "live") {
+        return sendJson(res, 400, { error: "Confirm a valid wedding and pre-existing Paystack destination." });
+      }
+      const wedding = (await supabaseRequest(`/rest/v1/weddings?id=eq.${body.weddingId}&select=currency`, { service: true }))?.[0];
+      if (!wedding) return sendJson(res, 404, { error: "Wedding not found." });
+      const verified = await verifiedSubaccount(body.subaccountCode, wedding.currency);
+      await rpc("owner_verify_paystack_destination", token, { p_wedding_id: body.weddingId, p_data: verified, p_confirmed: true });
+      return sendJson(res, 200, { ok: true, message: "Destination verified. Couple consent is required before direct settlement." });
+    }
+    if (action === "paystack-settlement") {
+      if (!UUID.test(body.contributionId || "") || !/^[1-9]\d{0,19}$/.test(body.settlementId || "") || body.confirmed !== true) {
+        return sendJson(res, 400, { error: "Confirm the contribution and provider settlement statement ID." });
+      }
+      await reconcilePaystackSettlement(body.contributionId, body.settlementId, session.user.id);
+      return sendJson(res, 200, { ok: true });
+    }
+    if (action === "paystack-publication-resolution") {
+      if (!/^[a-f0-9]{64}$/.test(body.eventId || "") || !["retain_paid","require_payment","waive"].includes(body.outcome) ||
+          body.confirmed !== true || text(body.reason).length < 10 || text(body.reason).length > 240) {
+        return sendJson(res, 400, { error: "Confirm the publication entitlement decision and give a reason (10-240 characters)." });
+      }
+      await rpc("owner_resolve_paystack_publication", token, {
+        p_event_id: body.eventId, p_outcome: body.outcome, p_reason: text(body.reason), p_confirmed: true
+      });
+      return sendJson(res, 200, { ok: true });
     }
     if (action === "payment-controls-save") {
       if (body.confirmed !== true || !Array.isArray(body.enabled) ||

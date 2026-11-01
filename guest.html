@@ -1300,7 +1300,7 @@ const payIntent = WSPaymentIntent.create({ name: slug });
         $("pay-error").className = "notice bad";
         $("pay-error").textContent = `${outcome.message} Do not start another payment.`;
         $("pay-error").hidden = false;
-        $("pay-submit").textContent = "Checking M-Pesa status…";
+        $("pay-submit").textContent = provider === "daraja" ? "Checking M-Pesa status…" : "Checking payment status…";
         const heldParams = new URLSearchParams(location.search);
         heldParams.set("paymentReturn", data.paymentId);
         params.set("paymentReturn", data.paymentId);

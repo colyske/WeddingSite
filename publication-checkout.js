@@ -26,6 +26,10 @@
   const key = `ws-publication:${weddingId}`;
   let quote, methodQuotes = new Map(), paymentId, token = "", widget, scriptPromise, timer, checks = 0, submitting = false;
   const message = text => { $("publication-status").textContent = text; };
+  const mode = testMode => {
+    $("publication-title").textContent = testMode ? "Publication fee — test mode" : "Publication fee — live payment";
+    $("publication-submit").textContent = testMode ? "Confirm & pay (test mode)" : "Confirm & pay real money";
+  };
   function showQuote(value) {
     $("publication-quote").textContent = `${WS.money(value.fee_minor, value.currency, false)}. ${value.reason || ""}`;
     $("publication-usd").textContent = value.currency !== "USD" && value.usd_amount_minor != null
@@ -45,12 +49,13 @@
     return data;
   }
   function remember(checkout) {
+    mode(checkout.testMode !== false);
     paymentId = checkout.id;
     sessionStorage.setItem(key, checkout.id);
     $("publication-submit").disabled = true;
     $("publication-check").hidden = false;
     $("publication-reload").hidden = true;
-    $("publication-quote").textContent = `Existing test payment: ${WS.money(checkout.amountMinor, checkout.currency, false)}.`;
+    $("publication-quote").textContent = `Existing ${checkout.testMode === false ? "live" : "test"} payment: ${WS.money(checkout.amountMinor, checkout.currency, false)}.`;
     $("publication-usd").textContent = checkout.usdAmountMinor != null && checkout.currency !== "USD"
       ? `[USD ${(checkout.usdAmountMinor / 100).toFixed(2)} base fee]` : "";
     $("publication-fx").textContent = checkout.fxPublishedAt
@@ -75,7 +80,7 @@
       if (checkout.status === "paid") {
         clearPayment();
         $("publication-reload").hidden = true;
-        message("Publication fee verified in test mode. No wedding-fund credit was created. Close this window and confirm publishing when ready.");
+        message(`Publication fee verified in ${checkout.testMode === false ? "live" : "test"} mode. No wedding-fund credit was created. Close this window and confirm publishing when ready.`);
         document.dispatchEvent(new CustomEvent("ws:publication-verified"));
       } else if (checkout.status === "failed") {
         clearPayment();
@@ -120,6 +125,7 @@
     message("Loading the current publication quote…");
     try {
       const data = await api("options");
+      mode(data.testMode !== false);
       quote = data.quote;
       if (data.checkout) { remember(data.checkout); checks = 0; await check(); return; }
       if (Number(quote.fee_minor) <= 0) {
@@ -134,8 +140,8 @@
       showQuote(quote);
       $("publication-method").replaceChildren(...data.methods.map(method => new Option(method.label, method.id)));
       $("publication-method").dispatchEvent(new Event("change"));
-      if (!data.methods.length) throw new Error("No configured test payment method is currently available. Publishing remains blocked; contact platform support.");
-      message("Complete the human check before confirming this test payment.");
+      if (!data.methods.length) throw new Error("No configured payment method is currently available. Publishing remains blocked; contact platform support.");
+      message(data.testMode === false ? "This is a real platform-only payment. Complete the human check before confirming." : "Complete the human check before confirming this test payment.");
       await challenge(data.turnstileSiteKey);
     } catch (error) { message(error.message); $("publication-reload").hidden = false; }
   }
