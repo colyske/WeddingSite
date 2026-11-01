@@ -1,6 +1,6 @@
-import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
-import { requireAuth } from "../server/auth-middleware.js";
-import { referralError } from "../server/referral-errors.js";
+import { methodOnly, sendJson, supabaseRequest } from "./supabase.js";
+import { requireAuth } from "./auth-middleware.js";
+import { referralError } from "./referral-errors.js";
 
 const CODE = /^[a-f0-9]{32}$/;
 const rpc = (name, token, body = {}) => supabaseRequest(`/rest/v1/rpc/${name}`, { token, method: "POST", body });

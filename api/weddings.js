@@ -1,6 +1,7 @@
 import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireAuth } from "../server/auth-middleware.js";
 import { referralError } from "../server/referral-errors.js";
+import handleReferrals from "../server/referrals.js";
 import { paymentAdaptersFor } from "./checkout.js";
 import { normalizePhone, isPhoneKeyEmail } from "../server/phone.js";
 import { isReservedLabel } from "../server/site-hosts.js";
@@ -126,6 +127,7 @@ const loadWeddingDetails = async (weddings, opts) => {
 
 // Authenticated Client workspace API. All reads/writes run as the signed-in user so RLS applies.
 export default async function handler(req, res) {
+  if (req.query?.client_referrals === "1") return handleReferrals(req, res);
   const session = await requireAuth(req, res);
   if (!session) return;
   const opts = { token: session.token };

@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import referral from "../api/referrals.js";
+import { readFileSync, readdirSync } from "node:fs";
+import weddings from "../api/weddings.js";
 import admin from "../api/admin.js";
 import { referralError } from "../server/referral-errors.js";
 
 const read = file => readFileSync(new URL("../" + file, import.meta.url), "utf8");
+const referral = (req, res) => weddings({ ...req, query: { ...req.query, client_referrals: "1" } }, res);
 const uuid = "550e8400-e29b-41d4-a716-446655440000";
 const response = () => ({
   setHeader() {}, status(code) { this.statusCode = code; return this; },
@@ -112,7 +113,16 @@ test("held-only schema, signed netting and grants have no financial activation",
   assert.match(estimates, /'payable_minor','0'/);
   assert.match(estimates, /deferrable initially deferred/);
   assert.doesNotMatch(policy + estimates, /(?:update|insert into|alter table) public\.(?:payout|wedding_team|paystack)/i);
-  assert.doesNotMatch(read("api/referrals.js"), /payment-adapters|paystack|checkout|service:\s*true/);
+  assert.doesNotMatch(read("server/referrals.js"), /payment-adapters|paystack|checkout|service:\s*true/);
   assert.deepEqual(referralError(new Error("Self referral")), [403, "You cannot refer your own wedding or a linked client account."]);
   assert.deepEqual(referralError(new Error("opaque secret diagnostic")), [503, "The referral service could not complete the request."]);
+});
+
+test("client referral URL shares the wedding function within the Hobby deployment limit", () => {
+  const config = JSON.parse(read("vercel.json"));
+  assert.deepEqual(config.rewrites.find(route => route.source === "/api/referrals"),
+    { source: "/api/referrals", destination: "/api/weddings?client_referrals=1" });
+  const apiFunctions = readdirSync(new URL("../api", import.meta.url)).filter(file => file.endsWith(".js"));
+  assert.ok(apiFunctions.length + 1 <= 12, "API functions plus middleware must fit the 12-function deployment limit");
+  assert.ok(!apiFunctions.includes("referrals.js"));
 });

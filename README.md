@@ -252,6 +252,11 @@ npm test
 See [PRODUCTION.md](PRODUCTION.md) for implementation gaps, dashboard configuration names, safe provider setup, and deployment steps. Never paste credentials into chat, commit them, enable live payments, or publish publicly without owner approval.
 # Client-wedding referrals
 
+`/api/referrals` is rewritten to the existing wedding function, which dispatches
+to `server/referrals.js` before wedding-specific authentication and validation.
+The referral handler retains its own authorization checks; sharing deployment
+capacity keeps the API functions plus middleware within Vercel's Hobby limit.
+
 Client referrals are separate from guest RSVP sharing. Any signed-in account can
 opt in at `/referrals.html` with versioned consent. The couple reviews and may
 decline attribution at wedding creation. First valid capture wins; accepted
