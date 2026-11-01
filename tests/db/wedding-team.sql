@@ -39,8 +39,9 @@ insert into team_actors(kind, id, email) select 'platform_admin', id, email from
 insert into public.weddings(id, client_owner_id, couple_names, wedding_date)
 values
   ('52000000-0000-4000-8000-000000000001', '51000000-0000-4000-8000-000000000001', 'Couple One', current_date + 30),
-  ('52000000-0000-4000-8000-000000000002', '51000000-0000-4000-8000-000000000002', 'Couple Two', current_date + 30);
-update public.weddings set published_at = now() where id in (
+  ('52000000-0000-4000-8000-000000000002', '51000000-0000-4000-8000-000000000002', 'Couple Two', current_date + 30),
+  ('52000000-0000-4000-8000-000000000003', '51000000-0000-4000-8000-000000000001', 'Undated Couple', null);
+update public.weddings set published_at = now(), time_zone = 'UTC' where id in (
   '52000000-0000-4000-8000-000000000001', '52000000-0000-4000-8000-000000000002'
 );
 
@@ -92,6 +93,8 @@ declare
   workspace jsonb;
   first_checkin timestamptz;
   blocked boolean;
+  actor record;
+  changed integer;
 begin
   perform set_config('request.jwt.claim.sub', owner_id::text, true);
   perform set_config('request.jwt.claims', jsonb_build_object('sub', owner_id, 'email', 'couple-one@example.test', 'role', 'authenticated')::text, true);
@@ -99,9 +102,17 @@ begin
     ('checkin', public.create_wedding_team_invite(wid, 'checkin', 'checkin@example.test', repeat('1', 64), 7)),
     ('usher', public.create_wedding_team_invite(wid, 'usher', 'usher@example.test', repeat('2', 64), 7)),
     ('coordinator', public.create_wedding_team_invite(wid, 'coordinator', 'coordinator@example.test', repeat('3', 64), 7)),
-    ('support', public.create_wedding_team_invite(wid, 'rsvp_support', 'support@example.test', repeat('4', 64), 7)),
-    ('dj', public.create_wedding_team_invite(wid, 'dj', 'dj@example.test', repeat('5', 64), 7)),
+    ('support', public.create_wedding_team_invite(wid, 'rsvp_support', 'support@example.test', repeat('4', 64), 7, null, true)),
+    ('dj', public.create_wedding_team_invite(wid, 'dj', 'dj@example.test', repeat('5', 64), 7, now() + interval '5 days')),
     ('checkin-usher', public.create_wedding_team_invite(wid, 'usher', 'checkin@example.test', repeat('a', 64), 7));
+  invite_id := public.create_wedding_team_invite('52000000-0000-4000-8000-000000000003',
+    'usher', 'usher@example.test', repeat('b', 64));
+  workspace := public.get_wedding_team('52000000-0000-4000-8000-000000000003');
+  if not exists (
+    select 1 from jsonb_array_elements(workspace->'invites') invitation
+    where invitation->>'id' = invite_id::text
+      and (invitation->>'grant_expires_at')::timestamptz = now() + interval '30 days'
+  ) then raise exception 'Undated weddings must default to 30-day grants, not unlimited access.'; end if;
 
   perform set_config('request.jwt.claim.sub', '51000000-0000-4000-8000-000000000002', true);
   perform set_config('request.jwt.claims', jsonb_build_object('sub', '51000000-0000-4000-8000-000000000002', 'email', 'couple-two@example.test', 'role', 'authenticated')::text, true);
@@ -151,6 +162,14 @@ begin
   begin perform * from public.redeem_wedding_team_invite(repeat('1', 64));
   exception when others then blocked := true; end;
   if not blocked then raise exception 'An invitation must be single-use.'; end if;
+  perform set_config('request.jwt.claim.sub', owner_id::text, true);
+  workspace := public.get_wedding_team(wid);
+  if not exists (
+    select 1 from jsonb_array_elements(workspace->'members') member,
+      jsonb_array_elements(member->'grants') grant_info
+    where member->>'user_id' = checkin_id::text and grant_info->>'role' = 'checkin'
+      and (grant_info->>'expires_at')::timestamptz = (current_date + 32)::timestamp at time zone 'UTC'
+  ) then raise exception 'Default accepted grant must expire after the event plus one buffer day.'; end if;
 
   perform set_config('request.jwt.claim.sub', usher_id::text, true);
   perform set_config('request.jwt.claims', jsonb_build_object('sub', usher_id, 'email', 'usher@example.test', 'role', 'authenticated')::text, true);
@@ -186,8 +205,11 @@ begin
   perform set_config('request.jwt.claims', jsonb_build_object('sub', support_id, 'email', 'support@example.test', 'role', 'authenticated')::text, true);
   perform public.redeem_wedding_team_invite(repeat('4', 64));
   workspace := public.get_wedding_team_workspace(wid);
-  if workspace->'rsvp_support'->0->>'guest_email' <> 'guest@example.test'
-     or workspace->'rsvp_support'->0->>'phone' <> '+254700000000'
+  if not exists (
+       select 1 from jsonb_array_elements(workspace->'rsvp_support') guest
+       where guest->>'guest_email' = 'guest@example.test'
+         and guest->>'phone' = '+254700000000'
+     )
      or workspace::text like '%dietary_notes%' or workspace::text like '%private dietary note%'
      or jsonb_array_length(workspace->'guests') <> 0 then
     raise exception 'RSVP support should see only essential contact and RSVP fields.';
@@ -203,6 +225,68 @@ begin
      or workspace::text like '%Private Bidder%' then
     raise exception 'DJ should see only the paid song list with no amounts or bidder data.';
   end if;
+  changed := 0;
+  begin
+    update public.dj_song_bids set bid_amount_minor = 1, payment_status = 'paid'
+      where wedding_id = wid;
+    get diagnostics changed = row_count;
+  exception when insufficient_privilege then null;
+  end;
+  if changed <> 0 then raise exception 'A DJ must not change bid amounts or mark requests paid.'; end if;
+
+  perform set_config('request.jwt.claim.sub', owner_id::text, true);
+  workspace := public.get_wedding_team(wid);
+  if not exists (
+    select 1 from jsonb_array_elements(workspace->'members') member,
+      jsonb_array_elements(member->'grants') grant_info
+    where member->>'user_id' = support_id::text and grant_info->>'role' = 'rsvp_support'
+      and grant_info->'expires_at' = 'null'::jsonb
+  ) then raise exception 'Explicit no-expiry grants must retain the chosen null expiry.'; end if;
+  if not exists (
+    select 1 from jsonb_array_elements(workspace->'members') member,
+      jsonb_array_elements(member->'grants') grant_info
+    where member->>'user_id' = dj_id::text and grant_info->>'role' = 'dj'
+      and (grant_info->>'expires_at')::timestamptz = now() + interval '5 days'
+  ) then raise exception 'Custom invite grant expiry must survive acceptance.'; end if;
+
+  for actor in select * from team_actors where kind in ('checkin', 'usher', 'dj', 'support') loop
+    perform set_config('request.jwt.claim.sub', actor.id::text, true);
+    perform set_config('request.jwt.claims', jsonb_build_object('sub', actor.id, 'email', actor.email, 'role', 'authenticated')::text, true);
+    if public.has_wedding_role(wid, array['client', 'admin']::public.workspace_role[]) then
+      raise exception 'Active % must not receive financial workspace roles.', actor.kind;
+    end if;
+    perform set_config('request.jwt.claim.sub', owner_id::text, true);
+    perform set_config('request.jwt.claims', jsonb_build_object('sub', owner_id, 'email', 'couple-one@example.test', 'role', 'authenticated')::text, true);
+    perform public.set_wedding_team_member_expiry(wid, actor.id, now() - interval '1 minute');
+    perform set_config('request.jwt.claim.sub', actor.id::text, true);
+    perform set_config('request.jwt.claims', jsonb_build_object('sub', actor.id, 'email', actor.email, 'role', 'authenticated')::text, true);
+    if public.has_active_wedding_team_role(wid, array['checkin', 'usher', 'dj', 'rsvp_support'])
+       or public.has_wedding_role(wid, array['client', 'admin']::public.workspace_role[]) then
+      raise exception 'Expired % must have neither helper nor financial workspace capabilities.', actor.kind;
+    end if;
+    blocked := false;
+    begin perform public.get_wedding_team_workspace(wid);
+    exception when others then blocked := true; end;
+    if not blocked then raise exception 'Expired % must not read helper data.', actor.kind; end if;
+    blocked := false;
+    begin perform 1 from public.get_guest_verification('53000000-0000-4000-8000-000000000001');
+    exception when others then blocked := true; end;
+    if not blocked then raise exception 'Expired % must not verify QR passes.', actor.kind; end if;
+    blocked := false;
+    begin perform public.mark_guest_rsvp_checked_in('53000000-0000-4000-8000-000000000001');
+    exception when others then blocked := true; end;
+    if not blocked then raise exception 'Expired % must not check in guests.', actor.kind; end if;
+    blocked := false;
+    begin perform public.set_wedding_team_member_expiry(wid, actor.id, null, true);
+    exception when others then blocked := true; end;
+    if not blocked then raise exception 'A helper must not extend their own grant.'; end if;
+    perform set_config('request.jwt.claim.sub', owner_id::text, true);
+    perform set_config('request.jwt.claims', jsonb_build_object('sub', owner_id, 'email', 'couple-one@example.test', 'role', 'authenticated')::text, true);
+    perform public.set_wedding_team_member_expiry(wid, actor.id, now() + interval '2 days');
+    perform set_config('request.jwt.claim.sub', actor.id::text, true);
+    perform set_config('request.jwt.claims', jsonb_build_object('sub', actor.id, 'email', actor.email, 'role', 'authenticated')::text, true);
+    perform public.get_wedding_team_workspace(wid);
+  end loop;
 
   perform set_config('request.jwt.claim.sub', checkin_id::text, true);
   perform set_config('request.jwt.claims', jsonb_build_object('sub', checkin_id, 'email', 'checkin@example.test', 'role', 'authenticated')::text, true);
@@ -256,6 +340,22 @@ begin
   begin perform 1 from public.redeem_wedding_team_invite(repeat('9', 64));
   exception when others then blocked := true; end;
   if not blocked then raise exception 'Expired invitations must not be accepted.'; end if;
+
+  for actor in select * from team_actors where kind in ('usher', 'dj', 'support') loop
+    perform set_config('request.jwt.claim.sub', owner_id::text, true);
+    perform set_config('request.jwt.claims', jsonb_build_object('sub', owner_id, 'email', 'couple-one@example.test', 'role', 'authenticated')::text, true);
+    perform public.revoke_wedding_team_member(wid, actor.id);
+    blocked := false;
+    begin perform public.set_wedding_team_member_expiry(wid, actor.id, null, true);
+    exception when others then blocked := true; end;
+    if not blocked then raise exception 'An expiry edit must not restore revoked % access.', actor.kind; end if;
+    perform set_config('request.jwt.claim.sub', actor.id::text, true);
+    perform set_config('request.jwt.claims', jsonb_build_object('sub', actor.id, 'email', actor.email, 'role', 'authenticated')::text, true);
+    blocked := false;
+    begin perform public.get_wedding_team_workspace(wid);
+    exception when others then blocked := true; end;
+    if not blocked then raise exception 'Revoked % must not read helper data.', actor.kind; end if;
+  end loop;
 end $$;
 
 reset role;

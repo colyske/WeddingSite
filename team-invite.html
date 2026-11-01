@@ -18,6 +18,7 @@
       <p>You have been invited to help with <strong id="invite-wedding"></strong>.</p>
       <p>Your role: <strong id="invite-role"></strong></p>
       <p class="fine">This invitation is bound to <strong id="invite-email"></strong> and expires <span id="invite-expiry"></span>.</p>
+      <p class="fine">Your helper access ends: <strong id="grant-expiry"></strong>.</p>
       <button id="accept-invite" type="button">Accept invitation</button>
     </section>
     <a id="open-team" class="btn" href="#" hidden>Open your wedding team</a>
@@ -60,6 +61,7 @@
         $("invite-role").textContent = roleLabels[invite.role] || invite.role;
         $("invite-email").textContent = invite.invitee_email;
         $("invite-expiry").textContent = new Date(invite.expires_at).toLocaleString();
+        $("grant-expiry").textContent = invite.grant_expires_at ? new Date(invite.grant_expires_at).toLocaleString() : "No expiry (until revoked)";
         $("invite-details").hidden = false;
         show("");
       } catch (error) {

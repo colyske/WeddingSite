@@ -58,6 +58,7 @@ test("owner can create a copyable invite link without sending an email", { skip 
   t.after(() => context.close());
   const page = await authenticatedPage(context);
   let createdInvite = null;
+  let updatedExpiry = null;
   const calls = [];
   await page.route("**/api/team**", async route => {
     const url = new URL(route.request().url());
@@ -66,11 +67,14 @@ test("owner can create a copyable invite link without sending an email", { skip 
     if (action === "manage") {
       return route.fulfill({ json: { team: {
         invites: createdInvite ? [createdInvite] : [],
-        members: [{ user_id: "member-id", display_name: "Existing helper", roles: ["checkin", "usher"] }]
+        members: [{ user_id: "member-id", display_name: "Existing helper", roles: ["checkin", "usher"],
+          grants: [{ role: "checkin", expires_at: "2099-01-02T00:00:00Z" }, { role: "usher", expires_at: null }] }]
       } } });
     }
     if (action === "invite") {
       const body = route.request().postDataJSON();
+      assert.equal(body.expiryMode, "custom");
+      assert.ok(new Date(body.grantExpiresAt).getTime() > Date.now());
       createdInvite = { id: "invite-id", role: body.role, invitee_email: body.email, expires_at: "2099-01-01T00:00:00Z" };
       return route.fulfill({ status: 201, json: {
         inviteId: createdInvite.id,
@@ -79,6 +83,10 @@ test("owner can create a copyable invite link without sending an email", { skip 
         expiresInDays: 7
       } });
     }
+    if (action === "set-expiry") {
+      updatedExpiry = route.request().postDataJSON();
+      return route.fulfill({ json: { updated: true } });
+    }
     throw new Error(`Unexpected team action: ${action}`);
   });
 
@@ -86,6 +94,8 @@ test("owner can create a copyable invite link without sending an email", { skip 
   await page.waitForFunction(() => document.querySelector("#manage-panel")?.hidden === false);
   await page.fill("#invite-email", "usher@example.test");
   await page.selectOption("#invite-role", "usher");
+  await page.selectOption("#invite-expiry-mode", "custom");
+  await page.fill("#invite-grant-expiry", "2099-01-01T12:00");
   await page.click('#invite-form button[type="submit"]');
   await page.waitForFunction(() => document.querySelector("#invite-link-box")?.hidden === false);
   assert.match(await page.locator("#invite-delivery").textContent(), /created, not sent/i);
@@ -94,6 +104,10 @@ test("owner can create a copyable invite link without sending an email", { skip 
   assert.match(await page.locator("#team-members").textContent(), /Existing helper[\s\S]*Entrance check-in, Usher/);
   assert.ok(calls.some(call => call.action === "invite" && call.method === "POST"));
   assert.equal(calls.filter(call => call.method === "POST").length, 1);
+  await page.selectOption('[data-member-expiry] select', "none");
+  await page.click('[data-member-expiry] button[type="submit"]');
+  await page.waitForFunction(() => document.querySelector("#team-notice")?.textContent === "Helper access expiry updated.");
+  assert.deepEqual(updatedExpiry, { weddingId, userId: "member-id", expiryMode: "none" });
 });
 
 test("an invite preview shows the role but accepts only after an explicit POST", { skip }, async t => {
@@ -117,7 +131,8 @@ test("an invite preview shows the role but accepts only after an explicit POST",
         couple_names: "Couple One",
         role: "checkin",
         invitee_email: "helper@example.test",
-        expires_at: "2099-01-01T00:00:00Z"
+        expires_at: "2099-01-01T00:00:00Z",
+        grant_expires_at: "2099-01-02T00:00:00Z"
       } } });
     }
     if (action === "accept") {
@@ -131,6 +146,7 @@ test("an invite preview shows the role but accepts only after an explicit POST",
   await page.waitForFunction(() => document.querySelector("#invite-details")?.hidden === false);
   assert.match(await page.locator("#invite-wedding").textContent(), /Couple One/);
   assert.match(await page.locator("#invite-role").textContent(), /Entrance check-in/);
+  assert.match(await page.locator("#grant-expiry").textContent(), /2099/);
   assert.equal(accepted, 0);
   assert.ok(apiCalls.every(call => call.method === "GET"));
   await page.click("#accept-invite");

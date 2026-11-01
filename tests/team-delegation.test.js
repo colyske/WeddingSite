@@ -23,6 +23,9 @@ test("wedding-team migration separates least-privilege team roles from workspace
   assert.match(migration, /token_hash text not null unique/);
   assert.match(migration, /for update/);
   assert.match(migration, /on conflict on constraint wedding_team_members_pkey do update/);
+  assert.match(migration, /expires_at = excluded\.expires_at/);
+  assert.match(migration, /v_date \+ 2/);
+  assert.match(migration, /set_wedding_team_member_expiry/);
   assert.match(migration, /w\.client_owner_id = i\.created_by/);
   assert.match(migration, /select lower\(u\.email\) into v_email from auth\.users u where u\.id = auth\.uid\(\)/);
   assert.match(migration, /v_email = i\.invitee_email/);
@@ -75,7 +78,90 @@ test("invite API stores only a hash and reports link-only delivery", async t => 
   assert.equal(calls[1].body.p_token_hash, createHash("sha256").update(rawToken).digest("hex"));
   assert.equal(calls[1].body.p_invitee_email, "usher@example.test");
   assert.equal(calls[1].body.p_expires_days, 7);
+  assert.equal(calls[1].body.p_grant_expires_at, null);
+  assert.equal(calls[1].body.p_no_expiry, false);
   assert.deepEqual(calls.map(call => call.path), ["/auth/v1/user", "/rest/v1/rpc/create_wedding_team_invite"]);
+});
+
+test("team API validates grant expiry and forwards only explicit expiry choices", async t => {
+  const originalFetch = globalThis.fetch;
+  const previous = { SUPABASE_URL: process.env.SUPABASE_URL, SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY };
+  process.env.SUPABASE_URL = "https://db.example.test";
+  process.env.SUPABASE_ANON_KEY = "test-anon";
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const path = new URL(input).pathname;
+    if (path === "/auth/v1/user") return response({ id: weddingId, email: "couple@example.test" });
+    calls.push({ path, body: JSON.parse(init.body) });
+    return response(path.endsWith("create_wedding_team_invite") ? inviteId : true);
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+  const invoke = async (action, body, method = "POST") => {
+    const res = makeResponse();
+    await team({ method, query: { action }, headers: { authorization: "Bearer expiry-test" }, body }, res);
+    return res;
+  };
+  const base = { weddingId, role: "dj", email: "dj@example.test" };
+  for (const choice of [
+    { expiryMode: "none" },
+    { expiryMode: "custom", grantExpiresAt: "2099-01-01T12:00:00+03:00" }
+  ]) {
+    assert.equal((await invoke("invite", { ...base, ...choice })).statusCode, 201);
+  }
+  assert.equal(calls[0].body.p_no_expiry, true);
+  assert.equal(calls[0].body.p_grant_expires_at, null);
+  assert.equal(calls[1].body.p_no_expiry, false);
+  assert.equal(calls[1].body.p_grant_expires_at, "2099-01-01T09:00:00.000Z");
+  for (const choice of [
+    { expiryMode: "forever" },
+    { expiryMode: "custom", grantExpiresAt: "not-a-date" },
+    { expiryMode: "custom", grantExpiresAt: "2000-01-01T00:00:00Z" },
+    { expiryMode: "none", grantExpiresAt: "2099-01-01T00:00:00Z" }
+  ]) {
+    assert.equal((await invoke("invite", { ...base, ...choice })).statusCode, 400);
+  }
+  assert.equal(calls.length, 2);
+  assert.equal((await invoke("set-expiry", {
+    weddingId, userId: inviteId, expiryMode: "custom", grantExpiresAt: "2000-01-01T00:00:00Z"
+  })).statusCode, 200);
+  assert.equal(calls[2].path, "/rest/v1/rpc/set_wedding_team_member_expiry");
+  assert.equal(calls[2].body.p_grant_expires_at, "2000-01-01T00:00:00.000Z");
+  assert.equal((await invoke("set-expiry", { weddingId, userId: inviteId, expiryMode: "none" })).statusCode, 200);
+  assert.equal(calls[3].body.p_no_expiry, true);
+  assert.equal((await invoke("set-expiry", {}, "GET")).statusCode, 405);
+});
+
+test("team API preserves expired or revoked role denials from SQL", async t => {
+  const originalFetch = globalThis.fetch;
+  const previous = { SUPABASE_URL: process.env.SUPABASE_URL, SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY };
+  process.env.SUPABASE_URL = "https://db.example.test";
+  process.env.SUPABASE_ANON_KEY = "test-anon";
+  let role = "checkin";
+  globalThis.fetch = async input => {
+    const path = new URL(input).pathname;
+    if (path === "/auth/v1/user") return response({ id: inviteId, email: `${role}@example.test` });
+    return new Response(JSON.stringify({ message: "Wedding team access denied." }), {
+      status: 403, headers: { "Content-Type": "application/json" }
+    });
+  };
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  });
+  for (role of ["checkin", "usher", "dj", "rsvp_support"]) {
+    const res = makeResponse();
+    await team({ method: "GET", query: { action: "workspace", weddingId },
+      headers: { authorization: "Bearer expired-helper" } }, res);
+    assert.equal(res.statusCode, 403, role);
+    assert.equal(res.body.workspace, undefined);
+  }
 });
 
 test("team API requires auth, validates roles and exposes invite acceptance only as POST", async t => {

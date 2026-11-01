@@ -18,6 +18,7 @@
     <section id="manage-panel" hidden>
       <h2>Invite helpers</h2>
       <p class="fine">Helpers get only the wedding task you assign. Invitations are single-use, expire after 7 days, and are bound to the email address you enter. A secure link is created for you to copy and share; it is not emailed.</p>
+      <p class="fine">Helper access normally ends at midnight after the wedding date plus one full buffer day, in the wedding's time zone. If no event date is set, it ends in 30 days. Choose a custom date or explicitly choose no expiry. You can change a helper's expiry later.</p>
       <form id="invite-form">
         <label for="invite-email">Helper's sign-in email</label>
         <input id="invite-email" type="email" autocomplete="email" maxlength="254" required>
@@ -29,6 +30,14 @@
           <option value="rsvp_support">RSVP support — see guest contact details and RSVP status</option>
           <option value="dj">DJ — see the paid song playlist only</option>
         </select>
+        <label for="invite-expiry-mode">Helper access ends</label>
+        <select id="invite-expiry-mode">
+          <option value="event">After the wedding (30 days if no date is set)</option>
+          <option value="custom">Choose a date and time</option>
+          <option value="none">No expiry (until revoked)</option>
+        </select>
+        <label id="invite-expiry-label" for="invite-grant-expiry" hidden>Access expiry (your local time)</label>
+        <input id="invite-grant-expiry" type="datetime-local" hidden>
         <button type="submit">Create secure invite link</button>
       </form>
       <div id="invite-link-box" class="notice" hidden>
@@ -38,7 +47,7 @@
       </div>
       <h2>Pending invitations</h2>
       <div id="pending-invites" class="fine">Loading…</div>
-      <h2>Current helpers</h2>
+      <h2>Current and expired helpers</h2>
       <div id="team-members" class="fine">Loading…</div>
       <p class="fine">There is no helper access to payouts, fees, payment providers, or financial totals.</p>
     </section>

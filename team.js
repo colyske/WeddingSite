@@ -21,6 +21,10 @@
     return data;
   };
   const roleName = roleLabels;
+  const expiryLabel = value => value ? new Date(value).toLocaleString() : "No expiry";
+  function expiryFields(mode, input) {
+    return { expiryMode: mode.value, ...(mode.value === "custom" ? { grantExpiresAt: new Date(input.value).toISOString() } : {}) };
+  }
 
   if (!weddingId) {
     notice("Wedding ID is missing.", true);
@@ -53,10 +57,18 @@
 
   function renderManagement(team) {
     $("pending-invites").innerHTML = team.invites?.length
-      ? `<ul>${team.invites.map(invite => `<li>${WS.esc(invite.invitee_email)} · ${WS.esc(roleName[invite.role] || invite.role)} · expires ${WS.esc(new Date(invite.expires_at).toLocaleDateString())} <button type="button" class="ghost" data-revoke-invite="${WS.esc(invite.id)}">Revoke</button></li>`).join("")}</ul>`
+      ? `<ul>${team.invites.map(invite => `<li>${WS.esc(invite.invitee_email)} · ${WS.esc(roleName[invite.role] || invite.role)} · link expires ${WS.esc(new Date(invite.expires_at).toLocaleDateString())} · access: ${WS.esc(expiryLabel(invite.grant_expires_at))} <button type="button" class="ghost" data-revoke-invite="${WS.esc(invite.id)}">Revoke</button></li>`).join("")}</ul>`
       : "No pending invitations.";
     $("team-members").innerHTML = team.members?.length
-      ? `<ul>${team.members.map(member => `<li>${WS.esc(member.display_name || "Wedding helper")} · ${WS.esc((member.roles || []).map(role => roleName[role] || role).join(", "))} <button type="button" class="ghost" data-revoke-member="${WS.esc(member.user_id)}">Revoke access</button></li>`).join("")}</ul>`
+      ? `<ul>${team.members.map(member => `<li>${WS.esc(member.display_name || "Wedding helper")} · ${WS.esc((member.roles || []).map(role => roleName[role] || role).join(", "))} <button type="button" class="ghost" data-revoke-member="${WS.esc(member.user_id)}">Revoke access</button>
+        <p>${(member.grants || []).map(grant => `${WS.esc(roleName[grant.role] || grant.role)}: ${WS.esc(expiryLabel(grant.expires_at))}${grant.expires_at && new Date(grant.expires_at) <= new Date() ? " (expired)" : ""}`).join("; ")}</p>
+        <form data-member-expiry="${WS.esc(member.user_id)}">
+          <label>Access expiry for all this helper's roles
+            <select name="expiryMode"><option value="event">After the wedding (30 days if no date)</option><option value="custom">Choose a date and time</option><option value="none">No expiry (until revoked)</option></select>
+          </label>
+          <label data-custom-expiry hidden>Expiry (your local time)<input name="grantExpiresAt" type="datetime-local"></label>
+          <button type="submit" class="ghost">Update access expiry</button>
+        </form></li>`).join("")}</ul>`
       : "No active helpers.";
   }
 
@@ -101,7 +113,8 @@
     try {
       const response = await WS.api("/api/team?action=invite", {
         method: "POST",
-        body: JSON.stringify({ weddingId, role: $("invite-role").value, email: $("invite-email").value })
+        body: JSON.stringify({ weddingId, role: $("invite-role").value, email: $("invite-email").value,
+          ...expiryFields($("invite-expiry-mode"), $("invite-grant-expiry")) })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not create an invitation.");
@@ -110,9 +123,46 @@
       $("invite-link-box").hidden = false;
       notice("Invitation link created.");
       $("invite-form").reset();
+      updateInviteExpiry();
       await reloadManagement();
     } catch (error) {
       notice(error.message || "Could not create an invitation.", true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  function updateInviteExpiry() {
+    const custom = $("invite-expiry-mode").value === "custom";
+    $("invite-expiry-label").hidden = !custom;
+    $("invite-grant-expiry").hidden = !custom;
+    $("invite-grant-expiry").required = custom;
+  }
+  $("invite-expiry-mode").addEventListener("change", updateInviteExpiry);
+
+  $("team-members").addEventListener("change", event => {
+    if (event.target.name !== "expiryMode") return;
+    const form = event.target.closest("form");
+    const custom = event.target.value === "custom";
+    form.querySelector("[data-custom-expiry]").hidden = !custom;
+    form.elements.grantExpiresAt.required = custom;
+  });
+  $("team-members").addEventListener("submit", async event => {
+    const form = event.target.closest("[data-member-expiry]");
+    if (!form) return;
+    event.preventDefault();
+    const button = form.querySelector("button");
+    button.disabled = true;
+    try {
+      await api("set-expiry", {
+        method: "POST",
+        body: JSON.stringify({ weddingId, userId: form.dataset.memberExpiry,
+          ...expiryFields(form.elements.expiryMode, form.elements.grantExpiresAt) })
+      });
+      notice("Helper access expiry updated.");
+      await reloadManagement();
+    } catch (error) {
+      notice(error.message || "Could not update helper access expiry.", true);
     } finally {
       button.disabled = false;
     }
