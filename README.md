@@ -250,3 +250,40 @@ npm test
 ```
 
 See [PRODUCTION.md](PRODUCTION.md) for implementation gaps, dashboard configuration names, safe provider setup, and deployment steps. Never paste credentials into chat, commit them, enable live payments, or publish publicly without owner approval.
+# Client-wedding referrals
+
+Client referrals are separate from guest RSVP sharing. Any signed-in account can
+opt in at `/referrals.html` with versioned consent. The couple reviews and may
+decline attribution at wedding creation. First valid capture wins; accepted
+attribution is immutable and grants no workspace or platform role.
+
+The protected Owner controls the default-OFF/zero referral policy under **Client
+referrals** in the back office. Policy writes require the current revision and
+are audited. Rates are snapshotted when a contribution is admitted: later changes
+apply to new contributions, not old pending/paid payments. Weddings created before
+first activation remain ineligible. Referrers see aggregates only; global journal
+and policy history are restricted to Owner/SuperAdmin, not regular Admin.
+
+**HELD estimates only, not operational referral earnings. Payable is always zero.**
+Only verified LIVE contributions with a platform fee count, net of confirmed
+refund/dispute principal. Signed estimate corrections never change couple net,
+provider amounts or payout balances. Currencies are never combined. There is no
+funding attestation, unlock, provider request, transfer or payout route.
+
+`funds_available_at` is a timer, not verified platform cash. Original provider
+costs and Paystack allocation evidence exist, but platform-side settlement,
+incremental loss/cost inventory and other revenue commitments are incomplete.
+The cap contract therefore fails closed to zero available. Future funding/payout
+work requires separately approved settlement and commitment reconciliation,
+eligibility/control-account evidence, identity/KYC, jurisdictional tax review and
+payout authorization. No verification or compliance approval is claimed here.
+
+Self-account protection uses creator/owner IDs and legacy `client`-authority
+membership IDs. Explicit partner-account UUID links do not yet exist: complete
+partner/controlled-account exclusion requires a verified wedding-to-partner or
+account-control relationship distinct from helper grants. Email is not identity
+proof. Later helper/admin grants do not invalidate legitimate referrals.
+
+Migrations `202611040001+` and SQL regression fixtures are for isolated local/CI
+validation. Do not apply them to Production or merge a migration PR without
+separate user approval.

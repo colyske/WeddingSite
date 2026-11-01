@@ -24,6 +24,36 @@
     weddings: null,
     weddingsError: ""
   };
+  let referralDisclosure = null;
+  let referralReady = false;
+  async function loadReferralDisclosure() {
+    referralReady = false;
+    try { await WSReferrals.prepare(); }
+    catch (error) { $("client-referral-dismiss").hidden = false; throw error; }
+    referralDisclosure = await WSReferrals.request("disclosure");
+    $("client-referral-disclosure").hidden = !referralDisclosure.intent_id;
+    if (referralDisclosure.intent_id) {
+      const d = referralDisclosure;
+      $("client-referral-details").textContent = `A referrer introduced you to Join Our Wedding. ` +
+        `The current Owner referral rate is ${d.enabled ? (d.rate_basis_points / 100).toFixed(2) : "0.00"}% of verified live money raised. ` +
+        `The configured platform percentage fee is ${(d.platform_fee_basis_points / 100).toFixed(2)}%` +
+        (BigInt(d.platform_fixed_fee_minor) > 0n ? ` plus the applicable quoted fixed fee (${d.platform_fixed_fee_currency}). ` : ". ") +
+        `Any future commission is capped by available platform revenue after costs and commitments, never deducted from your net or provider amounts. ` +
+        `All estimates are HELD and unpayable; there are no payouts. Owner rate changes affect new contributions only. ` +
+        `Attribution is fixed at creation; you can decline it now. Terms: ${d.terms_version}.`;
+    }
+    referralReady = true;
+    $("client-referral-dismiss").hidden = true;
+  }
+  $("client-referral-dismiss").addEventListener("click", async () => {
+    WSReferrals.clear();
+    if (!window.WS.token()) { location.replace("/signin.html"); return; }
+    try {
+      await loadReferralDisclosure();
+      if (!window.WS.token()) location.replace("/signin.html?next=" + encodeURIComponent("/dashboard.html"));
+      else setNotice("Unvalidated link discarded. Any already captured referral still requires your accept/decline decision.", "good");
+    } catch (error) { setNotice(error.message, "bad"); }
+  });
 
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const safeColor = (c) => (HEX.test(c) ? c : "#cccccc");
@@ -246,15 +276,30 @@
     const problem = validate();
     if (problem) return setNotice(problem.message, "bad", problem.field);
     if (!window.WS.token()) return setNotice("Your session has expired. Please sign in again; what you entered will be kept until you leave this page.", "bad");
+    if (!referralReady) {
+      try { await loadReferralDisclosure(); }
+      catch (error) { return setNotice(error.message + " Your wedding details are kept.", "bad"); }
+    }
+    if (referralDisclosure?.intent_id && !["accept", "decline"].includes($("client-referral-decision").value)) {
+      return setNotice("Review the client referral disclosure and choose accept or decline.", "bad", $("client-referral-decision"));
+    }
 
     state.submitting = true;
     renderSubmit();
     setNotice("✨ Creating your wedding...");
     const payload = buildPayload();
+    if (referralDisclosure?.intent_id) payload.referral = {
+      intentId: referralDisclosure.intent_id, decision: $("client-referral-decision").value,
+      revision: referralDisclosure.revision, termsVersion: referralDisclosure.terms_version
+    };
     try {
       const res = await window.WS.api("/api/weddings?action=create", { method: "POST", body: JSON.stringify(payload) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (res.status === 409) {
+          $("client-referral-decision").value = "";
+          await loadReferralDisclosure();
+        }
         console.error("Create wedding failed:", res.status, data);
         const msg = res.status === 401
           ? "Your session has expired. Please sign in again; what you entered is kept on this page."
@@ -264,6 +309,9 @@
       if (!data.weddingId) return setNotice("The server replied without a wedding id. Your details are kept; please try again.", "bad");
 
       state.created = { weddingId: data.weddingId, slug: data.slug, names: payload.coupleNames, location: payload.location };
+      WSReferrals.clear();
+      referralDisclosure = null;
+      $("client-referral-disclosure").hidden = true;
       state.fields = { ...DEFAULT_FIELDS };
       state.palette = [...DEFAULT_PALETTE];
       state.paletteOpen = false;
@@ -395,11 +443,13 @@
   window.addEventListener("unhandledrejection", (e) => { console.error(e.reason); setNotice("Something went wrong. Your entries are kept; please try again.", "bad"); });
 
   if (!window.WS.token()) {
-    location.replace("/signin.html");
+    WSReferrals.prepare().then(() => location.replace("/signin.html"))
+      .catch(error => { $("client-referral-dismiss").hidden = false; setNotice(error.message, "bad"); });
   } else {
     window.WSTime.fillSelect($("wedding-timezone"), state.fields.timeZone);
     renderAll();
     loadWeddings();
+    loadReferralDisclosure().catch(error => setNotice(error.message + " Your wedding details are kept.", "bad"));
   }
 })();
 function statusLabel(w) {

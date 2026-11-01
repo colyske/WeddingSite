@@ -5,7 +5,7 @@ import { contentError } from "../server/content-policy.js";
 
 const GENERIC_LINK_MESSAGE = "If that email belongs to a Join Our Wedding account, a sign-in link is on its way.";
 const isEmail = value => typeof value === "string" && value.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
-const SAFE_RETURN_PATHS = new Set(["/dashboard.html", "/wedding.html", "/account.html", "/admin.html", "/owner.html", "/team.html", "/team-invite.html", "/verify.html"]);
+const SAFE_RETURN_PATHS = new Set(["/dashboard.html", "/wedding.html", "/account.html", "/admin.html", "/owner.html", "/team.html", "/team-invite.html", "/verify.html", "/referrals.html"]);
 
 function siteOrigin(req) {
   const configured = process.env.WEDDINGSITE_PUBLIC_ORIGIN;

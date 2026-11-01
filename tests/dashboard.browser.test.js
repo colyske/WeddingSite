@@ -37,6 +37,7 @@ async function openDashboard(handlers = {}) {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   const calls = [];
+  await page.route("**/api/referrals*", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ intent_id: null }) }));
   await page.addInitScript(() => {
     if (sessionStorage.getItem("seeded")) return;
     sessionStorage.setItem("seeded", "1");
