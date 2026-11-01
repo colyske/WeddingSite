@@ -15,7 +15,17 @@ implemented. The user has confirmed successful Google sign-in. Google's
 Supabase-domain label remains separate, optional paid branding setup; see
 README for the custom auth domain and Google consent-screen steps.
 
-Payment adapters remain **test/sandbox only in the released/applied state**. An unreleased, default-OFF live M-Pesa (Daraja PayBill) path is being prepared in [docs/LIVE-DARAJA-READINESS.md](docs/LIVE-DARAJA-READINESS.md); it is NOT activated, its migration is not applied, and it needs separate explicit confirmation to enable and again for any real-money test. Never enable live payment or
+Payment activation is provider-specific, not inferred from this document.
+Daraja has separate [live collection gates](docs/LIVE-DARAJA-READINESS.md).
+The additive [Paystack live collection implementation](docs/LIVE-PAYSTACK-READINESS.md)
+remains default-OFF and was validated only with isolated fixtures; account-specific
+eligibility, migrations/deployment and live activation require separate approval.
+Standard collection uses the platform merchant and existing wallet/fee/payout
+guards; no split onboarding is needed. An audited Owner-only mode control holds
+split settlement unavailable until verified account-specific allocation/statement
+evidence is implemented; direct proceeds cannot become WeddingSite withdrawal credit.
+Publication is independently gated and always platform-only. It does not change Daraja
+credentials, approvals, collection or reconciliation. Never enable live payment or
 remove Turnstile as a testing shortcut. A human-assisted test must be staged
 before submission, identify provider/amount/currency/test number and obtain the
 human's explicit confirmation. An embedded-browser widget not appearing is a

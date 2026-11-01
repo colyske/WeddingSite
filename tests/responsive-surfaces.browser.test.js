@@ -26,7 +26,7 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       attire_notes: "Traditional or formal - wear what feels comfortable.", venues: [], registry: [], tiers: [] };
     const guest = { rsvp_id: id, wedding_id: id, slug: wedding.slug, couple_names: wedding.couple_names,
       guest_name: "QA Guest", attendance_status: "yes" };
-    let staffRole = "owner";
+    let staffRole = "owner", paystackReviewUnavailable = false;
     await page.route("https://open.er-api.com/**", route => route.fulfill({ contentType: "application/json", body: JSON.stringify({
       result: "success", base_code: "USD", rates: { USD: 1, KES: 130 }, time_last_update_utc: new Date().toUTCString()
     }) }));
@@ -35,6 +35,9 @@ test("public, organizer and back-office surfaces fit small and large screens", a
     await page.route("**/api/**", route => {
       const action = new URL(route.request().url()).searchParams.get("action");
       assert.equal(route.request().method(), "GET", "layout review never submits forms, emails or payments");
+      if (action === "paystack-publication-adjustments" && paystackReviewUnavailable) {
+        return route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:"Synthetic review unavailable"})});
+      }
       let data = {};
       if (action === "get") data = { wedding };
       if (action === "list") data = { weddings: [wedding] };
@@ -50,7 +53,9 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       if (action === "quote") data = { quote: { fee_minor: 5000, currency: "KES", reason: "Sample far-future fee." } };
       if (action === "publication-options") data = { quote: { fee_minor: 5000, currency: "KES", reason: "Sample far-future fee." }, methods: [], checkout: null, testMode: true };
       if (action === "payment-controls") data = { enabled: ["daraja", "paystack"],
-        providers: [{ id: "daraja", configured: true }, { id: "paystack", configured: true }, { id: "stripe", configured: false }] };
+        providers: [{ id: "daraja", configured: true }, { id: "paystack", configured: true }, { id: "stripe", configured: false }],
+        paystack:{environment:"live",settlementMode:"standard",policyRevision:id,standardApproved:true,splitReady:false,
+          splitHoldingReason:"Split contract remains unverified",newCollection:"held",reason:"The live collection switch is OFF."} };
       return route.fulfill({ contentType: "application/json", body: JSON.stringify(data) });
     });
     const pages = ["index.html", "signin.html", "dashboard.html", `wedding.html?id=${id}`,
@@ -88,7 +93,7 @@ test("public, organizer and back-office surfaces fit small and large screens", a
     const paletteFits = await page.locator("#color-inputs").evaluate(el => el.scrollWidth <= el.clientWidth);
     assert.ok(paletteFits, "palette name/hex controls wrap on mobile");
     await page.locator("#pay-fee-btn").click();
-    await page.waitForFunction(() => document.getElementById("publication-status").textContent.includes("No configured test payment method"));
+    await page.waitForFunction(() => document.getElementById("publication-status").textContent.includes("No configured payment method"));
     assert.ok(await page.locator("#publication-submit").isDisabled(), "editor fails closed without a configured publication method");
     for (const width of [320, 375, 768, 1280]) {
       await page.setViewportSize({ width, height: 800 });
@@ -103,11 +108,23 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       await page.locator("#payment-controls-form").waitFor();
       assert.equal(await page.locator('#payment-controls-form input:checked').count(), 2);
       assert.ok(await page.locator('#payment-controls-form button').isEnabled(), "Admin and Owner can save independent method controls");
+      assert.equal(await page.locator('#paystack-mode-form input[name="policyRevision"]').inputValue(),id);
+      assert.equal(await page.locator('#paystack-mode-form select').inputValue(),"standard");
+      assert.equal(await page.locator('#paystack-mode-form option[value="split"]').evaluate(el=>el.disabled),true);
+      assert.ok(await page.locator('#paystack-policy-form input[name="standardEnabled"]').isChecked());
+      assert.match(await page.locator("#paystack-finance").innerText(),/collection switch is OFF/);
       for (const width of [320, 375, 768, 1280]) {
         await page.setViewportSize({ width, height: 800 });
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${surface}: payment controls fit ${width}`);
       }
     }
+    paystackReviewUnavailable = true;
+    await page.goto(`http://127.0.0.1:${server.address().port}/owner.html`, { waitUntil: "domcontentloaded" });
+    await page.locator('[data-tab="fees"]').click();
+    await page.locator("#payment-controls-form").waitFor();
+    assert.match(await page.locator("#paystack-finance").innerText(), /review could not be loaded/);
+    assert.ok(await page.locator("#payment-controls-form button").isEnabled(), "Paystack review failures preserve Daraja controls");
+    paystackReviewUnavailable = false;
     for (staffRole of ["admin", "superadmin"]) {
       await page.goto(`http://127.0.0.1:${server.address().port}/admin.html`, { waitUntil: "domcontentloaded" });
       await page.locator("#admin-nav button").first().waitFor();
@@ -124,6 +141,8 @@ test("public, organizer and back-office surfaces fit small and large screens", a
         await page.locator("#fees-form").waitFor();
         assert.ok(await page.locator("#p-fee").isDisabled());
         assert.ok(await page.locator("#refund-allocation").isDisabled());
+        assert.equal(await page.locator("#paystack-mode-form").count(),0,"Leadership cannot change Owner settlement mode");
+        assert.equal(await page.locator("#paystack-policy-form").count(),0);
         assert.ok(await page.locator("#payment-controls-form button").isEnabled());
       }
     }

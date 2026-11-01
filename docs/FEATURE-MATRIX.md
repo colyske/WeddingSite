@@ -1,6 +1,15 @@
 # Feature-to-surface matrix
 
-Status: features below are implemented where marked. Production payments fail closed until a test provider is fully configured; no live payment processing is enabled or claimed.
+Status: entries include historical implementation snapshots. Provider-specific
+runtime activation must be checked separately; this document is not evidence of
+live operation. [Paystack live collection](LIVE-PAYSTACK-READINESS.md) includes
+standard platform-collected payments, immutable USD/FX fee context and platform-only
+publication, with live controls default-OFF. The audited Owner-only mode selector
+cannot enable split settlement until supported beneficiary evidence is verified.
+Standard needs no split onboarding; split additionally requires provider-verified,
+consented destinations and excludes direct proceeds from platform withdrawals.
+Its new API, browser and rollback SQL regressions use isolated synthetic evidence,
+not live transactions. Existing Daraja gates and reconciliation are preserved.
 
 | Feature | Configured (organizer) | Shown (guest site) | Recorded | Who sees it |
 |---|---|---|---|---|

@@ -4,6 +4,7 @@ import { normalizePhone } from "./phone.js";
 import { checkProviderHealth, initiateDarajaStkPush, verifyProviderPayment, isSecurePublicOrigin } from "./payment-adapters.js";
 import { availableProviderMarkets, enabledPaymentProviders, createStripeCheckout, createPaystackCheckout, verifyChallenge } from "../api/checkout.js";
 import { publicationQuote, publicationMethodQuote } from "./publication-fx.js";
+import { paystackEnvironment, paystackAdmissionEnabled, paystackApproval, paystackMerchant, paystackCredentialFingerprint } from "./paystack.js";
 
 const uuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 const rpc = (name, body, token) => supabaseRequest(`/rest/v1/rpc/${name}`, {
@@ -16,7 +17,10 @@ const table = "/rest/v1/publication_checkouts";
 export async function publicationMethods(currency) {
   const policy = (await supabaseRequest("/rest/v1/platform_policies?id=eq.true&select=enabled_payment_providers", { service: true }))?.[0];
   const enabled = enabledPaymentProviders(policy);
-  const candidates = availableProviderMarkets(currency).filter(item => enabled.includes(item.id));
+  const liveApproval = paystackEnvironment() === "live" ? await paystackApproval("publication", currency) : null;
+  const candidates = availableProviderMarkets(currency).filter(item => enabled.includes(item.id) &&
+    (process.env.WEDDINGSITE_PAYMENT_MODE === "test" || (item.id === "paystack" && liveApproval &&
+      liveApproval.capabilities.some(pair => pair.market === item.market && pair.currency === currency))));
   const healthy = await Promise.all([...new Set(candidates.map(item => item.id))].map(async id => [id, await checkProviderHealth(id)]));
   // Use one configured route for each method; never accept a processor from the client.
   return candidates.filter(item => healthy.some(([id, ready]) => id === item.id && ready))
@@ -28,7 +32,7 @@ function publicStatus(row) {
     id: row.id, status: row.status, amountMinor: Number(row.amount_minor), currency: row.currency,
     usdAmountMinor: row.usd_amount_minor == null ? null : Number(row.usd_amount_minor),
     fxRate: row.fx_rate, fxPublishedAt: row.fx_published_at, fxSource: row.fx_source,
-    method: methodFor(row.provider), resultCode: row.provider_result_code || null, testMode: true
+    method: methodFor(row.provider), resultCode: row.provider_result_code || null, testMode: row.payment_mode !== "live"
   } : null;
 }
 
@@ -42,7 +46,8 @@ export async function recordPublicationPayment(payment, checkoutId) {
 
 export async function reconcilePublication(row) {
   if (!row || row.status === "paid" || row.status === "failed" || !row.provider_reference) return row;
-  const payment = await verifyProviderPayment(row.provider, row.provider_reference, row.id, row.amount_minor, row.currency, { environment: "test" });
+  const payment = await verifyProviderPayment(row.provider, row.provider_reference, row.id, row.amount_minor, row.currency,
+    row.paystack_context ? { context: row.paystack_context } : { environment: "test" });
   if (payment.verified) {
     await recordPublicationPayment(payment, row.id);
   } else if (payment.terminal) {
@@ -87,15 +92,16 @@ export async function handlePublicationPayment(req, res, session, action) {
       return sendJson(res, 200, { checkout: publicStatus(await reconcilePublication(row)) });
     }
     const active = (await supabaseRequest(`${table}?wedding_id=eq.${weddingId}&client_id=eq.${session.user.id}&status=in.(pending,review)&select=*&limit=1`, { service: true }))?.[0];
-    if (active) return sendJson(res, 200, { quote: null, checkout: publicStatus(active), methods: [], testMode: true,
+    if (active) return sendJson(res, 200, { quote: null, checkout: publicStatus(active), methods: [], testMode: active.payment_mode !== "live",
       message: "An existing publication payment must be resolved before another can start." });
     const quote = await publicationQuote(weddingId, session.token, wedding.currency);
     if (!creating) {
-      const configured = process.env.WEDDINGSITE_PAYMENT_MODE === "test" && Boolean(process.env.TURNSTILE_SITE_KEY && process.env.TURNSTILE_SECRET_KEY);
+      const configured = (process.env.WEDDINGSITE_PAYMENT_MODE === "test" || paystackAdmissionEnabled("publication")) &&
+        Boolean(process.env.TURNSTILE_SITE_KEY && process.env.TURNSTILE_SECRET_KEY);
       const methods = configured && !wedding.published_at && !wedding.archived_at && Number(quote.fee_minor) > 0
         ? await publicationMethods(wedding.currency) : [];
       return sendJson(res, 200, {
-        quote, checkout: null, testMode: true,
+        quote, checkout: null, testMode: process.env.WEDDINGSITE_PAYMENT_MODE !== "live",
         methods: methods.map(item => ({ id: methodFor(item.id), label: labelFor(methodFor(item.id)),
           quote: publicationMethodQuote(quote, item.id) })),
         turnstileSiteKey: configured ? process.env.TURNSTILE_SITE_KEY : null
@@ -105,7 +111,9 @@ export async function handlePublicationPayment(req, res, session, action) {
     if (!isSecurePublicOrigin(origin) || !platformOrigins().includes(origin)) {
       return sendJson(res, 403, { error: "Start publication checkout from the platform editor." });
     }
-    if (process.env.WEDDINGSITE_PAYMENT_MODE !== "test") return sendJson(res, 503, { error: "Only test-mode publication checkout is supported." });
+    if (process.env.WEDDINGSITE_PAYMENT_MODE !== "test" && !paystackAdmissionEnabled("publication")) {
+      return sendJson(res, 503, { error: "Live publication checkout is held. No payment was started." });
+    }
     if (!uuid(body.idempotencyKey) || body.confirmed !== true || !["card", "mpesa"].includes(body.method) ||
         !Number.isSafeInteger(body.expectedAmountMinor) || body.expectedAmountMinor < 1 ||
         body.expectedCurrency !== quote.currency) {
@@ -128,10 +136,15 @@ export async function handlePublicationPayment(req, res, session, action) {
     if (!await verifyChallenge(body.captchaToken, req, new URL(origin).hostname)) {
       return sendJson(res, 400, { error: "Complete the anti-abuse verification before checkout." });
     }
-    const row = await rpc("begin_publication_checkout", {
+    const live = selected.id === "paystack" && paystackEnvironment() === "live";
+    const quoteArgs = {
       p_wedding_id: weddingId, p_idempotency_key: body.idempotencyKey, p_provider: selected.id,
       p_expected_amount: body.expectedAmountMinor, p_expected_currency: body.expectedCurrency,
       p_expected_usd_amount: body.expectedUsdAmountMinor, p_expected_fx_id: body.expectedFxId || null
+    };
+    if (live) delete quoteArgs.p_provider;
+    const row = await rpc(live ? "begin_live_paystack_publication" : "begin_publication_checkout", {
+      ...quoteArgs, ...(live ? { p_merchant_id: paystackMerchant(), p_credential_fingerprint: paystackCredentialFingerprint() } : {})
     }, session.token);
     // Exactly one request may initiate a provider operation, even across tabs.
     const claimed = row.status === "pending" && !row.initialization_started_at
@@ -145,8 +158,8 @@ export async function handlePublicationPayment(req, res, session, action) {
       returnUrl.searchParams.set("id", weddingId);
       returnUrl.searchParams.set("publicationReturn", row.id);
       const args = { id: row.id, weddingId, amountMinor: Number(row.amount_minor), currency: row.currency,
-        streamName: "Wedding site publication (test)", idempotencyKey: row.idempotency_key,
-        email, returnUrl: returnUrl.toString(), paymentKind: "publication" };
+        streamName: row.payment_mode === "live" ? "Wedding site publication" : "Wedding site publication (test)", idempotencyKey: row.idempotency_key,
+        email, returnUrl: returnUrl.toString(), paymentKind: "publication", paystackContext: row.paystack_context };
       initiated = row.provider === "stripe" ? await createStripeCheckout(args)
         : row.provider === "paystack" ? await createPaystackCheckout(args)
           : await initiateDarajaStkPush({

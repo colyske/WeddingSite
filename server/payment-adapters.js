@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+import { paystackEnvironment, paystackCredentialFingerprint, verifyPaystackContext, parsePaystackJson } from "./paystack.js";
 
 const providerHealthCache = new Map();
 let darajaAccessToken = "";
@@ -174,7 +175,9 @@ export async function checkProviderHealth(provider) {
       process.env.DARAJA_LIVE_COLLECTION_ENABLED, process.env.DARAJA_LIVE_SHORTCODE_CONFIRMED,
       process.env.WEDDINGSITE_PUBLIC_ORIGIN
     ].join(":")).digest("hex")}`
-    : provider;
+    : provider === "paystack"
+      ? `paystack:${createHash("sha256").update(`${process.env.WEDDINGSITE_PAYMENT_MODE}:${process.env.PAYSTACK_SECRET_KEY}`).digest("hex")}`
+      : provider;
   const cached = providerHealthCache.get(cacheKey);
   if (cached && cached.expiresAt > now) return cached.healthy;
 
@@ -191,7 +194,8 @@ export async function checkProviderHealth(provider) {
     }
   }
   const key = provider === "stripe" ? process.env.STRIPE_SECRET_KEY : process.env.PAYSTACK_SECRET_KEY;
-  const expectedPrefix = mode === "test" ? "sk_test_" : "";
+  const expectedPrefix = provider === "paystack" && paystackEnvironment()
+    ? `sk_${paystackEnvironment()}_` : mode === "test" ? "sk_test_" : "";
   if (!key || !expectedPrefix || !key.startsWith(expectedPrefix)) return false;
 
   const endpoint = provider === "stripe"
@@ -440,8 +444,17 @@ export async function verifyProviderPayment(provider, reference, contributionId,
       providerFeeMinor: null
     };
   }
-  if (mode !== "test" || !key?.startsWith("sk_test_") || !reference || !contributionId) {
+  const paystackConfigured = provider === "paystack" && paystackEnvironment();
+  if ((!paystackConfigured && (mode !== "test" || !key?.startsWith("sk_test_"))) || !reference || !contributionId) {
     throw new Error("A test-mode payment provider is not configured.");
+  }
+  if (provider === "paystack" && (paystackConfigured === "live" || bound?.context) &&
+      (!bound?.context || bound.context.environment !== paystackConfigured ||
+       bound.context.credential_fingerprint !== paystackCredentialFingerprint())) {
+    throw new Error("Paystack payment belongs to another merchant or mode; it was not queried.");
+  }
+  if (paystackConfigured === "live" && process.env.PAYSTACK_RECONCILIATION_ENABLED !== "true") {
+    throw new Error("Live Paystack reconciliation is independently held.");
   }
   const endpoint = provider === "stripe"
     ? `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(reference)}?expand%5B%5D=payment_intent.latest_charge.balance_transaction`
@@ -454,7 +467,7 @@ export async function verifyProviderPayment(provider, reference, contributionId,
     cache: "no-store",
     signal: AbortSignal.timeout(8000)
   });
-  const result = await response.json();
+  const result = provider === "paystack" ? parsePaystackJson(await response.text()) : await response.json();
   if (!response.ok) throw new Error("The payment provider could not verify this checkout.");
 
   if (provider === "stripe") {
@@ -486,12 +499,18 @@ export async function verifyProviderPayment(provider, reference, contributionId,
   const amountMinor = Number(transaction.amount);
   const currency = String(transaction.currency || "").toUpperCase();
   if (!Number.isSafeInteger(amountMinor) || !/^[A-Z]{3}$/.test(currency)) throw new Error("Provider returned invalid payment details.");
+  if (amountMinor !== Number(expectedAmountMinor) || currency !== expectedCurrency) {
+    throw new Error("Paystack verified amount or currency differs from the admitted payment.");
+  }
+  const allocation = bound?.context ? verifyPaystackContext(transaction, bound.context, bound.signedSplit) : null;
   return {
     verified: true, provider, eventId: `verified:${transaction.id || transaction.reference}`,
     amountMinor, currency, reference: String(transaction.reference),
     providerPaymentReference: String(transaction.id || transaction.reference),
     providerPaidAt: typeof transaction.paid_at === "string" && Number.isFinite(Date.parse(transaction.paid_at))
       ? new Date(transaction.paid_at).toISOString() : null,
-    providerFeeMinor: Number.isSafeInteger(Number(transaction.fees)) && Number(transaction.fees) >= 0 ? Number(transaction.fees) : null
+    providerFeeMinor: transaction.fees !== null && transaction.fees !== undefined &&
+      Number.isSafeInteger(Number(transaction.fees)) && Number(transaction.fees) >= 0 ? Number(transaction.fees) : null,
+    ...(bound?.context ? { allocation } : {})
   };
 }

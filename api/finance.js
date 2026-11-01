@@ -3,7 +3,7 @@ import { contentError } from "../server/content-policy.js";
 
 function toCsv(rows) {
   if (!rows.length) return "No records\n";
-  const columns = Object.keys(rows[0]);
+  const columns = [...new Set(rows.flatMap(row => Object.keys(row)))];
   return [columns.map(csvCell).join(","), ...rows.map(row => columns.map(column => csvCell(row[column])).join(","))].join("\r\n");
 }
 
@@ -77,9 +77,9 @@ async function handleReportQuery(req, res) {
   if (!session) return sendJson(res, 401, { error: "Sign in to view private financial records." });
   try {
     const filter = `wedding_id=eq.${encodeURIComponent(weddingId)}`;
-    const [summary, contributions, expenses, payouts, budgets, reconciliations, alerts, adjustmentData, audit] = await Promise.all([
+    const [summary, contributions, expenses, payouts, budgets, reconciliations, alerts, adjustmentData, audit, paystackDirect] = await Promise.all([
       supabaseRequest(`/rest/v1/finance_summary?${filter}&select=*`, { token: session.token }),
-      supabaseRequest(`/rest/v1/contributions?${filter}&select=id,stream_name,purchase_action,display_name,pledged_amount_minor,paid_amount_minor,platform_fee_minor,provider_fee_minor,net_paid_minor,currency,payment_status,created_at&order=created_at.desc&limit=1000`, { token: session.token }),
+      supabaseRequest(`/rest/v1/contributions?${filter}&select=id,stream_name,purchase_action,display_name,pledged_amount_minor,paid_amount_minor,platform_fee_minor,provider_fee_minor,net_paid_minor,currency,payment_status,settlement_route,created_at&order=created_at.desc&limit=1000`, { token: session.token }),
       supabaseRequest(`/rest/v1/expenses?${filter}&select=id,category,description,amount_minor,currency,status,due_on,created_at&order=created_at.desc&limit=1000`, { token: session.token }),
       supabaseRequest(`/rest/v1/payout_records?${filter}&select=id,amount_minor,currency,status,requested_at,confirmed_at&order=requested_at.desc&limit=500`, { token: session.token }),
       supabaseRequest(`/rest/v1/budget_lines?${filter}&select=id,category,planned_minor,actual_minor,currency,updated_at&order=category&limit=500`, { token: session.token }),
@@ -88,12 +88,14 @@ async function handleReportQuery(req, res) {
       supabaseRequest("/rest/v1/rpc/get_wedding_financial_adjustments", {
         method: "POST", token: session.token, body: { p_wedding_id: weddingId }
       }),
-      supabaseRequest(`/rest/v1/audit_events?wedding_id=eq.${encodeURIComponent(weddingId)}&select=id,actor_id,source,action,table_name,record_id,changed_fields,created_at&order=created_at.desc&limit=1000`, { token: session.token })
+      supabaseRequest(`/rest/v1/audit_events?wedding_id=eq.${encodeURIComponent(weddingId)}&select=id,actor_id,source,action,table_name,record_id,changed_fields,created_at&order=created_at.desc&limit=1000`, { token: session.token }),
+      supabaseRequest("/rest/v1/rpc/paystack_finance_summary", { method: "POST", token: session.token, body: { p_wedding_id: weddingId } })
     ]);
-    const report = { summary: summary || [], contributions: contributions || [], expenses: expenses || [], payouts: payouts || [], budgets: budgets || [], reconciliations: reconciliations || [], alerts: alerts || [], adjustments: adjustmentData?.adjustments || [], adjustmentLedger: adjustmentData?.ledger || [], audit: audit || [] };
+    const report = { summary: summary || [], contributions: contributions || [], expenses: expenses || [], payouts: payouts || [], budgets: budgets || [], reconciliations: reconciliations || [], alerts: alerts || [], adjustments: adjustmentData?.adjustments || [], adjustmentLedger: adjustmentData?.ledger || [], audit: audit || [], paystackDirect: paystackDirect || [] };
     if (req.query.format === "csv") {
       const rows = [
         ...report.contributions.map(row => ({ record_type: "contribution", ...row })),
+        ...report.paystackDirect.map(row => ({ record_type: "paystack_direct_settlement", ...row })),
         ...report.expenses.map(row => ({ record_type: "expense", ...row })),
         ...report.payouts.map(row => ({ record_type: "payout_record", ...row })),
         ...report.reconciliations.map(row => ({ record_type: "reconciliation", ...row })),
