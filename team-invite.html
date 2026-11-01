@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#203a31">
+  <title>Wedding team invitation · Join Our Wedding</title>
+  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css">
+  <script src="ornaments.js" defer></script>
+</head>
+<body class="center">
+  <main class="card narrow">
+    <a class="brand brand-logo" href="/"><img src="/assets/brand/logo-320.jpg" width="180" alt="Join Our Wedding"></a>
+    <h1>Wedding team invitation</h1>
+    <p id="invite-notice" class="notice" role="status" aria-live="polite">Checking invitation…</p>
+    <section id="invite-details" hidden>
+      <p>You have been invited to help with <strong id="invite-wedding"></strong>.</p>
+      <p>Your role: <strong id="invite-role"></strong></p>
+      <p class="fine">This invitation is bound to <strong id="invite-email"></strong> and expires <span id="invite-expiry"></span>.</p>
+      <button id="accept-invite" type="button">Accept invitation</button>
+    </section>
+    <a id="open-team" class="btn" href="#" hidden>Open your wedding team</a>
+    <p><a id="signin-link" href="/signin.html">Sign in with the invited email</a></p>
+  </main>
+  <script src="auth-client.js"></script>
+  <script>
+    const $ = id => document.getElementById(id);
+    const token = new URLSearchParams(location.search).get("token") || "";
+    const roleLabels = {
+      checkin: "Entrance check-in",
+      usher: "Usher",
+      coordinator: "Committee coordinator",
+      rsvp_support: "RSVP support",
+      dj: "DJ playlist operator"
+    };
+    if (token) $("signin-link").href = `/signin.html?next=${encodeURIComponent(`/team-invite.html?token=${token}`)}`;
+    const show = (message, bad = false) => {
+      $("invite-notice").hidden = !message;
+      $("invite-notice").textContent = message;
+      $("invite-notice").className = "notice" + (bad ? " bad" : "");
+    };
+    if (token) history.replaceState(null, "", location.pathname);
+    if (!WS.token() && token) {
+      const next = `/team-invite.html?token=${encodeURIComponent(token)}`;
+      location.replace(`/signin.html?next=${encodeURIComponent(next)}`);
+    } else if (!token) {
+      show("This invitation link is missing or invalid.", true);
+    } else {
+      loadInvite();
+    }
+
+    async function loadInvite() {
+      try {
+        const response = await WS.api(`/api/team?action=invite-details&token=${encodeURIComponent(token)}`, { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "This invitation is unavailable.");
+        const invite = data.invite;
+        $("invite-wedding").textContent = invite.couple_names;
+        $("invite-role").textContent = roleLabels[invite.role] || invite.role;
+        $("invite-email").textContent = invite.invitee_email;
+        $("invite-expiry").textContent = new Date(invite.expires_at).toLocaleString();
+        $("invite-details").hidden = false;
+        show("");
+      } catch (error) {
+        show(error.message || "This invitation could not be checked.", true);
+      }
+    }
+
+    $("accept-invite").addEventListener("click", async () => {
+      $("accept-invite").disabled = true;
+      try {
+        const response = await WS.api("/api/team?action=accept", {
+          method: "POST",
+          body: JSON.stringify({ token })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Invitation could not be accepted.");
+        const invite = data.accepted;
+        show(`You joined ${invite.couple_names} as ${roleLabels[invite.role] || invite.role}.`);
+        $("invite-details").hidden = true;
+        $("open-team").href = `/team.html?weddingId=${encodeURIComponent(invite.wedding_id)}`;
+        $("open-team").hidden = false;
+      } catch (error) {
+        $("accept-invite").disabled = false;
+        show(error.message || "Invitation could not be accepted.", true);
+      }
+    });
+  </script>
+  <script src="footer.js"></script>
+  <script src="/feedback.js"></script>
+</body>
+</html>

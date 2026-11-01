@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#203a31">
+  <title>Wedding team · Join Our Wedding</title>
+  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css">
+  <script src="ornaments.js" defer></script>
+</head>
+<body class="center">
+  <main class="card" style="width:min(100%, 920px);">
+    <a class="brand brand-logo" href="/"><img src="/assets/brand/logo-320.jpg" width="180" alt="Join Our Wedding"></a>
+    <h1>Wedding team</h1>
+    <p id="team-notice" class="notice" role="status" aria-live="polite" hidden></p>
+
+    <section id="manage-panel" hidden>
+      <h2>Invite helpers</h2>
+      <p class="fine">Helpers get only the wedding task you assign. Invitations are single-use, expire after 7 days, and are bound to the email address you enter. A secure link is created for you to copy and share; it is not emailed.</p>
+      <form id="invite-form">
+        <label for="invite-email">Helper's sign-in email</label>
+        <input id="invite-email" type="email" autocomplete="email" maxlength="254" required>
+        <label for="invite-role">Wedding role</label>
+        <select id="invite-role" required>
+          <option value="checkin">Entrance check-in — scan passes and check guests in</option>
+          <option value="usher">Usher — see guest names, assigned tables and check-in status</option>
+          <option value="coordinator">Committee coordinator — see the guest roster and check-in guests</option>
+          <option value="rsvp_support">RSVP support — see guest contact details and RSVP status</option>
+          <option value="dj">DJ — see the paid song playlist only</option>
+        </select>
+        <button type="submit">Create secure invite link</button>
+      </form>
+      <div id="invite-link-box" class="notice" hidden>
+        <p id="invite-delivery"></p>
+        <label for="invite-link">Invite link</label>
+        <div class="row"><input id="invite-link" type="url" readonly><button id="copy-invite" type="button" class="ghost">Copy link</button></div>
+      </div>
+      <h2>Pending invitations</h2>
+      <div id="pending-invites" class="fine">Loading…</div>
+      <h2>Current helpers</h2>
+      <div id="team-members" class="fine">Loading…</div>
+      <p class="fine">There is no helper access to payouts, fees, payment providers, or financial totals.</p>
+    </section>
+
+    <section id="helper-panel" hidden>
+      <h2>Your assigned tasks</h2>
+      <p id="helper-roles" class="fine"></p>
+      <div id="checkin-tools" hidden>
+        <h3>Entrance check-in</h3>
+        <p>Scan a guest's QR pass, review the name, then confirm check-in.</p>
+        <a class="btn" href="/verify.html">Open QR check-in</a>
+      </div>
+      <div id="usher-tools" hidden>
+        <h3>Guest seating</h3>
+        <div id="usher-roster" class="fine" style="overflow-x:auto"></div>
+      </div>
+      <div id="rsvp-tools" hidden>
+        <h3>RSVP support</h3>
+        <p class="fine">Contact details are shown only for RSVP help. Dietary notes and financial information are not included.</p>
+        <div id="rsvp-roster" class="fine" style="overflow-x:auto"></div>
+      </div>
+      <div id="dj-tools" hidden>
+        <h3>Paid song playlist</h3>
+        <p class="fine">Only paid requests are listed. Bid amounts and payment controls are not available.</p>
+        <div id="dj-playlist" class="fine" style="overflow-x:auto"></div>
+      </div>
+    </section>
+
+    <p><a id="back-link" href="/dashboard.html">Back to dashboard</a></p>
+  </main>
+  <script src="auth-client.js"></script>
+  <script src="team.js"></script>
+  <script src="footer.js"></script>
+  <script src="/feedback.js"></script>
+</body>
+</html>
