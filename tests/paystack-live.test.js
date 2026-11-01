@@ -334,6 +334,16 @@ test("settlement statement reconciliation validates destination totals and never
   await reconcilePaystackSettlement(CID,"99",CID);assert.equal(recorded,1);
   total++;
   await assert.rejects(reconcilePaystackSettlement(CID,"99",CID));assert.equal(recorded,1);
+  total=9404;
+  const documentedSplit=tx.split;
+  for (const split of [{}, {shares:{}}, {shares:{subaccounts:[{amount:9404}]}}]) {
+    tx.split=split;
+    tx.subaccount={};
+    tx.fees_split=null;
+    await assert.rejects(reconcilePaystackSettlement(CID,"99",CID), /per-destination allocations/);
+    assert.equal(recorded,1,"Unknown or empty statement evidence must not record a settled result");
+  }
+  tx.split=documentedSplit;
 });
 test("finance CSV preserves direct allocation and zero-withdrawal columns across mixed record types", async () => {
   context();
