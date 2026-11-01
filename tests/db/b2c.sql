@@ -20,7 +20,7 @@ begin
 end $$;
 do $$
 declare oid uuid:=extensions.gen_random_uuid(); cid uuid:=extensions.gen_random_uuid();
-  sid uuid:=extensions.gen_random_uuid(); wid uuid:=extensions.gen_random_uuid();
+  sid uuid:=extensions.gen_random_uuid(); other_staff uuid:=extensions.gen_random_uuid(); wid uuid:=extensions.gen_random_uuid();
   receipt uuid:=extensions.gen_random_uuid(); payout uuid:=extensions.gen_random_uuid(); second uuid;
   d jsonb; state text; originator uuid:=extensions.gen_random_uuid(); k uuid:=extensions.gen_random_uuid();
   evidence jsonb; rev integer; before_budget bigint;
@@ -36,10 +36,11 @@ begin
     raise exception 'B2C writes must use gated entrypoints, not raw tables or private helpers'; end if;
   insert into auth.users(id,email,email_confirmed_at) values(oid,'colyske@gmail.com',now());
   perform public.bootstrap_protected_owner(oid);
-  insert into auth.users(id) values(cid),(sid);
+  insert into auth.users(id) values(cid),(sid),(other_staff);
   perform set_config('request.jwt.claim.sub',oid::text,true);
   perform set_config('request.jwt.claim.role','authenticated',true);
   perform public.assign_platform_role(sid,'superadmin');
+  perform public.assign_platform_role(other_staff,'superadmin');
   insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date)
     values(wid,cid,'Synthetic B2C couple','KES',current_date+30);
   insert into public.wedding_memberships(wedding_id,user_id,role) values(wid,cid,'client') on conflict do nothing;
@@ -89,6 +90,17 @@ begin
   perform set_config('request.jwt.claim.sub',sid::text,true);
   perform public.staff_confirm_b2c_account_review(wid,'Synthetic renewed official statement review');
   perform set_config('request.jwt.claim.sub',oid::text,true);
+  perform pg_temp.b2c_reject(format('select public.staff_confirm_b2c_account_review(%L,''Synthetic renewed official statement review'')',wid),'different SuperAdmin');
+  perform pg_temp.b2c_reject(format('update public.b2c_recipients set account_review_confirmed_by=%L where wedding_id=%L',oid,wid),'b2c_distinct_account_reviewers');
+  perform public.owner_review_b2c_recipient(wid,'254700000001',receipt,'Synthetic changed documented evidence');
+  if exists(select 1 from public.b2c_recipients where wedding_id=wid and
+    (account_review_confirmed_by is not null or account_review_confirmed_at is not null)) then
+    raise exception 'Changed account-review evidence must revoke independent confirmation';
+  end if;
+  perform set_config('request.jwt.claim.sub',sid::text,true);
+  perform pg_temp.b2c_reject(format('select public.staff_confirm_b2c_account_review(%L,''Synthetic renewed official statement review'')',wid),'matching documented');
+  perform public.staff_confirm_b2c_account_review(wid,'Synthetic changed documented evidence');
+  perform set_config('request.jwt.claim.sub',oid::text,true);
   second:=public.request_payout(wid,1000,'KES','Synthetic Owner self-request',true);
   perform pg_temp.b2c_reject(format('select public.admin_set_payout_status(%L,''approved'')',second),'Another staff');
   perform public.admin_set_payout_status(second,'cancelled','Synthetic independent approval required.');
@@ -102,6 +114,13 @@ begin
   if (select utility_budget_minor from public.b2c_policy)<>before_budget-10100 then raise exception 'Utility budget must reserve amount and fee'; end if;
   perform pg_temp.b2c_reject(format('update public.b2c_dispatches set msisdn=''254700000002'' where id=%L',d->>'id'),'immutable');
   perform pg_temp.b2c_reject(format('select public.staff_reconcile_b2c(%L,''Synthetic self-review statement'',''inconclusive'',null,null,null)',d->>'id'),'Independent');
+  perform set_config('request.jwt.claim.sub',other_staff::text,true);
+  perform pg_temp.b2c_reject(format('select public.staff_reconcile_b2c(%L,''Synthetic same-role statement'',''inconclusive'',null,null,null)',d->>'id'),'opposite role');
+  perform set_config('request.jwt.claim.sub',oid::text,true);
+  perform public.assign_platform_role(sid,'client');
+  perform pg_temp.b2c_reject(format('select public.staff_reconcile_b2c(%L,''Synthetic former-staff statement'',''inconclusive'',null,null,null)',d->>'id'),'opposite role');
+  perform public.assign_platform_role(sid,'superadmin');
+  perform set_config('request.jwt.claim.sub',sid::text,true);
   if (public.b2c_reserve(payout,extensions.gen_random_uuid(),extensions.gen_random_uuid(),repeat('b',64),'123456','BusinessPayment')->>'claimed')::boolean then
     raise exception 'Repeated payout must never acquire another send claim';
   end if;

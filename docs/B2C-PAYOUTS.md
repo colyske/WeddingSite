@@ -38,17 +38,20 @@ changes credentials, or applies a migration to production.
   relevant refund/dispute journal entries/holds are deducted server-side.
   The configured known outbound fee is reserved in addition to the whole-KES
   transfer. Amount conversion rejects fractional KES; it never rounds.
-- One durable dispatch per payout and a unique idempotency key are persisted
-  **before OAuth or PaymentRequest**. An existing claim can never send again,
+- Reservation plumbing persists one durable dispatch per payout and a unique
+  idempotency key, intended to precede any future provider request. The current
+  dispatch entrypoint rejects before reservation or provider work. An existing
+  claim can never send again,
   regardless of whether the caller uses a new key. `submitting`, `accepted` and
   `uncertain` all retain the original payout reservation.
-- Acceptance is **not** settlement. Transport failure, malformed acceptance,
-  QueueTimeOut or inconclusive evidence becomes `uncertain`, never a blind retry.
+- Acceptance is **not** settlement. Journal plumbing holds timeout and
+  inconclusive evidence as `uncertain`, never a blind retry. Provider transport,
+  acceptance and QueueTimeOut parsing are not implemented.
   The authenticated scheduler marks missing final results uncertain after
   30 minutes, including after the admission kill switch is turned off.
   This timeout is a hold/escalation rule, not an auto-approval threshold.
-- Managed payout records cannot be manually marked sent or cancelled. A bound,
-  fully verified Result or independently reviewed official statement is required.
+- Managed payout records cannot be manually marked sent or cancelled. A future
+  verified Result integration or independently reviewed official statement is required.
   Final outcomes are immutable. Duplicate callbacks are journal-idempotent;
   conflicting terminal evidence is separately audited for review.
 - Failed dispatches do not optimistically credit the utility account budget.
@@ -106,59 +109,73 @@ Outcomes remain uncertain when evidence is insufficient.
 
 ## Official-document evidence and limitations
 
-Checked on 2026-11-01:
+### Current portal: public documentation unavailable on detail routes
 
-| Official source | What was actually retrievable |
+The rendered [API discovery page](https://developer.safaricom.co.ke/apis) was
+read successfully. Its actual links are
+[BusinessToCustomer](https://developer.safaricom.co.ke/apis/BusinessToCustomer),
+[TransactionStatus](https://developer.safaricom.co.ke/apis/TransactionStatus) and
+[AccountBalance](https://developer.safaricom.co.ke/apis/AccountBalance).
+The B2C detail page rendered only navigation/footer, with no specification.
+Lowercase candidate URLs and legacy 404s are not contract evidence.
+
+Research went beyond text-fetching the JavaScript shell. Public portal build
+`0T7Cxv-BCd9_baYHXmnSO` exposes the read-only `GetApiDocumentation` /
+`populateApi(apiName: ...)` query in
+[this official JavaScript asset](https://developer.safaricom.co.ke/_next/static/chunks/3pgh6ay-_-343.js).
+It includes markdown, documentation sections and `postmanCollectionLink` fields.
+Public documentation-only queries to
+`https://developer.safaricom.co.ke/api/graphql` for all three API names returned
+`{"errors":[{"message":"Something went wrong. Please try again later."}]}`.
+These were public content reads, not simulation, transaction, balance or
+account API calls. No login was attempted. No current downloadable contract,
+Postman collection or production certificate was obtained through these routes;
+this is an access limitation, not proof those documents do not exist.
+
+### Verified first-party historical SDK evidence
+
+These pinned Safaricom repositories establish historical behavior, **not a
+current account-specific production contract**:
+
+| Official source | Verified evidence and limitation |
 | --- | --- |
-| https://developer.safaricom.co.ke/ | Safaricom describes Daraja 3.0 as its web/mobile M-Pesa API platform. |
-| https://developer.safaricom.co.ke/apis | API discovery shell; no detailed contract. |
-| https://developer.safaricom.co.ke/apis/b2c | JS-rendered shell only; no PaymentRequest or callback specification. |
-| https://developer.safaricom.co.ke/apis/transaction-status | Shell only; no response-field specification. |
-| https://developer.safaricom.co.ke/apis/account-balance | Shell only; no account-balance specification. |
-| Legacy `/APIs/BusinessToCustomer`, `/APIs/BusinessToCustomerPayment`, `/APIs/TransactionStatus` | HTTP 404; not contract evidence. |
+| [Node B2C endpoint, commit `678e3c33b20c1447c209eb88eded89f1bb751e11`](https://github.com/safaricom/mpesa-node-library/blob/678e3c33b20c1447c209eb88eded89f1bb751e11/src/endpoints/b2c.js) | Historical `/mpesa/b2c/v1/paymentrequest`; `InitiatorName`, `SecurityCredential`, `CommandID`, `Amount`, `PartyA`, `PartyB`, `Remarks`, `QueueTimeOutURL`, `ResultURL`, `Occasion`. Commands: `SalaryPayment`, `BusinessPayment`, `PromotionPayment`. Does not establish any particular shortcode's command entitlement or v3 contract. |
+| [Node client at the same commit](https://github.com/safaricom/mpesa-node-library/blob/678e3c33b20c1447c209eb88eded89f1bb751e11/src/m-pesa.js) | Historical production base `https://api.safaricom.co.ke` and sandbox base `https://sandbox.safaricom.co.ke`. Neither host was called. |
+| [Node credential helper at the same commit](https://github.com/safaricom/mpesa-node-library/blob/678e3c33b20c1447c209eb88eded89f1bb751e11/src/helpers/security.js) | RSA public-key encryption using `RSA_PKCS1_PADDING` (PKCS#1 v1.5), then Base64. This supports the historical algorithm, not current production certificate provenance or initiator authorization. |
+| [Node sandbox certificate at the same commit](https://github.com/safaricom/mpesa-node-library/blob/678e3c33b20c1447c209eb88eded89f1bb751e11/keys/sandbox-cert.cer) | RSA 2048, subject `CN=apicrypt.safaricom.co.ke`, issuer `Safaricom Internal Issuing CA 02`, validity 2014-11-12 to 2016-11-11. Expired and unusable; never bundled or substituted for production. SHA-256: `a542c3c67b598a337a1cc741e5434c70de565081e5c853e05a51c843764766f0`. |
+| [PHP callback handlers, commit `5effb808e79ba6b3d8631ef83c2b9b31fa450152`](https://github.com/safaricom/mpesa-php-sdk/blob/5effb808e79ba6b3d8631ef83c2b9b31fa450152/src/TransactionCallbacks.php) and [README](https://github.com/safaricom/mpesa-php-sdk/blob/5effb808e79ba6b3d8631ef83c2b9b31fa450152/readme.md) | Historical result fields and callback examples, but B2C/B2B-named handlers have inconsistent positional parameter mappings. No authoritative concrete QueueTimeOut body was established. Unsafe as the sole source of a canonical B2C parser. |
+| [Node Transaction Status request at commit `678e3c33b20c1447c209eb88eded89f1bb751e11`](https://github.com/safaricom/mpesa-node-library/blob/678e3c33b20c1447c209eb88eded89f1bb751e11/src/endpoints/transaction-status.js) and the PHP callback handlers above | Historical request and positional response labels only; not a verified current keyed response schema or proof of an exact destination MSISDN. |
+| [Node Account Balance request at the same commit](https://github.com/safaricom/mpesa-node-library/blob/678e3c33b20c1447c209eb88eded89f1bb751e11/src/endpoints/account-balance.js) and the PHP callback handlers above | Historical request; callback SDK references `accountBalance` and `BOCompletedTime`. Not a verified current account-allocation or reconciliation contract. |
 
-**No detailed official B2C/Transaction Status/Account Balance contract was
-independently verified from these pages.** In particular, there is no verified
-evidence here that a Transaction Status response confirms recipient or amount.
-No such query is implemented or accepted as settlement proof.
-The exact official fields of those responses cannot responsibly be asserted.
+The PHP SDK references `ResultCode`, `ResultDesc`, `OriginatorConversationID`,
+`ConversationID`, `TransactionID` and `ResultParameters.ResultParameter`.
+Its Transaction Status positional labels include `ReceiptNo`, `ConversationID`,
+`FinalisedTime`, `Amount`, `TransactionStatus`, `ReasonType`,
+`TransactionReason`, `DebitPartyCharges`, `DebitAccountType`, `InitiatedTime`,
+`OriginatorConversationID`, `CreditPartyName` and `DebitPartyName`.
+Account Balance references `ResultType`, conversation/result/transaction fields
+and the balance/time parameters above. These are exactly **SDK observations**,
+not independently established current official response guarantees.
+An `Amount` variable label is not sufficient to promise a current response
+contains a trustworthy amount; party names do not prove the destination MSISDN.
+Transaction Status is therefore neither implemented nor accepted as settlement
+proof. An authoritative B2C Result/QueueTimeOut keyed schema is still missing.
 
-The previous commit contained the following **unverified candidate v3** request,
-now removed rather than presenting guessed schemas as an implementation:
-`POST https://api.safaricom.co.ke/mpesa/b2c/v3/paymentrequest`, with
-`OriginatorConversationID`, `InitiatorName`, `SecurityCredential`, `CommandID`,
-`Amount`, `PartyA`, `PartyB`, `Remarks`, `QueueTimeOutURL`, `ResultURL`, `Occasion`.
-Candidate acceptance uses `ResponseCode`, `ConversationID`,
-`OriginatorConversationID`. Candidate Result/QueueTimeOut envelopes use
-`Result.ConversationID`, `Result.OriginatorConversationID`, `ResultCode` and
-`ResultParameters.ResultParameter`. These are implementation assumptions,
-**not claims of officially verified response fields**.
+**Implementation remains hard-blocked.** No API version has been selected;
+historical v1 evidence does not verify v3, and does not prove v3 invalid.
+The guessed v3 request, encryption implementation and callback parser were
+removed. An environment assertion or operator-supplied parameter mapping cannot
+certify missing code or official evidence. Required later: current request and
+acceptance/correlation contract, exact result/timeout schema, current official
+production certificate/provenance and account-specific initiator/CommandID
+entitlement. There is no bundled certificate or active encryption code.
 
-Before any integration implementation or activation, an authorized operator must inspect the actual official
-account documentation and record its reference in the Owner policy, confirm this
-entire candidate contract (including v3 originator echo) and the allowed
-`BusinessPayment` / `SalaryPayment` / `PromotionPayment` command for the
-shortcode. v1 and sandbox dispatch are deliberately unsupported/fail-closed;
-their credential/correlation differences have not been verified.
-
-There is no bundled certificate. The removed candidate credential encryption was RSA
-PKCS#1 v1.5 of the initiator password with the supplied X.509 public key, encoded
-as Base64. Runtime checks RSA type, certificate dates and the independently
-confirmed SHA-256 fingerprint. The operator must verify the **correct official
-production certificate, algorithm and initiator entitlement**; a sandbox
-certificate must never be substituted. A matching fingerprint establishes
-configuration consistency, **not provenance**.
-
-The removed Result parser required configured parameter names, but configuration
-cannot substitute for officially verified evidence. A future implemented
-Result settlement would require explicitly verified official parameter names
-for amount, exact recipient MSISDN and receipt. There is **no default mapping**.
-Recipient public-name text or a registered-customer flag is not accepted as
-an exact MSISDN. If the actual B2C contract supplies no independently usable
-exact-recipient field, leave mapping absent: callbacks are correlated and audited
-but remain uncertain, and official statement reconciliation is mandatory.
-Nonzero ResultCode is also held for statement review, because failure payloads
-may omit recipient/amount. Never guess missing evidence.
+A future Result integration must establish official amount, exact destination
+MSISDN and receipt evidence. Recipient-name text or registered-customer flags
+are not exact-MSISDN evidence. If the verified contract lacks usable destination
+evidence, callbacks must remain inconclusive and require independently reviewed
+official statements. Neither nonzero result codes nor timeouts prove that no
+money moved or no fee was charged.
 
 ## Configuration and activation prerequisites
 
@@ -169,7 +186,7 @@ Configure secrets only in the approved deployment secret manager.
 | --- | --- |
 | `WEDDINGSITE_PAYMENT_MODE=live`, `DARAJA_ENVIRONMENT=production` | Explicit approved production context; no sandbox transfers supported. |
 | `DARAJA_B2C_ENABLED` | Separate live payout kill switch; omitted/false now. |
-| `DARAJA_B2C_API_VERSION` | Must explicitly be `v3` after official contract verification. No default. |
+| `DARAJA_B2C_API_VERSION` | Reserved, unused scaffolding configuration; version must be selected only after current official contract verification. No default. |
 | `DARAJA_B2C_CONTRACT_VERIFIED`, `DARAJA_B2C_CAPABILITY_CONFIRMED` | Authorized independent confirmation; omitted/false now. |
 | `DARAJA_B2C_SHORTCODE`, `DARAJA_B2C_SHORTCODE_CONFIRMED` | Exact match; B2C-capable, funded utility account. |
 | `DARAJA_B2C_COMMAND_ID` | Officially approved command for that shortcode, matching Owner policy. |
@@ -177,7 +194,7 @@ Configure secrets only in the approved deployment secret manager.
 | `DARAJA_B2C_INITIATOR_NAME`, `DARAJA_B2C_INITIATOR_PASSWORD` | Authorized production initiator, separate from STK passkey; no secret requested in chat. |
 | `DARAJA_B2C_CERTIFICATE_PEM`, `DARAJA_B2C_CERTIFICATE_SHA256` | Independently obtained official production certificate and confirmed fingerprint/algorithm. |
 | `WEDDINGSITE_PUBLIC_ORIGIN` | Approved public HTTPS origin with both `/api/b2c?action=result` and `action=timeout` reachable. |
-| `DARAJA_B2C_RESULT_MAPPING` | JSON containing `amountParameter`, `recipientParameter`, `transactionParameter`, **only** when those official parameters prove the required evidence. Otherwise absent. |
+| `DARAJA_B2C_RESULT_MAPPING` | Reserved and unused; configuration cannot replace an implemented, independently verified callback schema. Leave absent. |
 | `CRON_SECRET` | Existing authenticated Vercel scheduler secret; no secret value changes here. |
 | `DARAJA_B2C_AUTO_APPROVAL_ENABLED` | Separate optional auto-approval gate; omitted/false now. |
 
@@ -189,9 +206,11 @@ The daily Vercel worker currently performs only stale-hold housekeeping and neve
 processes a payout. It cannot initiate provider work even if deployment flags and
 Owner policy are changed.
 
-Every dispatch has an independent 256-bit callback capability, stored only as
-a hash and carried in the private callback URL. Both provider conversation IDs
-must match the persisted dispatch. There is no assumption of provider webhook
+Reservation plumbing stores a hash of an independent 256-bit callback capability,
+intended for a future private callback URL. Event plumbing requires both provider
+conversation IDs to match the persisted dispatch. The current callback route
+authenticates the capability, audits rejection and never interprets provider
+payloads or settles. There is no assumption of provider webhook
 signatures. Keep callback query strings out of access logs and third-party
 analytics; HTTPS and the capability are the callback authentication mechanism.
 A callback racing acceptance persistence fails closed; later statement
@@ -214,7 +233,7 @@ SuperAdmin; the initiator cannot self-resolve an uncertain payout.
 | --- | --- |
 | `readiness`, `policy` (GET) | Owner-only, no provider probes; policy and boolean deployment checks. |
 | `policy-save` (POST) | Owner-only, explicit confirmation, current integer revision and audit reason. |
-| `recipient-review` (POST) | Owner-only independent statement attestation or revocation. |
+| `recipient-review` (POST) | Owner-only documented account-review evidence or revocation; not destination-ownership verification. |
 | `status` (GET) | Owner/SuperAdmin; capabilities and recipient phones redacted. |
 | `controls` (GET) | Owner/SuperAdmin; only dispatch/approval booleans and revision, no full Owner policy. |
 | `dispatch` (POST) | Hard-blocked: verified contract and destination ownership implementation missing. No provider or reservation call. |
@@ -240,9 +259,15 @@ Transaction Status, Account Balance or account-funding transfer API.
 
 ## Regression verification
 
-Node regressions use synthetic injected transport only; no Daraja host is
-contacted. `tests/db/b2c.sql` runs in the isolated local Supabase CI database,
-uses rollback-only synthetic fixtures and verifies default gates, policy
-authorization/revisions, ledger exclusions, reservation, idempotence, recipient
-prerequisites, callback binding, timeout holds and independent reconciliation.
+Node regressions verify the hard-blocked dispatch/callback implementation and
+housekeeping behavior; no Daraja host is contacted.
+`tests/db/b2c.sql` runs in the isolated Supabase CI database and transaction-locally
+overrides the destination gate/reservation wrapper solely to exercise journal
+plumbing with synthetic fixtures, not to claim an executable provider integration.
+It verifies policy authorization/revisions, ledger exclusions, reservation,
+idempotence, account-review invalidation, callback binding, timeout holds,
+independent reconciliation and retained failed-payout fees.
+`tests/db/b2c-prerequisites.sql` exercises actual hard-deny prerequisites and
+internal-RPC restrictions without clearing the destination gate.
+All database fixtures and overrides are rolled back.
 The same CI migration job runs the existing Paystack and KYC regressions.

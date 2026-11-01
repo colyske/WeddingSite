@@ -60,7 +60,7 @@ begin
   select wedding_id into wid from public.payout_records where id=p_payout;
   perform 1 from public.weddings where id=wid for update;
   select * into r from public.b2c_recipients where wedding_id=wid and not revoked for share;
-  if not public.b2c_destination_ownership_verified(wid) then
+  if public.b2c_destination_ownership_verified(wid) is distinct from true then
     raise exception 'B2C: Verified destination-ownership process is not implemented; account-review evidence cannot authorize dispatch.';
   end if;
   if r.account_review_confirmed_by is null or r.account_review_confirmed_by=r.reviewed_by
@@ -85,9 +85,9 @@ begin
   select * into d from public.b2c_dispatches where id=p_dispatch;
   select platform_role into initiator_role from public.profiles where id=d.initiated_by;
   if d.id is null or d.initiated_by=auth.uid()
-    or (d.initiated_by is not null and not (
+    or (d.initiated_by is not null and not coalesce((
       initiator_role='owner' and public.current_platform_role()='superadmin'
-      or initiator_role='superadmin' and public.current_platform_role()='owner'))
+      or initiator_role='superadmin' and public.current_platform_role()='owner'),false))
     or (d.initiated_by is null and public.current_platform_role()<>'superadmin') then
     raise exception 'B2C: Independent reconciliation requires a different Owner/SuperAdmin user id in the opposite role.';
   end if;
