@@ -61,7 +61,7 @@
       method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: "Bearer " + token } : {}) }, body: JSON.stringify(body)
     });
     const googleFlowKey = "ws-google-pkce";
-    const safeReturnPaths = new Set(["/dashboard.html", "/wedding.html", "/account.html", "/admin.html", "/owner.html", "/team.html", "/team-invite.html", "/verify.html"]);
+    const safeReturnPaths = new Set(["/dashboard.html", "/wedding.html", "/account.html", "/admin.html", "/owner.html", "/team.html", "/team-invite.html", "/verify.html", "/referrals.html"]);
     function safeReturnDestination(value) {
       try {
         const destination = new URL(value || "/dashboard.html", location.origin);

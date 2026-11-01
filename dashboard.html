@@ -32,6 +32,7 @@
             <div style="padding: 0.75rem 1rem;">
               <div class="fine" style="margin-bottom: 0.5rem;" id="role-display"></div>
               <a href="/account.html" class="link" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer; text-decoration: none; color: #0066cc;">Account Settings</a>
+              <a href="/referrals.html" class="link">Client referrals</a>
               <button type="button" class="link" id="change-password" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer;">Change password</button>
               <a href="/admin.html" class="link" style="display: none;" id="admin-dashboard" title="Admin Dashboard">Admin Dashboard</a>
               <a href="#" class="link" style="display: none;" id="owner-profile" title="Owner Profile">Owner Profile</a>
@@ -46,6 +47,7 @@
 
     <h1>My Weddings</h1>
     <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
+    <button id="client-referral-dismiss" type="button" hidden>Discard the unvalidated referral link and retry</button>
     <div id="created" role="status" hidden></div>
 
     <div id="create-section" class="card">
@@ -101,6 +103,17 @@
         <div id="venues-container"></div>
         <button type="button" id="add-venue" data-action="add-venue">+ Add another venue</button>
 
+        <fieldset id="client-referral-disclosure" hidden>
+          <legend>Client referral disclosure</legend>
+          <p id="client-referral-details"></p>
+          <label for="client-referral-decision">Your choice</label>
+          <select id="client-referral-decision">
+            <option value="">Choose accept or decline</option>
+            <option value="accept">Accept this referral attribution</option>
+            <option value="decline">Decline this referral (no attribution)</option>
+          </select>
+          <p><a href="/terms.html#client-referrals">Client referral terms</a></p>
+        </fieldset>
         <button type="submit" id="create-submit">✨ Create wedding</button>
       </form>
     </div>
@@ -118,6 +131,7 @@
   <script src="tz.js"></script>
   <script src="share.js"></script>
   <script src="setup-progress.js"></script>
+  <script src="referral-client.js"></script>
   <script src="dashboard.js"></script>
   <script src="footer.js"></script>
 <script src="/feedback.js"></script>

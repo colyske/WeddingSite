@@ -1,6 +1,7 @@
 import { sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireRole } from "../server/auth-middleware.js";
 import { contentError } from "../server/content-policy.js";
+import { referralError } from "../server/referral-errors.js";
 import { darajaCollectionStatus, paymentProviderReadiness } from "./checkout.js";
 
 import { checkProviderHealth, darajaConfiguredEnvironment, isSecurePublicOrigin } from "../server/payment-adapters.js";
@@ -47,6 +48,12 @@ async function darajaReadiness(token, query) {
 }
 
 const GET_ACTIONS = {
+  "referral-policy": async t => ({ policy: await rpc("referral_admin_policy", t) }),
+  "referral-history": async t => ({ history: await rpc("referral_admin_history", t) }),
+  "referral-ledger": async (t, q) => {
+    if (q.before !== undefined && !/^[1-9][0-9]{0,18}$/.test(q.before)) throw new Error("Invalid referral cursor.");
+    return rpc("referral_admin_ledger", t, { p_before: q.before || null });
+  },
   overview: async (t) => {
     const [overview, settlement] = await Promise.all([
       rpc("admin_overview", t),
@@ -93,6 +100,7 @@ const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save", "daraja-re
 
 function safeMessage(error) {
   const m = String(error?.message || "");
+  if (/REFERRAL_CONFLICT:/.test(m)) return referralError(error);
   const moderation = m.match(/MODERATION:\s*([^\n]{1,300})/);
   if (moderation) return [409, moderation[1].trim()];
   if (/another staff|different/i.test(m)) return [409, "A different staff member must approve this payout."];
@@ -108,6 +116,10 @@ export default async function handler(req, res) {
   const role = session.profile.platform_role;
   const action = String(req.query?.action || "role");
   const token = session.token;
+  if ((["referral-policy", "referral-history", "referral-ledger"].includes(action) && !["owner", "superadmin"].includes(role)) ||
+      (action === "referral-policy-save" && role !== "owner")) {
+    return sendJson(res, 403, { error: "Your role does not allow this referral action." });
+  }
   if ((LEADERSHIP_ACTIONS.has(action) && !["owner", "superadmin"].includes(role)) ||
       (OWNER_ACTIONS.has(action) && role !== "owner")) {
     return sendJson(res, 403, { error: "Your role does not allow this action." });
@@ -125,6 +137,15 @@ export default async function handler(req, res) {
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
     const invalidContent = contentError(body);
     if (invalidContent) return sendJson(res, 400, { error: invalidContent });
+    if (action === "referral-policy-save") {
+      if (typeof body.enabled !== "boolean" || !Number.isInteger(body.rateBasisPoints) ||
+          body.rateBasisPoints < 0 || body.rateBasisPoints > 10000 || !UUID.test(String(body.revision || "")) || body.confirmed !== true) {
+        return sendJson(res, 400, { error: "Confirm valid referral settings and the current revision." });
+      }
+      return sendJson(res, 200, { policy: await rpc("referral_owner_policy", token, {
+        p_enabled: body.enabled, p_rate_basis_points: body.rateBasisPoints, p_revision: body.revision, p_confirmed: true
+      }) });
+    }
 
     if (action === "set-role") {
       if (!ROLES.has(body.role) || !body.user_id) return sendJson(res, 400, { error: "Choose a user and a valid role." });

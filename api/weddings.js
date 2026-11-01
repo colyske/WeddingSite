@@ -1,5 +1,7 @@
 import { methodOnly, sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireAuth } from "../server/auth-middleware.js";
+import { referralError } from "../server/referral-errors.js";
+import handleReferrals from "../server/referrals.js";
 import { paymentAdaptersFor } from "./checkout.js";
 import { normalizePhone, isPhoneKeyEmail } from "../server/phone.js";
 import { isReservedLabel } from "../server/site-hosts.js";
@@ -125,6 +127,7 @@ const loadWeddingDetails = async (weddings, opts) => {
 
 // Authenticated Client workspace API. All reads/writes run as the signed-in user so RLS applies.
 export default async function handler(req, res) {
+  if (req.query?.client_referrals === "1") return handleReferrals(req, res);
   const session = await requireAuth(req, res);
   if (!session) return;
   const opts = { token: session.token };
@@ -190,6 +193,14 @@ export default async function handler(req, res) {
     }
 
     if (action === "create") {
+      if (body.referral !== undefined && body.referral !== null &&
+          (typeof body.referral !== "object" || Array.isArray(body.referral) ||
+            !UUID.test(String(body.referral.intentId || "")) ||
+            !UUID.test(String(body.referral.revision || "")) ||
+            !["accept", "decline"].includes(body.referral.decision) ||
+            body.referral.termsVersion !== "client-referrals-v1")) {
+        return sendJson(res, 400, { error: "Review the referral disclosure and choose accept or decline." });
+      }
       if (!methodOnly(req, res, "POST")) return;
       const names = String(body.coupleNames || "").trim();
       const location = String(body.location || "").trim();
@@ -234,16 +245,22 @@ export default async function handler(req, res) {
       const timeZone = validZone(body.timeZone) ? body.timeZone : DEFAULT_ZONE;
       for (const suffix of ["", `-${Math.random().toString(36).slice(2, 6)}`, `-${Math.random().toString(36).slice(2, 8)}`]) {
         try {
-          const id = await supabaseRequest("/rest/v1/rpc/create_wedding_with_venues", { ...opts, method: "POST", body: {
+          const id = await supabaseRequest("/rest/v1/rpc/referral_create_wedding", { ...opts, method: "POST", body: {
             p_slug: `${base}${suffix}`.slice(0, 80).padEnd(3, "x"), p_couple_names: names,
             p_wedding_date: body.weddingDate, p_location: location.slice(0, 120),
-            p_currency: currency, p_capacity: capacity, p_palette: palette, p_venues: venues } });
+            p_currency: currency, p_capacity: capacity, p_palette: palette, p_venues: venues,
+            p_intent_id: body.referral?.intentId ?? null, p_decision: body.referral?.decision ?? null,
+            p_revision: body.referral?.revision ?? null, p_terms_version: body.referral?.termsVersion ?? null } });
           await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(id)}&client_owner_id=eq.${encodeURIComponent(session.user.id)}`,
             { ...opts, method: "PATCH", body: {
               time_zone: timeZone, palette_names: palette.map(friendlyColorName)
             } });
           return sendJson(res, 201, { weddingId: id, slug: `${base}${suffix}` });
         } catch (error) {
+          if (/REFERRAL_CONFLICT:|Self referral|Invalid or withdrawn referral code/.test(error.message)) {
+            const [status, message] = referralError(error);
+            return sendJson(res, status, { error: message });
+          }
           if (!/duplicate|unique/i.test(error.message)) throw error;
         }
       }
