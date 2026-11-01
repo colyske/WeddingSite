@@ -38,7 +38,7 @@ begin
   end if;
 
   -- Once the couple adds a package, custom sponsorship no longer auto-completes.
-  insert into public.sponsor_tiers(wedding_id,name,min_amount_minor) values(wid,'Gold',800000);
+  insert into public.sponsor_tiers(wedding_id,name,min_amount_minor,perks) values(wid,'Gold',800000,'Recognised as a supporter');
   insert into public.contributions(wedding_id,stream_name,pledged_amount_minor,currency,payment_status,purchase_action,purchase_data)
     values(wid,'Sponsor: custom sponsorship',500000,'KES','pending','sponsor',d) returning id into pid;
   update public.contributions set payment_status='paid',paid_amount_minor=500000,net_paid_minor=500000,verified_provider_payment=true,paid_at=now() where id=pid;
