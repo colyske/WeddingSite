@@ -17,11 +17,14 @@ README for the custom auth domain and Google consent-screen steps.
 
 Payment activation is provider-specific, not inferred from this document.
 Daraja has separate [live collection gates](docs/LIVE-DARAJA-READINESS.md).
-The additive [Paystack live Split Payments implementation](docs/LIVE-PAYSTACK-READINESS.md)
+The additive [Paystack live collection implementation](docs/LIVE-PAYSTACK-READINESS.md)
 remains default-OFF and was validated only with isolated fixtures; account-specific
 eligibility, migrations/deployment and live activation require separate approval.
-It supports direct-to-couple settlement without WeddingSite withdrawal credit and
-independently gated platform-only live publication. It does not change Daraja
+Standard collection uses the platform merchant and existing wallet/fee/payout
+guards; no split onboarding is needed. An audited Owner-only mode control holds
+split settlement unavailable until verified account-specific allocation/statement
+evidence is implemented; direct proceeds cannot become WeddingSite withdrawal credit.
+Publication is independently gated and always platform-only. It does not change Daraja
 credentials, approvals, collection or reconciliation. Never enable live payment or
 remove Turnstile as a testing shortcut. A human-assisted test must be staged
 before submission, identify provider/amount/currency/test number and obtain the

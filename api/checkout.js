@@ -13,7 +13,8 @@ import "../currencies.js";
 import { ensurePublicationFx } from "../server/publication-fx.js";
 import {
   paystackEnvironment, paystackAdmissionEnabled, paystackApproval, paystackDestination,
-  livePaystackContext, paystackSplit, contextDigest, recordPaystackPayment, validatePaystackInitialization
+  livePaystackContext, paystackSplit, contextDigest, recordPaystackPayment, validatePaystackInitialization,
+  paystackSettlementMode
 } from "../server/paystack.js";
 
 const isUuid = value => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
@@ -203,7 +204,8 @@ export async function createPaystackCheckout({ id, weddingId, slug, streamName, 
       metadata: { contribution_id: id, wedding_id: weddingId, stream: streamName,
         ...(paymentKind ? { payment_kind: paymentKind } : {}),
         ...(paystackContext ? { ws_context: contextDigest(paystackContext) } : {}) },
-      ...(paystackContext?.kind === "guest" ? { split: paystackSplit(paystackContext, idempotencyKey) } : {})
+      ...(paystackContext?.kind === "guest" && paystackSettlementMode(paystackContext) === "split"
+        ? { split: paystackSplit(paystackContext, idempotencyKey) } : {})
     }),
     cache: "no-store", signal: AbortSignal.timeout(12_000)
   });
@@ -248,7 +250,7 @@ async function handleOptions(req, res) {
     if (paystackEnvironment() === "live") {
       try {
         paystackApproved = await paystackApproval("guest", currency);
-        destination = paystackApproved ? await paystackDestination(weddingId, currency) : null;
+        destination = paystackApproved?.settlement_mode === "split" ? await paystackDestination(weddingId, currency) : null;
       } catch {
         paystackApproved = false;
         paystackApprovalUnavailable = true;
@@ -258,7 +260,7 @@ async function handleOptions(req, res) {
     const candidates = availableProviderMarkets(currency).filter(item => enabled.includes(item.id) &&
       (item.id !== "daraja" || liveApproved) &&
       (item.id !== "paystack" || (paystackApproved && (paystackEnvironment() !== "live" ||
-        (destination?.verified_at && destination?.consent_at &&
+        ((paystackApproved.settlement_mode === "standard" || (destination?.verified_at && destination?.consent_at)) &&
           paystackApproved.capabilities.some(pair => pair.currency === currency && pair.market === item.market))))));
     const eligible = [...new Set(candidates.map(item => item.id))];
     const health = await Promise.all(eligible.map(async provider =>
@@ -267,7 +269,8 @@ async function handleOptions(req, res) {
     const healthy = new Set(health.filter(([, ready]) => ready).map(([provider]) => provider));
     const METHOD_LABELS = { daraja: "M-Pesa", stripe: "Card", paystack: "Card" };
     const providers = candidates.filter(item => healthy.has(item.id))
-      .map(item => ({ ...item, label: METHOD_LABELS[item.id] || "Pay online" }));
+      .map(item => ({ ...item, label: METHOD_LABELS[item.id] || "Pay online",
+        ...(item.id === "paystack" && paystackEnvironment() === "live" ? { settlementMode: paystackApproved.settlement_mode } : {}) }));
     return sendJson(res, 200, {
       providers,
       paymentAvailable: providers.length > 0,
@@ -553,7 +556,7 @@ async function handleCheckout(req, res) {
       checkout_idempotency_key: idempotencyKey,
       ...(liveDaraja ? { payment_environment: "live", daraja_shortcode: process.env.DARAJA_SHORTCODE } : {}),
       ...(livePaystack ? {
-        payment_environment: "live", paystack_context: paystackContext, settlement_route: "paystack_direct",
+        payment_environment: "live", paystack_context: paystackContext, settlement_route: paystackContext.settlement_route,
         provider_reference: idempotencyKey, platform_fixed_fee_minor: paystackContext.fixed_fee_minor,
         platform_fee_basis_points: paystackContext.fee_basis_points
       } : {})

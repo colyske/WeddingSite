@@ -270,20 +270,30 @@
           ${esc(providerLabels[provider.id] || provider.id)} — ${provider.configured ? (provider.id === "daraja" && djLive ? "Configured for live reconciliation (new collection per status above)" : provider.id === "paystack" && ps.environment === "live" ? "Live Paystack configured (new collection per approval status)" : "Test adapter configured (health checked at checkout)") : "Setup incomplete or unsupported currency/market"}</label>`).join("")}
         <button type="submit">Save payment methods</button></form>`);
       el.insertAdjacentHTML("beforeend", `<section class="notice" id="paystack-finance">
-        <h3>Paystack live Split Payments</h3>
+        <h3>Paystack live collection</h3>
         <p>Environment: ${esc(ps.environment || "unconfigured")}. Owner approval: ${ps.approved ? "granted" : "held"}.
         New collection: ${esc(ps.newCollection || "held")}. Collection kill switch: ${ps.collectionKillSwitchOn ? "on" : "off"}.
         Publication kill switch: ${ps.publicationKillSwitchOn ? "on" : "off"}. Independent reconciliation: ${ps.reconciliationEnabled ? "on" : "off"}.</p>
-        ${ps.approvalUnavailable ? `<p class="notice">${esc(ps.reason)}</p>` : ""}
-        <p>Couple proceeds are settled by Paystack, never credited to a withdrawable Join Our Wedding balance. Publication fees are platform-only.
-        Activated merchant status alone does not prove Kenya, currency or Split Payments eligibility. Fixed live Paystack commission uses USD policy and a fresh immutable FX snapshot.</p>
-        ${owner ? `<form id="paystack-policy-form"><h4>Owner approval (does not change environment switches)</h4>
+        ${ps.reason ? `<p class="notice">${esc(ps.reason)}</p>` : ""}
+        <p>Selected guest settlement mode: <strong>${esc(ps.settlementMode || "standard")}</strong>.
+        Standard collection credits the platform-held wedding ledger; existing fee/settlement holds, KYC and the OFF payout gate still apply.
+        Split proceeds go directly to the couple and can never be withdrawn again here. Publication fees always remain platform-only.</p>
+        <p class="fine">${esc(ps.splitHoldingReason || "")} Fixed live Paystack commission uses USD policy and immutable FX.</p>
+        ${owner ? `<form id="paystack-mode-form"><h4>Owner settlement-mode control</h4>
+          <input type="hidden" name="policyRevision" value="${esc(ps.policyRevision || "")}">
+          <label>New guest payments<select name="mode"><option value="standard"${ps.settlementMode === "split" ? "" : " selected"}>Standard: platform-collected</option><option value="split"${ps.settlementMode === "split" ? " selected" : ""}${ps.splitReady ? "" : " disabled"}>Split: direct to couple (requires verified contract and onboarding)</option></select></label>
+          <p>Changing mode never reroutes existing checkouts, refunds or payouts. No automatic split-to-standard fallback. Saving does not activate live payments.</p>
+          <button type="submit"${ps.policyRevision ? "" : " disabled"}>Save settlement mode</button>
+        </form>
+        <form id="paystack-policy-form"><h4>Owner approval (does not change environment switches)</h4>
+          <input type="hidden" name="policyRevision" value="${esc(ps.policyRevision || "")}">
           <label>Account-confirmed market/currency pairs (JSON)<textarea name="capabilities" required placeholder='[{"market":"KE","currency":"KES"}]'>${esc(JSON.stringify(ps.capabilities || []))}</textarea></label>
-          <label>Provider fee bearer<select name="feeBearer"><option value="subaccount"${ps.feeBearer === "account" ? "" : " selected"}>Couple/subaccount (platform receives its fee)</option><option value="account"${ps.feeBearer === "account" ? " selected" : ""}>Platform (provider charge reduces platform fee)</option></select></label>
+          <label>Split provider fee bearer<select name="feeBearer"><option value="subaccount"${ps.feeBearer === "account" ? "" : " selected"}>Couple/subaccount (platform receives its fee)</option><option value="account"${ps.feeBearer === "account" ? " selected" : ""}>Platform (provider charge reduces platform fee)</option></select></label>
+          <label><input name="standardEnabled" type="checkbox"${ps.standardApproved ? " checked" : ""}> Approve standard platform-collected guest payments</label>
           <label><input name="splitEnabled" type="checkbox"${ps.splitApproved ? " checked" : ""}> Approve guest Split Payments</label>
           <label><input name="publicationEnabled" type="checkbox"${ps.publicationApproved ? " checked" : ""}> Approve platform-only live publication payments</label>
-          <label><input name="eligibilityConfirmed" type="checkbox" required> I verified this merchant's supported pairs, Split Payments eligibility and account settlement requirements with Paystack, and understand activation can charge real money.</label>
-          <button type="submit">Save Owner approval</button><button id="paystack-revoke" type="button">Revoke approval</button>
+          <label><input name="eligibilityConfirmed" type="checkbox" required> I verified this merchant's supported market/currency pairs and selected collection scopes with Paystack, and understand activation can charge real money. Standard collection does not require split eligibility.</label>
+          <button type="submit"${ps.policyRevision ? "" : " disabled"}>Save Owner approval</button><button id="paystack-revoke" type="button"${ps.policyRevision ? "" : " disabled"}>Revoke approval</button>
         </form>
         <form id="paystack-destination-form"><h4>Verify a pre-existing couple subaccount</h4>
           <p>This performs a read-only Paystack verification. It never creates a provider subaccount or changes bank details; couple consent is reset after re-verification.</p>
@@ -291,7 +301,7 @@
           <label>Existing subaccount code<input name="subaccountCode" type="text" pattern="ACCT_[A-Za-z0-9]+" required autocomplete="off"></label>
           <button type="submit">Verify destination (no financial operation)</button>
         </form>` : ""}
-        <form id="paystack-settlement-form"><h4>Reconcile provider settlement statement</h4>
+        <form id="paystack-settlement-form"><h4>Reconcile split provider settlement statement</h4>
           <p>Read-only provider checks plus an immutable internal record. Missing allocation data, deductions and mismatches remain for review; no transfer or refund is initiated.</p>
           <label>Contribution ID<input name="contributionId" type="text" required></label>
           <label>Provider settlement ID<input name="settlementId" type="text" pattern="[1-9][0-9]*" required></label>
@@ -386,7 +396,7 @@
     panel.addEventListener("click", async (e) => {
       if (e.target.closest("#paystack-revoke")) {
         if (!confirm("Revoke Paystack live approval? New guest and publication payments stop. Existing payments still reconcile unless the independent reconciliation switch is off.")) return;
-        try { await post("paystack-policy", { approved: false, confirmed: true }); await show("fees"); }
+        try { await post("paystack-policy", { approved: false, confirmed: true, policyRevision: $("paystack-mode-form").elements.policyRevision.value }); await show("fees"); }
         catch (error) { toast(error.message, true); }
         return;
       }
@@ -451,7 +461,7 @@
     });
     panel.addEventListener("submit", async (e) => {
       e.preventDefault();
-      if (["paystack-policy-form","paystack-destination-form","paystack-settlement-form"].includes(e.target.id) ||
+      if (["paystack-policy-form","paystack-mode-form","paystack-destination-form","paystack-settlement-form"].includes(e.target.id) ||
           e.target.classList.contains("paystack-publication-resolution")) {
         const form = e.target, button = form.querySelector('button[type="submit"]');
         if (button.disabled || !confirm("Confirm this Paystack configuration or read-only verification? No provider financial operation is initiated.")) return;
@@ -460,9 +470,11 @@
         try {
           const action = form.classList.contains("paystack-publication-resolution") ? "paystack-publication-resolution"
             : form.id === "paystack-policy-form" ? "paystack-policy"
+            : form.id === "paystack-mode-form" ? "paystack-settlement-mode"
             : form.id === "paystack-destination-form" ? "paystack-destination" : "paystack-settlement";
           const body = action === "paystack-policy" ? {
             approved: true, capabilities: JSON.parse(values.capabilities), feeBearer: values.feeBearer,
+            standardEnabled: values.standardEnabled === "on", policyRevision: values.policyRevision,
             splitEnabled: values.splitEnabled === "on", publicationEnabled: values.publicationEnabled === "on",
             eligibilityConfirmed: values.eligibilityConfirmed === "on"
           } : { ...values, ...(action === "paystack-publication-resolution" ? { eventId: form.dataset.event } : {}) };

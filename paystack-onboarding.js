@@ -15,11 +15,12 @@
       if (!response.ok) throw new Error(data.error || "Paystack onboarding status is unavailable.");
       const row = data.onboarding;
       revision = row.revision;
-      status.textContent = !row.verified ? "Not onboarded. Ask the platform Owner to verify your existing Paystack subaccount. No direct-settlement checkout can start."
+      status.textContent = row.settlementMode === "standard" ? "Standard platform-collected Paystack is selected. No split subaccount or destination consent is required for collection. Existing wallet settlement holds, payout KYC and the OFF payout gate still apply; live activation is separate."
+        : !row.verified ? "Not onboarded. Ask the platform Owner to verify your existing Paystack subaccount. No direct-settlement checkout can start."
         : !row.kycComplete ? "Paystack destination verified. Complete both partners' required details and consent before receiving direct settlements."
           : row.consented ? "Paystack destination verified and consent recorded. Provider activation and market/currency checks still apply."
             : "Paystack destination verified. Confirm the receiving account with the platform Owner before consenting below.";
-      consent.disabled = !row.verified || !row.kycComplete || row.consented;
+      consent.disabled = row.settlementMode === "standard" || !row.verified || !row.kycComplete || row.consented;
       const settlements = document.getElementById("paystack-settlement-rows");
       settlements.replaceChildren();
       for (const payment of data.settlements || []) {

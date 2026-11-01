@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { createHmac, createHash } from "node:crypto";
 import { Readable } from "node:stream";
 import { paystackEnvironment, paystackAdmissionEnabled, paystackCredentialFingerprint, contextDigest,
-  paystackSplit, verifyPaystackContext, verifiedSubaccount, parsePaystackJson, reconcilePaystackSettlement, paystackReadiness } from "../server/paystack.js";
+  paystackSplit, verifyPaystackContext, verifiedSubaccount, parsePaystackJson, reconcilePaystackSettlement, paystackReadiness,
+  paystackApproval, validatePaystackInitialization } from "../server/paystack.js";
 import { verifyProviderPayment } from "../server/payment-adapters.js";
 import { createPaystackCheckout } from "../api/checkout.js";
 import checkout from "../api/checkout.js";
@@ -15,7 +16,8 @@ const env = {
   WEDDINGSITE_PAYMENT_MODE: "live", PAYSTACK_SECRET_KEY: "sk_live_synthetic_fixture",
   PAYSTACK_MERCHANT_ID: "123", PAYSTACK_LIVE_MERCHANT_CONFIRMED: "123",
   PAYSTACK_LIVE_COLLECTION_ENABLED: "true", PAYSTACK_LIVE_PUBLICATION_ENABLED: "true",
-  PAYSTACK_RECONCILIATION_ENABLED: "true", PAYSTACK_SUPPORTED_CURRENCIES: "KES", PAYSTACK_SUPPORTED_MARKETS: "KE",
+  PAYSTACK_RECONCILIATION_ENABLED: "true", PAYSTACK_LIVE_SPLIT_ENABLED: "true",
+  PAYSTACK_SUPPORTED_CURRENCIES: "KES", PAYSTACK_SUPPORTED_MARKETS: "KE",
   WEDDINGSITE_PUBLIC_ORIGIN: "https://weddingsite.example", TURNSTILE_SECRET_KEY: "fixture",
   TURNSTILE_SITE_KEY: "fixture-site", SUPABASE_URL: "https://db.example",
   SUPABASE_SERVICE_ROLE_KEY: "fixture-service", SUPABASE_ANON_KEY: "fixture-anon"
@@ -36,7 +38,7 @@ function context(kind = "guest", bearer = "subaccount") {
   return {
     kind, environment: "live", merchant_id: "123", credential_fingerprint: paystackCredentialFingerprint(),
     amount_minor: 10005, currency: "KES", policy_revision: KEY, wedding_id: WID, platform_fee_minor: kind === "publication" ? 10005 : 501,
-    fee_bearer: bearer, ...(kind === "guest" ? { subaccount_code: "ACCT_fixture", subaccount_id: "456",
+    fee_bearer: bearer, ...(kind === "guest" ? { settlement_mode:"split",settlement_route:"paystack_direct",subaccount_code: "ACCT_fixture", subaccount_id: "456",
       policy_revision: KEY, destination_revision: KEY, fee_basis_points: 500, fixed_fee_minor: 1 } : {})
   };
 }
@@ -51,6 +53,14 @@ function transaction(ctx) {
         subaccounts: [{ id: 456, subaccount_code: ctx.subaccount_code, amount: couple }] }
     } } : { split: {}, subaccount: {} })
   };
+}
+function standardContext() {
+  const ctx=context();
+  for (const key of ["subaccount_code","subaccount_id","destination_revision","destination_fingerprint"]) delete ctx[key];
+  return {...ctx,settlement_mode:"standard",settlement_route:"platform_wallet",fee_bearer:"couple_wallet",market:"KE"};
+}
+function standardTransaction(ctx) {
+  return {...transaction(ctx),split:{},subaccount:{},fees_split:null};
 }
 function call(handler,req) {
   const res = { setHeader() {}, status(code) { this.statusCode=code; return this; }, end(value) { this.body=JSON.parse(value); } };
@@ -93,7 +103,7 @@ test("flat split and both fee bearers conserve precision; publication is unsplit
         if (path==="/rest/v1/platform_policies") return Response.json([{enabled_payment_providers:["paystack"]}]);
         if (path==="/rest/v1/paystack_destinations") return Response.json([{revision:KEY,consent_at:"2026-11-01T00:00:00Z"}]);
         assert.equal(path,"/rest/v1/paystack_live_policy");
-        return Response.json([{approved:true,split_enabled:true,publication_enabled:true,merchant_id:"123",
+        return Response.json([{approved:true,settlement_mode:"split",split_enabled:true,split_contract_ready:true,publication_enabled:true,merchant_id:"123",
           credential_fingerprint:ctx.credential_fingerprint,revision:KEY,capabilities:[{market:"KE",currency:"KES"}]}]);
       }
       assert.equal(url,"https://api.paystack.co/transaction/initialize");
@@ -202,8 +212,8 @@ test("stale provider switches prevent live checkout before initialization", asyn
   assert.equal(result.statusCode,409);
   assert.equal(providerCalls,0);
 });
-test("live guest initialization persists its immutable reference before HTTP and retains an uncertain attempt", async () => {
-  const ctx=context();
+for (const mode of ["standard","split"]) test(`${mode} live guest initialization persists its immutable reference before HTTP and retains an uncertain attempt`, async () => {
+  const ctx=mode === "standard" ? standardContext() : context();
   const sample = { id:456,subaccount_code:"ACCT_fixture",integration:123,currency:"KES",domain:"live",
     product:"collection",active:true,is_verified:true,account_number:"synthetic",settlement_bank:"synthetic",
     account_name:"Synthetic",updatedAt:"2026-11-01T00:00:00Z" };
@@ -232,7 +242,7 @@ test("live guest initialization persists its immutable reference before HTTP and
       max_contribution_minor:1000000,contribution_fee_basis_points:500,
       contribution_fixed_fee_minor:1,contribution_fixed_fee_currency:"USD"}]);
     if (path==="/rest/v1/weddings") return Response.json([{id:WID,currency:"KES",slug:"fixture",wedding_date:"2099-01-01",time_zone:"Africa/Nairobi"}]);
-    if (path==="/rest/v1/paystack_live_policy") return Response.json([{approved:true,split_enabled:true,merchant_id:"123",
+    if (path==="/rest/v1/paystack_live_policy") return Response.json([{approved:true,settlement_mode:mode,standard_enabled:true,split_enabled:true,split_contract_ready:true,merchant_id:"123",
       credential_fingerprint:ctx.credential_fingerprint,revision:KEY,capabilities:[{market:"KE",currency:"KES"}]}]);
     if (path==="/rest/v1/paystack_destinations") return Response.json([{subaccount_code:"ACCT_fixture",
       destination_fingerprint:ctx.destination_fingerprint,credential_fingerprint:ctx.credential_fingerprint,
@@ -259,6 +269,83 @@ test("live guest initialization persists its immutable reference before HTTP and
   assert.equal((await call(checkout,request)).statusCode,409);
   assert.equal(initializations,1);
   assert.ok(writes.every(([,method])=>method==="POST"));
+});
+test("standard approval needs no subaccount, split eligibility or split switch; stale mode is held before HTTP", async () => {
+  const ctx=standardContext();
+  process.env.PAYSTACK_LIVE_SPLIT_ENABLED="false";
+  let mode="standard",initializations=0;
+  globalThis.fetch=async(input,init={})=>{
+    const url=new URL(input);
+    if (url.host==="api.paystack.co") {
+      assert.equal(url.pathname,"/transaction/initialize");
+      const body=JSON.parse(init.body);
+      for (const field of ["split","split_code","subaccount","transaction_charge","bearer"]) assert.equal(body[field],undefined);
+      initializations++;
+      return Response.json({status:true,data:{authorization_url:"https://checkout.paystack.com/fixture",reference:KEY}});
+    }
+    if (url.pathname==="/rest/v1/platform_policies") return Response.json([{enabled_payment_providers:["paystack"]}]);
+    assert.equal(url.pathname,"/rest/v1/paystack_live_policy","Standard collection never reads destination onboarding");
+    return Response.json([{approved:true,standard_enabled:true,settlement_mode:mode,split_enabled:true,split_contract_ready:false,
+      merchant_id:"123",credential_fingerprint:ctx.credential_fingerprint,revision:KEY,capabilities:[{market:"KE",currency:"KES"}]}]);
+  };
+  assert.ok(await paystackApproval("guest","KES","KE"));
+  await createPaystackCheckout({id:CID,weddingId:WID,amountMinor:10005,currency:"KES",email:"fixture@example.test",
+    idempotencyKey:KEY,returnUrl:"https://weddingsite.example",paystackContext:ctx});
+  assert.equal(initializations,1);
+  mode="split";
+  assert.equal(await paystackApproval("guest","KES","KE"),null);
+  await assert.rejects(validatePaystackInitialization(ctx));
+  assert.equal(initializations,1);
+  assert.deepEqual(verifyPaystackContext(standardTransaction(ctx),ctx),
+    {couple_minor:9404,platform_minor:501,provider_fee_minor:100},"Verification follows admitted mode after toggle change");
+});
+test("standard independent verification rejects split, mixed mode, unknown fees and cannot use signed split fallback", async () => {
+  const ctx=standardContext();
+  for (const change of [tx=>{tx.domain="test";},tx=>{tx.amount++;},tx=>{tx.fees=null;},
+    tx=>{tx.fees=9505;},tx=>{tx.split={id:1};},tx=>{tx.subaccount={id:456};},tx=>{tx.fees_split={paystack:100};},
+    tx=>{tx.split=1;},tx=>{tx.subaccount=[];},tx=>{tx.fees_split="unknown";},tx=>{tx.integration=999;}]) {
+    const tx=standardTransaction(ctx);change(tx);assert.throws(()=>verifyPaystackContext(tx,ctx));
+  }
+  assert.throws(()=>verifyPaystackContext(standardTransaction(ctx),ctx,transaction(context()).split));
+  for (const mode of [undefined,"unknown"]) {
+    const unknown={...ctx,settlement_mode:mode};
+    assert.throws(()=>verifyPaystackContext(standardTransaction(unknown),unknown));
+  }
+  assert.throws(()=>paystackSplit(ctx,KEY));
+  globalThis.fetch=async()=>Response.json({status:true,data:standardTransaction(ctx)});
+  process.env.PAYSTACK_LIVE_COLLECTION_ENABLED="false";
+  const payment=await verifyProviderPayment("paystack",KEY,CID,10005,"KES",{context:ctx});
+  assert.equal(payment.verified,true);
+  assert.equal(payment.allocation.couple_minor,9404);
+});
+test("standard signed callbacks, polls and refunds keep the admitted wallet mode without split evidence", async () => {
+  const ctx=standardContext(),tx=standardTransaction(ctx),events=new Set();
+  let verifiedCalls=0,adjustments=0;
+  globalThis.fetch=async(input,init={})=>{
+    const url=new URL(input);
+    if (url.host==="api.paystack.co") {verifiedCalls++;return Response.json({status:true,data:tx});}
+    if (url.pathname==="/rest/v1/contributions") return Response.json([{id:CID,provider_reference:KEY,
+      pledged_amount_minor:10005,currency:"KES",paystack_context:ctx}]);
+    if (url.pathname==="/rest/v1/rpc/record_provider_adjustment") {adjustments++;return Response.json(true);}
+    assert.equal(url.pathname,"/rest/v1/rpc/record_verified_paystack_payment");
+    const body=JSON.parse(init.body),fresh=!events.has(body.p_event_id);events.add(body.p_event_id);
+    assert.equal(body.p_allocation.couple_minor,9404);return Response.json(fresh);
+  };
+  const hook=async event=>{
+    const raw=Buffer.from(JSON.stringify(event)),req=Readable.from([raw]);
+    req.method="POST";req.query={provider:"paystack"};
+    req.headers={"x-paystack-signature":createHmac("sha512",env.PAYSTACK_SECRET_KEY).update(raw).digest("hex")};
+    return call(webhooks,req);
+  };
+  assert.equal((await hook({event:"charge.success",data:tx})).body.processed,true);
+  process.env.PAYSTACK_LIVE_SPLIT_ENABLED="false";
+  process.env.PAYSTACK_LIVE_COLLECTION_ENABLED="false";
+  assert.equal((await hook({event:"charge.success",data:tx})).body.processed,false);
+  assert.equal(events.size,1);
+  await hook({event:"refund.processed",data:{id:99,transaction:tx,amount:100,currency:"KES",
+    refunded_at:"2026-11-01T10:00:00Z",created_at:"2026-11-01T10:00:00Z"}});
+  assert.equal(adjustments,1);
+  assert.equal(verifiedCalls,3);
 });
 test("unavailable Paystack approval holds only Paystack and preserves live Daraja options", async () => {
   context();
@@ -307,12 +394,38 @@ test("Admin and SuperAdmin cannot change Paystack Owner policy or destination", 
       if (url.pathname==="/rest/v1/profiles") return Response.json([{id:CID,platform_role:role}]);
       throw new Error(`Unexpected ${url.pathname}`);
     };
-    for (const action of ["paystack-policy","paystack-destination","paystack-publication-resolution"]) {
+    for (const action of ["paystack-policy","paystack-settlement-mode","paystack-destination","paystack-publication-resolution"]) {
       const result=await call(admin,{method:"POST",query:{action},headers:{authorization:"Bearer fixture-user"},body:{}});
       assert.equal(result.statusCode,403);
     }
     assert.equal(providerCalls,0);
   }
+});
+test("Owner mode API requires revision and confirmation, rejects unverified split and preserves provider switches", async () => {
+  const ctx=standardContext();
+  let writes=0;
+  globalThis.fetch=async(input,init={})=>{
+    const url=new URL(input);
+    assert.equal(url.host,"db.example","Owner mode change never contacts the provider");
+    if (url.pathname==="/auth/v1/user") return Response.json({id:CID});
+    if (url.pathname==="/rest/v1/profiles") return Response.json([{id:CID,platform_role:"owner"}]);
+    if (url.pathname==="/rest/v1/platform_policies") return Response.json([{enabled_payment_providers:["daraja"]}]);
+    if (url.pathname==="/rest/v1/paystack_live_policy") return Response.json([{approved:true,standard_enabled:true,
+      settlement_mode:"standard",revision:KEY,merchant_id:"123",credential_fingerprint:ctx.credential_fingerprint,
+      split_enabled:true,split_contract_ready:false,capabilities:[{market:"KE",currency:"KES"}]}]);
+    assert.equal(url.pathname,"/rest/v1/rpc/owner_set_paystack_settlement_mode");
+    assert.deepEqual(JSON.parse(init.body),{p_mode:"standard",p_revision:KEY,p_confirmed:true});
+    writes++;return Response.json(true);
+  };
+  const request={method:"POST",query:{action:"paystack-settlement-mode"},headers:{authorization:"Bearer fixture"}};
+  for (const body of [{mode:"standard",confirmed:true},{mode:"standard",policyRevision:KEY},
+    {mode:"unknown",policyRevision:KEY,confirmed:true}]) assert.equal((await call(admin,{...request,body})).statusCode,400);
+  const rejected=await call(admin,{...request,body:{mode:"split",policyRevision:KEY,confirmed:true}});
+  assert.equal(rejected.statusCode,409);assert.match(rejected.body.error,/unverified/);assert.equal(writes,0);
+  const saved=await call(admin,{...request,body:{mode:"standard",policyRevision:KEY,confirmed:true}});
+  assert.equal(saved.statusCode,200);assert.equal(writes,1);
+  assert.equal(saved.body.paystack.newCollection,"held","Owner mode cannot bypass the provider allowlist");
+  assert.match(saved.body.paystack.reason,/Leadership/);
 });
 test("settlement statement reconciliation validates destination totals and never initiates a payout", async () => {
   const ctx=context(),tx=transaction(ctx);

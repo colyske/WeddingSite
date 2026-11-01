@@ -89,7 +89,7 @@ const text = value => typeof value === "string" ? value.trim() : "";
 const ROLES = new Set(["client", "admin", "superadmin"]);
 const PAYOUT_STATUSES = new Set(["approved", "sent", "cancelled"]);
 const LEADERSHIP_ACTIONS = new Set(["overview", "ledger", "payouts", "audit", "policies", "refund-policy", "payment-controls", "policy-history", "set-role", "payment-controls-save", "paystack-settlement", "paystack-publication-adjustments"]);
-const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save", "daraja-readiness", "daraja-approval", "paystack-readiness", "paystack-policy", "paystack-destination", "paystack-publication-resolution"]);
+const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save", "daraja-readiness", "daraja-approval", "paystack-readiness", "paystack-policy", "paystack-settlement-mode", "paystack-destination", "paystack-publication-resolution"]);
 
 function safeMessage(error) {
   const m = String(error?.message || "");
@@ -167,20 +167,34 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { ok: true, daraja: await darajaCollectionStatus() });
     }
     if (action === "paystack-policy") {
-      if (typeof body.approved !== "boolean" || body.confirmed !== true ||
+      if (typeof body.approved !== "boolean" || body.confirmed !== true || !UUID.test(body.policyRevision || "") ||
           (body.approved && (body.eligibilityConfirmed !== true || paystackEnvironment() !== "live" ||
             !paystackMerchant() || process.env.PAYSTACK_LIVE_MERCHANT_CONFIRMED !== paystackMerchant() ||
             !Array.isArray(body.capabilities) || body.capabilities.some(pair =>
               !/^[A-Z]{2}$/.test(pair?.market || "") || !globalThis.WSCurrencies.supportsAccounting(pair?.currency)) ||
-            typeof body.splitEnabled !== "boolean" || typeof body.publicationEnabled !== "boolean" ||
+            typeof body.standardEnabled !== "boolean" || typeof body.splitEnabled !== "boolean" || typeof body.publicationEnabled !== "boolean" ||
             !["account","subaccount"].includes(body.feeBearer)))) {
-        return sendJson(res, 400, { error: "Confirm the account-specific eligible currencies/markets, Split Payments capability, fee bearer and live-charge warning." });
+        return sendJson(res, 400, { error: "Reload and confirm the current policy, account-specific collection capabilities, approved scopes and live-charge warning." });
       }
       await rpc("owner_set_paystack_policy", token, {
         p_approved: body.approved, p_merchant_id: paystackMerchant(),
         p_credential_fingerprint: paystackCredentialFingerprint(), p_capabilities: body.capabilities || [],
         p_split_enabled: body.splitEnabled === true, p_publication_enabled: body.publicationEnabled === true,
-        p_fee_bearer: body.feeBearer || "subaccount", p_confirmed: true
+        p_fee_bearer: body.feeBearer || "subaccount", p_confirmed: true,
+        p_standard_enabled: body.standardEnabled === true, p_expected_revision: body.policyRevision
+      });
+      return sendJson(res, 200, { ok: true, paystack: await paystackReadiness() });
+    }
+    if (action === "paystack-settlement-mode") {
+      if (!["standard","split"].includes(body.mode) || !UUID.test(body.policyRevision || "") || body.confirmed !== true) {
+        return sendJson(res, 400, { error: "Confirm the current standard or split settlement mode." });
+      }
+      if (body.mode === "split") {
+        const readiness = await paystackReadiness();
+        if (!readiness.splitReady) return sendJson(res, 409, { error: readiness.splitHoldingReason });
+      }
+      await rpc("owner_set_paystack_settlement_mode", token, {
+        p_mode: body.mode, p_revision: body.policyRevision, p_confirmed: true
       });
       return sendJson(res, 200, { ok: true, paystack: await paystackReadiness() });
     }

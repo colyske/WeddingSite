@@ -2,6 +2,10 @@
 create table public.paystack_live_policy (
   singleton boolean primary key default true check (singleton),
   approved boolean not null default false,
+  standard_enabled boolean not null default false,
+  settlement_mode text not null default 'standard' check (settlement_mode in ('standard','split')),
+  -- No usable beneficiary statement contract has been established in this build.
+  split_contract_ready boolean not null default false constraint paystack_split_contract_unverified check (not split_contract_ready),
   split_enabled boolean not null default false,
   publication_enabled boolean not null default false,
   merchant_id text,
@@ -63,25 +67,39 @@ grant select on public.paystack_payment_evidence to service_role;
 create trigger paystack_payment_evidence_immutable before update or delete on public.paystack_payment_evidence
   for each row execute function public.prevent_financial_adjustment_ledger_mutation();
 
+-- Same existing two-decimal accounting boundary as currencies.js / amount-presets SQL, not a provider-country restriction.
+create function public.paystack_accounting_currency_supported(p_currency text) returns boolean
+language sql immutable set search_path = '' as $$
+  select coalesce(p_currency = any(string_to_array(
+    'AED,AMD,ANG,AOA,ARS,AUD,AWG,AZN,BAM,BBD,BDT,BGN,BMD,BND,BOB,BRL,BSD,BTN,BWP,BYN,BZD,CAD,CDF,CHF,CNY,COP,CRC,CUC,CUP,CVE,CZK,DKK,DOP,DZD,EGP,ERN,ETB,EUR,FJD,FKP,GBP,GEL,GHS,GIP,GMD,GTQ,GYD,HKD,HNL,HRK,HTG,HUF,IDR,ILS,INR,JMD,KES,KGS,KHR,KYD,KZT,LKR,LRD,LSL,MAD,MDL,MKD,MNT,MOP,MRU,MUR,MVR,MWK,MXN,MYR,MZN,NAD,NGN,NIO,NOK,NPR,NZD,PAB,PEN,PGK,PHP,PKR,PLN,QAR,RON,RUB,SAR,SBD,SCR,SDG,SEK,SGD,SHP,SLE,SRD,SSP,STN,SVC,SZL,THB,TJS,TMT,TOP,TRY,TTD,TWD,TZS,UAH,USD,UYU,UZS,VES,WST,XCD,XCG,XDR,XSU,ZAR,ZMW,ZWG,ZWL',',')),false)
+$$;
+
 create function public.owner_set_paystack_policy(p_approved boolean, p_merchant_id text,
   p_credential_fingerprint text, p_capabilities jsonb, p_split_enabled boolean,
-  p_publication_enabled boolean, p_fee_bearer text, p_confirmed boolean)
+  p_publication_enabled boolean, p_fee_bearer text, p_confirmed boolean,
+  p_standard_enabled boolean, p_expected_revision uuid)
 returns boolean language plpgsql security definer set search_path = '' as $$
 begin
   perform public.require_staff('owner');
   if p_approved is null or not coalesce(p_confirmed,false) then raise exception 'Confirm the Paystack policy change.'; end if;
+  perform 1 from public.paystack_live_policy where singleton for update;
+  if not exists(select 1 from public.paystack_live_policy where revision=p_expected_revision) then
+    raise exception 'Paystack policy changed. Reload before saving.';
+  end if;
   if p_approved and (p_merchant_id is null or p_merchant_id !~ '^[1-9][0-9]{0,15}$'
     or p_credential_fingerprint is null or p_credential_fingerprint !~ '^[a-f0-9]{64}$'
     or p_capabilities is null or jsonb_typeof(p_capabilities) <> 'array'
     or jsonb_array_length(p_capabilities) not between 1 and 30
     or exists(select 1 from jsonb_array_elements(p_capabilities) pair
       where jsonb_typeof(pair) <> 'object' or coalesce(pair->>'market','') !~ '^[A-Z]{2}$'
-        or coalesce(pair->>'currency','') !~ '^[A-Z]{3}$')
+        or not public.paystack_accounting_currency_supported(pair->>'currency')
+        or exists(select 1 from jsonb_object_keys(pair) k where k not in ('market','currency')))
     or p_fee_bearer is null or p_fee_bearer not in ('account','subaccount')
-    or p_split_enabled is null or p_publication_enabled is null) then
-    raise exception 'Confirm account-specific Paystack market/currency, split eligibility and fee bearer.';
+    or p_split_enabled is null or p_publication_enabled is null or p_standard_enabled is null) then
+    raise exception 'Confirm account-specific Paystack market/currency, approved collection scopes and fee bearer.';
   end if;
   update public.paystack_live_policy set approved=p_approved,
+    standard_enabled=p_approved and coalesce(p_standard_enabled,false),
     split_enabled=p_approved and coalesce(p_split_enabled,false),
     publication_enabled=p_approved and coalesce(p_publication_enabled,false),
     merchant_id=case when p_approved then p_merchant_id end,
@@ -91,7 +109,26 @@ begin
     approved_by=case when p_approved then auth.uid() end,
     approved_at=case when p_approved then now() end where singleton;
   insert into public.audit_events(actor_id,source,action,table_name,record_id,changed_fields)
-    values(auth.uid(),'user','paystack_policy_change','paystack_live_policy','singleton',array['approved','capabilities','fee_bearer']);
+    values(auth.uid(),'user','paystack_policy_change','paystack_live_policy','singleton',
+      array['approved','capabilities','fee_bearer','standard_enabled','split_enabled','publication_enabled','revision']);
+  return true;
+end $$;
+
+create function public.owner_set_paystack_settlement_mode(p_mode text,p_revision uuid,p_confirmed boolean)
+returns boolean language plpgsql security definer set search_path = '' as $$
+declare pp public.paystack_live_policy;
+begin
+  perform public.require_staff('owner');
+  select * into pp from public.paystack_live_policy where singleton for update;
+  if not coalesce(p_confirmed,false) or p_mode is null or p_mode not in ('standard','split')
+    or p_revision is distinct from pp.revision then raise exception 'Confirm the current Paystack settlement mode; reload if changed.'; end if;
+  if p_mode='split' and (not pp.approved or not pp.split_enabled or not pp.split_contract_ready) then
+    raise exception 'Split settlement is unavailable until the provider allocation and statement contract is verified.';
+  end if;
+  update public.paystack_live_policy set settlement_mode=p_mode,revision=extensions.gen_random_uuid() where singleton;
+  insert into public.audit_events(actor_id,source,action,table_name,record_id,changed_fields)
+    values(auth.uid(),'user','paystack_mode_'||pp.settlement_mode||'_to_'||p_mode,
+      'paystack_live_policy','singleton',array['settlement_mode']);
   return true;
 end $$;
 
@@ -134,6 +171,7 @@ begin
   select * into d from public.paystack_destinations where wedding_id=p_wedding_id;
   return jsonb_build_object('verified',d.verified_at is not null,'consented',d.consent_at is not null,
     'revision',d.revision,'currency',d.currency,'kycComplete',public.kyc_is_complete(p_wedding_id),
+    'settlementMode',(select settlement_mode from public.paystack_live_policy where singleton),
     'message','Paystack verifies the payout destination separately from required-details-and-consent KYC. Direct settlements cannot be withdrawn again from WeddingSite.');
 end $$;
 
@@ -163,16 +201,18 @@ begin
   select * into pp from public.paystack_live_policy where singleton;
   select * into d from public.paystack_destinations where wedding_id=p_wedding_id;
   select * into p from public.platform_policies where id;
-  if not pp.approved or not pp.split_enabled or not coalesce('paystack'=any(p.enabled_payment_providers),false)
-    or d.merchant_id is distinct from pp.merchant_id or d.credential_fingerprint is distinct from pp.credential_fingerprint
-    or d.currency is distinct from p_currency or d.consent_at is null
-    or not public.kyc_is_complete(p_wedding_id)
+  if not pp.approved or not coalesce('paystack'=any(p.enabled_payment_providers),false)
+    or (pp.settlement_mode='standard' and not pp.standard_enabled)
+    or (pp.settlement_mode='split' and (not pp.split_enabled or not pp.split_contract_ready
+      or d.merchant_id is distinct from pp.merchant_id or d.credential_fingerprint is distinct from pp.credential_fingerprint
+      or d.currency is distinct from p_currency or d.consent_at is null or not public.kyc_is_complete(p_wedding_id)))
     or not exists(select 1 from public.weddings where id=p_wedding_id and currency=p_currency
       and published_at is not null and archived_at is null)
     or not exists(select 1 from jsonb_array_elements(pp.capabilities) pair
       where pair->>'market'=p_market and pair->>'currency'=p_currency)
+    or not public.paystack_accounting_currency_supported(p_currency)
     or p_amount_minor is null or p_amount_minor not between 1 and p.max_contribution_minor then
-    raise exception 'Paystack direct settlement is held pending approved capability and verified/consented destination.';
+    raise exception 'Paystack selected settlement mode is held pending approved capability and required evidence.';
   end if;
   if p.contribution_fixed_fee_minor > 0 and p.contribution_fixed_fee_currency <> 'USD' then
     raise exception 'Owner must configure the fixed platform fee in USD before live Paystack.';
@@ -188,11 +228,15 @@ begin
   fee:=round(p_amount_minor::numeric*p.contribution_fee_basis_points/10000)::bigint+fixed_fee;
   if fee >= p_amount_minor then raise exception 'Payment must exceed the configured platform fee.'; end if;
   return jsonb_build_object('kind','guest','environment','live','wedding_id',p_wedding_id,'merchant_id',pp.merchant_id,
-    'credential_fingerprint',pp.credential_fingerprint,'policy_revision',pp.revision,'destination_revision',d.revision,
-    'subaccount_code',d.subaccount_code,'subaccount_id',d.subaccount_id,'destination_fingerprint',d.destination_fingerprint,
-    'amount_minor',p_amount_minor,'currency',p_currency,'market',p_market,'fee_bearer',pp.fee_bearer,
+    'credential_fingerprint',pp.credential_fingerprint,'policy_revision',pp.revision,
+    'settlement_mode',pp.settlement_mode,'settlement_route',case when pp.settlement_mode='split' then 'paystack_direct' else 'platform_wallet' end,
+    'amount_minor',p_amount_minor,'currency',p_currency,'market',p_market,
+    'fee_bearer',case when pp.settlement_mode='split' then pp.fee_bearer else 'couple_wallet' end,
     'platform_fee_minor',fee,'fee_basis_points',p.contribution_fee_basis_points,'fixed_fee_minor',fixed_fee,
-    'fixed_fee_usd_minor',p.contribution_fixed_fee_minor,'fx_snapshot_id',fx.id,'fx_rate',rate,'fx_published_at',fx.published_at);
+    'fixed_fee_usd_minor',p.contribution_fixed_fee_minor,'fx_snapshot_id',fx.id,'fx_rate',rate,'fx_published_at',fx.published_at)
+    || case when pp.settlement_mode='split' then jsonb_build_object('destination_revision',d.revision,
+      'subaccount_code',d.subaccount_code,'subaccount_id',d.subaccount_id,'destination_fingerprint',d.destination_fingerprint)
+      else '{}'::jsonb end;
 end $$;
 
 -- Extend, rather than replace, the Daraja guard.
@@ -246,7 +290,7 @@ begin
     perform 1 from public.platform_policies where id for share;
     perform 1 from public.paystack_destinations where wedding_id=new.wedding_id for share;
     expected:=public.paystack_contribution_quote(new.wedding_id,new.pledged_amount_minor,new.currency,new.paystack_context->>'market');
-    if new.paystack_context is distinct from expected or new.settlement_route <> 'paystack_direct'
+    if new.paystack_context is distinct from expected or new.settlement_route is distinct from expected->>'settlement_route'
       or new.payment_status <> 'pending' or new.verified_provider_payment
       or new.provider_reference is distinct from new.checkout_idempotency_key::text
       or new.platform_fee_basis_points is distinct from (expected->>'fee_basis_points')::integer
@@ -273,12 +317,12 @@ begin
     or c.pledged_amount_minor is distinct from p_amount_minor or p_fee_minor is null or p_fee_minor < 0
     or length(coalesce(p_payment_reference,'')) not between 1 and 200 then raise exception 'Paystack evidence does not match admission.'; end if;
   couple:=p_amount_minor-(c.paystack_context->>'platform_fee_minor')::bigint
-    -case when c.paystack_context->>'fee_bearer'='subaccount' then p_fee_minor else 0 end;
+    -case when c.paystack_context->>'fee_bearer' in ('subaccount','couple_wallet') then p_fee_minor else 0 end;
   platform:=(c.paystack_context->>'platform_fee_minor')::bigint
     -case when c.paystack_context->>'fee_bearer'='account' then p_fee_minor else 0 end;
   if couple<0 or platform<0 or p_allocation is null or p_allocation is distinct from
     jsonb_build_object('couple_minor',couple,'platform_minor',platform,'provider_fee_minor',p_fee_minor) then
-    raise exception 'Paystack split fee allocation does not conserve the verified amount.';
+    raise exception 'Paystack fee allocation does not conserve the verified amount.';
   end if;
   insert into public.paystack_payment_evidence(contribution_id,provider_event_id,provider_reference,provider_payment_reference,
     amount_minor,currency,provider_fee_minor,couple_minor,platform_minor)
@@ -328,10 +372,12 @@ begin
   execute 'create or replace view public.finance_summary with (security_invoker=true) as ' || definition;
 end $$;
 
-revoke all on function public.owner_set_paystack_policy(boolean,text,text,jsonb,boolean,boolean,text,boolean),
+revoke all on function public.owner_set_paystack_policy(boolean,text,text,jsonb,boolean,boolean,text,boolean,boolean,uuid),
+  public.owner_set_paystack_settlement_mode(text,uuid,boolean),
   public.owner_verify_paystack_destination(uuid,jsonb,boolean),public.paystack_destination_status(uuid),
   public.consent_paystack_destination(uuid,uuid,boolean) from public,anon;
-grant execute on function public.owner_set_paystack_policy(boolean,text,text,jsonb,boolean,boolean,text,boolean),
+grant execute on function public.owner_set_paystack_policy(boolean,text,text,jsonb,boolean,boolean,text,boolean,boolean,uuid),
+  public.owner_set_paystack_settlement_mode(text,uuid,boolean),
   public.owner_verify_paystack_destination(uuid,jsonb,boolean),public.paystack_destination_status(uuid),
   public.consent_paystack_destination(uuid,uuid,boolean) to authenticated;
 revoke all on function public.paystack_contribution_quote(uuid,bigint,text,text),

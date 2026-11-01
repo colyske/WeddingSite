@@ -11,7 +11,8 @@ declare pp public.paystack_live_policy; row public.publication_checkouts;
 begin
   select * into pp from public.paystack_live_policy where singleton for share;
   if not pp.approved or not pp.publication_enabled or pp.merchant_id is distinct from p_merchant_id
-    or pp.credential_fingerprint is distinct from p_credential_fingerprint or
+    or pp.credential_fingerprint is distinct from p_credential_fingerprint
+    or not public.paystack_accounting_currency_supported(p_expected_currency) or
     not exists(select 1 from jsonb_array_elements(pp.capabilities) pair where pair->>'currency'=p_expected_currency) then
     raise exception 'Live Paystack publication is not approved for this merchant/currency.';
   end if;

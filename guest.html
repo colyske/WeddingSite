@@ -1230,6 +1230,9 @@ const payIntent = WSPaymentIntent.create({ name: slug });
     $("pay-amount").step = isDaraja ? "1" : "0.01";
     $("pay-submit").textContent = WSPaymentIntent.payLabel(provider, payMode);
     $("pay-submit").classList.toggle("pay-mpesa", isDaraja);
+    $("pay-mode-note").textContent = payMode !== "live" ? "TEST checkout: no real money is collected." :
+      provider === "paystack" ? "LIVE Paystack checkout: real money is collected." : "";
+    $("pay-mode-note").hidden = !$("pay-mode-note").textContent;
     $("pay-daraja-note").textContent = WSPaymentIntent.darajaNote(payMode);
     $("pay-daraja-note").hidden = !$("pay-daraja-note").textContent;
   });

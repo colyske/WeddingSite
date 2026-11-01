@@ -53,7 +53,9 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       if (action === "quote") data = { quote: { fee_minor: 5000, currency: "KES", reason: "Sample far-future fee." } };
       if (action === "publication-options") data = { quote: { fee_minor: 5000, currency: "KES", reason: "Sample far-future fee." }, methods: [], checkout: null, testMode: true };
       if (action === "payment-controls") data = { enabled: ["daraja", "paystack"],
-        providers: [{ id: "daraja", configured: true }, { id: "paystack", configured: true }, { id: "stripe", configured: false }] };
+        providers: [{ id: "daraja", configured: true }, { id: "paystack", configured: true }, { id: "stripe", configured: false }],
+        paystack:{environment:"live",settlementMode:"standard",policyRevision:id,standardApproved:true,splitReady:false,
+          splitHoldingReason:"Split contract remains unverified",newCollection:"held",reason:"The live collection switch is OFF."} };
       return route.fulfill({ contentType: "application/json", body: JSON.stringify(data) });
     });
     const pages = ["index.html", "signin.html", "dashboard.html", `wedding.html?id=${id}`,
@@ -106,6 +108,11 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       await page.locator("#payment-controls-form").waitFor();
       assert.equal(await page.locator('#payment-controls-form input:checked').count(), 2);
       assert.ok(await page.locator('#payment-controls-form button').isEnabled(), "Admin and Owner can save independent method controls");
+      assert.equal(await page.locator('#paystack-mode-form input[name="policyRevision"]').inputValue(),id);
+      assert.equal(await page.locator('#paystack-mode-form select').inputValue(),"standard");
+      assert.equal(await page.locator('#paystack-mode-form option[value="split"]').evaluate(el=>el.disabled),true);
+      assert.ok(await page.locator('#paystack-policy-form input[name="standardEnabled"]').isChecked());
+      assert.match(await page.locator("#paystack-finance").innerText(),/collection switch is OFF/);
       for (const width of [320, 375, 768, 1280]) {
         await page.setViewportSize({ width, height: 800 });
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${surface}: payment controls fit ${width}`);
@@ -134,6 +141,8 @@ test("public, organizer and back-office surfaces fit small and large screens", a
         await page.locator("#fees-form").waitFor();
         assert.ok(await page.locator("#p-fee").isDisabled());
         assert.ok(await page.locator("#refund-allocation").isDisabled());
+        assert.equal(await page.locator("#paystack-mode-form").count(),0,"Leadership cannot change Owner settlement mode");
+        assert.equal(await page.locator("#paystack-policy-form").count(),0);
         assert.ok(await page.locator("#payment-controls-form button").isEnabled());
       }
     }

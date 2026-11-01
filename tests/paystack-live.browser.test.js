@@ -42,7 +42,7 @@ test("live Paystack guest, publication and onboarding UI use honest live labels 
     await page.route("**/api/checkout**",route=>{
       const action=new URL(route.request().url()).searchParams.get("action");
       const data=action==="options" ? {mode:"live",paymentAvailable:true,turnstileSiteKey:"fixture",
-        providers:[{id:"paystack",market:"KE",label:"Card"},{id:"daraja",market:"KE",label:"M-Pesa"}]}
+        providers:[{id:"paystack",market:"KE",label:"Card",settlementMode:"standard"},{id:"daraja",market:"KE",label:"M-Pesa"}]}
         : action==="status" ? {paymentStatus:"pending",actionStatus:"pending",provider:"paystack",action:"song_bid"}
           : {error:"Initialization uncertain. Do not retry.",paymentId:pid,paymentStatus:"pending"};
       if (action==="create") creates.push(route.request().postDataJSON());
@@ -57,6 +57,11 @@ test("live Paystack guest, publication and onboarding UI use honest live labels 
     await page.waitForFunction(()=>!document.getElementById("pay-submit").disabled);
     assert.match(await page.locator("#pay-submit").innerText(),/real money/i);
     assert.match(await page.locator("#pay-mode-note").innerText(),/LIVE/);
+    await page.selectOption("#pay-provider","daraja|KE");
+    assert.ok(await page.locator("#pay-mode-note").isHidden(),"Daraja keeps the incident patch's uncluttered live dialog");
+    assert.ok(await page.locator("#pay-daraja-note").isHidden());
+    assert.equal(await page.locator("#pay-submit").textContent(),"Send M-Pesa prompt");
+    await page.selectOption("#pay-provider","paystack|KE");
     assert.ok(await page.locator("#pay-daraja-fields").isHidden());
     assert.ok(await page.locator("#pay-email").evaluate(el=>el.required));
     await page.fill("#pay-name","Synthetic Guest");
@@ -73,14 +78,14 @@ test("live Paystack guest, publication and onboarding UI use honest live labels 
     const onboarding=await browser.newPage({viewport:{width:320,height:800}});
     await onboarding.route("https://**",route=>route.abort());
     await onboarding.addInitScript(({pid})=>{
-      window.onboarded=true;window.consented=false;window.consentWrites=0;
+      window.onboarded=true;window.consented=false;window.consentWrites=0;window.settlementMode="split";
       window.WS={money:(n,c)=>`${c} ${(Number(n)/100).toFixed(2)}`,api:async(url,init)=>{
         if (url.includes("paystack-consent")) {
           const body=JSON.parse(init.body);
           if (body.revision!==pid || body.confirmed!==true) throw new Error("Missing revision consent");
           window.consented=true;window.consentWrites++;
         }
-        return Response.json({onboarding:{verified:window.onboarded,kycComplete:true,consented:window.consented,revision:pid},
+        return Response.json({onboarding:{settlementMode:window.settlementMode,verified:window.onboarded,kycComplete:true,consented:window.consented,revision:pid},
           settlements:[{payment_status:"paid",currency:"KES",couple_minor:9404,platform_minor:501,provider_fee_minor:100,provider_settled:false}]});
       }};
     },{pid});
@@ -96,6 +101,11 @@ test("live Paystack guest, publication and onboarding UI use honest live labels 
     await onboarding.click("#paystack-onboarding-reload");
     await onboarding.waitForFunction(()=>document.getElementById("paystack-onboarding-status").textContent.startsWith("Not onboarded"));
     assert.ok(await onboarding.locator("#paystack-consent-submit").isDisabled());
+    await onboarding.evaluate(()=>{window.settlementMode="standard";});
+    await onboarding.click("#paystack-onboarding-reload");
+    await onboarding.waitForFunction(()=>document.getElementById("paystack-onboarding-status").textContent.startsWith("Standard platform-collected"));
+    assert.ok(await onboarding.locator("#paystack-destination-consent").isDisabled());
+    assert.match(await onboarding.locator("#paystack-onboarding-status").innerText(),/No split subaccount/i);
     await onboarding.close();
 
     const publication=await browser.newPage({viewport:{width:375,height:900}});

@@ -11,6 +11,12 @@ const rpc = (name, body, token) => supabaseRequest(`/rest/v1/rpc/${name}`, {
 });
 const codePattern = /^ACCT_[A-Za-z0-9]+$/;
 
+export function paystackSettlementMode(context) {
+  if (context?.kind !== "guest") throw new Error("A guest settlement context is required.");
+  if (["standard","split"].includes(context.settlement_mode)) return context.settlement_mode;
+  throw new Error("Paystack settlement mode is missing or unsupported.");
+}
+
 // Configuration is independent of admission switches: revocation must not strand payments.
 export function paystackEnvironment() {
   const mode = process.env.WEDDINGSITE_PAYMENT_MODE;
@@ -49,7 +55,9 @@ export async function paystackApproval(kind = "guest", currency = null, market =
   if (!row?.approved || row.merchant_id !== paystackMerchant() ||
       row.credential_fingerprint !== paystackCredentialFingerprint() ||
       (kind === "publication" && !row.publication_enabled) ||
-      (kind === "guest" && !row.split_enabled) ||
+      (kind === "guest" && !(row.settlement_mode === "standard" ? row.standard_enabled :
+        row.settlement_mode === "split" && row.split_enabled && row.split_contract_ready &&
+          process.env.PAYSTACK_LIVE_SPLIT_ENABLED === "true")) ||
       (currency && !row.capabilities?.some(pair => pair.currency === currency && (!market || pair.market === market)))) return null;
   return row;
 }
@@ -89,20 +97,31 @@ export async function verifiedSubaccount(code, currency) {
 }
 
 export async function livePaystackContext(weddingId, amountMinor, currency, market) {
-  if (!await paystackApproval("guest", currency, market)) throw new Error("Live Paystack Split Payments are held.");
-  const destination = await paystackDestination(weddingId, currency);
-  if (!destination?.verified_at || !destination.consent_at) throw new Error("Complete Paystack payout onboarding and destination consent before accepting direct-settlement payments.");
-  const verified = await verifiedSubaccount(destination.subaccount_code, currency);
-  if (verified.destination_fingerprint !== destination.destination_fingerprint ||
-      verified.credential_fingerprint !== destination.credential_fingerprint) {
-    throw new Error("Paystack payout destination changed. Owner re-verification and couple consent are required.");
+  const approval = await paystackApproval("guest", currency, market);
+  if (!approval) throw new Error("The selected live Paystack settlement mode is held.");
+  if (approval.settlement_mode === "split") {
+    const destination = await paystackDestination(weddingId, currency);
+    if (!destination?.verified_at || !destination.consent_at) throw new Error("Complete Paystack payout onboarding and destination consent before accepting direct-settlement payments.");
+    const verified = await verifiedSubaccount(destination.subaccount_code, currency);
+    if (verified.destination_fingerprint !== destination.destination_fingerprint ||
+        verified.credential_fingerprint !== destination.credential_fingerprint) {
+      throw new Error("Paystack payout destination changed. Owner re-verification and couple consent are required.");
+    }
   }
-  return rpc("paystack_contribution_quote", {
+  const context = await rpc("paystack_contribution_quote", {
     p_wedding_id: weddingId, p_amount_minor: amountMinor, p_currency: currency, p_market: market
   });
+  if (context.policy_revision !== approval.revision || context.settlement_mode !== approval.settlement_mode) {
+    throw new Error("Paystack mode changed while preparing checkout. Reload; no fallback was applied.");
+  }
+  return context;
 }
 
 export function paystackSplit(context, reference) {
+  if (paystackSettlementMode(context) !== "split" || context.settlement_route !== "paystack_direct" ||
+      !["account","subaccount"].includes(context.fee_bearer) || !codePattern.test(context.subaccount_code || "")) {
+    throw new Error("An admitted direct-settlement context is required for a split payload.");
+  }
   return {
     type: "flat", bearer_type: context.fee_bearer,
     ...(context.fee_bearer === "subaccount" ? { bearer_subaccount: context.subaccount_code } : {}),
@@ -115,10 +134,11 @@ export async function validatePaystackInitialization(context) {
   const approval = await paystackApproval(context.kind, context.currency, context.market);
   const policy = (await supabaseRequest("/rest/v1/platform_policies?id=eq.true&select=enabled_payment_providers", { service: true }))?.[0];
   if (!approval || approval.revision !== context.policy_revision || !policy?.enabled_payment_providers?.includes("paystack") ||
-      context.credential_fingerprint !== paystackCredentialFingerprint() || context.merchant_id !== paystackMerchant()) {
+      context.credential_fingerprint !== paystackCredentialFingerprint() || context.merchant_id !== paystackMerchant() ||
+      (context.kind === "guest" && approval.settlement_mode !== paystackSettlementMode(context))) {
     throw new Error("Paystack approval or controls changed before initialization; payment remains held.");
   }
-  if (context.kind === "guest") {
+  if (context.kind === "guest" && paystackSettlementMode(context) === "split") {
     const destination = await paystackDestination(context.wedding_id, context.currency);
     if (!destination?.consent_at || destination.revision !== context.destination_revision) {
       throw new Error("Paystack destination changed before initialization; payment remains held.");
@@ -127,23 +147,35 @@ export async function validatePaystackInitialization(context) {
 }
 
 export function verifyPaystackContext(transaction, context, signedSplit = null) {
+  if (!["guest","publication"].includes(context?.kind)) throw new Error("Unsupported Paystack payment context.");
   if (context.environment !== paystackEnvironment() || context.merchant_id !== paystackMerchant() ||
       context.credential_fingerprint !== paystackCredentialFingerprint() ||
       transaction.domain !== context.environment || transaction.currency !== context.currency ||
       transaction.amount !== context.amount_minor ||
+      (transaction.integration != null && String(transaction.integration) !== context.merchant_id) ||
       transaction.metadata?.ws_context !== contextDigest(context)) {
     throw new Error("Paystack payment does not match its immutable merchant, mode, amount, currency or quote.");
   }
-  if (context.kind === "publication") {
+  const standard = context.kind === "guest" && paystackSettlementMode(context) === "standard";
+  if (context.kind === "publication" || standard) {
     if (!Number.isSafeInteger(transaction.fees) || transaction.fees < 0 || transaction.fees > context.amount_minor) {
-      throw new Error("Publication provider fee evidence is missing or invalid.");
+      throw new Error("Platform-collected provider fee evidence is missing or invalid.");
     }
-    if ((transaction.subaccount && Object.keys(transaction.subaccount).length) ||
-        (transaction.split && Object.keys(transaction.split).length)) {
-      throw new Error("Publication payment must be platform-only.");
+    const absentOrEmpty = value => value == null ||
+      (typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 0);
+    if (![transaction.subaccount,transaction.split,transaction.fees_split,signedSplit].every(absentOrEmpty)) {
+      throw new Error("Platform-collected payment must not contain a split or subaccount.");
+    }
+    if (standard) {
+      const couple = context.amount_minor - context.platform_fee_minor - transaction.fees;
+      if (!Number.isSafeInteger(couple) || couple < 0 || context.fee_bearer !== "couple_wallet" ||
+          context.settlement_route !== "platform_wallet") throw new Error("Standard Paystack fee allocation is invalid.");
+      return { couple_minor: couple, platform_minor: context.platform_fee_minor, provider_fee_minor: transaction.fees };
     }
     return null;
   }
+  if (paystackSettlementMode(context) !== "split" || context.settlement_route !== "paystack_direct" ||
+      !["account","subaccount"].includes(context.fee_bearer)) throw new Error("Split Paystack routing context is invalid.");
   // Paystack documents formula/shares in signed charge.success. Verification may
   // omit these; missing evidence stays pending, never inferred from metadata.
   const split = transaction.split?.shares ? transaction.split : signedSplit;
@@ -177,7 +209,7 @@ export async function recordPaystackPayment(payment, contributionId) {
 
 export async function paystackReadiness() {
   const configured = paystackEnvironment();
-  let policy = null, approvalUnavailable = false;
+  let policy = null, providerPolicy = null, approvalUnavailable = false, providerPolicyUnavailable = false;
   try {
     policy = (await supabaseRequest("/rest/v1/paystack_live_policy?singleton=eq.true&select=*", { service: true }))?.[0];
     approvalUnavailable = !policy;
@@ -185,8 +217,28 @@ export async function paystackReadiness() {
     approvalUnavailable = true;
     console.error("Paystack live approval status could not be read; Paystack is held.");
   }
+  try {
+    providerPolicy = (await supabaseRequest("/rest/v1/platform_policies?id=eq.true&select=enabled_payment_providers", { service:true }))?.[0];
+    providerPolicyUnavailable = !providerPolicy;
+  } catch {
+    providerPolicyUnavailable = true;
+    console.error("Paystack provider controls could not be read; new Paystack collection is held.");
+  }
   const approval = configured === "live" && policy?.approved && policy.merchant_id === paystackMerchant() &&
     policy.credential_fingerprint === paystackCredentialFingerprint() ? policy : null;
+  const splitReady = Boolean(approval?.split_enabled && approval?.split_contract_ready &&
+    process.env.PAYSTACK_LIVE_SPLIT_ENABLED === "true");
+  const modeReady = approval?.settlement_mode === "standard" ? approval.standard_enabled : splitReady;
+  const providerAllowed = providerPolicy?.enabled_payment_providers?.includes("paystack") === true;
+  const reasons = [];
+  if (configured !== "live") reasons.push("Matching live Paystack mode/credentials are not configured.");
+  if (process.env.PAYSTACK_LIVE_MERCHANT_CONFIRMED !== paystackMerchant() || !paystackMerchant()) reasons.push("Merchant identity is not explicitly confirmed.");
+  if (approvalUnavailable) reasons.push("Paystack approval status is unavailable; Paystack is held independently of other providers.");
+  else if (!approval) reasons.push("Owner merchant/capability approval is not current.");
+  if (!modeReady) reasons.push("The selected guest settlement scope is not approved or ready.");
+  if (!providerAllowed) reasons.push(providerPolicyUnavailable ? "Provider controls are unavailable." : "Leadership has not enabled Paystack in the provider allowlist.");
+  if (process.env.PAYSTACK_LIVE_COLLECTION_ENABLED !== "true") reasons.push("The live collection switch is OFF.");
+  if (process.env.PAYSTACK_RECONCILIATION_ENABLED !== "true") reasons.push("Independent reconciliation is OFF.");
   return {
     environment: configured || "unconfigured", merchantConfigured: Boolean(paystackMerchant()),
     merchantConfirmationMatches: Boolean(paystackMerchant()) && process.env.PAYSTACK_LIVE_MERCHANT_CONFIRMED === paystackMerchant(),
@@ -194,11 +246,15 @@ export async function paystackReadiness() {
     publicationKillSwitchOn: process.env.PAYSTACK_LIVE_PUBLICATION_ENABLED === "true",
     reconciliationEnabled: process.env.PAYSTACK_RECONCILIATION_ENABLED === "true",
     approved: Boolean(approval), approvalUnavailable, splitApproved: Boolean(approval?.split_enabled),
+    standardApproved: Boolean(approval?.standard_enabled), settlementMode: policy?.settlement_mode || "standard",
+    policyRevision: policy?.revision || null, splitReady,
+    splitHoldingReason: splitReady ? "" : "Split allocation/beneficiary statement contract remains unverified; split settlement is unavailable.",
     publicationApproved: Boolean(approval?.publication_enabled),
-    reason: approvalUnavailable ? "Paystack approval status is unavailable; Paystack is held independently of other providers." : "",
-    newCollection: paystackAdmissionEnabled() && approval?.split_enabled ? "gates_open" : "held",
+    reason: reasons.join(" "), providerAllowed, providerPolicyUnavailable,
+    newCollection: paystackAdmissionEnabled() && modeReady && providerAllowed ? "gates_open" : "held",
     capabilities: approval?.capabilities || [], feeBearer: approval?.fee_bearer || null,
-    settlement: "Paystack direct; never WeddingSite withdrawable balance"
+    settlement: policy?.settlement_mode === "split" ? "Paystack direct; never WeddingSite withdrawable balance" :
+      "Platform-collected; existing wallet holds, KYC and payout kill switch apply"
   };
 }
 
@@ -208,7 +264,7 @@ export async function reconcilePaystackSettlement(contributionId, settlementId, 
   }
   const row = (await supabaseRequest(`/rest/v1/contributions?id=eq.${contributionId}&select=id,paystack_context,provider_reference,payment_status`, { service: true }))?.[0];
   const context = row?.paystack_context;
-  if (!context || row.payment_status !== "paid" || context.environment !== paystackEnvironment() ||
+  if (!context || paystackSettlementMode(context) !== "split" || row.payment_status !== "paid" || context.environment !== paystackEnvironment() ||
       context.credential_fingerprint !== paystackCredentialFingerprint() || context.merchant_id !== paystackMerchant()) {
     throw new Error("Settlement has no verified payment in this merchant/mode.");
   }

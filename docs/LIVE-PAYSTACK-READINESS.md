@@ -1,4 +1,4 @@
-# Paystack live Split Payments readiness
+# Paystack live collection readiness
 
 Implementation only. Live Paystack defaults **OFF**. No Production changes,
 provider subaccount creation, payments, refunds, transfers, emails or activation
@@ -6,10 +6,20 @@ were performed for this change. Fixture success is not merchant eligibility or
 evidence of live operation. Daraja collection/reconciliation and its separate
 hard-OFF payout gate remain independent.
 
-**Release held:** reconcile reserved migrations `017`/`018` against fresh main
-and the Daraja incident patch before release. Isolated PGlite regression success
-is supplementary evidence, not a substitute for the actual Supabase migration,
-schema-lint and rollback-regression CI job.
+**Standard collection is independent of split eligibility.** The default selected
+mode is `standard`, but selection is not live activation: Owner standard approval,
+deployment switches, merchant/currency configuration and leadership provider
+controls must all pass. Split remains unavailable in this build, even to the Owner,
+pending a verified supported beneficiary allocation/statement contract. There is
+never a silent split-to-standard fallback.
+
+Fresh main's Daraja incident repair `abce399` is integrated. Unapplied Paystack
+migrations are `202611010002_paystack_live_collection.sql` and
+`202611010003_paystack_publication_reconciliation.sql`, after the already-applied
+`202611010001_daraja_processing_recovery.sql`. Daraja's non-terminal processing
+codes, cancelled-payment recovery and exactly-once fulfillment remain intact.
+Supabase Docker migration reset, schema lint and rollback SQL regressions are the
+release reference; PGlite is supplementary, not a substitute.
 
 ## Official capabilities and account prerequisites
 
@@ -26,7 +36,8 @@ Sources reviewed 1 November 2026:
   flat subunit shares, explicit fee bearer and signed `charge.success` split
   `formula`/`shares`. This implementation uses **one dynamic flat subaccount
   share**, with the platform receiving the remainder, to verify actual platform,
-  couple and provider allocations from the documented split evidence.
+  couple and provider allocations when supported evidence is established.
+  **It is gated unavailable, not required for standard collection.**
 - [Subaccounts API](https://paystack.com/docs/api/subaccount/): authenticated
   fetch supplies integration/domain/currency, active and verification state.
   Creation examples return `is_verified: false`; creation is not verification.
@@ -44,13 +55,35 @@ The Settlements API transaction example has `split: {}`, `subaccount: {}` and
 `split.shares` for settlement transactions. This implementation deliberately
 rejects that empty evidence and cannot claim automatic split-settlement
 reconciliation works for the account. Account-specific supported evidence must
-be confirmed before activation. Statement totals alone must never substitute
+be confirmed before **split** activation. Statement totals alone must never substitute
 for a verified beneficiary allocation.
+
+### Standard collection prerequisites
+
+For standard Paystack, confirm the actual merchant integration ID, approved
+business/collection use, enabled channels, charge limits, market/currency pairs
+and platform merchant settlement bank/currency in the Paystack account. A merchant
+being activated does not establish every currency/channel or split capability.
+Use the provider's authenticated transaction verification schema: successful
+status, exact reference, amount/currency, `domain`, immutable context metadata and
+actual `fees`. Unsplit responses can have `split: {}`, `subaccount: {}` and
+`fees_split: null`; populated or unknown-shaped split fields fail closed. No
+couple subaccount, beneficiary consent or split statement evidence is required.
+Standard collection does not require payout KYC, but existing KYC, holds and the
+hard-OFF payout gate still govern withdrawals.
+
+Provider charges are borne by the couple's platform wallet under the existing
+non-split accounting model. Verified gross minus the immutable Owner platform fee
+is the ledger net; actual provider fees are deducted separately. The immutable
+Paystack allocation records couple = gross - platform fee - actual provider fee.
+These are transaction records, not proof of bank settlement or available payouts.
+
+### Additional split prerequisites (unavailable in this build)
 
 These public documents **do not prove** that this merchant can use Kenyan
 couple subaccounts/dynamic splits, accept every displayed currency or onboard
 every beneficiary type. No blanket country restriction is inferred. Before
-approving, the account owner must obtain account-specific Paystack confirmation
+split can be implemented/enabled, the account owner must obtain account-specific Paystack confirmation
 of:
 
 1. The merchant integration ID, approved business/marketplace use, beneficiary
@@ -90,9 +123,12 @@ collection; this is **not independent ID verification**. Neither blocks publishi
 | `PAYSTACK_LIVE_COLLECTION_ENABLED=false` | Default-OFF new live Paystack guest admissions |
 | `PAYSTACK_LIVE_PUBLICATION_ENABLED=false` | Additional independent publication admission switch |
 | `PAYSTACK_RECONCILIATION_ENABLED=false` | Independent verification/webhook/statement control; admission also requires it on |
-| Owner Paystack policy | Default-OFF DB approval, capability pairs, split/publication scopes, fee bearer and revision |
+| `PAYSTACK_LIVE_SPLIT_ENABLED=false` | Additional split-only deployment gate; standard does not require it |
+| Owner Paystack policy | Default-OFF DB approval, capability pairs, standard/split/publication scopes, split fee bearer and revision |
+| Owner settlement-mode control | Audited, revision-checked `standard` / `split`; no change to admitted rows or activation switches |
+| `paystack_split_contract_unverified` DB constraint | Split readiness cannot be set true in this build; UI, API and SQL cannot enable it by toggling |
 | Leadership payment-provider allowlist | Independent Paystack/Stripe/Daraja new-checkout switches; regular Admin cannot change finance settings |
-| Verified destination + couple consent + KYC | Required for direct guest settlement, not for platform-only publication |
+| Verified destination + couple consent + KYC | Required only for direct guest settlement; not for standard collection or publication |
 
 Revoking collection, Owner approval or the provider allowlist does not turn off
 reconciliation. Keep reconciliation enabled for admitted live payments.
@@ -102,13 +138,17 @@ This build does not keep historical keys; securely plan reconciliation before
 key rotation or changing the global payment mode. Never paste credentials into
 chat, browser code, logs or SQL migrations.
 
-Guest admission snapshots server-derived wedding, environment, merchant/key
-fingerprint, subaccount ID/code/revision/fingerprint, amount/currency, market,
+Guest admission snapshots server-derived settlement mode/route, wedding, environment, merchant/key
+fingerprint, split-only subaccount ID/code/revision/fingerprint, amount/currency, market,
 fee bearer, platform policy/revision and USD fixed-fee FX. SQL locks policy and
 destination controls and rejects stale quotes. Initialization rechecks approval,
 provider controls and destination revision, and persists the known reference
 **before** contacting Paystack. An uncertain initialization retains its pending
 record and idempotency key; do not automatically reinitialize or delete it.
+Owner policy/mode writes require the current policy revision in SQL as well as
+the API. Toggle races before admission/initialization are held; a later toggle
+never reroutes an admitted standard or split payment, callback, adjustment or
+payout eligibility. Publication stays platform-only regardless of the guest mode.
 
 Existing fees and historical rows are not converted or repriced. A nonzero fixed
 live Paystack fee must be Owner-configured in **USD**; a legacy non-USD policy
@@ -119,8 +159,9 @@ currency is retained. Unsupported monetary exponents are rejected by the existin
 two-decimal accounting boundary.
 
 Signed webhooks are independently checked through transaction verification
-before fulfillment. Amount/currency/reference/context and merchant split
-formula/shares must match; platform + couple + provider shares must exactly
+before fulfillment. Amount/currency/reference/context must match. Standard verifies
+the authenticated unsplit charge and actual provider fee, without split evidence.
+For split, merchant formula/shares must also match; platform + couple + provider shares must exactly
 conserve the amount. A signed split may supply the documented allocation evidence
 when transaction verification omits it; unsigned redirects cannot. Missing
 allocation evidence on polling remains unresolved until the signed event or
@@ -144,8 +185,9 @@ live verified settlement is `paid`, and staff waivers remain preserved.
 
 Signed Paystack adjustments require independent original-transaction checks and
 match immutable provider references. Guest adjustments retain the existing
-Owner-snapshotted allocation/immutable ledger and review queues; they do not
-initiate a refund or debit another provider's wallet for direct proceeds.
+Owner-snapshotted allocation/immutable ledger and review queues. Standard adjustments
+affect only their existing platform-wallet ledger; split adjustments never debit
+another wallet or create withdrawable direct funds. They do not initiate a refund.
 Any actual split clawback/provider liability must be handled using Paystack's
 approved contract and reviewed externally; an internal allocation is not proof
 that Paystack moved funds.
@@ -157,11 +199,13 @@ failed/restored adjustment evidence. Existing published sites are not
 automatically unpublished. This deliberately avoids inventing refund/republishing
 product behavior; reasons and decisions are audited.
 
-Leadership statement reconciliation uses only provider GETs, bounded to 20 pages
+Split-only leadership statement reconciliation uses provider GETs, bounded to 20 pages
 of 100 records for both subaccount statements and transactions. It requires the
 correct merchant/domain/currency/destination, the admitted transaction and exact
 per-destination totals. Missing shares, deductions, mismatched totals or pagination
-remain for review rather than creating success-shaped fallback evidence.
+remain for review rather than creating success-shaped fallback evidence. The
+documented empty statement example is rejected. Standard receipts use the
+existing wallet hold/accounting model; this split statement action rejects them.
 A verified `success` statement adds an immutable internal settlement event; it
 never creates a WeddingSite payout. Review pending/review checkouts periodically
 even when no callbacks arrive; use the existing payment status endpoint for the
@@ -169,29 +213,32 @@ exact admitted reference, never a fresh checkout.
 
 ## Safe activation sequence (requires separate approval)
 
-1. Review/merge code and apply additive migrations `017` and `018` **only to the
+1. Review/merge code and apply additive migrations `202611010002` and `202611010003` **only to the
    WeddingSite project `lvvtgxspwvmdhqyoyqyy`**, after separate deployment approval.
    Never use CareerBoost Supabase. CI's migrations job is local-only.
-2. Resolve the account prerequisites above. Keep all Paystack switches false.
+2. Resolve the **standard** account prerequisites above. Keep all Paystack switches false.
    Configure encrypted live credentials, confirmed merchant ID, supported
    lists, exact HTTPS callback `/api/webhooks?provider=paystack` and Turnstile
    hostnames. Preserve the active Daraja configuration and gates.
-3. With separate approval for read-only authenticated provider checks, use the
-   Owner capability/fee-bearer policy and verify already-created subaccounts.
-   Have each couple confirm their receiving account with the Owner, complete
-   required details/consent and consent to the current destination revision.
+3. Keep Owner settlement mode `standard`. Approve account-confirmed capability
+   pairs and the intended standard/publication scopes. Leave split approval and
+   `PAYSTACK_LIVE_SPLIT_ENABLED` OFF. Standard needs no subaccount checks, creation
+   or couple destination consent. Changing the Owner mode alone cannot activate
+   live collection or payouts.
 4. Approve reconciliation independently; review schema/evidence readiness and
    unresolved historical payments. Then separately approve Owner live scopes,
    provider allowlist and collection/publication environment switches.
 5. Only with **another explicit financial-testing approval**, perform a bounded
-   real checkout and statement reconciliation. Confirm exact allocations, one
+   real checkout and inspect authenticated transaction evidence. Confirm exact allocations, one
    fulfillment, duplicate-event idempotency, platform-only publication, kill/revoke
-   reconciliation, refund/dispute handling and zero double-payout eligibility.
+   reconciliation, refund/dispute handling, immutable mode after toggles and payout holds.
    None of these real-provider operations were performed for this implementation.
 
 Local verification: existing Node/browser suites plus
 `tests/paystack-live.test.js`, `tests/paystack-live.browser.test.js` and rollback
-`tests/db/paystack-live.sql`. SQL scenarios replay all migrations and exercise
-actual PostgreSQL constraints/RPC/RLS with synthetic evidence. Docker Supabase
-remains the CI reference; isolated PGlite with pgcrypto can be used on Windows
-when Docker is unavailable, and is not Production/Supabase-provider verification.
+`tests/db/paystack-live.sql` / `tests/db/paystack-standard.sql`. SQL scenarios replay all migrations and exercise
+actual PostgreSQL constraints/RPC/RLS with synthetic evidence. The split regression
+temporarily drops the unavailable-contract CHECK only inside its rolled-back
+transaction to simulate a future verified contract; it first proves the real CHECK
+blocks activation. This is not eligibility evidence or a deployable enablement.
+No fixture claims live financial operation.

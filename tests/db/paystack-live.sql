@@ -29,10 +29,19 @@ begin
   end if;
   perform set_config('request.jwt.claim.sub',client_id::text,true);
   perform pg_temp.must_reject($q$select public.owner_set_paystack_policy(true,'123',repeat('a',64),
-    '[{"market":"KE","currency":"KES"}]',true,true,'subaccount',true)$q$);
+    '[{"market":"KE","currency":"KES"}]',true,true,'subaccount',true,false,
+    (select revision from public.paystack_live_policy where singleton))$q$);
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   perform public.owner_set_paystack_policy(true,'123',repeat('a',64),
-    '[{"market":"KE","currency":"KES"}]',true,true,'subaccount',true);
+    '[{"market":"KE","currency":"KES"}]',true,true,'subaccount',true,false,
+    (select revision from public.paystack_live_policy where singleton));
+  select revision into destination_revision from public.paystack_live_policy where singleton;
+  perform pg_temp.must_reject(format('select public.owner_set_paystack_settlement_mode(''split'',%L,true)',destination_revision));
+  perform pg_temp.must_reject('update public.paystack_live_policy set split_contract_ready=true');
+  -- Rollback-only simulation of a future verified contract, never a production enablement.
+  alter table public.paystack_live_policy drop constraint paystack_split_contract_unverified;
+  update public.paystack_live_policy set split_contract_ready=true;
+  perform public.owner_set_paystack_settlement_mode('split',destination_revision,true);
   perform public.owner_verify_paystack_destination(wid,jsonb_build_object(
     'subaccount_code','ACCT_fixture','subaccount_id','456','merchant_id','123','environment','live',
     'currency','KES','credential_fingerprint',repeat('a',64),'destination_fingerprint',repeat('b',64)),true);
@@ -102,7 +111,10 @@ begin
   perform public.consent_paystack_destination(wid,destination_revision,true);
   -- Revoking admission does not prevent already-bound payments from reconciliation.
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
-  perform public.owner_set_paystack_policy(false,null,null,'[]',false,false,'subaccount',true);
+  perform public.owner_set_paystack_settlement_mode('standard',
+    (select revision from public.paystack_live_policy where singleton),true);
+  perform public.owner_set_paystack_policy(false,null,null,'[]',false,false,'subaccount',true,false,
+    (select revision from public.paystack_live_policy where singleton));
   couple:=amount-fee-100;
   if not public.record_verified_paystack_payment(contribution_id,'verified:789',request_id::text,amount,'KES',100,now(),'789',
     jsonb_build_object('couple_minor',couple,'platform_minor',fee,'provider_fee_minor',100)) then
@@ -149,7 +161,10 @@ begin
   -- Publication uses the same live merchant gate but never a subaccount.
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   perform public.owner_set_paystack_policy(true,'123',repeat('a',64),
-    '[{"market":"KE","currency":"KES"}]',true,true,'account',true);
+    '[{"market":"KE","currency":"KES"}]',true,true,'account',true,false,
+    (select revision from public.paystack_live_policy where singleton));
+  perform public.owner_set_paystack_settlement_mode('split',
+    (select revision from public.paystack_live_policy where singleton),true);
   perform set_config('request.jwt.claim.role','service_role',true);
   quote:=public.paystack_contribution_quote(wid,amount,'KES','KE');
   insert into public.contributions(id,wedding_id,stream_name,pledged_amount_minor,currency,provider_name,payment_environment,

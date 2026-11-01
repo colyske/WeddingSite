@@ -22,8 +22,11 @@ and Card/Stripe. The default retains all previously eligible test adapters.
 Credentials, markets/currencies, provider health and mode-specific gates must still
 pass; a provider switch cannot by itself enable live payments. Daraja has its
 separate [live collection gates](docs/LIVE-DARAJA-READINESS.md). The additive
-[Paystack live Split Payments path](docs/LIVE-PAYSTACK-READINESS.md) is implemented
-but remains default-OFF pending account eligibility and separate activation.
+[Paystack live collection](docs/LIVE-PAYSTACK-READINESS.md) supports standard
+platform-collected guest payments and platform-only publication, default-OFF.
+The audited Owner-only settlement-mode control cannot select split settlement
+until its account-specific allocation/statement contract is verified. Standard
+collection does not require split eligibility or couple subaccount onboarding.
 Options and checkout creation read
 the current database policy, and a database insert guard rejects disabled
 providers even from stale tabs. Disabling affects new intents, never reroutes,
