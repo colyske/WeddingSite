@@ -37,6 +37,7 @@
 .lp-art svg { width: 100%; height: auto; display: block; }
 .lp-float { animation: lp-float 7s ease-in-out infinite; transform-origin: center; }
 .lp-float.slow { animation-duration: 9s; animation-delay: -3s; }
+.lp-float.slower { animation-duration: 11s; animation-delay: -6s; }
 @keyframes lp-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
 
 /* Steps */

@@ -254,4 +254,24 @@ test("sign out clears the session; no session redirects to sign in", { skip }, a
   await ctx.close();
 });
 
+test("owner profile link opens the real account page, hidden for non-owners", { skip }, async () => {
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  await p.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "test-token", r: "", role: "owner" })));
+  await p.route("**/api/weddings*", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ weddings: [] }) }));
+  await p.route("**/account.html", (r) => r.fulfill({ status: 200, contentType: "text/html", body: "account" }));
+  await p.goto(`${base}/dashboard.html`);
+  await p.click("#account-menu-btn");
+  const link = p.locator("#owner-profile");
+  await link.waitFor({ state: "visible" });
+  assert.equal(await link.getAttribute("href"), "/account.html");
+  await link.click();
+  await p.waitForURL("**/account.html");
+  await ctx.close();
+  const { page, close } = await openDashboard();
+  await page.click("#account-menu-btn");
+  assert.equal(await page.locator("#owner-profile").isVisible(), false);
+  await close();
+});
+
 test.after(async () => { await browser?.close(); server.close(); });
