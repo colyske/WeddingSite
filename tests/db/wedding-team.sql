@@ -101,7 +101,11 @@ begin
     ('coordinator', public.create_wedding_team_invite(wid, 'coordinator', 'coordinator@example.test', repeat('3', 64), 7)),
     ('support', public.create_wedding_team_invite(wid, 'rsvp_support', 'support@example.test', repeat('4', 64), 7)),
     ('dj', public.create_wedding_team_invite(wid, 'dj', 'dj@example.test', repeat('5', 64), 7)),
-    ('checkin-usher', public.create_wedding_team_invite(wid, 'usher', 'checkin@example.test', repeat('a', 64), 7)),
+    ('checkin-usher', public.create_wedding_team_invite(wid, 'usher', 'checkin@example.test', repeat('a', 64), 7));
+
+  perform set_config('request.jwt.claim.sub', '51000000-0000-4000-8000-000000000002', true);
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', '51000000-0000-4000-8000-000000000002', 'email', 'couple-two@example.test', 'role', 'authenticated')::text, true);
+  insert into team_invites values
     ('stale-owner', public.create_wedding_team_invite(second_wid, 'dj', 'expired@example.test', repeat('6', 64), 7));
 
   blocked := false;
@@ -118,17 +122,25 @@ begin
   begin perform 1 from public.get_wedding_team_invite(repeat('1', 64));
   exception when others then blocked := true; end;
   if not blocked then raise exception 'A forwarded invitation must not disclose invite details.'; end if;
+  blocked := false;
+  begin perform 1 from public.redeem_wedding_team_invite(repeat('1', 64));
+  exception when others then blocked := true; end;
+  if not blocked then raise exception 'A forwarded invitation must not grant access.'; end if;
 
   perform set_config('request.jwt.claim.sub', checkin_id::text, true);
   perform set_config('request.jwt.claims', jsonb_build_object('sub', checkin_id, 'email', 'checkin@example.test', 'role', 'authenticated')::text, true);
   if not exists (select 1 from public.get_wedding_team_invite(repeat('1', 64)) where role = 'checkin') then
     raise exception 'The intended helper should be able to inspect their invitation.';
   end if;
-  if not exists (select 1 from public.get_guest_verification('53000000-0000-4000-8000-000000000001') where guest_name = 'Roster Guest') then
-    raise exception 'An authorized check-in helper should be able to verify a wedding pass.';
-  end if;
+  blocked := false;
+  begin perform 1 from public.get_guest_verification('53000000-0000-4000-8000-000000000001');
+  exception when others then blocked := true; end;
+  if not blocked then raise exception 'A pending invitation must not grant check-in access.'; end if;
   if (select wedding_id from public.redeem_wedding_team_invite(repeat('1', 64))) <> wid then
     raise exception 'The helper should be granted only the invited wedding.';
+  end if;
+  if not exists (select 1 from public.get_guest_verification('53000000-0000-4000-8000-000000000001') where guest_name = 'Roster Guest') then
+    raise exception 'An authorized check-in helper should be able to verify a wedding pass.';
   end if;
   perform public.redeem_wedding_team_invite(repeat('a', 64));
   if not public.has_active_wedding_team_role(wid, array['checkin'])

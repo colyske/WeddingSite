@@ -271,7 +271,7 @@ begin
   insert into public.wedding_team_members
     (wedding_id, user_id, role, granted_by, expires_at, revoked_at, created_at)
   values (i.wedding_id, auth.uid(), i.role, i.created_by, null, null, now())
-  on conflict (wedding_id, user_id, role) do update
+  on conflict on constraint wedding_team_members_pkey do update
     set role = excluded.role, granted_by = excluded.granted_by, expires_at = null,
         revoked_at = null, created_at = now();
   update public.wedding_team_invites

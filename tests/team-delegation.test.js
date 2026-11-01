@@ -22,6 +22,7 @@ test("wedding-team migration separates least-privilege team roles from workspace
   assert.match(migration, /role in \('checkin', 'usher', 'coordinator', 'rsvp_support', 'dj'\)/);
   assert.match(migration, /token_hash text not null unique/);
   assert.match(migration, /for update/);
+  assert.match(migration, /on conflict on constraint wedding_team_members_pkey do update/);
   assert.match(migration, /w\.client_owner_id = i\.created_by/);
   assert.match(migration, /select lower\(u\.email\) into v_email from auth\.users u where u\.id = auth\.uid\(\)/);
   assert.match(migration, /v_email = i\.invitee_email/);
