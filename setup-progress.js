@@ -17,8 +17,8 @@
     const site = wedding.siteContent || {};
     const story = wedding.welcome_story || site.story_draft || site.story_approved;
     const travel = site.travel_notes || site.travel_approved || wedding.travel_info;
-    const hasEvent = venues.some(venue => validText(venue.name) && validText(venue.event_time) &&
-      validDate(venue.event_date || wedding.wedding_date));
+    const hasEvent = venues.some(venue => venue.kind !== "pre") && venues.every(venue =>
+      validText(venue.name) && validText(venue.event_time) && validDate(venue.event_date) && validText(venue.address));
     const paidFeatures = Number(wedding.rsvp_fee_minor) > 0 || Number(wedding.extra_guest_fee_minor) > 0 ||
       Number(wedding.premium_diet_fee_minor) > 0 || (Array.isArray(wedding.registry) && wedding.registry.length > 0) ||
       (Array.isArray(wedding.campaigns) && wedding.campaigns.some(campaign => campaign.enabled !== false)) ||
@@ -27,7 +27,8 @@
     const publishRequired = [
       { id: "couple-names", label: "Add the couple names and a valid site address", complete: validText(wedding.couple_names) && validSlug(wedding.slug), anchor: "couple-names" },
       { id: "wedding-date", label: "Set the wedding date", complete: validDate(wedding.wedding_date), anchor: "wedding-date" },
-      { id: "venues-section", label: "Add an event with its date and start time", complete: hasEvent, anchor: "venues-section" }
+      { id: "location", label: "Add the wedding location", complete: validText(wedding.public_location), anchor: "location" },
+      { id: "venues-section", label: "Complete every event's name, date, time and street address, including a wedding-day event", complete: hasEvent, anchor: "venues-section" }
     ].map(item => ({ ...item, required: true }));
     const optional = [
       { id: "welcome-story", label: "Write a welcome story", complete: validText(story), anchor: "welcome-story" },

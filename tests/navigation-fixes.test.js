@@ -175,6 +175,7 @@ test("Create wedding auto-navigates after success", { skip }, async () => {
   });
   
   // Fill in the form
+  await page.locator("[data-guide-all]").click();
   await page.fill("#couple-names", "Sarah & John");
   await page.fill("#location", "Nairobi");
   await page.fill("#wedding-date", "2027-06-12");

@@ -54,6 +54,48 @@
       else setNotice("Unvalidated link discarded. Any already captured referral still requires your accept/decline decision.", "good");
     } catch (error) { setNotice(error.message, "bad"); }
   });
+  state.requestKey = crypto.randomUUID();
+  const draftKey = "ws-create-answers";
+  let guide;
+
+  function restoreAnswers() {
+    try {
+      const text = sessionStorage.getItem(draftKey);
+      if (!text) return;
+      const draft = JSON.parse(text);
+      if (!draft.fields || !Object.keys(DEFAULT_FIELDS).every(key => typeof draft.fields[key] === "string") ||
+          !Array.isArray(draft.palette) || draft.palette.length !== 4 || !draft.palette.every(color => HEX.test(color)) ||
+          !Array.isArray(draft.venues) || !draft.venues.length || draft.venues.some(venue =>
+            !Number.isSafeInteger(venue.id) || !["name", "time", "eventDate", "address", "map", "description"]
+              .every(key => typeof venue[key] === "string"))) {
+        throw new Error("The saved answers could not be read.");
+      }
+      state.fields = { ...draft.fields };
+      if (/^[0-9a-f-]{36}$/i.test(draft.requestKey || "")) state.requestKey = draft.requestKey;
+      state.palette = [...draft.palette];
+      state.venues = draft.venues;
+      nextVenueId = Math.max(...state.venues.map(venue => venue.id)) + 1;
+      state.mainVenueId = state.venues.some(venue => venue.id === draft.mainVenueId) ? draft.mainVenueId : state.venues[0].id;
+    } catch (error) {
+      console.error("Restore wedding answers failed:", error);
+      setNotice("Could not restore the answers saved in this tab. Do not close it if you still have unsaved details on another page.", "bad");
+    }
+  }
+
+  function keepAnswers() {
+    if (state.created) return;
+    readFieldsFromDom();
+    readVenuesFromDom();
+    try {
+      sessionStorage.setItem(draftKey, JSON.stringify({
+        fields: state.fields, palette: state.palette, venues: state.venues, mainVenueId: state.mainVenueId, requestKey: state.requestKey
+      }));
+      guide?.setState("Before creation, answers are kept in this tab only. Create your draft to save to your account and resume on another device.");
+    } catch (error) {
+      console.error("Keep wedding answers failed:", error);
+      guide?.setState("This browser could not keep your answers. Leave this page open until you can create your wedding.");
+    }
+  }
 
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const safeColor = (c) => (HEX.test(c) ? c : "#cccccc");
@@ -104,8 +146,8 @@
 
   function renderSubmit() {
     const btn = $("create-submit");
-    btn.disabled = state.submitting;
-    btn.textContent = state.submitting ? "⏳ Creating..." : "✨ Create wedding";
+    btn.disabled = state.submitting || !!state.created;
+    btn.textContent = state.created ? "Wedding created" : state.submitting ? "⏳ Creating..." : "✨ Create wedding";
   }
 
   function renderCreated() {
@@ -182,21 +224,15 @@
       $("couple-names").removeAttribute("aria-invalid");
     }
 
-    if (!f.date || !/^\d{4}-\d{2}-\d{2}$/.test(f.date)) {
-      errors.push("Wedding date (required)");
+    if (f.date && !/^\d{4}-\d{2}-\d{2}$/.test(f.date)) {
+      errors.push("Enter a valid wedding date, or leave it for later");
       $("wedding-date").setAttribute("aria-invalid", "true");
       errorFields.push($("wedding-date"));
     } else {
       $("wedding-date").removeAttribute("aria-invalid");
     }
     
-    if (!f.location.trim()) {
-      errors.push("Location (required)");
-      $("location").setAttribute("aria-invalid", "true");
-      errorFields.push($("location"));
-    } else {
-      $("location").removeAttribute("aria-invalid");
-    }
+    $("location").removeAttribute("aria-invalid");
     
     if (!f.currency || !/^[A-Z]{3}$/.test(f.currency)) {
       errors.push("Currency (required)");
@@ -217,28 +253,13 @@
     
     if (!state.palette.every((c) => HEX.test(c))) errors.push("Each colour must be valid");
     
-    for (const [index, v] of state.venues.entries()) {
-      const requiredVenueFields = [
-        ["name", v.name.trim()], ["eventDate", v.eventDate || f.date],
-        ["time", v.time], ["address", v.address.trim()]
-      ];
-      for (const [field, value] of requiredVenueFields) {
-        const input = document.querySelector(`[data-venue-field="${field}"][data-id="${v.id}"]`);
-        if (!value) {
-          input?.setAttribute("aria-invalid", "true");
-          errorFields.push(input);
-        } else {
-          input?.removeAttribute("aria-invalid");
-        }
-      }
-      if (requiredVenueFields.some(([, value]) => !value)) {
-        errors.push(`Event ${index + 1} needs a name, date, start time and street address`);
-      }
+    for (const v of state.venues) {
       if (v.map.trim() && !/^https?:\/\//i.test(v.map.trim())) errors.push("Venue map links must start with http:// or https://");
     }
     
     if (errors.length) {
-      const firstErrorField = errorFields[0] || $("couple-names");
+      const firstErrorField = errorFields.find(Boolean) || $("couple-names");
+      guide?.reveal(firstErrorField);
       firstErrorField?.focus?.();
       return { message: "Please fix these required fields: " + errors.join(", "), field: firstErrorField };
     }
@@ -248,13 +269,14 @@
   function buildPayload() {
     const f = state.fields;
     const venues = state.venues
-      .filter((v) => v.name.trim() || v.time || v.map.trim() || v.address.trim() || v.description.trim())
+      .filter((v) => v.name.trim() || v.time || v.eventDate || v.map.trim() || v.address.trim() || v.description.trim())
       .map((v) => ({
         name: v.name.trim(), time: v.time, eventDate: v.eventDate || state.fields.date,
         address: v.address.trim(), map: v.map.trim(), description: v.description.trim(),
         isMain: v.id === state.mainVenueId
       }));
     return {
+      requestKey: state.requestKey,
       coupleNames: f.names.trim(),
       weddingDate: f.date || null,
       timeZone: f.timeZone,
@@ -267,7 +289,7 @@
   }
 
   async function submitCreate() {
-    if (state.submitting) return;
+    if (state.submitting || state.created) return;
     readFieldsFromDom();
     setNotice("");
     state.created = null;
@@ -275,7 +297,8 @@
 
     const problem = validate();
     if (problem) return setNotice(problem.message, "bad", problem.field);
-    if (!window.WS.token()) return setNotice("Your session has expired. Please sign in again; what you entered will be kept until you leave this page.", "bad");
+    if (guide && !guide.validate()) return;
+    if (!window.WS.token()) return setNotice("Your session has expired. Sign in again in this tab; your answers have not been sent to the server.", "bad");
     if (!referralReady) {
       try { await loadReferralDisclosure(); }
       catch (error) { return setNotice(error.message + " Your wedding details are kept.", "bad"); }
@@ -312,6 +335,9 @@
       WSReferrals.clear();
       referralDisclosure = null;
       $("client-referral-disclosure").hidden = true;
+      try { sessionStorage.removeItem(draftKey); }
+      catch (error) { console.error("Clear created wedding answers failed:", error); }
+      guide?.created();
       state.fields = { ...DEFAULT_FIELDS };
       state.palette = [...DEFAULT_PALETTE];
       state.paletteOpen = false;
@@ -322,7 +348,7 @@
       
       // Auto-navigate to the newly created wedding after a brief delay
       setTimeout(() => {
-        location.href = `/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}`;
+        location.href = `/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}#step=couple`;
       }, 2500);
     } catch (err) {
       console.error("Create wedding error:", err);
@@ -408,6 +434,7 @@
   const handleSignOut = (e) => {
     if (e && e.preventDefault) e.preventDefault();
     window.WS.clear();
+    sessionStorage.removeItem(draftKey);
     location.replace("/signin.html");
   };
 
@@ -446,8 +473,19 @@
     WSReferrals.prepare().then(() => location.replace("/signin.html"))
       .catch(error => { $("client-referral-dismiss").hidden = false; setNotice(error.message, "bad"); });
   } else {
+    restoreAnswers();
     window.WSTime.fillSelect($("wedding-timezone"), state.fields.timeZone);
     renderAll();
+    guide = window.WSGuidedSetup.create($("create-form"), {
+      mode: "create", onKeep: keepAnswers,
+      summaries: {
+        couple: () => `${$("couple-names").value || "Names not answered yet"}; ${$("wedding-date").value || "Date not answered yet"}; ${$("wedding-timezone").value}`,
+        venues: () => `${$("location").value || "Location not answered yet"}; ${state.venues.filter(venue => venue.name.trim()).length} event(s) entered`,
+        guests: () => `${$("currency").value}; capacity ${$("max-capacity").value || "not answered yet"}`,
+        theme: () => state.palette.join(", ")
+      }
+    });
+    ["input", "change", "click"].forEach(type => $("create-form").addEventListener(type, () => queueMicrotask(keepAnswers)));
     loadWeddings();
     loadReferralDisclosure().catch(error => setNotice(error.message + " Your wedding details are kept.", "bad"));
   }

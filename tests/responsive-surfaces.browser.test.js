@@ -89,6 +89,7 @@ test("public, organizer and back-office surfaces fit small and large screens", a
     await page.goto(`http://127.0.0.1:${server.address().port}/wedding.html?id=${id}`, { waitUntil: "domcontentloaded" });
     await page.locator("#edit-section").waitFor({ state: "visible" });
     await page.setViewportSize({ width: 320, height: 800 });
+    await page.locator("[data-guide-all]").click();
     await page.click("#edit-colors-btn");
     const paletteFits = await page.locator("#color-inputs").evaluate(el => el.scrollWidth <= el.clientWidth);
     assert.ok(paletteFits, "palette name/hex controls wrap on mobile");

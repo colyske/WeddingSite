@@ -1,0 +1,29 @@
+.guide-header { margin-bottom: 1.25rem; }
+.guide-nav, .guide-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.guide-nav { margin: 1rem 0; }
+.guide-nav button { flex: 1 1 130px; font-size: .9rem; text-align: left; padding: .7rem; }
+.guide-nav button[aria-current="step"] { outline: 2px solid var(--gold, #be9b52); outline-offset: 2px; }
+.guide-nav small { display: block; font-weight: normal; margin-top: .25rem; }
+.guide-state { margin: .75rem 0; }
+.guide-heading:focus { outline: 2px solid var(--gold, #be9b52); outline-offset: 4px; }
+[data-guide-step][hidden] { display: none !important; }
+[data-guide-step] { min-width: 0; }
+.guide-actions { border-top: 1px solid #d0d5cc; margin-top: 1rem; padding-top: 1rem; }
+.guide-review-list { display: grid; gap: .75rem; padding-left: 1.25rem; }
+.guide-review-list a { font-weight: 600; }
+.guide-review-list p { margin: .25rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.guide-advanced { border: 1px solid #d0d5cc; border-radius: 8px; padding: .8rem; margin: 1rem 0; }
+.guide-advanced > summary { cursor: pointer; font-weight: 600; }
+.guide-advanced[open] > summary { margin-bottom: 1rem; }
+.guide-errors { padding: 1rem; border: 2px solid #9a4a12; margin: 1rem 0; }
+.guide-errors a { display: block; color: inherit; text-decoration: underline; margin: .5rem 0; }
+.guide-sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 600px) {
+  .guide-nav button { flex-basis: 45%; min-width: 0; overflow-wrap: anywhere; }
+  .guide-actions button { flex: 1 1 100px; }
+  [data-guide-step] input, [data-guide-step] select, [data-guide-step] textarea { max-width: 100%; box-sizing: border-box; }
+  #vip-offer > div { grid-template-columns: 1fr !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .guide-heading, .guide-nav button { transition: none !important; scroll-behavior: auto; }
+}

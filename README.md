@@ -63,6 +63,48 @@ never autosave. Non-USD labels may show a dated indicative USD equivalent from
 the existing approved daily feed only while fresh (36 hours); FX never changes
 the organizer's selected amounts. The read-only showcase keeps KES song
 100/500/1000 and gift 500/1000/5000.
+
+### Guided wedding drafts
+
+Creation and the wedding editor use question-led sections with Back/Next, Skip,
+direct section links, review, keyboard focus and live step announcements. The
+`#step=` hash resumes the current section after reload/back; existing field, KYC,
+moderation and payment links still work. An all-questions view remains available.
+Optional giving and fee settings are disclosed progressively, not enabled by the
+guide. Team invitations ask who should help, with what task and until when;
+administrative tables and account/KYC/payout readiness remain separate.
+
+The minimum identity is **nonblank couple names**. Currency, capacity and time
+zone retain the visible existing defaults; the guide never invents names,
+dates, venues or prices. Before creation, unsent answers are kept in this browser
+tab only. After creating a draft, explicit **Save changes** writes answers to the
+account so another signed-in device can resume; unsaved edits have a leave/reload
+warning. Next and Skip do not save, submit, clear answers or publish.
+
+`202611050001_guided_wedding_drafts.sql` permits missing date/location and empty
+or partially answered venue lists on drafts/unpublished weddings. Omitted API
+fields retain saved values; explicit null date/location or an empty/null venue
+list clear them. Existing venue entries retain omitted fields when identified
+by their saved ID. Core content and venues save in one transaction. Published
+weddings require names, a site address, date, location and complete named,
+dated, timed, addressed events including a wedding-day event. Database guards
+apply to direct writes, couple/staff publishing and moderation approval; KYC is
+not a publication gate. Existing published rows are not rewritten. Missing-date
+fee quotes are explicitly unavailable, not guessed free/far-future quotes.
+
+Create clients send a stable UUID `requestKey`. The database serializes retries
+per account/key and returns the original saved wedding without consuming referral
+intents again. Reusing a key with changed answers is rejected rather than
+silently discarding edits. When the referral migration is installed, creation
+always delegates to `referral_create_wedding`, even with no referral choice in
+the request, preserving pending-intent disclosure. API and migrations must be
+deployed together after separate release approval; no production migration,
+payment/provider action or deployment is part of this change.
+
+Draft regression coverage is in `tests/guided-setup.browser.test.js`,
+`tests/guided-wedding-drafts.test.js` and the rollback-only
+`tests/db/guided-wedding-drafts.sql` CI check.
+
 ### Support role and sandbox boundaries
 
 Regular Admins have support weddings/metrics, client/regular-admin role lookup,

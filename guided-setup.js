@@ -1,0 +1,306 @@
+(function (global) {
+  "use strict";
+
+  function create(form, { mode, onKeep, summaries = {} } = {}) {
+    const steps = [...form.querySelectorAll("[data-guide-step]")];
+    const review = form.querySelector("[data-guide-review]");
+    const header = document.createElement("div");
+    header.className = "guide-header";
+    header.innerHTML = `<p class="fine">One question group at a time. Back, Next and Skip never submit or discard answers.</p>
+      <p class="guide-state" role="status" aria-live="polite" data-guide-state></p>
+      <nav class="guide-nav" aria-label="Wedding setup sections"></nav>
+      <button type="button" class="link" data-guide-all>Show all questions</button>
+      <div class="guide-errors" role="alert" hidden></div>
+      <p class="guide-sr" aria-live="polite" aria-atomic="true" data-guide-announcement></p>`;
+    form.prepend(header);
+    const state = header.querySelector("[data-guide-state]");
+    const announcement = header.querySelector("[data-guide-announcement]");
+    const errors = header.querySelector(".guide-errors");
+    const nav = header.querySelector("nav");
+    const actions = document.createElement("div");
+    actions.className = "guide-actions";
+    actions.innerHTML = `<button type="button" class="ghost" data-guide-back>Back</button>
+      <button type="button" data-guide-next>Next</button>
+      <button type="button" class="link" data-guide-skip>Skip for now</button>
+      ${mode === "create" ? '<button type="button" class="ghost" data-guide-keep>Keep answers in this tab</button>' : ""}`;
+    form.append(actions);
+    let current = 0, all = false, saving = false, snapshot = "", saved = "";
+    let pendingCreate = false;
+    let savingControls = [];
+    let nextAnswerId = 0;
+    const skipped = new Set();
+    const fingerprint = () => JSON.stringify([
+      [...form.querySelectorAll("input, select, textarea")].map(input =>
+        [input.id, input.name, input.value, input.checked]),
+      [...form.querySelectorAll("[data-palette]")].map(el => [el.dataset.palette, el.dataset.names])
+    ]);
+    saved = fingerprint();
+    const dirty = () => fingerprint() !== saved;
+    const setState = text => { state.textContent = text; };
+    const updateState = () => {
+      if (pendingCreate) return;
+      if (mode === "create") {
+        setState("Before creation, answers stay in this tab only. Create your draft to save to your account and resume on another device.");
+      } else {
+        setState(saving ? "Saving changes..." : dirty()
+          ? "Unsaved changes. Next and Skip keep answers on this page; use Save changes before leaving or reloading."
+          : "Saved wedding details. You can return to any section.");
+      }
+    };
+    function label(input) {
+      return input.labels?.[0]?.textContent.trim() || input.getAttribute("aria-label") ||
+        input.placeholder || input.id || "This answer";
+    }
+    const invalidInputs = () => [...form.querySelectorAll("input, select, textarea")]
+      .filter(input => input.willValidate && !input.validity.valid);
+    function sectionStatus(step) {
+      if (step.dataset.guideStep === "review") return "Review before publishing";
+      const invalid = [...step.querySelectorAll("input, select, textarea")]
+        .some(input => input.willValidate && (!input.validity.valid || input.dataset.publishRequired && !input.value.trim()));
+      if (invalid) return "Needs answers";
+      if (skipped.has(step.dataset.guideStep)) return "Return later";
+      return step.hasAttribute("data-guide-optional") ? "Optional - can wait" : "Answers ready";
+    }
+    function renderReview() {
+      review.replaceChildren();
+      const list = document.createElement("ol");
+      list.className = "guide-review-list";
+      steps.slice(0, -1).forEach(step => {
+        const item = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = `#step=${step.dataset.guideStep}`;
+        link.textContent = `${step.dataset.guideTitle} (${sectionStatus(step)})`;
+        const text = document.createElement("p");
+        text.textContent = summaries[step.dataset.guideStep]?.() || "Optional details can be completed later.";
+        item.append(link, text);
+        list.append(item);
+      });
+      review.append(list);
+    }
+    steps.forEach((step, index) => {
+      const heading = document.createElement("h2");
+      heading.className = "guide-heading";
+      heading.id = `guide-heading-${step.dataset.guideStep}`;
+      heading.tabIndex = -1;
+      heading.textContent = step.dataset.guideTitle;
+      step.setAttribute("aria-labelledby", heading.id);
+      step.prepend(heading);
+      const button = document.createElement("button");
+      button.type = "button";
+      const caption = document.createElement("span");
+      caption.textContent = `${index + 1}. ${step.dataset.guideTitle}`;
+      button.append(caption, document.createElement("small"));
+      button.addEventListener("click", () => go(index));
+      nav.append(button);
+    });
+    const navButtons = [...nav.children];
+    function refresh() {
+      navButtons.forEach((button, index) => {
+        button.querySelector("small").textContent = sectionStatus(steps[index]);
+      });
+      renderReview();
+      updateState();
+    }
+    function show(index, focus = true) {
+      current = index;
+      steps.forEach((step, i) => { step.hidden = !all && i !== index; });
+      navButtons.forEach((button, i) => {
+        if (i === index) button.setAttribute("aria-current", "step");
+        else button.removeAttribute("aria-current");
+      });
+      actions.querySelector("[data-guide-back]").disabled = index === 0;
+      actions.querySelector("[data-guide-next]").hidden = index === steps.length - 1;
+      actions.querySelector("[data-guide-skip]").hidden = index === steps.length - 1;
+      announcement.textContent = `Step ${index + 1} of ${steps.length}: ${steps[index].dataset.guideTitle}`;
+      refresh();
+      if (focus) steps[index].querySelector("h2").focus({ preventScroll: false });
+    }
+    function go(index) {
+      all = false;
+      header.querySelector("[data-guide-all]").textContent = "Show all questions";
+      const hash = `#step=${steps[index].dataset.guideStep}`;
+      if (location.hash !== hash) history.pushState(null, "", hash);
+      show(index);
+    }
+    function reveal(target) {
+      const step = target?.closest("[data-guide-step]");
+      if (step && steps.includes(step)) {
+        if (all) show(steps.indexOf(step), false);
+        else go(steps.indexOf(step));
+      }
+      let parent = target?.parentElement;
+      while (parent) {
+        if (parent.tagName === "DETAILS") parent.open = true;
+        parent = parent.parentElement;
+      }
+    }
+    function fromHash(focus = true) {
+      if (location.hash.startsWith("#step=")) {
+        const index = steps.findIndex(step => `#step=${step.dataset.guideStep}` === location.hash);
+        if (index !== -1) {
+          all = false;
+          header.querySelector("[data-guide-all]").textContent = "Show all questions";
+          show(index, focus);
+        }
+      } else if (location.hash) {
+        let id;
+        try { id = decodeURIComponent(location.hash.slice(1)); } catch { return; }
+        const target = document.getElementById(id);
+        if (target) {
+          const step = target.closest("[data-guide-step]");
+          if (step && steps.includes(step)) show(steps.indexOf(step), false);
+          let parent = target.parentElement;
+          while (parent) {
+            if (parent.tagName === "DETAILS") parent.open = true;
+            parent = parent.parentElement;
+          }
+          if (focus) {
+            if (!target.matches("input, select, textarea, button, a")) target.tabIndex = -1;
+            target.focus();
+            target.scrollIntoView({ block: "center", behavior: "auto" });
+          }
+        }
+      }
+    }
+    function validate(reason = "save") {
+      const invalid = invalidInputs();
+      if (reason === "publish") {
+        form.querySelectorAll("[data-publish-required]").forEach(input => {
+          if (!input.value.trim() && !invalid.includes(input)) invalid.push(input);
+        });
+      }
+      errors.hidden = !invalid.length;
+      errors.replaceChildren();
+      if (!invalid.length) return true;
+      const title = document.createElement("strong");
+      title.textContent = reason === "publish" ? "Before publishing, complete these answers:" :
+        mode === "create" ? "Before creating your draft, check these answers (only names and valid accounting settings are required):" :
+          "Complete these answers before saving to the server:";
+      errors.append(title);
+      invalid.forEach(input => {
+        input.setAttribute("aria-invalid", "true");
+        const link = document.createElement("a");
+        link.href = `#step=${input.closest("[data-guide-step]")?.dataset.guideStep || "review"}`;
+        link.textContent = `${label(input)}: ${input.validationMessage || "Required before publishing"}`;
+        link.addEventListener("click", event => {
+          event.preventDefault();
+          reveal(input);
+          input.focus();
+          input.reportValidity();
+        });
+        errors.append(link);
+      });
+      reveal(invalid[0]);
+      invalid[0].focus();
+      refresh();
+      return false;
+    }
+    function blockPublication(missing) {
+      errors.hidden = false;
+      errors.replaceChildren();
+      const caption = document.createElement("strong");
+      caption.textContent = "Before publishing, complete these saved answers:";
+      errors.append(caption);
+      const labels = { "couple-names": "Couple names", "wedding-slug": "Site address",
+        "wedding-date": "Wedding date", location: "Wedding location", "venues-section": "A complete wedding-day event: name, date, start time and street address" };
+      missing.forEach(id => {
+        const link = document.createElement("a");
+        link.href = `#${id}`;
+        link.textContent = labels[id] || id;
+        errors.append(link);
+      });
+    }
+    function draftRequirements() {
+      form.querySelectorAll("[data-guide-step=venues] input:not([type=hidden]):not([type=radio]):not([type=checkbox]), [data-guide-step=venues] select, [data-guide-step=venues] textarea").forEach(input => {
+        if (!input.id) input.id = `guide-event-answer-${nextAnswerId++}`;
+        if (!input.labels?.length) {
+          const caption = document.createElement("label");
+          caption.htmlFor = input.id;
+          caption.textContent = input.getAttribute("aria-label") || input.placeholder || (input.tagName === "SELECT" ? "Event type" : "Event answer");
+          input.before(caption);
+        }
+      });
+      form.querySelectorAll("#wedding-date, #location, [data-guide-step=venues] input[required], [data-publish-required]").forEach(input => {
+        if (input.required || input.dataset.publishRequired) {
+          input.dataset.publishRequired = "true";
+          input.required = false;
+          input.removeAttribute("aria-required");
+          input.labels?.forEach(caption => {
+            caption.querySelectorAll('[title="Required"], .required-mark').forEach(mark => { mark.textContent = ""; });
+            if (!caption.querySelector("[data-publish-note]")) {
+              const note = document.createElement("span");
+              note.className = "fine";
+              note.dataset.publishNote = "true";
+              note.textContent = " (needed to publish; can wait on a draft)";
+              caption.append(note);
+            }
+          });
+        }
+      });
+    }
+    draftRequirements();
+    saved = fingerprint();
+    new MutationObserver(() => { draftRequirements(); }).observe(form, { childList: true, subtree: true });
+    header.querySelector("[data-guide-all]").addEventListener("click", () => {
+      all = !all;
+      header.querySelector("[data-guide-all]").textContent = all ? "Return to guided questions" : "Show all questions";
+      show(current, false);
+      if (all) form.querySelectorAll(".guide-advanced").forEach(details => { details.open = true; });
+    });
+    actions.querySelector("[data-guide-back]").addEventListener("click", () => go(Math.max(0, current - 1)));
+    actions.querySelector("[data-guide-next]").addEventListener("click", () => go(Math.min(steps.length - 1, current + 1)));
+    actions.querySelector("[data-guide-skip]").addEventListener("click", () => {
+      skipped.add(steps[current].dataset.guideStep);
+      go(Math.min(steps.length - 1, current + 1));
+    });
+    actions.querySelector("[data-guide-keep]")?.addEventListener("click", () => onKeep?.());
+    form.addEventListener("input", event => {
+      event.target.removeAttribute("aria-invalid");
+      skipped.delete(event.target.closest("[data-guide-step]")?.dataset.guideStep);
+      refresh();
+    });
+    form.addEventListener("change", refresh);
+    form.addEventListener("click", () => queueMicrotask(refresh));
+    global.addEventListener("hashchange", () => fromHash());
+    global.addEventListener("beforeunload", event => {
+      if (mode === "edit" && dirty()) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    });
+    show(0, false);
+    fromHash();
+    return {
+      reveal, validate, dirty, refresh, setState, blockPublication,
+      reviewBeforePublish() {
+        if (all || current === steps.length - 1) return true;
+        go(steps.length - 1);
+        return false;
+      },
+      saving() {
+        snapshot = fingerprint();
+        saving = true;
+        savingControls = [...form.querySelectorAll("input, select, textarea, button")].filter(control => !control.disabled);
+        savingControls.forEach(control => { control.disabled = true; });
+        form.setAttribute("aria-busy", "true");
+        updateState();
+      },
+      unchangedSinceSave() { return fingerprint() === snapshot; },
+      saved(unchanged) { saved = unchanged ? fingerprint() : snapshot; saving = false; refresh(); },
+      failed() {
+        saving = false;
+        savingControls.forEach(control => { control.disabled = false; });
+        savingControls = [];
+        form.removeAttribute("aria-busy");
+        updateState();
+      },
+      created() {
+        pendingCreate = true;
+        actions.querySelectorAll("button").forEach(button => { button.disabled = true; });
+        setState("Wedding created and saved to your account. Opening your wedding guide; do not create it again.");
+      }
+    };
+  }
+
+  global.WSGuidedSetup = { create };
+})(window);

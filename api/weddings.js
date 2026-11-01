@@ -44,9 +44,6 @@ const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public
 const canonicalJson = value => Array.isArray(value) ? `[${value.map(canonicalJson).join(",")}]`
   : value && typeof value === "object" ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`
     : JSON.stringify(value);
-const currentPresetFilter = value => value == null
-  ? "&amount_presets=is.null"
-  : `&amount_presets=eq.${encodeURIComponent(JSON.stringify(value))}`;
 const amountPresetCap = async () => {
   const policy = (await supabaseRequest("/rest/v1/platform_policies?id=eq.true&select=max_contribution_minor", { service: true }))?.[0];
   const cap = Number(policy?.max_contribution_minor);
@@ -202,6 +199,12 @@ export default async function handler(req, res) {
         return sendJson(res, 400, { error: "Review the referral disclosure and choose accept or decline." });
       }
       if (!methodOnly(req, res, "POST")) return;
+      if (!UUID.test(String(body.requestKey || ""))) return sendJson(res, 400, { error: "A stable create request key is required." });
+      if (body.referral !== undefined && body.referral !== null &&
+          (!UUID.test(String(body.referral.intentId || "")) || !UUID.test(String(body.referral.revision || "")) ||
+            !["accept", "decline"].includes(body.referral.decision) || body.referral.termsVersion !== "client-referrals-v1")) {
+        return sendJson(res, 400, { error: "Review the current referral disclosure and choose accept or decline." });
+      }
       const names = String(body.coupleNames || "").trim();
       const location = String(body.location || "").trim();
       const palette = Array.isArray(body.palette)
@@ -210,33 +213,33 @@ export default async function handler(req, res) {
       const capacity = Number(body.maxCapacity ?? 150);
       const currency = String(body.currency || "USD").toUpperCase();
       let venues;
+      if (body.venues != null && (!Array.isArray(body.venues) || body.venues.length > 30)) return sendJson(res, 400, { error: "Use a list of up to 30 events." });
       try {
         venues = (Array.isArray(body.venues) ? body.venues : []).slice(0, 30).map((venue, sortOrder) => ({
           name: String(venue?.name || "").trim().slice(0, 100),
           eventTime: parseVenueTime(venue?.eventTime ?? venue?.time),
-          eventDate: validDate(venue?.eventDate) ? venue.eventDate : body.weddingDate,
+          eventDate: venue?.eventDate || body.weddingDate || null,
           address: String(venue?.address || "").trim().slice(0, 200) || null,
           mapLink: String(venue?.mapLink ?? venue?.map ?? "").trim() || null,
           description: String(venue?.description || "").trim().slice(0, 500) || null,
           isMain: venue?.isMain === true,
           kind: venue?.kind === "pre" ? "pre" : "main",
           sortOrder
-        })).filter(venue => venue.name);
+        })).filter(venue => venue.name || venue.eventTime || venue.eventDate || venue.address || venue.mapLink || venue.description);
       } catch (error) {
-        return sendJson(res, 400, { error: error.message || "Check the venue details." });
+        return sendJson(res, 400, { error: error.message || "Check the venue details.", field: "venues" });
       }
       if (venues.some(venue => venue.mapLink && !/^https?:\/\//i.test(venue.mapLink))) {
         return sendJson(res, 400, { error: "Venue map links must use HTTP or HTTPS." });
       }
-      if (!venues.length || venues.some(venue => !venue.eventTime || !validDate(venue.eventDate) || !venue.address)) {
-        return sendJson(res, 400, { error: "Every event needs a date, start time, venue name and street address.", field: "venues" });
+      if (venues.some(venue => venue.eventDate && !validDate(venue.eventDate))) {
+        return sendJson(res, 400, { error: "Enter real event dates in YYYY-MM-DD format.", field: "venues" });
       }
-      if (names.length < 1 || names.length > 120 || location.length < 1 || location.length > 120 || !globalThis.WSCurrencies.supportsAccounting(currency) ||
+      if (names.length < 1 || names.length > 120 || location.length > 120 || !globalThis.WSCurrencies.supportsAccounting(currency) ||
           !Number.isInteger(capacity) || capacity < 1 || palette.length > 4 || !palette.every(c => COLOR.test(c))) {
         return sendJson(res, 400, { error: "Check the couple names, location, currency, guest capacity and up to four hex colors." });
       }
-      if (!validDate(body.weddingDate)) return sendJson(res, 400, { error: "The wedding date is required (YYYY-MM-DD)." });
-      if (!venues.some(venue => venue.eventTime)) return sendJson(res, 400, { error: "The wedding time is required: add the main venue with a start time." });
+      if (body.weddingDate !== undefined && body.weddingDate !== null && body.weddingDate !== "" && !validDate(body.weddingDate)) return sendJson(res, 400, { error: "Enter a real wedding date (YYYY-MM-DD), or leave it unanswered." });
       const slugRoot = toSlug(names) || "wedding";
       const base = isReservedLabel(slugRoot) || isShowcase(slugRoot) ? `${slugRoot}-wedding` : slugRoot;
       if (body.timeZone !== undefined && body.timeZone !== null && body.timeZone !== "" && !validZone(body.timeZone)) {
@@ -245,17 +248,16 @@ export default async function handler(req, res) {
       const timeZone = validZone(body.timeZone) ? body.timeZone : DEFAULT_ZONE;
       for (const suffix of ["", `-${Math.random().toString(36).slice(2, 6)}`, `-${Math.random().toString(36).slice(2, 8)}`]) {
         try {
-          const id = await supabaseRequest("/rest/v1/rpc/referral_create_wedding", { ...opts, method: "POST", body: {
-            p_slug: `${base}${suffix}`.slice(0, 80).padEnd(3, "x"), p_couple_names: names,
-            p_wedding_date: body.weddingDate, p_location: location.slice(0, 120),
-            p_currency: currency, p_capacity: capacity, p_palette: palette, p_venues: venues,
-            p_intent_id: body.referral?.intentId ?? null, p_decision: body.referral?.decision ?? null,
-            p_revision: body.referral?.revision ?? null, p_terms_version: body.referral?.termsVersion ?? null } });
-          await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(id)}&client_owner_id=eq.${encodeURIComponent(session.user.id)}`,
-            { ...opts, method: "PATCH", body: {
-              time_zone: timeZone, palette_names: palette.map(friendlyColorName)
-            } });
-          return sendJson(res, 201, { weddingId: id, slug: `${base}${suffix}` });
+          const created = await supabaseRequest("/rest/v1/rpc/create_wedding_draft", { ...opts, method: "POST", body: {
+            p_request_key: body.requestKey,
+            p_input: {
+              slug: `${base}${suffix}`.slice(0, 80).padEnd(3, "x"), coupleNames: names,
+              weddingDate: body.weddingDate || null, location: location || null,
+              currency, maxCapacity: capacity, palette, venues, timeZone,
+              paletteNames: palette.map(friendlyColorName), referral: body.referral || null
+            }
+          } });
+          return sendJson(res, 201, created);
         } catch (error) {
           if (/REFERRAL_CONFLICT:|Self referral|Invalid or withdrawn referral code/.test(error.message)) {
             const [status, message] = referralError(error);
@@ -295,37 +297,49 @@ export default async function handler(req, res) {
         }
       }
       let normalizedVenues = null;
-      if (Array.isArray(body.venues)) {
+      if (body.venues !== undefined) {
+        if (body.venues !== null && (!Array.isArray(body.venues) || body.venues.length > 30)) return sendJson(res, 400, { error: "Use a list of up to 30 events, or null to clear." });
         try {
-          normalizedVenues = body.venues.slice(0, 30).map((v, sortOrder) => ({
+          normalizedVenues = (body.venues || []).slice(0, 30).map((v, sortOrder) => ({
             id: v?.id || null,
             name: String(v?.name || "").trim().slice(0, 100),
             eventTime: parseVenueTime(v?.eventTime ?? v?.time),
-            eventDate: validDate(v?.eventDate) ? v.eventDate : null,
+            eventDate: v?.eventDate || null,
             mapLink: String(v?.mapLink ?? v?.map ?? "").trim() || null,
             description: String(v?.description || "").trim().slice(0, 500) || null,
             isMain: v?.isMain === true && v?.kind !== "pre",
             kind: v?.kind === "pre" ? "pre" : "main",
             address: String(v?.address || "").trim().slice(0, 200) || null,
             sortOrder
-          })).filter(v => v.name);
-          if (!normalizedVenues.length || normalizedVenues.some(v => !v.eventDate || !v.eventTime || !v.address)) {
-            return sendJson(res, 400, { error: "Every event needs a date, start time, venue name and street address.", field: "venues" });
-          }
-          if (!normalizedVenues.some(v => v.kind !== "pre")) {
-            return sendJson(res, 400, { error: "Add at least one wedding-day event.", field: "venues" });
+          }));
+          normalizedVenues.forEach((venue, index) => {
+            const source = body.venues[index];
+            if (venue.id && !UUID.test(String(venue.id))) throw new Error("Reload the event list before saving.");
+            if (source.eventDate !== undefined && source.eventDate !== null && source.eventDate !== "" && !validDate(source.eventDate)) throw new Error("Enter a real event date, or clear it on a draft.");
+            if (venue.id) {
+              for (const [key, aliases] of Object.entries({
+                name: ["name"], eventTime: ["eventTime", "time"], eventDate: ["eventDate"],
+                mapLink: ["mapLink", "map"], description: ["description"],
+                address: ["address"], kind: ["kind"], isMain: ["isMain"]
+              })) {
+                if (!aliases.some(alias => Object.hasOwn(source, alias))) delete venue[key];
+              }
+            }
+          });
+          if (normalizedVenues.some(v => v.eventDate && !validDate(v.eventDate))) {
+            return sendJson(res, 400, { error: "Enter real event dates in YYYY-MM-DD format.", field: "venues" });
           }
           if (normalizedVenues.some(v => v.mapLink && !/^https?:\/\//i.test(v.mapLink))) {
             return sendJson(res, 400, { error: "Venue map links must use HTTP or HTTPS." });
           }
         } catch (error) {
-          return sendJson(res, 400, { error: error.message || "Check the venue details." });
+          return sendJson(res, 400, { error: error.message || "Check the venue details.", field: "venues" });
         }
       }
       
       // Handle slug updates with uniqueness validation
       if (body.slug !== undefined) {
-        const newSlug = String(body.slug).trim().toLowerCase();
+        const newSlug = String(body.slug ?? "").trim().toLowerCase();
         if (newSlug && !/^[a-z0-9-]{3,80}$/.test(newSlug)) {
           return sendJson(res, 400, { error: "Slug must be 3-80 lowercase letters, numbers, and hyphens." });
         }
@@ -333,6 +347,7 @@ export default async function handler(req, res) {
         if (newSlug && (reserved.includes(newSlug) || isReservedLabel(newSlug))) {
           return sendJson(res, 400, { error: "That web address is reserved. Please choose a different one." });
         }
+        if (!newSlug) patch.slug = null;
         if (newSlug) {
           // Check uniqueness
           try {
@@ -348,17 +363,20 @@ export default async function handler(req, res) {
         }
       }
       
-      if (body.coupleNames !== undefined) patch.couple_names = String(body.coupleNames).trim().slice(0, 120);
-      if (body.welcomeStory !== undefined) patch.welcome_story = String(body.welcomeStory).slice(0, 500);
+      if (body.coupleNames !== undefined) {
+        if (typeof body.coupleNames !== "string" || !body.coupleNames.trim()) return sendJson(res, 400, { error: "Couple names are required.", field: "couple-names" });
+        patch.couple_names = body.coupleNames.trim().slice(0, 120);
+      }
+      if (body.welcomeStory !== undefined) patch.welcome_story = String(body.welcomeStory ?? "").slice(0, 500);
       if (body.weddingDate !== undefined) {
-        if (!validDate(body.weddingDate)) return sendJson(res, 400, { error: "The wedding date is required (YYYY-MM-DD)." });
-        patch.wedding_date = body.weddingDate;
+        if (body.weddingDate !== null && body.weddingDate !== "" && !validDate(body.weddingDate)) return sendJson(res, 400, { error: "Enter a real wedding date (YYYY-MM-DD), or clear it on a draft.", field: "wedding-date" });
+        patch.wedding_date = body.weddingDate || null;
       }
       if (body.timeZone !== undefined) {
         if (!validZone(body.timeZone)) return sendJson(res, 400, { error: "Choose a valid time zone." });
         patch.time_zone = body.timeZone;
       }
-      if (body.location !== undefined) patch.public_location = String(body.location).slice(0, 120);
+      if (body.location !== undefined) patch.public_location = String(body.location ?? "").trim().slice(0, 120) || null;
       if (body.maxCapacity !== undefined) {
         const capacity = Number(body.maxCapacity);
         if (!Number.isInteger(capacity) || capacity < 1) return sendJson(res, 400, { error: "Capacity must be a whole number." });
@@ -407,48 +425,12 @@ export default async function handler(req, res) {
         const url = String(body.backgroundMusicUrl).trim();
         patch.background_music_url = url ? url.slice(0, 500) : null;
       }
-      if (!Object.keys(patch).length || patch.couple_names === "") return sendJson(res, 400, { error: "Nothing valid to update." });
-      const basePresetsFilter = body.amountPresets === undefined ? "" : currentPresetFilter(body.amountPresetsBase);
-      const rows = await supabaseRequest(`/rest/v1/weddings?id=eq.${body.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}${baseCurrency ? `&currency=eq.${baseCurrency}` : ""}${basePresetsFilter}&select=${FIELDS}`,
-        { ...opts, method: "PATCH", body: patch, prefer: "return=representation" });
-      if (!rows?.length) return sendJson(res, baseCurrency ? 409 : 404, {
-        error: baseCurrency ? "Wedding currency changed while saving. Reload and review suggested amounts again." : "Wedding not found."
-      });
-      
-      // Update venues if provided
-      if (Array.isArray(body.venues)) {
-        try {
-          const existing = (await supabaseRequest(`/rest/v1/venues?wedding_id=eq.${body.weddingId}&select=id`, opts) || []).map(v => v.id);
-          const incoming = normalizedVenues.filter(v => v.id).map(v => v.id);
-          const toDelete = existing.filter(id => !incoming.includes(id));
-          for (const id of toDelete) {
-            await supabaseRequest(`/rest/v1/venues?id=eq.${id}`, { ...opts, method: "DELETE" });
-          }
-          for (let i = 0; i < normalizedVenues.length; i++) {
-            const v = normalizedVenues[i];
-            if (!v.name) continue;
-            const venue = {
-              name: v.name,
-              event_time: v.eventTime,
-              event_date: v.eventDate,
-              map_link: v.mapLink || null,
-              description: v.description || null,
-              is_main: v.isMain || false,
-              kind: v.kind,
-              address: v.address,
-              sort_order: i
-            };
-            if (v.id && existing.includes(v.id)) {
-              await supabaseRequest(`/rest/v1/venues?id=eq.${v.id}`, { ...opts, method: "PATCH", body: venue });
-            } else if (!v.id) {
-              await supabaseRequest("/rest/v1/venues", { ...opts, method: "POST", body: { wedding_id: body.weddingId, ...venue } });
-            }
-          }
-        } catch (e) {
-          console.error("Venue update failed:", e.message);
-          throw e;
-        }
-      }
+      if (!Object.keys(patch).length && normalizedVenues === null) return sendJson(res, 400, { error: "Nothing valid to update." });
+      const updated = await supabaseRequest("/rest/v1/rpc/save_wedding_content", { ...opts, method: "POST", body: {
+        p_wedding_id: body.weddingId, p_patch: patch, p_venues: normalizedVenues,
+        p_expected_currency: baseCurrency, p_expected_presets: body.amountPresetsBase ?? null
+      } });
+      const rows = [updated];
 
       // Update registry items if provided
       if (Array.isArray(body.registry)) {
@@ -636,6 +618,13 @@ export default async function handler(req, res) {
     if (action === "publish") {
       if (!methodOnly(req, res, "POST")) return;
       if (!UUID.test(String(body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+      const missing = await supabaseRequest("/rest/v1/rpc/wedding_publication_readiness", {
+        ...opts, method: "POST", body: { p_wedding_id: body.weddingId }
+      });
+      if (!Array.isArray(missing)) throw new Error("Publication readiness could not be checked.");
+      if (missing.length) return sendJson(res, 409, {
+        error: "Complete the required wedding details before publishing.", missingFields: missing
+      });
       try {
         await supabaseRequest("/rest/v1/rpc/publish_wedding_with_fee", { ...opts, method: "POST", body: { p_wedding_id: body.weddingId, p_confirmed: true } });
       } catch (error) {
@@ -908,6 +897,12 @@ export default async function handler(req, res) {
     // Provide specific error messages instead of generic ones
     let userMessage = "The request could not be completed.";
     const moderation = errorMsg.match(/MODERATION(?:_RESTRICTED)?:\s*([^\n]{1,300})/);
+    if (/CREATE_CONFLICT|DRAFT_CONFLICT|REFERRAL_CONFLICT/.test(errorMsg)) return sendJson(res, 409, { error: errorMsg.replace(/^.*(?:CREATE_CONFLICT|DRAFT_CONFLICT|REFERRAL_CONFLICT):\s*/, "") });
+    if (errorMsg.includes("Self referral")) return sendJson(res, 403, { error: "Self referral is not allowed." });
+    if (errorMsg.includes("PUBLISH_INCOMPLETE")) return sendJson(res, 409, {
+      error: "Published wedding details must stay complete. Unpublish first if you need to clear them.",
+      missingFields: (errorMsg.split("publishing:")[1] || "").split(",").map(field => field.trim()).filter(Boolean)
+    });
     if (moderation) {
       return sendJson(res, 409, { error: moderation[1].trim(), moderationRequired: errorMsg.includes("MODERATION_RESTRICTED") });
     }

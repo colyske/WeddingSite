@@ -12,8 +12,9 @@ const completeWedding = () => ({
   couple_names: "Amina & David",
   slug: "amina-and-david",
   wedding_date: "2027-08-21",
+  public_location: "Nairobi",
   kyc_submitted: true,
-  venues: [{ name: "Garden", event_date: "2027-08-21", event_time: "10:00" }],
+  venues: [{ name: "Garden", event_date: "2027-08-21", event_time: "10:00", address: "Garden Road" }],
   palette: [],
   siteContent: {}
 });
@@ -21,7 +22,7 @@ const completeWedding = () => ({
 test("setup progress uses saved wedding data and separates publish readiness", () => {
   const result = calculate(completeWedding());
   assert.equal(result.requiredReady, true);
-  assert.equal(result.percent, 43);
+  assert.equal(result.percent, 63);
   assert.equal(result.items.find(item => item.id === "palette-preview").complete, false);
 
   const partial = calculate({ ...completeWedding(), couple_names: "" });
