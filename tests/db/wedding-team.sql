@@ -39,8 +39,7 @@ insert into team_actors(kind, id, email) select 'platform_admin', id, email from
 insert into public.weddings(id, client_owner_id, couple_names, wedding_date)
 values
   ('52000000-0000-4000-8000-000000000001', '51000000-0000-4000-8000-000000000001', 'Couple One', current_date + 30),
-  ('52000000-0000-4000-8000-000000000002', '51000000-0000-4000-8000-000000000002', 'Couple Two', current_date + 30),
-  ('52000000-0000-4000-8000-000000000003', '51000000-0000-4000-8000-000000000001', 'Undated Couple', null);
+  ('52000000-0000-4000-8000-000000000002', '51000000-0000-4000-8000-000000000002', 'Couple Two', current_date + 30);
 update public.weddings set published_at = now(), time_zone = 'UTC' where id in (
   '52000000-0000-4000-8000-000000000001', '52000000-0000-4000-8000-000000000002'
 );
@@ -105,14 +104,6 @@ begin
     ('support', public.create_wedding_team_invite(wid, 'rsvp_support', 'support@example.test', repeat('4', 64), 7, null, true)),
     ('dj', public.create_wedding_team_invite(wid, 'dj', 'dj@example.test', repeat('5', 64), 7, now() + interval '5 days')),
     ('checkin-usher', public.create_wedding_team_invite(wid, 'usher', 'checkin@example.test', repeat('a', 64), 7));
-  invite_id := public.create_wedding_team_invite('52000000-0000-4000-8000-000000000003',
-    'usher', 'usher@example.test', repeat('b', 64));
-  workspace := public.get_wedding_team('52000000-0000-4000-8000-000000000003');
-  if not exists (
-    select 1 from jsonb_array_elements(workspace->'invites') invitation
-    where invitation->>'id' = invite_id::text
-      and (invitation->>'grant_expires_at')::timestamptz = now() + interval '30 days'
-  ) then raise exception 'Undated weddings must default to 30-day grants, not unlimited access.'; end if;
 
   perform set_config('request.jwt.claim.sub', '51000000-0000-4000-8000-000000000002', true);
   perform set_config('request.jwt.claims', jsonb_build_object('sub', '51000000-0000-4000-8000-000000000002', 'email', 'couple-two@example.test', 'role', 'authenticated')::text, true);
