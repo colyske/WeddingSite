@@ -13,7 +13,7 @@ begin
   -- Exact KES floor completes once, with no package and no review.
   insert into public.contributions(wedding_id,stream_name,pledged_amount_minor,currency,payment_status,purchase_action,purchase_data)
     values(wid,'Sponsor: custom sponsorship',500000,'KES','pending','sponsor',d) returning id into pid;
-  update public.contributions set payment_status='paid',paid_amount_minor=500000,verified_provider_payment=true,paid_at=now() where id=pid;
+  update public.contributions set payment_status='paid',paid_amount_minor=500000,net_paid_minor=500000,verified_provider_payment=true,paid_at=now() where id=pid;
   if not exists(select 1 from public.contributions where id=pid and action_completed_at is not null
       and action_result->>'custom'='true') then
     raise exception 'Custom sponsorship at the KES 5000 floor must complete';
@@ -30,7 +30,7 @@ begin
   -- Below floor (even if the client tampered with the quoted minimum) is held for review.
   insert into public.contributions(wedding_id,stream_name,pledged_amount_minor,currency,payment_status,purchase_action,purchase_data)
     values(wid,'Sponsor: custom sponsorship',499900,'KES','pending','sponsor',d || '{"customMinimumMinor":499900}') returning id into pid;
-  update public.contributions set payment_status='paid',paid_amount_minor=499900,verified_provider_payment=true,paid_at=now() where id=pid;
+  update public.contributions set payment_status='paid',paid_amount_minor=499900,net_paid_minor=499900,verified_provider_payment=true,paid_at=now() where id=pid;
   if exists(select 1 from public.sponsors where contribution_id=pid)
       or not exists(select 1 from public.payment_action_reviews where contribution_id=pid)
       or (select payment_status::text from public.contributions where id=pid) <> 'paid' then
@@ -41,7 +41,7 @@ begin
   insert into public.sponsor_tiers(wedding_id,name,min_amount_minor) values(wid,'Gold',800000);
   insert into public.contributions(wedding_id,stream_name,pledged_amount_minor,currency,payment_status,purchase_action,purchase_data)
     values(wid,'Sponsor: custom sponsorship',500000,'KES','pending','sponsor',d) returning id into pid;
-  update public.contributions set payment_status='paid',paid_amount_minor=500000,verified_provider_payment=true,paid_at=now() where id=pid;
+  update public.contributions set payment_status='paid',paid_amount_minor=500000,net_paid_minor=500000,verified_provider_payment=true,paid_at=now() where id=pid;
   if exists(select 1 from public.sponsors where contribution_id=pid)
       or not exists(select 1 from public.payment_action_reviews where contribution_id=pid) then
     raise exception 'Custom sponsorship must not bypass couple-defined packages';
@@ -59,7 +59,7 @@ begin
   insert into public.contributions(wedding_id,stream_name,pledged_amount_minor,currency,payment_status,purchase_action,purchase_data)
     values(uwid,'Sponsor: custom sponsorship',3900,'USD','pending','sponsor',
       jsonb_build_object('custom',true,'customMinimumMinor',3900,'fxSnapshotId',fx,'companyName','USD Sponsor')) returning id into pid;
-  update public.contributions set payment_status='paid',paid_amount_minor=3900,verified_provider_payment=true,paid_at=now() where id=pid;
+  update public.contributions set payment_status='paid',paid_amount_minor=3900,net_paid_minor=3900,verified_provider_payment=true,paid_at=now() where id=pid;
   if not exists(select 1 from public.sponsors where contribution_id=pid and tier_id is null) then
     raise exception 'Converted floor custom sponsorship must complete';
   end if;
