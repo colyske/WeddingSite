@@ -19,6 +19,8 @@ begin
   insert into auth.users(id,email,email_confirmed_at) values(owner_id,'colyske@gmail.com',now());
   perform public.bootstrap_protected_owner(owner_id);
   insert into auth.users(id) values(client_id),(admin_id),(leadership_id);
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  perform set_config('request.jwt.claim.role','authenticated',true);
   perform public.assign_platform_role(admin_id,'admin');
   perform public.assign_platform_role(leadership_id,'superadmin');
   insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date,published_at,slug)

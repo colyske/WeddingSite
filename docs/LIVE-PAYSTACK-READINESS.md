@@ -120,7 +120,7 @@ collection; this is **not independent ID verification**. Neither blocks publishi
 | --- | --- |
 | `WEDDINGSITE_PAYMENT_MODE` + matching `PAYSTACK_SECRET_KEY` prefix | `test` or `live`; mode/key mismatch fails closed |
 | `PAYSTACK_MERCHANT_ID`, `PAYSTACK_LIVE_MERCHANT_CONFIRMED` | Bind the deployment to an explicitly confirmed integration ID |
-| `PAYSTACK_LIVE_COLLECTION_ENABLED=false` | Default-OFF new live Paystack guest admissions |
+| `PAYSTACK_LIVE_COLLECTION_ENABLED=false` | Master default-OFF new live Paystack guest/publication admissions |
 | `PAYSTACK_LIVE_PUBLICATION_ENABLED=false` | Additional independent publication admission switch |
 | `PAYSTACK_RECONCILIATION_ENABLED=false` | Independent verification/webhook/statement control; admission also requires it on |
 | `PAYSTACK_LIVE_SPLIT_ENABLED=false` | Additional split-only deployment gate; standard does not require it |
