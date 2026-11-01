@@ -164,9 +164,12 @@ begin
   reset role;
 end $$;
 do $$
-declare oid uuid; n integer; ok boolean;
+declare oid uuid; n integer; base integer; ok boolean;
 begin
   select id into oid from auth.users where email = 'colyske@gmail.com';
+  if oid is null then raise exception 'Protected owner fixture missing'; end if;
+  select count(*) into base from public.audit_events where actor_id = oid and table_name = 'daraja_live_approval'
+    and action in ('daraja_live_approve','daraja_live_revoke');
   if position('where singleton' in lower(pg_get_functiondef('public.owner_set_daraja_live_approval(boolean,text)'::regprocedure))) = 0 then
     raise exception 'Approval RPC must update with a WHERE clause (pg-safeupdate safe)';
   end if;
@@ -186,7 +189,7 @@ begin
   end if;
   select count(*) into n from public.audit_events where actor_id = oid and table_name = 'daraja_live_approval'
     and action in ('daraja_live_approve','daraja_live_revoke');
-  if n <> 2 then raise exception 'Approve and revoke must each be audited (got %)', n; end if;
+  if n - base <> 2 then raise exception 'Approve and revoke must each be audited (delta %)', n - base; end if;
   -- A missing singleton row must fail, never report success.
   delete from public.daraja_live_approval;
   ok := false;
