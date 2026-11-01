@@ -28,8 +28,8 @@ begin
   insert into public.wedding_memberships(wedding_id,user_id,role) values(wid,client_id,'client') on conflict do nothing;
   update public.platform_policies set enabled_payment_providers=array['paystack','daraja'],
     contribution_fee_basis_points=500,contribution_fixed_fee_minor=1,contribution_fixed_fee_currency='USD';
-  insert into public.publication_fx_snapshots(id,source,base_currency,published_at,rates)
-    values(fx_id,'https://open.er-api.com/v6/latest/USD','USD',now(),'{"USD":1,"KES":130.01}');
+  insert into public.publication_fx_snapshots(id,source,published_at,rates)
+    values(fx_id,'https://open.er-api.com/v6/latest/USD',now(),'{"USD":1,"KES":130.01}');
   select p.revision into revision from public.paystack_live_policy p where singleton;
   perform set_config('request.jwt.claim.role','service_role',true);
   perform pg_temp.standard_must_reject(format('select public.paystack_contribution_quote(%L,10010,''KES'',''KE'')',wid));
