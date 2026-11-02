@@ -197,6 +197,7 @@ test("safe starter selection, currency review, retry and native shared-editor cu
     assert.equal(creates[2].starterSetup.rsvp.fee, "0");
     assert.match(await page.locator("#starter-review-note").innerText(), /source prices were NOT copied into EUR/);
     await page.locator('#starter-review-note a[href="#step=campaigns"]').click();
+    await page.locator("[data-guide-step=campaigns]").waitFor({ state: "visible" });
     assert.equal(await page.locator("[data-guide-step=campaigns]").isVisible(), true);
     for (const width of [320, 375]) {
       await page.setViewportSize({ width, height: 900 });
