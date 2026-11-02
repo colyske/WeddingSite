@@ -96,7 +96,7 @@ reset role;
 set local role authenticated;
 select set_config('request.jwt.claim.role','authenticated',true);
 do $$
-declare f starter_fixture; created jsonb; replay jsonb; wid uuid; blocked boolean;
+declare f starter_fixture; created jsonb; blocked boolean;
 begin
   select * into f from starter_fixture;
   blocked := false;
@@ -104,8 +104,15 @@ begin
   exception when raise_exception then blocked := sqlerrm like 'STARTER_CAPABILITY_REQUIRED:%'; end;
   if not blocked then raise exception 'Proof did not bind the entire input'; end if;
   created := public.create_wedding_from_starter(f.key,f.payload);
-  wid := (created->>'weddingId')::uuid;
   update starter_fixture set result=created;
+end $$;
+reset role;
+-- Inspect protected setup rows as the test administrator, not through client RLS.
+do $$
+declare f starter_fixture; wid uuid; blocked boolean;
+begin
+  select * into f from starter_fixture;
+  wid := (f.result->>'weddingId')::uuid;
   if (select count(*) from public.sponsor_tiers where wedding_id=wid) <> 1 or
       (select count(*) from public.fundraising_streams where wedding_id=wid) <> 1 or
       (select count(*) from public.fundraising_milestones where wedding_id=wid) <> 1 or
@@ -138,9 +145,16 @@ begin
     raise exception 'Pre-wedding and wedding-day event order/type lost';
   end if;
   update public.sponsor_tiers set name='Later personalized package' where wedding_id=wid;
+end $$;
+set local role authenticated;
+do $$
+declare f starter_fixture; created jsonb; replay jsonb; blocked boolean;
+begin
+  select * into f from starter_fixture;
+  created := f.result;
   replay := public.create_wedding_from_starter(f.key,f.payload);
-  if replay <> created or (select name from public.sponsor_tiers where wedding_id=wid) <> 'Later personalized package' then
-    raise exception 'Replay duplicated or overwrote later edits';
+  if replay <> created then
+    raise exception 'Replay did not return the existing draft';
   end if;
   blocked := false;
   begin perform public.create_wedding_from_starter(f.key,jsonb_set(f.payload,'{starterSetup,rsvp,feeMinor}','100'::jsonb));
@@ -154,6 +168,10 @@ begin
   select * into f from starter_fixture;
   if exists(select 1 from public.wedding_starter_capability_proofs where client_owner_id=f.owner_id and request_key=f.key) then
     raise exception 'Capability proof was not consumed';
+  end if;
+  if (select count(*) from public.sponsor_tiers where wedding_id=(f.result->>'weddingId')::uuid) <> 1 or
+      (select name from public.sponsor_tiers where wedding_id=(f.result->>'weddingId')::uuid) <> 'Later personalized package' then
+    raise exception 'Replay duplicated or overwrote later edits';
   end if;
   if not exists(select 1 from public.weddings w where id=(f.result->>'weddingId')::uuid and
       'fundraising-route'=any(public.wedding_missing_publication_content(w))) then
