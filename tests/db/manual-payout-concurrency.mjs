@@ -147,7 +147,7 @@ try {
     update public.profiles set platform_role='client' where id='${revoked}';`);
     await Promise.all([barrier, waiting]);
   }
-  await sql(`update public.payment_adjustments set status='cancelled',hold_minor=0
+  await sql(`update public.payment_adjustments set status='failed',hold_minor=0
     where provider_adjustment_id='isolated-concurrent-refund' and wedding_id='${wedding}';`);
   await call(sender, `public.manual_payout_transition('${third}','executing','${randomUUID()}')`);
   const receipts = await Promise.all([

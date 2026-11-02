@@ -98,7 +98,13 @@ Custody accounts are segregated by provider, canonical registry ID and currency.
 One opening statement is followed by a linear append-only chain: unique predecessor,
 monotonic statement watermark, explicit opening/credit/debit/closing/held arithmetic,
 unique statement reference and digest. Additional entitlements allocate only a new
-batch's credit capacity. Opening capacity and old contributions cannot be recredited.
+batch's credit capacity. Opening gross entitlement capacity includes closing bank
+funds (including held funds) plus explicitly mapped, evidenced pre-opening paid
+debits; map that history before recording its original gross settlement sources.
+This does not add bank capital: spending remains capped by closing minus held funds,
+and mapped paid history is deducted from the wedding's gross entitlement exactly once.
+Releasing a bank hold in a later statement needs no duplicate contribution credit.
+Opening capacity and old contributions cannot be recredited.
 Statement credit lines and contributions allocate once,
 globally across accounts; each entitlement must match the provider-verified, live,
 fee-known, platform-wallet contribution net amount and statement timing. An elapsed
@@ -110,11 +116,17 @@ fees and held referral estimates are not entitlement sources.
 Append-only source allocations bind exact current legacy payout, committed expense or
 refund/dispute/hold snapshots to account/currency and evidence. Unknown or stale mappings
 hold the affected amounts; they do not veto all history or silently make funds available.
+Source revisions cannot move a commitment to another account. Once a paid legacy
+expense/payout is mapped, its wedding, amount, currency, status and paid date cannot
+be edited to erase the obligation; nonfinancial revisions require fresh evidence.
+Historical statement line capacity stays consumed across later source revisions.
 Paid sources mapped to statement debit capacity reduce wedding entitlement once, without
 subtracting bank available funds twice. Manual paid debits remain account commitments
 until their exact independently reconciled statement line is included once. In-flight,
 uncertain, reported and resolution-proposed amounts always remain reserved, even when
-a newer statement arrives. Positive adjustments do not create new collected entitlement.
+a newer statement arrives. A negative adjustment followed by its positive dispute
+reversal restores only the prior deduction, bounded by the original verified source;
+an unbacked positive adjustment never creates new collected entitlement.
 
 All manual writers take advisory lock `71110001`, revalidate and share-lock current
 actor authority after waiting, then lock custody, relied-on reviewer profiles, sorted

@@ -728,7 +728,8 @@ begin
     raise exception 'Payout accounting is busy; retry the commitment after review.';
   end if;
   if tg_op='UPDATE' and tg_table_name in ('expenses','payout_records') then
-    if (new.amount_minor,new.currency,new.status) is distinct from (old.amount_minor,old.currency,old.status)
+    if (new.wedding_id,new.amount_minor,new.currency,new.status,to_jsonb(new)->>'paid_at',to_jsonb(new)->>'confirmed_at')
+      is distinct from (old.wedding_id,old.amount_minor,old.currency,old.status,to_jsonb(old)->>'paid_at',to_jsonb(old)->>'confirmed_at')
       and exists(select 1 from public.manual_payout_source_allocations
         where source_kind=case tg_table_name when 'expenses' then 'expense' else 'payout' end
           and source_id=old.id and paid_debit) then
