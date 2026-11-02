@@ -25,8 +25,17 @@ begin
   perform set_config('request.jwt.claim.sub', staff_id::text, true);
   perform public.admin_set_payment_controls(array['daraja'], true);
   if public.admin_get_payment_controls() <> array['daraja'] then raise exception 'SuperAdmin must independently enable M-Pesa'; end if;
-  insert into public.weddings (id, client_owner_id, couple_names, wedding_date, currency, published_at)
-    values (wedding_id, client_id, 'Local sample couple', current_date + 30, 'KES', now());
+  insert into public.weddings (id, client_owner_id, slug, couple_names, welcome_story, cover_image_url,
+      guest_instructions, wedding_date, currency, revenue_features)
+    values (wedding_id, client_id, 'local-sample-couple', 'Local sample couple',
+      'A local celebration sample.', 'https://example.test/cover.jpg',
+      'Please reply before the celebration.', current_date + 30, 'KES',
+      '{"song_requests":true}'::jsonb);
+  insert into public.venues (wedding_id, name, event_date, event_time, address)
+    values (wedding_id, 'Local sample venue', current_date + 30, '12:00', 'Local street');
+  insert into public.wedding_collection_capabilities (wedding_id, provider, currency, market)
+    values (wedding_id, 'daraja', 'KES', 'KE');
+  update public.weddings set published_at = now() where id = wedding_id;
   blocked := false;
   begin
     insert into public.contributions (wedding_id, stream_name, pledged_amount_minor, currency, payment_status, provider_name)
