@@ -6,6 +6,7 @@ import { extname } from "node:path";
 import { chromium } from "playwright";
 import "../inspiration-fixtures.js";
 import { showcase } from "../server/showcase.js";
+import "../starter-setup.js";
 
 test("inspiration gallery, safe customizable wizard, retry, tab preservation, public design and sign-in continuity", { timeout: 120000 }, async () => {
   const server = http.createServer(async (req, res) => {
@@ -25,6 +26,7 @@ test("inspiration gallery, safe customizable wizard, retry, tab preservation, pu
     const page = await context.newPage();
     const errors = [], creates = [];
     let failCreate = true;
+    let capabilitiesFail = false;
     page.on("pageerror", error => errors.push(error.message));
     await page.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "test-token", r: "client" })));
     await page.route("https://**", route => route.fulfill({ body: "" }));
@@ -36,8 +38,13 @@ test("inspiration gallery, safe customizable wizard, retry, tab preservation, pu
       if (action === "list") data = { weddings: [] };
       if (action === "site") data = { wedding: { ...showcase, slug: url.searchParams.get("slug"), is_showcase: false } };
       if (action === "style") {
-        data = { style: globalThis.WSInspiration.publicDesign(["#123456", "#789abc", "#bc9876", "#fefefe"]) };
+        data = { style: { ...globalThis.WSInspiration.publicDesign(["#123456", "#789abc", "#bc9876", "#fefefe"]),
+          setup: globalThis.WSStarterSetup.fictional("garden-gathering", "KES") } };
         if (url.searchParams.get("slug") === "private-wedding") { status = 404; data = { error: "This wedding is not available for public design reuse." }; }
+      }
+      if (action === "collection-capabilities") {
+        data = { currencies: ["USD", "KES", "EUR"].map(code => ({ code, name: code, methods: [{ name: "Mock collection", markets: ["XX"] }] })) };
+        if (capabilitiesFail) { status = 503; data = { error: "Collection capability lookup unavailable." }; }
       }
       if (action === "disclosure") data = { intent_id: "intent-1", enabled: true, rate_basis_points: 100,
         platform_fee_basis_points: 250, platform_fixed_fee_minor: "0", revision: "revision-1", terms_version: "client-referrals-v1" };
@@ -76,6 +83,11 @@ test("inspiration gallery, safe customizable wizard, retry, tab preservation, pu
     await page.click("#create-submit");
     assert.equal(creates.length, 0, "currency is mandatory for a style starter");
     await page.selectOption("#currency", "EUR");
+    await page.locator('[data-starter-action="samples"]').click();
+    assert.equal(await page.locator('[data-starter-path="tiers.0.minAmount"]').inputValue(), "25");
+    await page.locator('[data-starter-path="tiers.0.name"]').fill("Our own package");
+    await page.locator('[data-starter-path="campaigns.0.goal"]').fill("2000");
+    await page.locator("[data-starter-reviewed]").check();
     await page.click("#create-submit");
     assert.equal(creates.length, 0, "real referral consent is still required");
     await page.selectOption("#client-referral-decision", "accept");
@@ -87,6 +99,11 @@ test("inspiration gallery, safe customizable wizard, retry, tab preservation, pu
     assert.equal(creates[0].weddingDate, null);
     assert.equal(creates[0].location, "");
     assert.equal(creates[0].referral.decision, "accept");
+    assert.equal(creates[0].starterSetup.reviewed, true);
+    assert.equal(creates[0].starterSetup.tiers[0].name, "Our own package");
+    assert.equal(creates[0].starterSetup.campaigns[0].goal, "2000");
+    assert.equal(creates[0].starterSetup.registry.length, 1);
+    assert.equal(creates[0].starterSetup.vip.seats, "12");
     assert.deepEqual(creates[0].palette, globalThis.WSInspiration.get("city-evening").palette);
     await page.reload();
     await page.locator("#guide-heading-couple").waitFor({ state: "attached" });
@@ -118,6 +135,16 @@ test("inspiration gallery, safe customizable wizard, retry, tab preservation, pu
     assert.equal(await page.locator('[data-venue-field="name"]').first().inputValue(), "Your ceremony");
     assert.match(await page.locator("#inspiration-selection-copy").innerText(), /Public visibility is not permission/);
     await page.fill("#couple-names", "Still ours");
+    await page.locator(".guide-jump > summary").click();
+    await page.locator(".guide-nav button").filter({ hasText: "Choose your wedding currency" }).click();
+    await page.selectOption("#currency", "KES");
+    assert.equal(await page.locator('[data-starter-path="tiers.0.minAmount"]').inputValue(), "2500", "same currency retains only reviewed source amounts");
+    await page.locator("[data-starter-reviewed]").check();
+    await page.selectOption("#currency", "EUR");
+    for (const path of ["tiers.0.minAmount", "registry.0.target", "vip.price", "campaigns.0.goal", "campaigns.0.milestones.0.target", "rsvp.fee"]) {
+      assert.equal(await page.locator(`[data-starter-path="${path}"]`).inputValue(), "", "currency change never relabels or converts money");
+    }
+    assert.equal(await page.locator("[data-starter-reviewed]").isChecked(), false);
     await page.click("[data-guide-keep]");
     await page.goto(`${base}/dashboard.html?style=private-wedding`);
     await page.locator("#notice").filter({ hasText: /not available for public design reuse/ }).waitFor();
@@ -135,6 +162,11 @@ test("inspiration gallery, safe customizable wizard, retry, tab preservation, pu
     await page.goto(`${base}/guest.html?slug=private-wedding`);
     await page.waitForFunction(() => document.getElementById("couple-names").textContent === "Amara & Kito (sample)");
     assert.equal(await page.locator("#reuse-wedding-style").isVisible(), false);
+    capabilitiesFail = true;
+    await page.goto(`${base}/dashboard.html?inspiration=city-evening`);
+    await page.locator("#notice").filter({ hasText: /capability lookup unavailable/ }).waitFor();
+    assert.equal(await page.locator("#currency option").count(), 1);
+    assert.equal(creates.length, 2, "capability failure cannot create a draft");
     assert.deepEqual(errors, []);
 
     // A separate unsigned device follows a platform-safe return destination.

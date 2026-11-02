@@ -69,28 +69,70 @@ the organizer's selected amounts. The read-only showcase keeps KES song
 `/inspiration.html` offers three author-owned, explicitly fictional examples,
 classified by the static `author-owned-fictional-inspiration` allowlist in
 `inspiration-fixtures.js`. Previewing or selecting a style makes no server writes.
-Only colours, event titles and clearly labelled editable sample event notes enter
-the shared creation wizard. Fictional names, dates, times and venues never fill
-required answers. Welcome, attire, travel and FAQ examples are reference copy only.
-These fixtures have no checkout, guests, sponsors, donations or activity.
+Fictional names, dates, times and venues never fill required answers. Curated
+sample event titles/notes and offering/goal structures can be personalized.
+Welcome, attire, travel and FAQ examples are reference copy only. These fixtures
+have no checkout, guests, purchased sponsorships, donations or activity.
 
 Eligible public wedding pages also offer **Use this style**, for past, current
-and future celebrations alike. This separate design-only path reads only the
-public wedding's platform palette (the current layout is shared), with generic
-ceremony/reception prompts. `server/wedding-style.js` requires a published,
-unarchived, unrestricted source and rechecks eligibility at draft creation.
-Public visibility is not permission to reproduce personal content: no stories,
-photos, identities, precise event details, FAQ/contact data, financial settings,
-revenue-feature opt-outs or activity are copied. Source records are never edited.
+and future celebrations alike. `server/wedding-style.js` reads an explicit
+allowlist of already-public platform configuration, not personal content or
+nonpublic settings. It requires a published, unarchived, unrestricted source and
+rechecks eligibility before staging a new creation. Public visibility is not
+permission to reproduce original writing. Generic prompts replace real-source
+package, event, registry, milestone and meal labels. Sources are never edited.
 
-Both paths require the couple's own names and an explicit supported accounting
-currency choice, preserve normal guest-capacity/time-zone and feature defaults,
-and use the existing authenticated, referral-aware, idempotent
-`create_wedding_draft` transaction. No provider, publication state or source price
-is transferred. A pre-existing tab draft requires an explicit replacement choice;
-sign-in retains the selected source. No additional schema/content migration or
-live-record classification/editing is involved. The existing guided-draft
-migration below remains a deployment prerequisite.
+| Couple-configurable surface | Copied into starter | Needs personalization / review | Never copied |
+|---|---|---|---|
+| Theme/layout | Palette; existing shared platform layout | Colour choices | Photos, client-authored artwork, music URL |
+| Pre-wedding / wedding-day events | Explicit type and list order; curated sample titles/notes; real-source structure with generic titles/notes | Own title, description, main event, date, time, venue, address, map, personal instructions | Real-source dates/times/addresses, exact event text, invitations |
+| Couple/story/site address | No real/fictitious identity claims | Own names, address slug, welcome story | Source names, identities, contacts |
+| Guest RSVP | Supported fee structures and premium meal-choice count with generic labels | Fees, meal labels, capacity; standard fixed RSVP questions retain existing behaviour | Guest list, answers, attendance, passes, check-ins, custom questions (not supported) |
+| Sponsorship offerings | Public tier count/prices; curated sample offerings; generic real-source package names/terms | Own names, offering promises and minimums | Sponsor identities, purchased sponsorships, paid amounts |
+| Registry / fundraising | Goal and milestone structure, public target amounts, public feature switches | Own purpose/labels/targets and visibility | Amounts raised, reached-state, contributions, ledger |
+| VIP offerings | Public total-seat offering and price, generic title/notes | Actual availability, description, own price | Seats sold, reservations, purchasers |
+| Suggested amounts | Public currency-tagged song/gift suggestions | Explicit selected currency and review; existing minimum/cap validation | Existing bids or payments |
+| Featured sponsorship | Public feature preference only | Separate fresh campaign dates, slots, minimum/increment | Prior auction windows, bids, winners |
+| FAQ/travel/attire | Curated reference copy only | Own answers and guest guidance | Client-authored FAQ/travel/attire/personal instructions |
+| Money/account/privacy | Nothing | Own receiving/payment configuration and real consent | KYC, payout/provider/referral settings, helpers/invites, financial records |
+| Publication/lifecycle | New private draft only | Own publication readiness/review | Published/paid/archive/moderation state, live-readiness claims |
+
+Within the existing setup wizard, the currency step exposes editable sponsor
+packages, RSVP settings, registry/VIP offerings, fundraising goals/milestones,
+feature preferences and suggested amounts, plus an explicit review checklist.
+Other ordinary wizard entry points remain unchanged. No separate form or
+custom RSVP-question schema is introduced. Existing editor controls load these
+same persisted fields after creation.
+
+The user must select a currency from the authenticated, fresh
+`collection-capabilities` response before accepting numeric money configuration.
+Unavailable or empty support fails closed; static ISO membership is not proof
+of current collection readiness. Same-currency public prices may be retained
+only after selection/review. Switching currencies clears every fee, price, goal,
+target and suggested list. It never relabels or FX-converts amounts.
+Fictional USD/KES/EUR/GBP/NGN/ZAR sample amounts are hand-authored independent
+examples, loaded only by an explicit action. Other supported currencies require
+the user's own amounts. Standard custom-sponsorship/legal minimums are unchanged.
+
+**Release dependencies (currently held):** the unified wizard's
+`server/collection-capabilities.js` must provide the shared read-only
+`collectionCapabilities()` export; the helper is not present in this branch.
+`server/starter-capabilities.js` fails explicitly with 503 while it is missing,
+never assumes a provider/currency is ready, and never invokes recording mode.
+Migration `202611070001_wedding_starter_drafts.sql` and its rollback-only
+`tests/db/wedding-starter-drafts.sql` are authored only, not executed/applied.
+The existing guided-draft migration remains a prerequisite.
+
+The additive `create_wedding_from_starter` RPC wraps the existing authenticated,
+referral-aware `create_wedding_draft` transaction. The entire normalized setup is
+included in its owner/request-key idempotency hash. For a new request only, the
+backend must freshly resolve collection support and stage a service-role-only
+proof bound to owner, request key, currency and full input hash. The wrapper
+checks and consumes that proof (two-minute TTL) inside the same transaction as
+all inserts; direct authenticated callers cannot forge it. A replay returns the
+original draft without requiring a new proof or overwriting later edits.
+Nothing records a provider configuration, transaction or publication state.
+Tab drafts require explicit replacement, and sign-in retains the selected source.
 
 ### Guided setup behaviour
 

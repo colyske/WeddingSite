@@ -39,13 +39,14 @@ test("public design extraction rejects invalid colours and includes only generic
   assert.throws(() => inspiration.publicDesign(["red; background:url(unsafe)"]), /cannot be reused/);
 });
 
-test("style endpoints filter visibility, ignore dates, never read personal content, and preserve authenticated creation", async () => {
+test("style endpoints allowlist public configuration, ignore dates, and fail closed on missing capabilities", async () => {
   const names = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"];
   const previous = names.map(name => process.env[name]);
   Object.assign(process.env, { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "anon", SUPABASE_SERVICE_ROLE_KEY: "service" });
   const oldFetch = globalThis.fetch;
   const calls = [];
   const creates = new Map();
+  let existingDraft = null;
   const key = "550e8400-e29b-41d4-a716-446655440002";
   const owner = "550e8400-e29b-41d4-a716-446655440000";
   const referral = { intentId: owner, revision: key, decision: "accept", termsVersion: "client-referrals-v1" };
@@ -57,22 +58,49 @@ test("style endpoints filter visibility, ignore dates, never read personal conte
     if (url.pathname === "/auth/v1/user") return response({ id: owner });
     if (url.pathname === "/rest/v1/weddings") {
       assert.equal(options.method, "GET");
-      assert.equal(url.searchParams.get("select"), "palette", "no client content may be read");
+      assert.equal(url.searchParams.get("select"), "id,palette,currency,revenue_features,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,amount_presets", "only public configuration may be read");
       assert.equal(url.searchParams.get("published_at"), "not.is.null");
       assert.equal(url.searchParams.get("archived_at"), "is.null");
       assert.equal(url.searchParams.get("lifecycle_admin_restricted"), "eq.false");
       assert.equal(url.searchParams.has("wedding_date"), false, "past/current/future are equally eligible");
       return response(["eq.past-wedding", "eq.current-wedding", "eq.future-wedding"].includes(url.searchParams.get("slug"))
-        ? [{ palette: ["#112233", "#445566", "#778899", "#eeeeee"] }] : []);
+        ? [{ id: owner, currency: "KES", palette: ["#112233", "#445566", "#778899", "#eeeeee"],
+          rsvp_fee_minor: 0, premium_diet_options: ["A personal menu label"],
+          amount_presets: null }] : []);
     }
-    if (url.pathname === "/rest/v1/rpc/create_wedding_draft") {
+    if (url.pathname === "/rest/v1/sponsor_tiers") {
+      assert.equal(url.searchParams.get("select"), "min_amount_minor");
+      return response([{ min_amount_minor: 250000 }]);
+    }
+    if (url.pathname === "/rest/v1/registry_items") {
+      assert.equal(url.searchParams.get("select"), "target_amount_minor");
+      return response([{ target_amount_minor: 15000000 }]);
+    }
+    if (url.pathname === "/rest/v1/vip_offers") {
+      assert.equal(url.searchParams.get("select"), "seats_total,price_minor");
+      return response([{ seats_total: 12, price_minor: 250000 }]);
+    }
+    if (url.pathname === "/rest/v1/venues") {
+      assert.equal(url.searchParams.get("select"), "kind");
+      return response([{ kind: "pre" }, { kind: "main" }]);
+    }
+    if (url.pathname === "/rest/v1/fundraising_streams") {
+      assert.equal(url.searchParams.get("select"), "id,goal_minor");
+      assert.equal(url.searchParams.get("enabled"), "eq.true");
+      return response([{ id: owner, goal_minor: 15000000 }]);
+    }
+    if (url.pathname === "/rest/v1/fundraising_milestones") {
+      assert.equal(url.searchParams.get("select"), "target_minor");
+      return response([{ target_minor: 5000000 }]);
+    }
+    if (url.pathname === "/rest/v1/rpc/create_wedding_from_starter") {
       assert.equal(options.headers.Authorization, "Bearer owner-token");
       assert.equal(body.p_request_key, key);
       assert.deepEqual(body.p_input.referral, referral, "real referral consent passes through unchanged");
       assert.deepEqual(Object.keys(body.p_input).sort(), ["coupleNames", "currency", "location", "maxCapacity",
-        "palette", "paletteNames", "referral", "slug", "timeZone", "venues", "weddingDate"]);
-      if (!creates.has(key)) creates.set(key, { weddingId: owner, slug: body.p_input.slug });
-      return response(creates.get(key));
+        "palette", "paletteNames", "referral", "slug", "starterSetup", "timeZone", "venues", "weddingDate"]);
+      if (existingDraft) return response(existingDraft);
+      return new Response(JSON.stringify({ message: "STARTER_CAPABILITY_REQUIRED: Check support." }), { status: 400 });
     }
     throw new Error(`Unexpected external call: ${input}`);
   };
@@ -87,7 +115,14 @@ test("style endpoints filter visibility, ignore dates, never read personal conte
     for (const slug of ["past-wedding", "current-wedding", "future-wedding", "showcase-wedding"]) {
       const res = await run(guest, "style", null, slug, false);
       assert.equal(res.statusCode, 200);
-      assert.deepEqual(res.body.style.venues.map(event => event.name), ["Your ceremony", "Your reception"]);
+      assert.ok(res.body.style.venues.some(event => event.kind === "pre"));
+      assert.ok(res.body.style.venues.some(event => event.kind === "main"));
+      assert.ok(res.body.style.venues.every(event => event.time === "" && event.eventDate === "" && event.address === ""));
+      assert.equal(res.body.style.setup.currency, "KES");
+      assert.equal(res.body.style.setup.reviewed, false);
+      assert.equal(res.body.style.setup.tiers[0].minAmount, slug === "showcase-wedding" ? "10000.00" : "2500.00");
+      assert.equal(JSON.stringify(res.body).includes("A personal menu label"), false);
+      assert.equal(JSON.stringify(res.body).includes("raised"), false);
       assert.deepEqual(Object.keys(res.body), ["style"]);
     }
     for (const slug of ["private-wedding", "unpublished-wedding", "restricted-wedding", "archived-wedding", "../invalid"]) {
@@ -96,13 +131,14 @@ test("style endpoints filter visibility, ignore dates, never read personal conte
     assert.equal((await run(guest, "style", {}, "past-wedding", false)).statusCode, 405);
     const payload = { coupleNames: "Our own names", requestKey: key, currency: "EUR", referral,
       styleSlug: "past-wedding", ...inspiration.publicDesign(["#112233"]),
+      starterSetup: { ...globalThis.WSStarterSetup.fictional("garden-gathering", "EUR"), reviewed: true,
+        amountPresets: { song: "", gift: "" } },
       published_at: "2099-01-01", enabled_payment_methods: ["stripe"], payout: { method: "test" } };
     delete payload.classification;
     const initial = await run(weddings, "create", payload);
-    assert.equal(initial.statusCode, 201);
-    assert.equal((await run(weddings, "create", payload)).body.weddingId, initial.body.weddingId);
-    assert.equal(creates.size, 1);
-    const input = calls.find(call => call.url.pathname.endsWith("/create_wedding_draft")).body.p_input;
+    assert.equal(initial.statusCode, 503, "missing shared capability dependency blocks creation");
+    assert.equal(creates.size, 0);
+    const input = calls.find(call => call.url.pathname.endsWith("/create_wedding_from_starter")).body.p_input;
     assert.equal(input.currency, "EUR");
     assert.equal(input.weddingDate, null);
     assert.equal(input.location, null);
@@ -112,9 +148,17 @@ test("style endpoints filter visibility, ignore dates, never read personal conte
     assert.equal((await run(weddings, "create", { ...payload, currency: "JPY" })).statusCode, 400);
     assert.equal((await run(weddings, "create", { ...payload, inspirationId: "garden-gathering" })).statusCode, 400);
     const fictional = { ...payload, styleSlug: undefined, inspirationId: "coastal-weekend" };
-    assert.equal((await run(weddings, "create", fictional)).statusCode, 201);
+    assert.equal((await run(weddings, "create", fictional)).statusCode, 503);
     assert.equal((await run(weddings, "create", { ...fictional, inspirationId: "unclassified-client" })).statusCode, 400);
     assert.equal((await run(weddings, "create", { ...fictional, currency: undefined })).statusCode, 400);
+    existingDraft = { weddingId: owner, slug: "our-own-names" };
+    const beforeReplay = calls.length;
+    const replay = await run(weddings, "create", payload);
+    assert.equal(replay.statusCode, 201);
+    assert.deepEqual(replay.body, existingDraft);
+    assert.deepEqual(calls.slice(beforeReplay).map(call => call.url.pathname),
+      ["/auth/v1/user", "/rest/v1/rpc/create_wedding_from_starter"],
+      "existing RPC replay needs neither a fresh source lookup nor the unavailable helper/staging");
     assert.equal(calls.some(call => ["PATCH", "DELETE"].includes(call.options.method)), false);
   } finally {
     globalThis.fetch = oldFetch;

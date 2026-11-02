@@ -27,8 +27,8 @@
     <div class="inspiration-art inspiration-preview-hero" ${art(item)}><span>${esc(item.title)} / Fictional example</span>
       <strong>${esc(item.names)}</strong><span>${esc(item.date)} / ${esc(item.location)}</span></div>
     <div class="inspiration-start"><h2>Make this style yours</h2>
-      <p>Start a <strong>new private draft</strong> with these colours, event titles and editable sample event notes. Add your own names and choose your currency in the guided setup. Nothing is created until you submit that form.</p>
-      <p>Fictional identities, dates, times and places are not copied. Welcome, attire, travel and FAQ text below are writing inspiration, not saved answers. No prices, payment settings, guests, sponsors or activity are copied. Existing weddings stay untouched.</p>
+      <p>Start a <strong>new private draft</strong> with colours, pre-wedding and wedding-day event outlines, editable sample sponsor offerings, RSVP options, gift registry goals, fundraising milestones, VIP offerings and guest amount suggestions.</p>
+      <p>Choose a currently supported collection currency, then explicitly load and review illustrative prices/goals in that currency. These are sample configuration, not received funds. Fictional identities, dates, times and places are not copied. Welcome, attire, travel and FAQ text below are writing inspiration, not saved answers. No guest responses, purchased sponsorships, provider settings, paid activity or publication readiness are inherited. Existing weddings stay untouched.</p>
       <a class="btn primary" href="/dashboard.html?inspiration=${encodeURIComponent(item.id)}#step=couple">Use this style</a></div>
     <div class="inspiration-preview-columns">
       <section class="card"><h2>A note to our guests</h2><p>${esc(item.welcome)}</p><h2>Colours & attire</h2>${palette(item)}<p>${esc(item.attire)}</p></section>
@@ -36,5 +36,11 @@
         <h3>${esc(event.name)}</h3><p class="fine">${event.kind === "pre" ? "Before the wedding" : "Wedding day"} / ${esc(event.time)} / ${esc(event.place)}</p><p>${esc(event.description)}</p></article>`).join("")}</section>
       <section class="card"><h2>Travel notes</h2><p>${esc(item.travel)}</p><h2>Questions & answers</h2>${item.faq.map(([q, a]) =>
         `<details><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join("")}</section>
+      <section class="card"><h2>Editable starter setup</h2>
+        <p>All features start with the existing defaults; you can opt out in setup. Free RSVP fees and a sample meal choice are prefilled. Standard RSVP questions keep their existing behaviour.</p>
+        <h3>Sponsor offerings</h3>${WSStarterSetup.fictional(item.id).tiers.map(tier => `<p><strong>${esc(tier.name)}</strong>: ${esc(tier.perks)}</p>`).join("")}
+        <h3>Fundraising & gifts</h3>${WSStarterSetup.fictional(item.id).campaigns.map(goal => `<p><strong>${esc(goal.name)}</strong>: ${esc(goal.purpose)}</p><p>Milestones: ${goal.milestones.map(m => esc(m.name)).join(", ")}.</p>`).join("")}
+        <p>Gift registry: Our next chapter. VIP: Celebration lounge, 12 sample seats. Prices, goals and suggestions are selected/reviewed in your own supported currency in setup; no exchange conversion is made and no funds are received.</p>
+      </section>
     </div>`;
 })();

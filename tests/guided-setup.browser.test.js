@@ -89,7 +89,10 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     assert.equal(await page.locator("[data-guide-step=money] #currency").count(), 1);
     assert.equal(await page.locator("[data-guide-step]:visible").count(), 1);
     await page.setViewportSize({ width: 320, height: 900 });
+    await page.waitForFunction(() => !document.querySelector(".guide-jump").open);
     assert.equal(await page.locator(".guide-jump").evaluate(el => el.open), false);
+    // Let viewport-based typography settle before measuring the resized layout.
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     const firstQuestionTop = await page.locator("#guide-heading-couple").evaluate(el => el.getBoundingClientRect().top);
     assert.ok(firstQuestionTop < 700, `first question remains near the top on mobile (top: ${firstQuestionTop}px)`);
     await page.locator(".guide-jump > summary").click();

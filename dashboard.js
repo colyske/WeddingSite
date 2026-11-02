@@ -57,9 +57,46 @@
   state.requestKey = crypto.randomUUID();
   state.inspirationId = null;
   state.styleSlug = null;
+  state.starterSetup = null;
   let pendingInspiration = null;
   const draftKey = "ws-create-answers";
   let guide;
+  let starterEditor;
+  let starterCapabilities = null;
+  let capabilitiesLoading = null;
+  function renderStarterCurrencies() {
+    if (!state.starterSetup || starterCapabilities === null) return;
+    const select = $("currency"), selected = state.fields.currency;
+    select.replaceChildren(new Option("Choose a currently supported collection currency", ""),
+      ...starterCapabilities.map(item => new Option(`${item.code} - ${item.name}`, item.code)));
+    if (starterCapabilities.some(item => item.code === selected)) select.value = selected;
+    else {
+      select.value = "";
+      state.fields.currency = "";
+      starterEditor.load(state.starterSetup, { inspirationId: state.inspirationId });
+    }
+  }
+  async function loadStarterCapabilities() {
+    if (!state.starterSetup) return;
+    if (!capabilitiesLoading) capabilitiesLoading = (async () => {
+      try {
+        const response = await window.WS.api("/api/weddings?action=collection-capabilities");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Current collection currency support is unavailable.");
+        if (!Array.isArray(data.currencies) || data.currencies.some(item =>
+          typeof item.code !== "string" || !window.WSCurrencies.supportsAccounting(item.code) || typeof item.name !== "string" ||
+          !Array.isArray(item.methods) || !item.methods.length)) throw new Error("Current collection currency support could not be verified.");
+        starterCapabilities = data.currencies;
+        if (!starterCapabilities.length) setNotice("No guest-payment collection currencies are currently ready. Your starter answers are kept; creation is paused.", "bad");
+      } catch (error) {
+        starterCapabilities = [];
+        setNotice(error.message + " Starter creation is paused; no currency support is assumed.", "bad");
+      }
+      renderStarterCurrencies();
+    })();
+    try { await capabilitiesLoading; }
+    finally { capabilitiesLoading = null; }
+  }
 
   function restoreAnswers() {
     try {
@@ -79,9 +116,11 @@
               .every(key => typeof venue[key] === "string"))) {
         throw new Error("The saved answers could not be read.");
       }
+      const restoredStarter = draft.starterSetup ? window.WSStarterSetup.restoreEditable(draft.starterSetup) : null;
       state.fields = { ...draft.fields };
       state.inspirationId = draft.inspirationId || null;
       state.styleSlug = draft.styleSlug || null;
+      state.starterSetup = restoredStarter;
       if (/^[0-9a-f-]{36}$/i.test(draft.requestKey || "")) state.requestKey = draft.requestKey;
       state.palette = [...draft.palette];
       state.venues = draft.venues;
@@ -102,7 +141,7 @@
     try {
       sessionStorage.setItem(draftKey, JSON.stringify({
         fields: state.fields, palette: state.palette, venues: state.venues, mainVenueId: state.mainVenueId, requestKey: state.requestKey,
-        inspirationId: state.inspirationId, styleSlug: state.styleSlug
+        inspirationId: state.inspirationId, styleSlug: state.styleSlug, starterSetup: state.starterSetup
       }));
       guide?.setState("Before creation, answers are kept in this tab only. Create your draft to save to your account and resume on another device.");
     } catch (error) {
@@ -127,8 +166,8 @@
     if (item) $("inspiration-selection-copy").textContent = pendingInspiration
       ? `${item.title}: your existing answers in this tab have been kept. You can explicitly replace them with this ${item.slug ? "design-only starter" : "fictional style"}, or keep them. No saved wedding will be changed.`
       : item.slug
-        ? "Public wedding design only: colours with generic editable ceremony and reception prompts. Public visibility is not permission to copy personal content. No story, photos, identities, exact event details, money settings or activity are copied. Enter your own names, dates, places and currency."
-        : `${item.title} - fictional inspiration. Colours and event outlines are ready to customize. Enter your own names, dates, places and currency. Sample event notes are editable; no payments or publication are activated.`;
+        ? "Public reusable setup: colours, package/goal structures and supported RSVP/feature settings with generic editable labels. Public visibility is not permission to copy personal content. No story, photos, identities, exact events, private settings or activity are copied. Choose your currency and review all prices in the currency section."
+        : `${item.title} - fictional inspiration. Colours, event outlines and editable sponsorship, RSVP and fundraising setup are ready to customize. Choose your own currency and review illustrative amounts in the currency section. No payments or publication are activated.`;
   }
 
   function applyInspiration(item) {
@@ -141,6 +180,9 @@
     state.requestKey = crypto.randomUUID();
     state.inspirationId = item.id || null;
     state.styleSlug = item.slug || null;
+    state.starterSetup = item.slug ? item.starter.setup : window.WSStarterSetup.fictional(item.id);
+    starterEditor.load(state.starterSetup, { inspirationId: state.inspirationId });
+    loadStarterCapabilities();
     pendingInspiration = null;
     clearInspirationQuery();
     const select = $("currency");
@@ -158,6 +200,23 @@
     const params = new URLSearchParams(location.search);
     const id = params.get("inspiration");
     const slug = params.get("style");
+    if (!id && !slug && !state.starterSetup && (state.inspirationId || state.styleSlug)) {
+      try {
+        let next;
+        if (state.inspirationId) next = window.WSStarterSetup.fictional(state.inspirationId);
+        else {
+          const response = await fetch(`/api/guest?action=style&slug=${encodeURIComponent(state.styleSlug)}`);
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Could not reload starter configuration.");
+          next = data.style.setup;
+        }
+        state.starterSetup = next;
+        starterEditor.load(next, { inspirationId: state.inspirationId, currency: state.fields.currency });
+        if (state.fields.currency) starterEditor.currencyChanged(state.fields.currency);
+      } catch (error) {
+        setNotice(error.message + " Your existing answers are kept. Starter creation is unavailable until this is resolved.", "bad");
+      }
+    }
     if (slug) {
       try {
         if (id) throw new Error("Choose one inspiration source at a time.");
@@ -189,6 +248,7 @@
       if (!select.querySelector('option[value=""]')) select.prepend(new Option("Choose your own accounting currency", ""));
       select.value = state.fields.currency;
     }
+    if (state.starterSetup) await loadStarterCapabilities();
   }
 
   $("apply-inspiration").addEventListener("click", () => applyInspiration(pendingInspiration));
@@ -202,6 +262,7 @@
       const select = $("currency");
       if (!select.querySelector('option[value=""]')) select.prepend(new Option("Choose your own accounting currency", ""));
       select.value = state.fields.currency;
+      renderStarterCurrencies();
     }
   });
 
@@ -248,6 +309,7 @@
         <input type="text" data-venue-field="address" data-id="${v.id}" placeholder="Street address" maxlength="200" value="${esc(v.address)}" aria-label="Venue ${i + 1} address" required>
         <input type="url" data-venue-field="map" data-id="${v.id}" placeholder="Map link (Google Maps, Apple Maps, etc.)" maxlength="500" value="${esc(v.map)}" aria-label="Venue ${i + 1} map link">
         <textarea data-venue-field="description" data-id="${v.id}" placeholder="Notes (address, parking, dress code)" maxlength="500" aria-label="Venue ${i + 1} notes">${esc(v.description)}</textarea>
+        <label>Event type<select data-venue-field="kind" data-id="${v.id}"><option value="main" ${v.kind !== "pre" ? "selected" : ""}>Wedding-day event</option><option value="pre" ${v.kind === "pre" ? "selected" : ""}>Pre-wedding activity</option></select></label>
         <button type="button" class="remove-venue" data-action="remove-venue" data-id="${v.id}">✕ Remove venue</button>
       </div>`).join("");
   }
@@ -390,6 +452,7 @@
       requestKey: state.requestKey,
       ...(state.inspirationId ? { inspirationId: state.inspirationId } : {}),
       ...(state.styleSlug ? { styleSlug: state.styleSlug } : {}),
+      ...(state.starterSetup ? { starterSetup: state.starterSetup } : {}),
       coupleNames: f.names.trim(),
       weddingDate: f.date || null,
       timeZone: f.timeZone,
@@ -403,32 +466,42 @@
 
   async function submitCreate() {
     if (state.submitting || state.created) return;
-    readFieldsFromDom();
-    setNotice("");
-    state.created = null;
-    renderCreated();
-
-    const problem = validate();
-    if (problem) return setNotice(problem.message, "bad", problem.field);
-    if (guide && !guide.validate()) return;
-    if (!window.WS.token()) return setNotice("Your session has expired. Sign in again in this tab; your answers have not been sent to the server.", "bad");
-    if (!referralReady) {
-      try { await loadReferralDisclosure(); }
-      catch (error) { return setNotice(error.message + " Your wedding details are kept.", "bad"); }
-    }
-    if (referralDisclosure?.intent_id && !["accept", "decline"].includes($("client-referral-decision").value)) {
-      return setNotice("Review the client referral disclosure and choose accept or decline.", "bad", $("client-referral-decision"));
-    }
-
     state.submitting = true;
     renderSubmit();
-    setNotice("✨ Creating your wedding...");
-    const payload = buildPayload();
-    if (referralDisclosure?.intent_id) payload.referral = {
-      intentId: referralDisclosure.intent_id, decision: $("client-referral-decision").value,
-      revision: referralDisclosure.revision, termsVersion: referralDisclosure.terms_version
-    };
     try {
+      readFieldsFromDom();
+      setNotice("");
+      state.created = null;
+      renderCreated();
+
+      const problem = validate();
+      if (problem) return setNotice(problem.message, "bad", problem.field);
+      if (guide && !guide.validate()) return;
+      if (state.starterSetup) {
+        await loadStarterCapabilities();
+        if (!starterCapabilities?.some(item => item.code === state.fields.currency)) {
+          return setNotice("Choose a currency currently supported for guest-payment collection. Starter creation is paused until support is verified.", "bad", $("currency"));
+        }
+      }
+      if (state.starterSetup && !starterEditor.validate(state.fields.currency)) {
+        guide?.reveal($("starter-setup"));
+        return;
+      }
+      if (!window.WS.token()) return setNotice("Your session has expired. Sign in again in this tab; your answers have not been sent to the server.", "bad");
+      if (!referralReady) {
+        try { await loadReferralDisclosure(); }
+        catch (error) { return setNotice(error.message + " Your wedding details are kept.", "bad"); }
+      }
+      if (referralDisclosure?.intent_id && !["accept", "decline"].includes($("client-referral-decision").value)) {
+        return setNotice("Review the client referral disclosure and choose accept or decline.", "bad", $("client-referral-decision"));
+      }
+
+      setNotice("✨ Creating your wedding...");
+      const payload = buildPayload();
+      if (referralDisclosure?.intent_id) payload.referral = {
+        intentId: referralDisclosure.intent_id, decision: $("client-referral-decision").value,
+        revision: referralDisclosure.revision, termsVersion: referralDisclosure.terms_version
+      };
       const res = await window.WS.api("/api/weddings?action=create", { method: "POST", body: JSON.stringify(payload) });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -454,6 +527,8 @@
       state.fields = { ...DEFAULT_FIELDS };
       state.inspirationId = null;
       state.styleSlug = null;
+      state.starterSetup = null;
+      starterEditor.load(null);
       showInspiration();
       state.palette = [...DEFAULT_PALETTE];
       state.paletteOpen = false;
@@ -521,6 +596,11 @@
 
   document.addEventListener("change", (e) => {
     if (e.target.dataset && e.target.dataset.action === "set-main") state.mainVenueId = Number(e.target.dataset.id);
+    if (e.target.dataset?.venueField === "kind") {
+      readVenuesFromDom();
+      if (findVenue(state.mainVenueId)?.kind === "pre") state.mainVenueId = state.venues.find(venue => venue.kind !== "pre")?.id;
+      renderVenues();
+    }
   });
 
   $("create-form").addEventListener("input", (e) => {
@@ -533,6 +613,7 @@
       renderVenues();
     }
   });
+  $("currency").addEventListener("change", () => starterEditor.currencyChanged($("currency").value));
 
   $("create-form").addEventListener("submit", (e) => { e.preventDefault(); submitCreate(); });
 
@@ -585,11 +666,16 @@
   window.addEventListener("error", (e) => { console.error(e.error || e.message); setNotice("Something went wrong on this page. Your entries are kept; please try again.", "bad"); });
   window.addEventListener("unhandledrejection", (e) => { console.error(e.reason); setNotice("Something went wrong. Your entries are kept; please try again.", "bad"); });
 
+  starterEditor = window.WSStarterSetupEditor.create($("starter-setup"), {
+    onChange(value) { state.starterSetup = value; keepAnswers(); },
+    onError(message) { setNotice(message, "bad", $("starter-setup")); }
+  });
   if (!window.WS.token()) {
     WSReferrals.prepare().then(() => location.replace("/signin.html?next=" + encodeURIComponent(location.pathname + location.search + location.hash)))
       .catch(error => { $("client-referral-dismiss").hidden = false; setNotice(error.message, "bad"); });
   } else {
     const restored = restoreAnswers();
+    starterEditor.load(state.starterSetup, { inspirationId: state.inspirationId, currency: state.fields.currency });
     window.WSTime.fillSelect($("wedding-timezone"), state.fields.timeZone);
     renderAll();
     initializeInspiration(restored);
