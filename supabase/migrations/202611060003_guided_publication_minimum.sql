@@ -3,8 +3,6 @@ alter table public.weddings
   add column if not exists guest_instructions text,
   add column if not exists publication_minimum_enforced boolean not null default true;
 
-update public.weddings set publication_minimum_enforced = false where published_at is not null;
-
 alter table public.weddings drop constraint if exists weddings_cover_image_url_check;
 alter table public.weddings add constraint weddings_cover_image_url_check check (
   cover_image_url is null or (
@@ -15,6 +13,9 @@ alter table public.weddings drop constraint if exists weddings_guest_instruction
 alter table public.weddings add constraint weddings_guest_instructions_check check (
   guest_instructions is null or length(guest_instructions) <= 1000
 );
+
+-- Backfill only after table DDL: published rows queue deferred content triggers.
+update public.weddings set publication_minimum_enforced = false where published_at is not null;
 
 create table if not exists public.wedding_collection_capabilities (
   wedding_id uuid not null references public.weddings(id) on delete cascade,
