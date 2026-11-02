@@ -22,8 +22,7 @@ test("draft API uses idempotent transactional creation, explicit clears, omitted
   const calls = [];
   const requests = new Map();
   let wedding;
-  let missing = ["wedding-date", "venues-section", "welcome-story", "cover-image-url",
-    "guest-instructions", "fundraising-route"];
+  let missing = ["wedding-date", "venues-section", "welcome-story", "fundraising-route"];
   globalThis.fetch = async (input, options = {}) => {
     const url = new URL(input);
     if (url.pathname === "/auth/v1/user") return json({ id: owner });

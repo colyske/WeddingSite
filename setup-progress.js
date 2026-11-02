@@ -42,16 +42,16 @@
         complete: hasEvent, anchor: "venues" },
       { id: "welcome-story", label: "Write a short welcome story",
         complete: validText(wedding.welcome_story), anchor: "couple" },
-      { id: "cover-image-url", label: "Add a public HTTPS cover photo",
-        complete: validCover(wedding.cover_image_url), anchor: "couple" },
-      { id: "guest-instructions", label: "Tell guests what they need to know before RSVPing",
-        complete: validText(wedding.guest_instructions), anchor: "guests" },
       { id: "fundraising-route", label: "Set up a fundraising option in a currency with a configured guest-payment option",
         complete: hasFundraisingRoute, anchor: supportedCurrency ? "giving" : "money",
         help: supportedCurrency ? "A guest-payment option is configured for this currency; payout readiness is separate." :
           "No live guest-payment option is currently ready for this currency. We never convert amounts or enable payment methods automatically." }
     ].map(item => ({ ...item, required: true }));
     const optional = [
+      { id: "cover-image-url", label: "Add a public HTTPS cover photo",
+        complete: validCover(wedding.cover_image_url), anchor: "couple" },
+      { id: "guest-instructions", label: "Tell guests what they need to know before RSVPing",
+        complete: validText(wedding.guest_instructions), anchor: "guests" },
       { id: "palette-preview", label: "Choose a wedding theme palette",
         complete: Array.isArray(wedding.palette) && wedding.palette.length > 0, anchor: "theme" },
       { id: "travel-info", label: "Add travel information",
@@ -71,11 +71,14 @@
       style.id = "ws-setup-styles";
       style.textContent = `
         .ws-readiness h2{margin-top:0}.ws-readiness p{max-width:70ch}
-        .ws-readiness-list{list-style:none;padding:0;display:grid;gap:.7rem}
-        .ws-readiness-list li{display:flex;gap:.6rem;align-items:flex-start}
-        .ws-readiness-list li.complete{color:#285d39}.ws-readiness-list li.incomplete{color:#6e461e}
+        .ws-readiness-list{list-style:none;padding:0;display:grid;gap:.55rem}
+        .ws-readiness-list li{display:flex;gap:.6rem;align-items:flex-start;padding:.6rem .75rem;border-radius:10px;border:1px solid;border-left-width:5px}
+        .ws-readiness-list li.complete{color:#1f4f30;background:#eef8f1;border-color:#9ccfad}
+        .ws-readiness-list li.incomplete{color:#5c3a12;background:#fff6e5;border-color:#e3b66a}
+        .ws-readiness-list li.optional{color:#3f4a5a;background:#f4f5f8;border-color:#c5cad6}
+        .ws-readiness-list a{color:inherit}
         .ws-readiness-mark{font-size:1.15rem;font-weight:700;line-height:1.2}
-        .ws-readiness-list small{display:block;color:#66736a;margin-top:.15rem}
+        .ws-readiness-list small{display:block;color:inherit;opacity:.85;margin-top:.15rem}
         .ws-readiness-footnote{font-size:.84rem;color:#6b756e}
       `;
       document.head.appendChild(style);
@@ -92,10 +95,10 @@
         </p>
         ${readiness.nextStep ? `<p><a href="${href(readiness.nextStep)}">Next helpful step: ${escapeHtml(readiness.nextStep.label)} →</a></p>` : ""}
         <ul class="ws-readiness-list">${list.map(item => `
-          <li class="${item.complete ? "complete" : "incomplete"}">
-            <span class="ws-readiness-mark" aria-hidden="true">${item.complete ? "✓" : "○"}</span>
+          <li class="${item.complete ? "complete" : item.required ? "incomplete" : "optional"}">
+            <span class="ws-readiness-mark" aria-hidden="true">${item.complete ? "✓" : item.required ? "!" : "○"}</span>
             <span><a href="${href(item)}">${escapeHtml(item.label)}</a>
-              ${item.required ? `<small>Needed before publishing</small>` : ""}
+              <small>${item.complete ? "Done" : item.required ? "Needed before publishing" : "Optional"}</small>
               ${item.help ? `<small>${escapeHtml(item.help)}</small>` : ""}
             </span>
           </li>`).join("")}</ul>

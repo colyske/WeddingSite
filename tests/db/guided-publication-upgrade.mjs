@@ -156,3 +156,64 @@ set constraints all immediate;
 rollback;
 `);
 console.log("Committed corrected migration and verified historical shapes, draft defaults, publication guards and immutable markers.");
+
+const optionalName = "202611080001_optional_cover_and_guest_instructions.sql";
+succeeds(`
+drop table if exists public.guided_upgrade_weddings_before;
+drop table if exists public.guided_upgrade_venues_before;
+create table public.guided_upgrade_weddings_before as select to_jsonb(w) as payload from public.weddings w;
+create table public.guided_upgrade_venues_before as select to_jsonb(v) as payload from public.venues v;
+`);
+succeeds(applyMigration(optionalName, readFileSync(new URL(optionalName, migrations), "utf8")));
+succeeds(`
+begin;
+do $$
+declare legacy public.weddings; draft public.weddings; missing text[]; blocked boolean;
+begin
+  if (select count(*) from supabase_migrations.schema_migrations where version='202611080001') <> 1 then
+    raise exception 'Optional-content upgrade must record exactly one migration';
+  end if;
+  if exists(select 1 from public.guided_upgrade_weddings_before b join public.weddings w
+      on w.id=(b.payload->>'id')::uuid where to_jsonb(w) is distinct from b.payload)
+    or exists(select 1 from public.guided_upgrade_venues_before b join public.venues v
+      on v.id=(b.payload->>'id')::uuid where to_jsonb(v) is distinct from b.payload)
+    or (select count(*) from public.weddings) <> (select count(*) from public.guided_upgrade_weddings_before) then
+    raise exception 'Optional-content upgrade changed existing rows';
+  end if;
+  if exists(select 1 from public.weddings where published_at is not null and publication_minimum_enforced) then
+    raise exception 'Legacy publication markers changed';
+  end if;
+  for legacy in select * from public.weddings where published_at is not null loop
+    if public.get_public_wedding_site(legacy.slug)->>'id' is distinct from legacy.id::text then
+      raise exception 'Every legacy wedding must remain publicly readable';
+    end if;
+    missing := public.wedding_missing_publication_content(legacy);
+    if 'cover-image-url'=any(missing) or 'guest-instructions'=any(missing) then
+      raise exception 'Cover photo and guest instructions must be optional';
+    end if;
+    if not ('welcome-story'=any(missing) and 'fundraising-route'=any(missing)) then
+      raise exception 'Other publication requirements must remain';
+    end if;
+  end loop;
+  update public.weddings set published_at=null where id='62000000-0000-4000-8000-000000000093';
+  blocked := false;
+  begin
+    update public.weddings set published_at=now() where id='62000000-0000-4000-8000-000000000093';
+  exception when raise_exception then blocked := sqlerrm like 'PUBLISH_INCOMPLETE:%';
+  end;
+  if not blocked then raise exception 'Republishing bypassed the remaining minimum'; end if;
+  select * into draft from public.weddings where id='62000000-0000-4000-8000-000000000094';
+  update public.weddings set wedding_date=current_date+30,welcome_story='We look forward to celebrating.'
+    where id=draft.id;
+  insert into public.venues(wedding_id,name,event_date,event_time,address)
+    values (draft.id,'New venue',current_date+30,'12:00','Sample address');
+  insert into public.wedding_collection_capabilities(wedding_id,provider,currency,market)
+    values (draft.id,'stripe',draft.currency,'US');
+  update public.weddings set published_at=now() where id=draft.id;
+end $$;
+set constraints all immediate;
+rollback;
+drop table public.guided_upgrade_weddings_before;
+drop table public.guided_upgrade_venues_before;
+`);
+console.log("Committed optional cover/instructions migration and verified legacy rows, remaining minimum and publication without optional fields.");

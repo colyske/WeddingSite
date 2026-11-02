@@ -75,6 +75,7 @@ test("authenticated correction and staff reason/review surfaces never auto-publi
     await page.goto(`${base}/wedding.html?id=${id}`, { waitUntil: "domcontentloaded" });
     await page.locator("#moderation-form").waitFor({ state: "visible" });
     await page.locator("#edit-section").waitFor({ state: "visible" });
+    await page.locator("#wedding-workspace > summary").click();
     await page.locator("#withdrawals-body").getByText("Correct the payout account details.").waitFor();
     assert.match(await page.locator("#moderation-details").innerText(), /<venue>/, "reasons rendered as text, not markup");
     assert.ok(await page.locator("#publish-btn").isHidden());

@@ -123,6 +123,8 @@ test("public, organizer and back-office surfaces fit small and large screens", a
     await page.locator("#color-inputs").waitFor({ state: "visible" });
     const paletteFits = await page.locator("#color-inputs").evaluate(el => el.scrollWidth <= el.clientWidth);
     assert.ok(paletteFits, "palette name/hex controls wrap on mobile");
+    if (!(await page.locator(".guide-jump").evaluate(el => el.open))) await page.locator(".guide-jump > summary").click();
+    await page.locator(".guide-nav button").filter({ hasText: "Status & publication" }).click();
     await page.locator("#pay-fee-btn").click();
     await page.waitForFunction(() => document.getElementById("publication-status").textContent.includes("No configured payment method"));
     assert.ok(await page.locator("#publication-submit").isDisabled(), "editor fails closed without a configured publication method");

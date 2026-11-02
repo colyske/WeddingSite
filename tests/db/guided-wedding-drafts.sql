@@ -68,9 +68,8 @@ begin
   end if;
   missing := public.wedding_publication_readiness(w.id);
   if not ('wedding-date'=any(missing) and 'venues-section'=any(missing)
-      and 'welcome-story'=any(missing) and 'cover-image-url'=any(missing)
-      and 'guest-instructions'=any(missing) and 'fundraising-route'=any(missing))
-      or 'location'=any(missing) then
+      and 'welcome-story'=any(missing) and 'fundraising-route'=any(missing))
+      or 'location'=any(missing) or 'cover-image-url'=any(missing) or 'guest-instructions'=any(missing) then
     raise exception 'Actionable required content must be returned';
   end if;
   blocked := false;
@@ -101,15 +100,13 @@ begin
   perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='client'),true);
   perform public.save_wedding_content(w.id,jsonb_build_object(
     'welcome_story','We are excited to celebrate with you.',
-    'cover_image_url','https://example.test/celebration.jpg',
-    'guest_instructions','Please RSVP by June 1.',
     'revenue_features',jsonb_build_object('giving',true,'sponsors',true,
       'featured_sponsors',true,'song_requests',true,'vip_seating',true)));
   insert into public.registry_items(wedding_id,name,target_amount_minor)
     values(w.id,'Celebration fund',10000);
   perform public.guided_test_seed_collection_capability(w.id);
   missing := public.wedding_publication_readiness(w.id);
-  if cardinality(missing) > 0 then raise exception 'Complete approved minimum should be ready without a general location: %',missing; end if;
+  if cardinality(missing) > 0 then raise exception 'Complete approved minimum should be ready without a location, cover photo or guest instructions: %',missing; end if;
   perform public.publish_wedding_with_fee(w.id,true);
   -- Assert the new invariants without requiring KYC.
   if not (select published_at is not null from public.weddings where id=w.id) then raise exception 'Complete wedding should publish'; end if;
@@ -140,7 +137,7 @@ begin
   perform public.admin_wedding_action(w.id,'unpublish','inaccurate_details','The venue address needs correction.','Correct the venue address.');
   select id into case_id from public.moderation_cases where wedding_id=w.id;
   perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='client'),true);
-  perform public.save_wedding_content(w.id,'{"cover_image_url":null}'::jsonb);
+  perform public.save_wedding_content(w.id,'{"welcome_story":null}'::jsonb);
   perform public.submit_moderation_correction(case_id,'I reviewed the venue details.',1);
   perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='admin'),true);
   blocked := false;
