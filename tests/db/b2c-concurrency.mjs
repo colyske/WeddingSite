@@ -101,6 +101,7 @@ try {
       delete from public.b2c_dispatches where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
       delete from public.b2c_human_reviews where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
       delete from public.b2c_request_intents where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
+      delete from public.manual_payout_account_holds where custody_id='${context.custody}';
       delete from public.manual_payout_statement_debits where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
       delete from public.manual_payout_reconciliations where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
       delete from public.manual_payout_receipts where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');

@@ -30,7 +30,8 @@ export async function dispatchB2c(payoutId, key, {
     const accessToken = await oauthToken({ env, fetcher });
     const acceptance = await submitPayment(request, accessToken, { env, fetcher });
     const state = await record("accepted", acceptance);
-    return { dispatchId: dispatch.id, dispatched: true, state, accepted: true, settled: false };
+    return { dispatchId: dispatch.id, dispatched: true, state, accepted: true, settled: false,
+      held: state === "account_held", conflict: state === "account_held" };
   } catch {
     // The durable shared execution claim survives transport, OAuth and DB failures.
     // No errors/raw provider responses are logged: they may contain credentials.
@@ -77,7 +78,8 @@ export async function receiveB2cCallback(dispatchId, token, kind, body, { rpc = 
     p_id: dispatchId, p_hash: hash, p_kind: eventKind,
     p_key: capabilityHash(JSON.stringify({ kind, body })), p_evidence: evidence
   }, undefined, true);
-  return { state, reconciliationRequired: true, settled: false };
+  return { state, held: state === "account_held", conflict: state === "account_held",
+    reconciliationRequired: true, settled: false };
 }
 
 export async function runB2cWorker({ env = process.env, rpc = rpcDefault, fetcher = fetch, encryptCredential } = {}) {

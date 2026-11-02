@@ -30,8 +30,8 @@ export default async function handler(req, res) {
       if (!methodOnly(req, res, "POST")) return;
       if (!uuid(req.query.dispatch) || !req.body || typeof req.body !== "object" || Array.isArray(req.body) ||
         Buffer.byteLength(JSON.stringify(req.body)) > 16000) return sendJson(res, 400, { error: "Invalid callback." });
-      await receiveB2cCallback(req.query.dispatch, req.query.token, action, req.body);
-      return sendJson(res, 200, { received: true, settled: false });
+      const observation = await receiveB2cCallback(req.query.dispatch, req.query.token, action, req.body);
+      return sendJson(res, 200, { received: true, ...observation });
     }
     const session = await authenticatedUser(req);
     if (!session) return sendJson(res, 401, { error: "Authentication required." });

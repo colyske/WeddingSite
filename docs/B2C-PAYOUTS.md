@@ -181,7 +181,13 @@ checked evidence explicitly proving **no transfer and zero charge** before a
 terminal no-transfer decision can release it. Unknown/nonzero fees, existing
 receipts or correlated success observations block this path. The original claim
 remains permanently nonresendable. Contradictory later evidence is an incident,
-not permission to rewrite history or resend.
+not permission to rewrite history or resend. Late provider observations after
+terminal no-transfer, or correlated contradictory evidence after payment,
+commit an append-only shared account hold using the real callback-journal UUID
+and digest. No external evidence is fabricated. Both manual and automatic
+eligibility reject that held custody; this release has no incident-release RPC.
+Other unresolved uncertain/resolution-proposed requests also quarantine custody
+from new reservations/execution until evidenced resolution.
 
 ## Deployment configuration names (values never in chat)
 

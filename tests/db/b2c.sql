@@ -171,7 +171,7 @@ begin
   perform public.owner_update_b2c_policy(2,'{"enabled":false}','Synthetic kill switch after claim');
   receipt_evidence:=pg_temp.b2c_evidence('receipt',owner_id,staff_id);
   paid_evidence:=pg_temp.b2c_evidence('reconciliation',owner_id,staff_id);
-  receipt_at:=now();
+  receipt_at:=clock_timestamp();
   perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,100,%L)',
     dispatch,receipt_evidence,paid_evidence,account,statement,line,receipt_at),'Independent final');
   perform set_config('request.jwt.claim.sub',staff_id::text,true);
@@ -240,6 +240,24 @@ begin
     perform public.b2c_cancel(third);
     perform public.b2c_cancel(third);
     if public.manual_payout_state(third)<>'cancelled' then raise exception 'Only unclaimed cancellation may release'; end if;
+    perform set_config('request.jwt.claim.role','service_role',true);
+    perform set_config('request.jwt.claim.sub','',true);
+    if public.b2c_event(dispatch,repeat('c',64),'uncertain',repeat('f',64),
+      '{"reason":"late_provider_observation_after_no_transfer"}')<>'account_held' then
+      raise exception 'Late terminal evidence must commit shared incident hold';
+    end if;
+    perform public.b2c_event(dispatch,repeat('c',64),'uncertain',repeat('f',64),
+      '{"reason":"late_provider_observation_after_no_transfer"}');
+    if (select count(*) from public.manual_payout_account_holds where custody_id=custody)<>1 then
+      raise exception 'Duplicate callback must not duplicate shared incident hold';
+    end if;
+    perform set_config('request.jwt.claim.role','authenticated',true);
+    perform set_config('request.jwt.claim.sub',client_id::text,true);
+    perform pg_temp.b2c_reject(format('select public.b2c_request(%L,%L,%L,%L,10000)',
+      extensions.gen_random_uuid(),wid,custody,recipient),'Held custody account');
+    perform set_config('request.jwt.claim.sub',owner_id::text,true);
+    perform pg_temp.b2c_reject(format('select public.manual_payout_eligible(%L,%L,%L,''KES'',10000,null,true)',
+      wid,custody,recipient),'Held custody account');
   end if;
   if current_setting('b2c.test_concurrency',true)='on' then
     insert into public.b2c_ci_context(data) values(jsonb_build_object('owner',owner_id,'staff',staff_id,

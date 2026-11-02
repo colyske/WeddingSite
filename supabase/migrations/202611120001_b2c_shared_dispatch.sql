@@ -91,7 +91,7 @@ create table public.b2c_dispatches (
   check((conversation_id is null)=(originator_id is null))
 );
 create table public.b2c_callback_events (
-  id bigint generated always as identity primary key,
+  id uuid primary key default extensions.gen_random_uuid(),
   dispatch_id uuid not null references public.b2c_dispatches(id),
   event_key text not null check(event_key ~ '^[a-f0-9]{64}$'),
   kind text not null check(kind in ('result','timeout','uncertain','accepted','rejected')),
@@ -412,6 +412,7 @@ end $$;
 create function public.b2c_event(p_id uuid,p_hash text,p_kind text,p_key text,p_evidence jsonb) returns text
 language plpgsql security definer set search_path='' as $$
 declare d public.b2c_dispatches; r public.manual_payout_requests; actor uuid; state text; inserted integer;
+  observation public.b2c_callback_events; incident public.b2c_callback_events;
 begin
   perform public.b2c_require_service();
   perform pg_advisory_xact_lock(71110001);
@@ -427,7 +428,7 @@ begin
         or d.originator_id is distinct from p_evidence->>'originator_id')) then raise exception 'B2C: Invalid provider binding.'; end if;
     if d.conversation_id is null then
       update public.b2c_dispatches set conversation_id=p_evidence->>'conversation_id',
-        originator_id=p_evidence->>'originator_id',accepted_at=now() where id=d.id;
+        originator_id=p_evidence->>'originator_id',accepted_at=now() where id=d.id returning * into d;
     end if;
   elsif p_kind='result' and (d.conversation_id is null
       or d.conversation_id is distinct from p_evidence->>'conversation_id'
@@ -435,16 +436,38 @@ begin
     raise exception 'B2C: Unbound or uncorrelated result.';
   end if;
   insert into public.b2c_callback_events(dispatch_id,event_key,kind,evidence)
-    values(d.id,p_key,p_kind,p_evidence) on conflict do nothing;
+    values(d.id,p_key,p_kind,p_evidence) on conflict do nothing returning * into observation;
   get diagnostics inserted=row_count;
   state:=public.manual_payout_state(r.id);
-  if inserted=0 then return state; end if;
+  if inserted=0 then
+    if exists(select 1 from public.manual_payout_account_holds where custody_id=r.custody_id) then return 'account_held'; end if;
+    return state;
+  end if;
+  if state='not_transferred' and p_kind in ('accepted','result','timeout','uncertain') then
+    incident:=observation;
+  elsif state='paid' then
+    select * into incident from public.b2c_callback_events e where e.dispatch_id=d.id
+      and d.conversation_id is not null and e.evidence->>'conversation_id'=d.conversation_id
+      and e.evidence->>'originator_id'=d.originator_id and e.evidence->>'result_code' is not null
+      and (e.evidence->>'result_code'<>'0' or (e.evidence->>'transaction_id' is not null
+        and upper(e.evidence->>'transaction_id') is distinct from
+          (select transaction_reference from public.manual_payout_receipts where payout_id=r.id)))
+      order by e.created_at,e.id limit 1;
+  end if;
+  if incident.id is not null then
+    perform public.manual_payout_hold_account(r.id,null,'automatic_b2c',actor,
+      p_reference=>incident.evidence->>'transaction_id',p_currency=>r.currency,
+      p_journal=>incident.id,p_journal_sha256=>incident.event_key);
+    perform public.b2c_audit(r.wedding_id,r.id::text,'provider_conflict_account_held',actor);
+    return 'account_held';
+  end if;
   -- Neither acceptance, claimed success, failure, nor timeout releases money.
   if p_kind in ('result','timeout','uncertain') and state='executing' then
     insert into public.manual_payout_events(payout_id,state,actor_id) values(r.id,'uncertain',actor);
     state:='uncertain';
   end if;
   perform public.b2c_audit(r.wedding_id,r.id::text,p_kind||'_holds_retained',actor);
+  if exists(select 1 from public.manual_payout_account_holds where custody_id=r.custody_id) then return 'account_held'; end if;
   return state;
 end $$;
 create function public.b2c_mark_stale() returns integer
@@ -490,6 +513,7 @@ begin
   perform public.require_staff('superadmin');
   return coalesce((select jsonb_agg(jsonb_build_object('id',d.id,'payout_id',r.id,
     'policy_revision',d.policy_revision,'state',public.manual_payout_state(r.id),
+    'accountHeld',exists(select 1 from public.manual_payout_account_holds h where h.custody_id=r.custody_id),
     'reviews',coalesce((select jsonb_agg(v.reviewer_role) from public.b2c_human_reviews v
       join public.profiles p on p.id=v.reviewer_id and p.platform_role::text=v.reviewer_role
       where v.payout_id=r.id and v.policy_revision=(select revision from public.b2c_policy where singleton)),'[]'::jsonb),
