@@ -20,7 +20,8 @@
       if (!Array.isArray(items) || items.length > max) throw new Error("Check saved starter sections.");
       items.forEach(check);
     };
-    keysOnly(value, ["currency", "reviewed", "features", "rsvp", "tiers", "campaigns", "registry", "vip", "featured", "content"], "saved starter");
+    keysOnly(value, ["currency", "reviewed", "reviewNote", "features", "rsvp", "tiers", "campaigns", "registry", "vip", "featured", "content"], "saved starter");
+    text(value.reviewNote, 1000, "saved starter review", true);
     if (typeof value.currency !== "string" || (value.currency && !root.WSCurrencies.supportsAccounting(value.currency)) ||
         typeof value.reviewed !== "boolean") throw new Error("Check saved starter currency and review.");
     keysOnly(value.features, featureKeys, "saved starter features");
@@ -55,7 +56,7 @@
     return minor;
   }
   function normalize(value, currency) {
-    keysOnly(value, ["currency", "reviewed", "features", "rsvp", "tiers", "campaigns", "registry", "vip", "featured", "content"], "starter configuration");
+    keysOnly(value, ["currency", "reviewed", "reviewNote", "features", "rsvp", "tiers", "campaigns", "registry", "vip", "featured", "content"], "starter configuration");
     if (!root.WSCurrencies.supportsAccounting(currency) || value.currency !== currency || value.reviewed !== true) {
       throw new Error("Choose your currency, then review and confirm every starter price and goal in that currency.");
     }
@@ -84,7 +85,7 @@
         seats: Number(value.vip.seats), priceMinor: money(value.vip.price, 1, 100000000000, "VIP price") };
     }
     return {
-      currency, reviewed: true,
+      currency, reviewed: true, reviewNote: text(value.reviewNote, 1000, "starter review", true),
       features: clone(value.features),
       vip, featured, content: {
         attire: text(value.content.attire, 300, "attire prompt", true),
@@ -145,7 +146,9 @@
       "city-evening": ["Evening partner", "Spotlight partner", "A night to remember", "The shared table", "Our dance floor"]
     }[id];
     return {
-      currency, reviewed: false, features: defaultFeatures(),
+      currency, reviewed: false,
+      reviewNote: "This private starter contains illustrative offerings, goals and guest guidance, not purchased sponsorships or received funds. Personalize the copied sections and supply your own story, dates and venue details. Featured bidding stays disabled with blank dates. Photos and guest instructions are optional.",
+      features: defaultFeatures(),
       registry: [{ name: "Our next chapter", category: "Celebration", description: "Sample registry goal - describe your own plans.", target: sample[2] }],
       vip: { title: "Celebration lounge", description: "Sample seating offering - confirm your actual arrangements.", seats: "12", price: sample[0] },
       featured: { slots: "3", minimum: sample[1], increment: sample[0] },

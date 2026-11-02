@@ -44,7 +44,7 @@ const friendlyColorName = hex => {
   return closest[0];
 };
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-const FIELDS = "id,slug,couple_names,welcome_story,cover_image_url,guest_instructions,wedding_date,time_zone,public_location,currency,revenue_features,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,faq,travel_info,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted";
+const FIELDS = "id,slug,couple_names,welcome_story,cover_image_url,guest_instructions,starter_review_note,wedding_date,time_zone,public_location,currency,revenue_features,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,faq,travel_info,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted";
 const REVENUE_FEATURES = ["giving", "sponsors", "featured_sponsors", "song_requests", "vip_seating"];
 const DEFAULT_ZONE = "Africa/Nairobi";
 const validZone = tz => {

@@ -97,6 +97,10 @@
       : WSStarterSetup.clone(selectedStarter.setup);
     const retain = selectedStarter.inspirationId ? WSStarterSetup.hasSamples(currency) : setup.currency === currency;
     if (!retain) {
+      setup.reviewNote = `At creation, source prices were NOT copied into ${currency || "the new currency"}: ` +
+        `${setup.tiers.length} sponsor packages, ${setup.registry.length} registry goals, ${setup.campaigns.length} fundraising goals and their milestones, ` +
+        `${setup.vip ? "the VIP offer" : "no VIP offer"}, ${setup.featured ? "the featured sponsor structure" : "no featured sponsor structure"}, and RSVP/extra-guest/premium-meal fees. ` +
+        "Priced offerings/goals were omitted, not converted. Add your own offerings, goals and fees using the guide links below. Event outlines, meal options, feature preferences and guest prompts still need personalization.";
       // These schemas require actual prices/targets. Do not invent nominal prices or
       // relabel another currency; the shared editor can add new offerings later.
       setup = WSStarterSetup.clearMoney(setup, currency);

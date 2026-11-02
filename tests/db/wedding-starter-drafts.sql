@@ -1,4 +1,4 @@
--- Authored for isolated local/CI verification only. Not executed by the feature author.
+-- Runs only in isolated local/CI verification; all test writes roll back.
 begin;
 create temporary table starter_fixture(owner_id uuid,key uuid,payload jsonb,result jsonb);
 grant select,update on starter_fixture to authenticated, service_role;
@@ -13,7 +13,7 @@ begin
         jsonb_build_object('name','Pre-wedding activity','kind','pre','sortOrder',0),
         jsonb_build_object('name','Wedding-day event','kind','main','sortOrder',1)),
       'referral',null,'starterSetup','{
-        "currency":"KES","reviewed":true,
+        "currency":"KES","reviewed":true,"reviewNote":"Starter prices reviewed in KES; personalize your guest guidance.",
         "features":{"giving":true,"sponsors":true,"featured_sponsors":true,"song_requests":true,"vip_seating":true},
         "rsvp":{"feeMinor":0,"extraGuestFeeMinor":0,"premiumDietFeeMinor":0,"premiumDietOptions":["Our menu"]},
         "tiers":[{"name":"Our package","minimumMinor":250000,"perks":"Our offering"}],
@@ -122,7 +122,8 @@ begin
       not enabled and starts_at is null and closes_at is null and slot_count=3 and minimum_bid_minor=1000000) then
     raise exception 'Featured structure must stay disabled without inherited dates';
   end if;
-  if (select attire_notes from public.weddings where id=wid) <> 'Personalize dress guidance.' or
+  if (select starter_review_note from public.weddings where id=wid) is distinct from f.payload->'starterSetup'->>'reviewNote' or
+      (select attire_notes from public.weddings where id=wid) <> 'Personalize dress guidance.' or
       (select jsonb_array_length(faq) from public.weddings where id=wid) <> 1 then
     raise exception 'Guest prompts missing';
   end if;
@@ -151,5 +152,20 @@ begin
   if exists(select 1 from public.wedding_starter_capability_proofs where client_owner_id=f.owner_id and request_key=f.key) then
     raise exception 'Capability proof was not consumed';
   end if;
+  if not exists(select 1 from public.weddings w where id=(f.result->>'weddingId')::uuid and
+      'fundraising-route'=any(public.wedding_missing_publication_content(w))) then
+    raise exception 'Starter unexpectedly inherited collection/publication readiness';
+  end if;
+end $$;
+set local role authenticated;
+do $$
+declare f starter_fixture; ordinary_key uuid := extensions.gen_random_uuid(); ordinary_input jsonb; blocked boolean := false;
+begin
+  select * into f from starter_fixture;
+  ordinary_input := f.payload || '{"slug":"ordinary-request-not-starter"}'::jsonb;
+  perform public.create_wedding_draft(ordinary_key,ordinary_input);
+  begin perform public.create_wedding_from_starter(ordinary_key,ordinary_input);
+  exception when raise_exception then blocked := sqlerrm like 'CREATE_CONFLICT:%'; end;
+  if not blocked then raise exception 'Ordinary create replay masqueraded as an applied starter'; end if;
 end $$;
 rollback;

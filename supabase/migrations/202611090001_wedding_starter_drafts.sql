@@ -1,6 +1,7 @@
 -- Additive starter-only RPC. Existing create/editor entry points stay unchanged.
 -- Authoring only: apply through the approved migration process, never ad hoc in Production.
 alter table public.wedding_create_requests add column starter_applied boolean not null default false;
+alter table public.weddings add column starter_review_note text check (length(starter_review_note) <= 1000);
 -- Disabled starter campaigns have no invented event/auction dates.
 alter table public.sponsor_featured_campaigns alter column starts_at drop not null;
 alter table public.sponsor_featured_campaigns alter column closes_at drop not null;
@@ -67,8 +68,9 @@ begin
     raise exception 'A create request key and starter answers are required.';
   end if;
   if jsonb_typeof(config) is distinct from 'object' or
-      not (config ?& array['currency','reviewed','features','rsvp','tiers','campaigns','registry','vip','featured','content']) or
-      config - array['currency','reviewed','features','rsvp','tiers','campaigns','registry','vip','featured','content'] <> '{}'::jsonb or
+      not (config ?& array['currency','reviewed','reviewNote','features','rsvp','tiers','campaigns','registry','vip','featured','content']) or
+      config - array['currency','reviewed','reviewNote','features','rsvp','tiers','campaigns','registry','vip','featured','content'] <> '{}'::jsonb or
+      jsonb_typeof(config->'reviewNote') is distinct from 'string' or length(config->>'reviewNote') > 1000 or
       config->>'currency' is distinct from p_input->>'currency' or
       config->'reviewed' is distinct from 'true'::jsonb or
       not public.paystack_accounting_currency_supported(config->>'currency') then
@@ -76,7 +78,7 @@ begin
   end if;
   if jsonb_typeof(config->'features') is distinct from 'object' or
       not (config->'features' ?& array['giving','sponsors','featured_sponsors','song_requests','vip_seating']) or
-      config->'features' - array['giving','sponsors','featured_sponsors','song_requests','vip_seating'] <> '{}'::jsonb or
+      (config->'features') - array['giving','sponsors','featured_sponsors','song_requests','vip_seating'] <> '{}'::jsonb or
       exists(select 1 from jsonb_each(config->'features') f where jsonb_typeof(f.value) <> 'boolean') then
     raise exception 'Review all starter guest features.';
   end if;
@@ -138,7 +140,7 @@ begin
     extra_guest_fee_minor=extra_fee, premium_diet_fee_minor=meal_fee,
     premium_diet_options=array(select jsonb_array_elements_text(r->'premiumDietOptions')),
     attire_notes=content->>'attire', travel_info=content->>'travel', faq=content->'faq',
-    enabled_payment_methods='{}'::text[]
+    enabled_payment_methods='{}'::text[], starter_review_note=nullif(config->>'reviewNote','')
   where id=wid and client_owner_id=auth.uid() and published_at is null;
   if not found then raise exception 'New private starter draft not found.'; end if;
   offer := config->'featured';

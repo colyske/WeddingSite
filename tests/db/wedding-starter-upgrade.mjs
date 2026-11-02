@@ -30,7 +30,7 @@ commit;
 sql(`
 do $$ begin
   if exists(select 1 from public.starter_upgrade_weddings_before b full join public.weddings w
-      on w.id=(b.payload->>'id')::uuid where to_jsonb(w) is distinct from b.payload) or
+      on w.id=(b.payload->>'id')::uuid where to_jsonb(w)-'starter_review_note' is distinct from b.payload) or
       exists(select 1 from public.starter_upgrade_venues_before b full join public.venues v
       on v.id=(b.payload->>'id')::uuid where to_jsonb(v) is distinct from b.payload) or
       exists(select 1 from public.starter_upgrade_featured_before b full join public.sponsor_featured_campaigns c
@@ -42,6 +42,9 @@ do $$ begin
   end if;
   if exists(select 1 from public.wedding_starter_capability_proofs) then
     raise exception 'Migration fabricated starter readiness proofs';
+  end if;
+  if exists(select 1 from public.weddings where starter_review_note is not null) then
+    raise exception 'Migration wrote starter content into historical weddings';
   end if;
 end $$;
 `);

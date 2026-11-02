@@ -89,7 +89,10 @@ Unavailable or empty support fails closed; static ISO membership is not proof
 of current collection readiness. Same-currency public prices may be retained
 only after selection/review. Choosing a different currency omits all source
 fees/prices/goals and their priced offerings; the summary explicitly requires
-adding new offerings/goals in the shared guide. Free RSVP defaults remain.
+adding new offerings/goals in the shared guide. A persisted read-only starter
+review note lists what was omitted and links to the native offerings, goals,
+RSVP, event, attire and travel/FAQ steps. It describes choices made at creation,
+not current readiness or unsaved answers. Free RSVP defaults remain.
 It never relabels or FX-converts amounts.
 Fictional USD/KES/EUR/GBP/NGN/ZAR sample amounts are hand-authored independent
 examples, accepted only after explicit currency choice and review. For other

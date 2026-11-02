@@ -23,7 +23,7 @@ test("curated starter structures cover existing configurable sections with expli
       assert.equal(parsed.vip.seats, 12);
       assert.equal(parsed.rsvp.feeMinor, 0);
       assert.deepEqual(Object.keys(parsed.features).sort(), WSStarterSetup.featureKeys.toSorted());
-      assert.deepEqual(Object.keys(parsed).sort(), ["campaigns", "content", "currency", "featured", "features", "registry", "reviewed", "rsvp", "tiers", "vip"]);
+      assert.deepEqual(Object.keys(parsed).sort(), ["campaigns", "content", "currency", "featured", "features", "registry", "reviewNote", "reviewed", "rsvp", "tiers", "vip"]);
       assert.equal(Object.hasOwn(parsed, "amountPresets"), false);
       assert.equal(parsed.content.faq.length, 3);
       assert.equal(JSON.stringify(parsed).includes(fixture.names), false);

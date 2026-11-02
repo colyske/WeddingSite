@@ -48,6 +48,7 @@ export async function publicWeddingStyle(slug) {
     ...design, venues: eventStructure.length ? eventStructure : design.venues, classification: "public-reusable-configuration",
     setup: {
       currency: String(source.currency).trim(), reviewed: false, features,
+      reviewNote: "Only allowlisted public reusable configuration was copied. Neutral prompts replaced original writing. Personalize package promises, goals, meals, events and guest guidance; enter your own story, dates and venues. No activity, identities or payment/publication readiness was inherited.",
       registry: (registry || []).map((item, index) => ({ name: `Your gift goal ${index + 1}`, category: "",
         description: "Describe your own gift goal.", target: amount(item.target_amount_minor) })),
       vip: vip?.[0] ? { title: "Your seating offering", description: "Describe your own seating arrangements.",

@@ -72,6 +72,7 @@ test("safe starter selection, currency review, retry and native shared-editor cu
             revenue_features: config.features, rsvp_fee_minor: config.rsvp.feeMinor, extra_guest_fee_minor: config.rsvp.extraGuestFeeMinor,
             premium_diet_fee_minor: config.rsvp.premiumDietFeeMinor, premium_diet_options: config.rsvp.premiumDietOptions,
             attire_notes: config.content.attire, published_at: null,
+            starter_review_note: config.reviewNote,
             venues: body.venues.map((v, i) => ({ id: `event-${i}`, name: v.name, kind: v.kind, description: v.description,
               event_date: null, event_time: null, address: null, map_link: null, is_main: v.isMain, sort_order: i })),
             registry: config.registry.map((r, i) => ({ id: `gift-${i}`, name: r.name, category: r.category, description: r.description, target_amount_minor: r.targetMinor })),
@@ -147,6 +148,7 @@ test("safe starter selection, currency review, retry and native shared-editor cu
     assert.equal(await page.locator("#featured-sponsor-enabled").isChecked(), false);
     assert.equal(await page.locator("#featured-sponsor-starts").inputValue(), "");
     assert.equal(await page.locator("#travel-info").inputValue(), config.content.travel);
+    assert.equal(await page.locator("#starter-review-note [data-starter-review-note]").innerText(), config.reviewNote);
     assert.equal(await page.locator(".faq-q").count(), 3);
     await page.locator(".guide-jump > summary").click();
     await page.locator(".guide-nav button").filter({ hasText: "Fundraising & celebration features" }).click();
@@ -179,6 +181,27 @@ test("safe starter selection, currency review, retry and native shared-editor cu
     await page.locator("#notice").filter({ hasText: /capability lookup unavailable/ }).waitFor();
     assert.equal(await page.locator("#starter-currency option").count(), 1);
     assert.equal(creates.length, 2);
+    capabilitiesFail = false;
+    await page.click("#starter-capabilities-retry");
+    await page.locator("#starter-currency option[value=EUR]").waitFor({ state: "attached" });
+    await page.selectOption("#starter-currency", "EUR");
+    await page.locator("#starter-reviewed").check();
+    await page.selectOption("#client-referral-decision", "accept");
+    await page.click("#create-submit");
+    await page.waitForURL("**/wedding.html?*#step=couple");
+    await page.locator("#starter-review-note").waitFor();
+    assert.equal(creates.length, 3);
+    for (const field of ["tiers", "registry", "campaigns"]) assert.deepEqual(creates[2].starterSetup[field], []);
+    assert.equal(creates[2].starterSetup.vip, null);
+    assert.equal(creates[2].starterSetup.featured, null);
+    assert.equal(creates[2].starterSetup.rsvp.fee, "0");
+    assert.match(await page.locator("#starter-review-note").innerText(), /source prices were NOT copied into EUR/);
+    await page.locator('#starter-review-note a[href="#step=campaigns"]').click();
+    assert.equal(await page.locator("[data-guide-step=campaigns]").isVisible(), true);
+    for (const width of [320, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      await capture("omissions-in-shared-wizard");
+    }
     for (const slug of ["past-wedding", "current-wedding", "future-wedding"]) {
       await page.goto(`${base}/guest.html?slug=${slug}`);
       await page.locator("#reuse-wedding-style a").waitFor();
