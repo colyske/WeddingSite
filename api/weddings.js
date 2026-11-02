@@ -91,7 +91,7 @@ const loadWeddingDetails = async (weddings, opts) => {
   if (!rows.length) return [];
   const ids = rows.map(row => row.id);
   const inFilter = `in.(${ids.map(encodeURIComponent).join(",")})`;
-  const [venues, payouts, registry, tiers, vip, siteContent, campaigns, setupStatuses, featuredCampaigns] = await Promise.all([
+  const [venues, payouts, registry, tiers, vip, siteContent, campaigns, setupStatuses, featuredCampaigns, pendingStarters] = await Promise.all([
     supabaseRequest(`/rest/v1/venues?wedding_id=${inFilter}&select=id,wedding_id,name,event_time,event_date,map_link,description,is_main,kind,address,sort_order&order=sort_order.asc`, opts),
     supabaseRequest(`/rest/v1/payout_preferences?wedding_id=${inFilter}&select=wedding_id,method,display_mask,verified`, opts),
     supabaseRequest(`/rest/v1/registry_items?wedding_id=${inFilter}&select=id,wedding_id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts),
@@ -102,10 +102,12 @@ const loadWeddingDetails = async (weddings, opts) => {
     supabaseRequest("/rest/v1/rpc/get_wedding_setup_status", {
       ...opts, method: "POST", body: { p_wedding_ids: ids }
     }),
-    supabaseRequest(`/rest/v1/sponsor_featured_campaigns?wedding_id=${inFilter}&select=wedding_id,enabled,starts_at,closes_at,slot_count,minimum_bid_minor,bid_increment_minor`, { service: true })
+    supabaseRequest(`/rest/v1/sponsor_featured_campaigns?wedding_id=${inFilter}&select=wedding_id,enabled,starts_at,closes_at,slot_count,minimum_bid_minor,bid_increment_minor`, { service: true }),
+    supabaseRequest(`/rest/v1/wedding_starter_pending?wedding_id=${inFilter}&select=wedding_id,setup`, opts)
   ]);
   return rows.map(row => ({
     ...row,
+    starter_pending_setup: (pendingStarters || []).find(item => item.wedding_id === row.id)?.setup || null,
     venues: (venues || []).filter(item => item.wedding_id === row.id),
     payout: (payouts || []).find(item => item.wedding_id === row.id) || null,
     registry: (registry || []).filter(item => item.wedding_id === row.id),
@@ -153,6 +155,40 @@ export default async function handler(req, res) {
   try {
     const invalidContent = req.method === "POST" && contentError(body);
     if (invalidContent) return sendJson(res, 400, { error: invalidContent });
+    if (action === "starter-review") {
+        if (!methodOnly(req, res, "POST")) return;
+        if (!UUID.test(String(body.weddingId || "")) || !UUID.test(String(body.requestKey || "")) ||
+            !["apply", "omit"].includes(body.decision) || body.reviewed !== true ||
+            !globalThis.WSCurrencies.supportsAccounting(body.currency)) {
+          return sendJson(res, 400, { error: "Review the starter and choose whether to apply or leave out its prices." });
+        }
+        const current = (await supabaseRequest(
+          `/rest/v1/weddings?id=eq.${body.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=id,currency,published_at`, opts))?.[0];
+        if (!current) return sendJson(res, 404, { error: "Wedding not found." });
+        const pending = (await supabaseRequest(
+          `/rest/v1/wedding_starter_pending?wedding_id=eq.${body.weddingId}&select=setup`, opts))?.[0]?.setup;
+        const input = { currency: body.currency, decision: body.decision, reviewed: true };
+        const prior = await supabaseRequest(`/rest/v1/wedding_starter_reviews?wedding_id=eq.${body.weddingId}&select=request_key&limit=1`, { service: true });
+        if (!prior?.length) {
+          if (!pending || current.published_at || current.currency !== body.currency) {
+            return sendJson(res, 409, { error: "Your saved wedding changed. Reload the currency step before reviewing the starter." });
+          }
+          if (body.decision === "apply") {
+            if (pending.currency !== body.currency) {
+              return sendJson(res, 409, { error: "The source prices use a different currency. Keep personalizing, or explicitly leave those prices out; they cannot be converted or relabelled." });
+            }
+            const supported = await starterCapabilities(undefined, { weddingId: body.weddingId });
+            if (!supported.some(item => item.code === body.currency)) {
+              return sendJson(res, 409, { error: "Guest-payment collection is not ready in this currency yet. Your source settings are kept for later review; you can keep personalizing." });
+            }
+          }
+        }
+        const result = await supabaseRequest("/rest/v1/rpc/review_deferred_wedding_starter", {
+          service: true, method: "POST", body: { p_owner: session.user.id, p_wedding_id: body.weddingId,
+            p_request_key: body.requestKey, p_input: input }
+        });
+        return sendJson(res, 200, result);
+    }
     if (action === "paystack-onboarding" || action === "paystack-consent") {
       if (!methodOnly(req, res, action === "paystack-consent" ? "POST" : "GET")) return;
       const weddingId = action === "paystack-consent" ? body.weddingId : req.query.weddingId;
@@ -217,10 +253,15 @@ export default async function handler(req, res) {
         return sendJson(res, 400, { error: "Choose a listed fictional inspiration style and your own supported accounting currency." });
       }
       const hasStarterSource = body.inspirationId !== undefined || body.styleSlug !== undefined;
+      const deferredStarter = hasStarterSource && body.starterDeferred === true;
       let starterSetup;
       if (hasStarterSource || body.starterSetup !== undefined) {
         if (!hasStarterSource) return sendJson(res, 400, { error: "Choose an eligible inspiration source for starter configuration." });
-        try { starterSetup = globalThis.WSStarterSetup.normalize(body.starterSetup, body.currency); }
+        try {
+          // Validate the source structure without treating it as accepted money.
+          starterSetup = globalThis.WSStarterSetup.normalize(
+            deferredStarter ? { ...body.starterSetup, reviewed: true } : body.starterSetup, body.currency);
+        }
         catch (error) { return sendJson(res, 400, { error: error.message, field: "starter-setup" }); }
         const invalidStarter = contentError(starterSetup);
         if (invalidStarter) return sendJson(res, 400, { error: invalidStarter, field: "starter-setup" });
@@ -269,7 +310,7 @@ export default async function handler(req, res) {
       if (venues.some(venue => venue.eventDate && !validDate(venue.eventDate))) {
         return sendJson(res, 400, { error: "Enter real event dates in YYYY-MM-DD format.", field: "venues" });
       }
-      if (names.length < 1 || names.length > 120 || location.length > 120 || !globalThis.WSCurrencies.supportsAccounting(currency) ||
+      if ((!deferredStarter && names.length < 1) || names.length > 120 || location.length > 120 || !globalThis.WSCurrencies.supportsAccounting(currency) ||
           !Number.isInteger(capacity) || capacity < 1 || palette.length > 4 || !palette.every(c => COLOR.test(c))) {
         return sendJson(res, 400, { error: "Check the couple names, location, currency, guest capacity and up to four hex colors." });
       }
@@ -289,22 +330,24 @@ export default async function handler(req, res) {
               weddingDate: body.weddingDate || null, location: location || null,
               currency, maxCapacity: capacity, palette, venues, timeZone,
               paletteNames: palette.map(friendlyColorName), referral: body.referral || null,
-              ...(starterSetup ? { starterSetup } : {})
+              ...(starterSetup ? { starterSetup, ...(deferredStarter ? { starterDeferred: true } : {}) } : {})
             }
           };
-          const path = `/rest/v1/rpc/${starterSetup ? "create_wedding_from_starter" : "create_wedding_draft"}`;
+          const path = `/rest/v1/rpc/${deferredStarter ? "create_deferred_wedding_starter" : starterSetup ? "create_wedding_from_starter" : "create_wedding_draft"}`;
           let created;
           try { created = await supabaseRequest(path, { ...opts, method: "POST", body: createBody }); }
           catch (error) {
-            if (!starterSetup || !/STARTER_CAPABILITY_REQUIRED:/.test(error.message)) throw error;
+            if (!starterSetup || !(deferredStarter ? /STARTER_SOURCE_REQUIRED:/ : /STARTER_CAPABILITY_REQUIRED:/).test(error.message)) throw error;
             if (body.styleSlug && !await publicWeddingStyle(body.styleSlug)) {
               return sendJson(res, 400, { error: "This wedding is no longer available for public setup reuse. Choose another style." });
             }
-            const supported = await starterCapabilities();
-            if (!supported.some(item => item.code === currency)) {
-              return sendJson(res, 400, { error: "Choose a currency currently supported for guest-payment collection.", field: "starter-setup" });
+            if (!deferredStarter) {
+              const supported = await starterCapabilities();
+              if (!supported.some(item => item.code === currency)) {
+                return sendJson(res, 400, { error: "Choose a currency currently supported for guest-payment collection.", field: "starter-setup" });
+              }
             }
-            await supabaseRequest("/rest/v1/rpc/stage_wedding_starter_capability", { service: true, method: "POST",
+            await supabaseRequest(`/rest/v1/rpc/${deferredStarter ? "stage_wedding_starter_source" : "stage_wedding_starter_capability"}`, { service: true, method: "POST",
               body: { p_owner: session.user.id, p_request_key: body.requestKey, p_input: createBody.p_input } });
             created = await supabaseRequest(path, { ...opts, method: "POST", body: createBody });
           }
@@ -312,7 +355,8 @@ export default async function handler(req, res) {
         } catch (error) {
           if (/REFERRAL_CONFLICT:|Self referral|Invalid or withdrawn referral code/.test(error.message)) {
             const [status, message] = referralError(error);
-            return sendJson(res, status, { error: message });
+            return sendJson(res, status, { error: message,
+              ...(/REFERRAL_CONFLICT:/.test(error.message) ? { code: "REFERRAL_CONFLICT" } : {}) });
           }
           if (!/duplicate|unique/i.test(error.message)) throw error;
         }

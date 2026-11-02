@@ -79,7 +79,7 @@
         <h3>Review your starter setup</h3>
         <p data-starter-review-note></p>
         <p>These are the choices made at creation, not a claim that the wedding is ready to publish.</p>
-        <p><a href="#step=giving">Review offerings and prices</a> · <a href="#step=campaigns">Set your fundraising goals</a> · <a href="#step=guests">Review RSVP fees and meals</a> · <a href="#step=venues">Personalize event plans</a> · <a href="#step=theme">Review attire</a> · <a href="#step=extras">Review travel and FAQ</a></p>
+        <p><a href="#step=money">Decide about the style's amounts</a> · <a href="#step=giving">Review offerings and prices</a> · <a href="#step=campaigns">Set your fundraising goals</a> · <a href="#step=guests">Review RSVP fees and meals</a> · <a href="#step=venues">Personalize event plans</a> · <a href="#step=theme">Review attire</a> · <a href="#step=extras">Review travel and FAQ</a></p>
       </aside>
       <form id="edit-form" novalidate>
         <section data-guide-step="couple" data-guide-title="Couple & welcome">
@@ -147,6 +147,17 @@
         <select id="currency" data-wedding-currency data-guide-segment="currency" required aria-required="true" disabled></select>
         <p class="fine" id="collection-currency-help" role="status" aria-live="polite"></p>
         <p class="fine" id="currency-change-help" role="status" aria-live="polite" hidden></p>
+        <section id="starter-pending" class="notice" aria-labelledby="starter-pending-heading" hidden>
+          <h3 id="starter-pending-heading">Amounts from the style you chose</h3>
+          <p id="starter-pending-intro"></p>
+          <ul id="starter-pending-items" class="fine"></ul>
+          <p class="fine" id="starter-pending-hint"></p>
+          <div class="actions">
+            <button type="button" class="btn" id="starter-pending-apply" hidden></button>
+            <button type="button" class="btn secondary" id="starter-pending-omit">Leave these amounts out; I'll set my own</button>
+          </div>
+          <p class="fine" id="starter-pending-status" role="status" aria-live="polite"></p>
+        </section>
         <ul id="collection-currency-options" class="fine"></ul>
         <label for="payout-method">Preferred way to receive eligible funds</label>
         <select id="payout-method" data-guide-segment="payout" aria-describedby="payout-method-help" disabled>
@@ -595,7 +606,7 @@
       panel.hidden = false;
     };
 
-    if (!WS.token()) return location.replace("/signin.html");
+    if (!WS.token()) return location.replace("/signin.html?next=" + encodeURIComponent(location.pathname + location.search + location.hash));
     if (!weddingId) return notice("Wedding ID missing.", true);
 
     $("back").addEventListener("click", () => location.href = "/dashboard.html");
@@ -1120,6 +1131,7 @@
         }
         select.disabled = !currencies.length;
         capabilitiesReady = true;
+        renderStarterPending();
       } catch (error) {
         window.__wedding = { ...window.__wedding, collectionCapabilities: [] };
         capabilitiesReady = false;
@@ -1127,9 +1139,94 @@
         select.options[0].disabled = true;
         help.textContent = `${error.message} Your saved currency and answers are safe. You can keep saving this draft and check again later.`;
         list.replaceChildren();
+        renderStarterPending();
       }
     }
 
+    function starterReviewKey(decision, currency) {
+      const name = `ws-starter-review:${weddingId}:${decision}:${currency}`;
+      let key = sessionStorage.getItem(name);
+      if (!key) { key = crypto.randomUUID(); sessionStorage.setItem(name, key); }
+      return key;
+    }
+
+    function renderStarterPending() {
+      const w = window.__wedding || {};
+      const pending = w.starter_pending_setup;
+      const panel = $("starter-pending");
+      panel.hidden = !pending;
+      if (!pending) return;
+      const amount = minor => `${pending.currency} ${(Number(minor || 0) / 100).toFixed(2)}`;
+      const count = (list, one, many) => list.length === 1 ? `1 ${one}` : `${list.length} ${many}`;
+      const rsvp = pending.rsvp || {};
+      const items = [];
+      if ((pending.tiers || []).length) items.push(`${count(pending.tiers, "sponsor package", "sponsor packages")} with minimums from ${amount(Math.min(...pending.tiers.map(t => Number(t.minimumMinor) || 0)))}`);
+      if ((pending.registry || []).length) items.push(`${count(pending.registry, "gift", "gifts")} with target amounts`);
+      if ((pending.campaigns || []).length) items.push(`${count(pending.campaigns, "fundraising goal", "fundraising goals")}`);
+      if (Number(rsvp.feeMinor) || Number(rsvp.extraGuestFeeMinor) || Number(rsvp.premiumDietFeeMinor)) items.push(`RSVP fees: base ${amount(rsvp.feeMinor)}, extra guest ${amount(rsvp.extraGuestFeeMinor)}, premium meal ${amount(rsvp.premiumDietFeeMinor)}`);
+      if (pending.vip) items.push(`VIP seating at ${amount(pending.vip.priceMinor)} per seat`);
+      if (pending.featured) items.push(`Featured sponsor bidding from ${amount(pending.featured.minimumMinor)}`);
+      $("starter-pending-intro").textContent = `Your palette, events and wording are already in your draft. The style also came with amounts in ${pending.currency}. None of them are on your wedding yet, and nothing is charged until you publish and guests choose to pay.`;
+      $("starter-pending-items").replaceChildren(...(items.length ? items : ["No amounts to review"]).map(text => {
+        const li = document.createElement("li");
+        li.innerHTML = `<span aria-hidden="true">&#9675;</span> To review: `;
+        li.append(text);
+        return li;
+      }));
+      const saved = w.currency;
+      const selected = $("currency").value;
+      const supported = (w.collectionCapabilities || []).some(item => item.code === pending.currency);
+      const apply = $("starter-pending-apply");
+      apply.textContent = `Add these ${pending.currency} amounts to my wedding`;
+      apply.hidden = !(saved === pending.currency && supported);
+      let hint;
+      if (selected && selected !== saved) hint = `Save your currency change first, then come back to decide about these amounts.`;
+      else if (saved !== pending.currency) hint = `Your wedding uses ${saved}. These ${pending.currency} amounts can't be converted or relabelled, so you can leave them out and set your own amounts in ${saved}.`;
+      else if (!supported) hint = `Guest payments in ${pending.currency} aren't confirmed for your account right now. Keep personalizing; you can add these amounts later or leave them out.`;
+      else hint = "You can still edit or remove any amount afterwards.";
+      $("starter-pending-hint").textContent = hint;
+      const unsavedCurrency = Boolean(selected && selected !== saved);
+      $("starter-pending-omit").disabled = unsavedCurrency;
+      apply.disabled = unsavedCurrency;
+    }
+
+    async function reviewStarter(decision) {
+      const w = window.__wedding || {};
+      const status = $("starter-pending-status");
+      const buttons = [$("starter-pending-apply"), $("starter-pending-omit")];
+      if (weddingGuide?.dirty() || weddingGuide?.isSaving()) {
+        status.textContent = "Save your changes first, then decide about these amounts. Your answers are still on this page.";
+        return;
+      }
+      buttons.forEach(button => { button.disabled = true; });
+      // Applying replaces amounts the form would otherwise re-save, so hold edits like a normal save does.
+      const locked = decision === "apply" && weddingGuide;
+      if (locked) weddingGuide.saving();
+      status.textContent = decision === "apply" ? "Adding the amounts…" : "Leaving the amounts out…";
+      try {
+        const res = await WS.api("/api/weddings?action=starter-review", { method: "POST", body: JSON.stringify({
+          weddingId, requestKey: starterReviewKey(decision, w.currency), currency: w.currency, decision, reviewed: true }) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "We couldn't save that choice. Please try again.");
+        if (decision === "omit" && weddingGuide?.dirty()) {
+          window.__wedding = { ...window.__wedding, starter_pending_setup: null, starter_review_note: null };
+          $("starter-review-note").hidden = true;
+          renderStarterPending();
+          weddingGuide.refresh();
+          notice("Done. The style's amounts were left out. Your other answers are still on this page; save them when you're ready.");
+          return;
+        }
+        status.textContent = decision === "apply" ? "Done. The amounts were added; reloading this step…" : "Done. The amounts were left out; reloading this step…";
+        location.reload();
+      } catch (error) {
+        if (locked) weddingGuide.failed();
+        status.textContent = `${error.message} Your draft and answers are safe.`;
+        buttons.forEach(button => { button.disabled = false; });
+        renderStarterPending();
+      }
+    }
+    $("starter-pending-apply").addEventListener("click", () => reviewStarter("apply"));
+    $("starter-pending-omit").addEventListener("click", () => reviewStarter("omit"));
     function updateCurrencyLabels(currency = $("currency").value) {
       document.querySelectorAll("[data-currency-code]").forEach(label => {
         label.textContent = currency || "your wedding currency";
@@ -1141,7 +1238,7 @@
         ? `Changing from ${savedCurrency} to ${currency} will not convert your saved fees, goals, prices or minimums. Their numbers stay the same; review them in Guest RSVP and Fundraising before saving.`
         : "";
     }
-    $("currency").addEventListener("change", () => updateCurrencyLabels());
+    $("currency").addEventListener("change", () => { updateCurrencyLabels(); renderStarterPending(); });
 
     function showSavedPayoutPreference(method) {
       const select = $("payout-method");
@@ -1321,6 +1418,7 @@
         $("location").value = w.public_location || "";
         $("background-music-url").value = w.background_music_url || "";
         $("currency").value = w.currency || "USD";
+        renderStarterPending();
         $("max-capacity").value = w.max_guest_capacity || 150;
         $("cover-image-url").value = w.cover_image_url || "";
         $("guest-instructions").value = w.guest_instructions || "";
@@ -1502,7 +1600,7 @@
             onRefresh: () => syncPublishControl(),
             stepOrder: ["couple", "date", "money", "venues", "guests", "theme", "giving", "campaigns", "extras", "team", "publication", "review"],
             states: {
-              money: () => $("currency").value ? "complete" : "notstarted",
+              money: () => window.__wedding?.starter_pending_setup ? "progress" : $("currency").value ? "complete" : "notstarted",
               giving: () => {
                 const rows = [...document.querySelectorAll("#registry-list .registry-item, #tiers-list .tier-item")];
                 const ready = meaningfulRegistry().length ||
@@ -1526,7 +1624,7 @@
               couple: () => `${$("couple-names").value || "Names not answered yet"}; site address ${$("wedding-slug").value || "not answered yet"}\n${$("welcome-story").value || "Welcome message can wait"}`,
               date: () => `${$("wedding-date").value || "Date not answered yet"}; ${$("wedding-timezone").value}; ${$("location").value || "Location not answered yet"}`,
               guests: () => `Capacity ${$("max-capacity").value || "not answered yet"}; base RSVP fee ${$("rsvp-fee").value}; extra-guest fee ${$("extra-guest-fee").value}`,
-              money: () => `${$("currency").value || "Currency not chosen yet"}; ${$("payout-method").value ? $("payout-method").selectedOptions[0].textContent : "No receiving preference yet (optional)"}`,
+              money: () => `${$("currency").value || "Currency not chosen yet"}; ${window.__wedding?.starter_pending_setup ? "Amounts from your chosen style still to review; " : ""}${$("payout-method").value ? $("payout-method").selectedOptions[0].textContent : "No receiving preference yet (optional)"}`,
               venues: () => [...$("venues-list").querySelectorAll(".venue-item")].map(item =>
                 `${item.querySelector(".venue-kind").value === "pre" ? "Pre-wedding" : "Wedding day"}: ${item.querySelector(".venue-name").value || "Event not named"}: ${item.querySelector(".venue-date").value} ${item.querySelector(".venue-time").value}; ${item.querySelector(".venue-addr").value}`).join("\n") || "Add a wedding-day event before publishing",
               theme: () => `${JSON.parse($("palette-preview").dataset.palette || "[]").join(", ") || "No palette selected"}\n${$("attire-notes").value || "Attire guidance can wait"}`,
