@@ -168,13 +168,18 @@ Final payment requires an independent authenticated reviewer, checked receipt
 evidence **and separate reconciliation-kind statement evidence**, bound to the
 exact provider account, unique statement/debit line, transaction reference,
 destination, amount, fee, currency, transfer time and debit booking time.
+An independently checked non-opening statement batch and immutable observed
+debit entry must already exist, with exact account/currency/reference/line,
+principal, fee and booking date. Random statement/line UUIDs are rejected.
+The shared finalizer consumes that canonical debit and batch capacity, records
+the immutable reconciliation and statement-debit link, then appends `paid` in
+one transaction; both rails use that same finalizer.
 The shared immutable receipt and reconciliation are recorded before `paid`;
 receipt evidence alone cannot settle. A conflicting correlated success reference
 prevents finalization. Mismatched, conflicting, late-terminal or duplicate
 statement/receipt evidence commits a shared account hold and returns an explicit
 HTTP 409 held result; throwing after the insert must not roll that hold back.
-Including that exact paid debit in a subsequent statement
-batch uses the shared accounting primitive, never a balance reset.
+There is no later "include paid debit" certification path or balance reset.
 Transaction Status is not used as recipient/amount proof, and no status query
 or balance provider call is implemented. Inconclusive evidence keeps the hold.
 
@@ -239,7 +244,7 @@ Evidence intake (`intake` action, `kind`, `data`) accepts these exact shapes:
 | `statement` | `{custody:UUID, previous:UUID, statement:UUID, at:ISO_TIMESTAMP, opening:INTEGER, credit:INTEGER, debit:INTEGER, closing:INTEGER, held:INTEGER, evidence:UUID}`; append a checked statement-kind batch to the exact predecessor. |
 | `settlement` | `{contribution:UUID, custody:UUID, settledMinor:INTEGER, line:UUID, evidence:UUID, batch:UUID|null, at:ISO_TIMESTAMP}`; Owner-only exact fee-known settled allocation and explicit settlement date; no duplicated statement line/contribution. |
 | `source` | `{kind:"payout"|"expense"|"adjustment", source:UUID, custody:UUID, batch:UUID|null, evidence:UUID, line:UUID|null, at:ISO_TIMESTAMP|null}`; checked commitment-kind evidence maps the current historical obligation snapshot; reflected debits require exact batch/line/date. |
-| `debit` | `{payout:UUID, batch:UUID, line:UUID, evidence:UUID}`; include the exact independently reconciled paid debit once using checked statement-kind evidence and the shared debit capacity. |
+| `statement-debit` | `{batch:UUID, line:UUID, reference:STRING, actual:INTEGER, fee:INTEGER, currency:"KES", at:ISO_TIMESTAMP, evidence:UUID}`; record the exact independently checked observed debit in an already registered accepted batch before finalizing any payment. Reserves shared canonical line/debit capacity; does not itself mark a request paid. |
 | `funding` | `{custody:UUID, shortcode:STRING, fundingEvidence:UUID}`; append a new independently checked funding/shortcode relationship without creating another balance or credit. |
 
 UUID references identify approved secure-evidence storage, not public URLs.

@@ -21,15 +21,20 @@ let context;
 let originalGate;
 let originalPolicy;
 let originalOwner;
+let originalTriggers;
+const triggerStates = () => sql(`select jsonb_object_agg(tgname,tgenabled) from pg_trigger
+  where tgrelid='public.contributions'::regclass and not tgisinternal;`);
 try {
   originalGate = await sql("select pg_get_functiondef('public.manual_payout_require_enabled()'::regprocedure);");
   originalPolicy = JSON.parse(await sql("select to_jsonb(p) from public.b2c_policy p;"));
   originalOwner = JSON.parse(await sql("select to_jsonb(o) from public.protected_platform_owner o where singleton;"));
+  originalTriggers = await triggerStates();
   const fixture = readFileSync(new URL("./b2c.sql", import.meta.url), "utf8")
     .replace("begin;", "begin; create table public.b2c_ci_context(data jsonb); set local b2c.test_concurrency='on';")
     .replace(/rollback;\s*$/, "commit;");
   await sql(fixture);
   context = JSON.parse(await sql("select data from public.b2c_ci_context;"));
+  assert.equal(await triggerStates(), originalTriggers, "Committed fixture must preserve every collection guard");
   // Transactional sandbox-only substitute: exercise the manual path while its
   // shipped gate remains hard OFF. No dispatcher/provider exists in this runner.
   await sql(`create or replace function public.manual_payout_require_enabled() returns void
@@ -106,6 +111,7 @@ try {
       delete from public.manual_payout_account_holds where custody_id='${context.custody}';
       delete from public.manual_payout_statement_debits where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
       delete from public.manual_payout_reconciliations where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
+      delete from public.manual_payout_statement_debit_entries where custody_id='${context.custody}';
       delete from public.manual_payout_receipts where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
       delete from public.manual_payout_claims where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
       delete from public.manual_payout_events where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
@@ -141,5 +147,8 @@ try {
       delete from auth.users where id in (${users});
       drop table public.b2c_ci_context;
       commit;`);
+    assert.equal(await triggerStates(), originalTriggers, "Concurrency cleanup must preserve every collection guard");
+    assert.deepEqual(JSON.parse(await sql("select to_jsonb(o) from public.protected_platform_owner o where singleton;")),
+      originalOwner, "Concurrency cleanup must restore the exact protected Owner binding");
   }
 }

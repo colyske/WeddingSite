@@ -8,7 +8,8 @@ const tables = ["weddings", "contributions", "expenses", "payout_records", "manu
   "manual_payout_evidence", "manual_payout_evidence_checks", "manual_payout_accounts", "manual_payout_custody",
   "manual_payout_statement_batches", "manual_payout_statement_lines", "manual_payout_source_allocations",
   "manual_payout_recipients", "manual_payout_settlements", "manual_payout_requests", "manual_payout_events",
-  "manual_payout_claims", "manual_payout_receipts", "manual_payout_reconciliations", "manual_payout_statement_debits",
+  "manual_payout_claims", "manual_payout_receipts", "manual_payout_statement_debit_entries",
+  "manual_payout_reconciliations", "manual_payout_statement_debits",
   "manual_payout_account_holds"];
 const snapshot = tables.map(table => `select '${table}' as kind,to_jsonb(r) as payload from public.${table} r`).join(" union all ");
 const fixture = suffix => `71112000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;

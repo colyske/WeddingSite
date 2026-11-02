@@ -33,6 +33,7 @@ declare owner_id uuid:=extensions.gen_random_uuid(); staff_id uuid:=extensions.g
   dispatch uuid; second uuid; third uuid; receipt_evidence uuid; paid_evidence uuid; receipt_at timestamptz;
   account uuid:=extensions.gen_random_uuid(); statement uuid:=extensions.gen_random_uuid(); line uuid:=extensions.gen_random_uuid();
   next_batch uuid; next_contribution uuid; next_at timestamptz;
+  outcome text; wrong_account uuid; wrong_custody uuid; wrong_statement uuid; wrong_batch uuid;
 begin
   if exists(select 1 from public.b2c_policy where enabled or not require_four_eyes or per_payout_minor is not null
     or daily_minor is not null or payout_fee_minor is not null or cardinality(custody_ids)>0 or cardinality(recipient_ids)>0) then
@@ -175,8 +176,67 @@ begin
   perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,100,%L)',
     dispatch,receipt_evidence,paid_evidence,account,statement,line,receipt_at),'Independent final');
   perform set_config('request.jwt.claim.sub',staff_id::text,true);
+  -- No fabricated statement/line may certify paid; the complete transaction,
+  -- including its proposed reported receipt, must roll back on missing evidence.
+  perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,100,%L)',
+    dispatch,receipt_evidence,paid_evidence,account,statement,line,receipt_at),'Registered statement batch');
+  if public.manual_payout_state(payout)<>'uncertain'
+    or exists(select 1 from public.manual_payout_receipts where payout_id=payout) then
+    raise exception 'Missing observed debit must roll back every paid/report write'; end if;
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  evidence:=pg_temp.b2c_evidence('statement',owner_id,staff_id);
+  next_batch:=(public.b2c_intake('statement',jsonb_build_object('custody',custody,
+    'previous',(public.manual_payout_custody_snapshot(custody)->>'batch_id')::uuid,
+    'statement',statement,'at',clock_timestamp(),'opening',100000,'credit',0,'debit',10100,
+    'closing',89900,'held',0,'evidence',evidence))->>'id')::uuid;
+  perform set_config('request.jwt.claim.sub',staff_id::text,true);
+  perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,100,%L)',
+    dispatch,receipt_evidence,paid_evidence,account,statement,line,receipt_at),'Exact registered statement debit');
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  perform public.b2c_intake('statement-debit',jsonb_build_object('batch',next_batch,'line',line,
+    'reference','SYNRECEIPT','actual',10000,'fee',100,'currency','KES','at',receipt_at,'evidence',evidence));
+  perform pg_temp.b2c_reject(format('select public.b2c_intake(''statement-debit'',%L::jsonb)',
+    jsonb_build_object('batch',next_batch,'line',line,'reference','SYNRECEIPT','actual',10000,'fee',100,
+      'currency','KES','at',receipt_at,'evidence',evidence)),'must be unique');
+  perform pg_temp.b2c_reject(format('select public.b2c_intake(''statement-debit'',%L::jsonb)',
+    jsonb_build_object('batch',next_batch,'line',extensions.gen_random_uuid(),'reference','SYNOVER','actual',1,'fee',0,
+      'currency','KES','at',receipt_at,'evidence',evidence)),'Statement debit capacity exceeded');
   begin
-    if pg_temp.b2c_reconcile(dispatch,receipt_evidence,paid_evidence,account,statement,line,0,receipt_at)<>'account_held'
+    wrong_account:=extensions.gen_random_uuid();
+    wrong_statement:=extensions.gen_random_uuid();
+    evidence:=pg_temp.b2c_evidence('account',owner_id,staff_id);
+    perform public.b2c_intake('account',jsonb_build_object('account',wrong_account,
+      'registry',extensions.gen_random_uuid(),'evidence',evidence));
+    evidence:=pg_temp.b2c_evidence('custody',owner_id,staff_id);
+    wrong_custody:=(public.b2c_intake('custody',jsonb_build_object('account',wrong_account,
+      'availableMinor',100000,'heldMinor',0,'statementAt',now(),'evidence',evidence,
+      'fundingEvidence',funding,'shortcode','123456','disbursableCollectedFunds',true))->>'id')::uuid;
+    evidence:=pg_temp.b2c_evidence('statement',owner_id,staff_id);
+    wrong_batch:=(public.b2c_intake('statement',jsonb_build_object('custody',wrong_custody,
+      'previous',(public.manual_payout_custody_snapshot(wrong_custody)->>'batch_id')::uuid,
+      'statement',wrong_statement,'at',clock_timestamp(),'opening',100000,'credit',0,'debit',10100,
+      'closing',89900,'held',0,'evidence',evidence))->>'id')::uuid;
+    perform public.b2c_intake('statement-debit',jsonb_build_object('batch',wrong_batch,'line',line,
+      'reference','SYNRECEIPT','actual',10000,'fee',100,'currency','KES','at',receipt_at,'evidence',evidence));
+    perform set_config('request.jwt.claim.sub',staff_id::text,true);
+    perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,100,%L)',
+      dispatch,receipt_evidence,paid_evidence,account,wrong_statement,line,receipt_at),'Registered statement batch');
+    raise exception using errcode='P9999',message='Rollback unrelated account fixture';
+  exception when sqlstate 'P9999' then null;
+  end;
+  perform set_config('request.jwt.claim.sub',staff_id::text,true);
+  perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,100,%L)',
+    dispatch,receipt_evidence,paid_evidence,account,statement,extensions.gen_random_uuid(),receipt_at),'Exact registered statement debit');
+  perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,100,%L)',
+    dispatch,receipt_evidence,paid_evidence,account,statement,line,receipt_at+interval '1 microsecond'),'Exact registered statement debit');
+  if public.manual_payout_state(payout)<>'uncertain'
+    or exists(select 1 from public.manual_payout_receipts where payout_id=payout)
+    or exists(select 1 from public.manual_payout_reconciliations where payout_id=payout)
+    or exists(select 1 from public.manual_payout_statement_debits where payout_id=payout) then
+    raise exception 'Rejected registered-debit finalization must be atomic, without reported or paid fragments'; end if;
+  begin
+    outcome:=pg_temp.b2c_reconcile(dispatch,receipt_evidence,paid_evidence,account,statement,line,0,receipt_at);
+    if outcome is distinct from 'account_held'
       or not exists(select 1 from public.manual_payout_account_holds where payout_id=payout) then
       raise exception 'Mismatched automatic statement evidence must commit an account hold'; end if;
     raise exception using errcode='P9999',message='Rollback synthetic mismatch regression';
@@ -188,6 +248,12 @@ begin
   perform pg_temp.b2c_reconcile(dispatch,receipt_evidence,paid_evidence,account,statement,line,100,receipt_at);
   if not exists(select 1 from public.manual_payout_reconciliations where payout_id=payout and statement_reference=statement
     and line_reference=line and not owner_solo) then raise exception 'Separate immutable exact statement debit required'; end if;
+  if not exists(select 1 from public.manual_payout_statement_debits d
+    join public.manual_payout_reconciliations r on r.payout_id=d.payout_id
+    join public.manual_payout_statement_debit_entries e on e.id=r.statement_entry_id
+    where d.payout_id=payout and d.batch_id=next_batch and d.line_reference=line
+      and e.batch_id=next_batch and e.line_reference=line) then
+    raise exception 'Paid must already have consumed the exact registered statement debit atomically'; end if;
   if public.manual_payout_state(payout)<>'paid' then raise exception 'Independent exact evidence must settle even after admission stop'; end if;
   -- Automated approval is explicit Owner policy, not manual Owner-solo permission.
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
@@ -231,9 +297,8 @@ begin
     evidence:=pg_temp.b2c_evidence('statement',owner_id,staff_id);
     next_batch:=(public.b2c_intake('statement',jsonb_build_object('custody',custody,
       'previous',(public.manual_payout_custody_snapshot(custody)->>'batch_id')::uuid,
-      'statement',statement,'at',clock_timestamp(),'opening',100000,'credit',50000,'debit',10100,
+      'statement',extensions.gen_random_uuid(),'at',clock_timestamp(),'opening',89900,'credit',50000,'debit',0,
       'closing',139900,'held',0,'evidence',evidence))->>'id')::uuid;
-    perform public.b2c_intake('debit',jsonb_build_object('payout',payout,'batch',next_batch,'line',line,'evidence',evidence));
     evidence:=pg_temp.b2c_evidence('settlement',owner_id,staff_id);
     perform public.b2c_intake('settlement',jsonb_build_object('contribution',next_contribution,'custody',custody,
       'settledMinor',50000,'line',extensions.gen_random_uuid(),'evidence',evidence,'batch',next_batch,'at',next_at));
@@ -268,6 +333,9 @@ begin
     insert into public.b2c_ci_context(data) values(jsonb_build_object('owner',owner_id,'staff',staff_id,
       'client',client_id,'wedding',wid,'custody',custody,'account',account,'recipient',recipient,'existing',second));
   end if;
+  alter table public.contributions enable trigger guard_payment_environment;
+  alter table public.contributions enable trigger guard_live_payment_context;
+  alter table public.contributions enable trigger guard_paystack_context;
 end $$;
 set local role authenticated;
 select pg_temp.b2c_reject(

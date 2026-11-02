@@ -597,12 +597,12 @@ begin
   insert into public.manual_payout_receipts(payout_id,provider,account_reference,transaction_reference,actual_minor,
     actual_fee_minor,currency,transferred_at,evidence_id)
     values(r.id,a.provider,a.account_reference,upper(btrim(p_reference)),p_actual,p_fee,r.currency,p_at,p_receipt);
-  insert into public.manual_payout_reconciliations(payout_id,provider,account_reference,statement_reference,line_reference,
-    transaction_reference,actual_minor,actual_fee_minor,currency,booked_at,evidence_id,reconciled_by,owner_solo)
-    values(r.id,a.provider,a.account_reference,p_statement,p_line,upper(btrim(p_reference)),p_actual,p_fee,
-      r.currency,p_booked_at,p_evidence,auth.uid(),false);
   insert into public.manual_payout_events(payout_id,state,actor_id,evidence_id)
-    values(r.id,'reported',auth.uid(),p_receipt),(r.id,'paid',auth.uid(),p_evidence);
+    values(r.id,'reported',auth.uid(),p_receipt);
+  if not public.manual_payout_finalize_reconciliation_internal(r.id,'automatic_b2c',p_provider,p_account,
+    p_statement,p_line,p_reference,p_actual,p_fee,p_currency,p_booked_at,p_evidence,false) then
+    return 'account_held';
+  end if;
   perform public.b2c_audit(r.wedding_id,r.id::text,'independent_statement_paid',auth.uid());
   return 'paid';
 end $$;
@@ -690,10 +690,10 @@ begin
       (p_data->>'heldMinor')::bigint,false);
     insert into public.b2c_custody_bindings(custody_id,shortcode,funding_evidence)
       values(result::uuid,p_data->>'shortcode',(p_data->>'fundingEvidence')::uuid);
-  elsif p_action in ('statement','settlement','source','debit','funding') then
+  elsif p_action in ('statement','settlement','source','statement-debit','funding') then
     perform public.b2c_lock_staff('owner');
-    custody:=case when p_action='debit' then (select custody_id from public.manual_payout_requests
-      where id=(p_data->>'payout')::uuid) else (p_data->>'custody')::uuid end;
+    custody:=case when p_action='statement-debit' then (select custody_id from public.manual_payout_statement_batches
+      where id=(p_data->>'batch')::uuid) else (p_data->>'custody')::uuid end;
     if not exists(select 1 from public.manual_payout_custody where id=custody and provider='daraja' and currency='KES') then
       raise exception 'B2C: Daraja/KES custody is required for this intake.';
     end if;
@@ -711,10 +711,10 @@ begin
       result:=public.manual_payout_map_source_internal(p_data->>'kind',(p_data->>'source')::uuid,custody,
         (p_data->>'batch')::uuid,(p_data->>'evidence')::uuid,(p_data->>'line')::uuid,
         (p_data->>'at')::timestamptz,false);
-    elsif p_action='debit' then
-      perform public.manual_payout_include_debit_internal((p_data->>'payout')::uuid,(p_data->>'batch')::uuid,
-        (p_data->>'line')::uuid,(p_data->>'evidence')::uuid,false);
-      result:=p_data->>'payout';
+    elsif p_action='statement-debit' then
+      result:=public.manual_payout_register_statement_debit_internal((p_data->>'batch')::uuid,
+        (p_data->>'line')::uuid,p_data->>'reference',(p_data->>'actual')::bigint,(p_data->>'fee')::bigint,
+        p_data->>'currency',(p_data->>'at')::timestamptz,(p_data->>'evidence')::uuid,false);
     else
       perform public.manual_payout_evidence_require((p_data->>'fundingEvidence')::uuid,'policy',false);
       insert into public.b2c_custody_bindings(custody_id,shortcode,funding_evidence)

@@ -44,7 +44,7 @@
         statements, OTP codes or credentials. A different leader checks each evidence record.</p>
         <label>Operation<select name="kind"><option>evidence</option><option>check</option>
           <option>recipient</option><option>account</option><option>custody</option><option>statement</option>
-          <option>settlement</option><option>source</option><option>debit</option><option>funding</option></select></label>
+          <option>settlement</option><option>source</option><option>statement-debit</option><option>funding</option></select></label>
         <label>Structured metadata JSON<textarea name="data" rows="5" required></textarea></label>
         <p>See operator guide for each exact shape. Account/funds/batch/allocation operations are Owner-only.
         A Paybill collection receipt is not evidence that the balance is currently disbursable.</p>
@@ -75,6 +75,8 @@
         <label>Canonical account UUID<input name="accountId" required></label>
         <label>Official statement UUID<input name="statementId" required></label>
         <label>Canonical debit line UUID<input name="lineId" required></label>
+        <p>This debit must already be observed in an accepted registered statement batch.
+        A new random statement/line UUID cannot certify payment.</p>
         <label>Currency<input name="currency" value="KES" readonly></label>
         <label>Official transaction reference<input name="transactionId" required></label>
         <label>Exact destination MSISDN<input name="msisdn" pattern="254[17][0-9]{8}" required></label>
