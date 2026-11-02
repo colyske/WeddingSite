@@ -64,8 +64,8 @@
       <h3>Request and execution journal</h3><p>Unclaimed requests have no dispatch UUID yet.
       Acceptance is not payment. Callbacks retain reservations until independent
       official-statement reconciliation. Timeouts and errors never authorize retry.</p>
-      <div class="table-wrap"><table><thead><tr><th>Payout</th><th>Dispatch</th><th>State</th></tr></thead><tbody>
-      ${dispatches.map(d => `<tr><td>${esc(d.payout_id)}</td><td>${esc(d.id)}</td><td>${esc(d.state)}</td></tr>`).join("")}
+      <div class="table-wrap"><table><thead><tr><th>Payout</th><th>Dispatch</th><th>State</th><th>Current policy reviews</th></tr></thead><tbody>
+      ${dispatches.map(d => `<tr><td>${esc(d.payout_id)}</td><td>${esc(d.id)}</td><td>${esc(d.state)}</td><td>${esc((d.reviews || []).join(", ") || "none")}</td></tr>`).join("")}
       </tbody></table></div>
       <form id="b2c-reconcile"><h3>Independent final statement reconciliation</h3>
         <label>Dispatch UUID<input name="dispatchId" required></label>

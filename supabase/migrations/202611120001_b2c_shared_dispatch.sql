@@ -490,6 +490,9 @@ begin
   perform public.require_staff('superadmin');
   return coalesce((select jsonb_agg(jsonb_build_object('id',d.id,'payout_id',r.id,
     'policy_revision',d.policy_revision,'state',public.manual_payout_state(r.id),
+    'reviews',coalesce((select jsonb_agg(v.reviewer_role) from public.b2c_human_reviews v
+      join public.profiles p on p.id=v.reviewer_id and p.platform_role::text=v.reviewer_role
+      where v.payout_id=r.id and v.policy_revision=(select revision from public.b2c_policy where singleton)),'[]'::jsonb),
     'created_at',coalesce(d.created_at,r.requested_at)) order by r.requested_at desc)
     from (select q.* from public.manual_payout_requests q join public.b2c_request_intents i on i.payout_id=q.id
       order by q.requested_at desc limit 100) r
@@ -619,7 +622,7 @@ begin
     if p_data->>'msisdn' is null or p_data->>'msisdn' !~ '^254[17][0-9]{8}$'
       or (p_data->>'partner')::smallint not in (1,2) or p_data->>'partner' is null
       or p_data->>'msisdn' is distinct from
-        case when p_data->>'partner'='1' then k.partner1_phone else k.partner2_phone end then
+        (case when p_data->>'partner'='1' then k.partner1_phone else k.partner2_phone end) then
       raise exception 'B2C: Evidence must identify the exact reviewed partner and destination MSISDN.';
     end if;
     result:=public.manual_payout_recipient_internal(wid,(p_data->>'evidence')::uuid,'daraja','KES',false);
@@ -682,8 +685,14 @@ begin
     raise exception 'B2C: Couple account required.';
   end if;
   return jsonb_build_object('recipients',coalesce((select jsonb_agg(jsonb_build_object('id',r.id,'revision',r.revision,
-    'controlBound',exists(select 1 from public.b2c_destinations d where d.recipient_id=r.id and d.user_id=auth.uid())))
-    from public.manual_payout_recipients r where r.wedding_id=p_wedding and r.provider='daraja' and r.currency='KES'),'[]'::jsonb),
+    'controlBound',exists(select 1 from public.b2c_destinations d join auth.users u on u.id=d.user_id
+      where d.recipient_id=r.id and d.user_id=auth.uid() and u.phone=d.msisdn and u.phone_confirmed_at=d.phone_confirmed_at)))
+    from public.manual_payout_recipients r join public.b2c_reviewed_destinations v on v.recipient_id=r.id
+    join public.wedding_kyc k on k.wedding_id=r.wedding_id
+    where r.wedding_id=p_wedding and r.provider='daraja' and r.currency='KES'
+      and r.kyc_snapshot_hash=encode(extensions.digest(to_jsonb(k)::text,'sha256'),'hex')
+      and not exists(select 1 from public.manual_payout_recipients newer where newer.wedding_id=r.wedding_id
+        and newer.provider=r.provider and newer.currency=r.currency and newer.revision>r.revision)),'[]'::jsonb),
     'custodyIds',(select to_jsonb(custody_ids) from public.b2c_policy where singleton),
     'requests',coalesce((select jsonb_agg(jsonb_build_object('id',r.id,'amountMinor',r.amount_minor,
       'state',public.manual_payout_state(r.id))) from public.manual_payout_requests r
