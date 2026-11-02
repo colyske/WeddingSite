@@ -111,6 +111,8 @@ insert into public.sponsor_featured_bids(
   ('53000000-0000-4000-8000-000000000100', '52000000-0000-4000-8000-000000000092', '54000000-0000-4000-8000-000000000101', '52000000-0000-4000-8000-000000000092', 'Featured test', 1000000, 'EUR'),
   ('53000000-0000-4000-8000-000000000101', '52000000-0000-4000-8000-000000000092', '54000000-0000-4000-8000-000000000102', '52000000-0000-4000-8000-000000000092', 'Featured unverified', 900000, 'EUR');
 update public.weddings set currency = 'KES' where id = '52000000-0000-4000-8000-000000000092';
+update public.wedding_collection_capabilities set currency = 'KES', market = 'KE', checked_at = now()
+where wedding_id = '52000000-0000-4000-8000-000000000092' and provider = 'stripe' and currency = 'EUR';
 
 insert into public.dj_song_bids(
   id, wedding_id, song_title, artist_name, bid_amount_minor, currency, bidder_name, payment_status, contribution_id
