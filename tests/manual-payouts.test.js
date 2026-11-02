@@ -48,6 +48,7 @@ test("manual payout API rejects nonleaders, preserves token, surfaces OFF and re
       return Response.json(id);
     }
     if (url.pathname === "/rest/v1/rpc/manual_payout_overview") return Response.json({ enabled: false, requests: [] });
+    if (url.pathname === "/rest/v1/rpc/manual_payout_report") return Response.json(false);
     if (url.pathname === "/rest/v1/rpc/manual_payout_history") return Response.json([{ id, status: "reported", amount_minor: 1000, currency: "KES" }]);
     if (url.pathname === "/rest/v1/rpc/withdrawable_balance") return Response.json([{ available_minor: 9000, held_minor: 100 }]);
     if (url.pathname === "/rest/v1/rpc/manual_payout_balance") return Response.json({
@@ -75,6 +76,13 @@ test("manual payout API rejects nonleaders, preserves token, surfaces OFF and re
     blocked = false;
     assert.equal((await invoke("manual-payout-request", request)).statusCode, 200);
     assert.equal(calls[0].body.p_fee, 0);
+    const incident = await invoke("manual-payout-receipt", {
+      id, reference: "CONFLICTING-RECEIPT", actual: 1000, fee: 0, currency: "KES",
+      at: "2026-01-01T00:00:00Z", evidence: id, confirmed: true
+    });
+    assert.equal(incident.statusCode, 409);
+    assert.equal(incident.data.held, true);
+    assert.match(incident.data.error, /evidence recorded.*Both payout channels are held/);
     for (const status of ["approved", "sent"]) {
       assert.equal((await invoke("payout-status", { payout_id: id, status })).statusCode, 409);
       assert.equal(calls.length, 0);

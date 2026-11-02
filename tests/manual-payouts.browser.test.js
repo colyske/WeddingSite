@@ -33,6 +33,7 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
         id: "shared-payout", amount_minor: 1000, currency: "KES", status: payoutState, requested_at: "2026-01-01"
       }], withdrawals: [] } : action === "role" ? { role } : action === "manual-payouts" ? {
         enabled: false, verification: "Manual evidence attestation; not automatic provider verification",
+        heldAccounts: [{ id: "incident-1", custody_id: "custody-1", payout_id: "request-1", recorded_at: "2026-01-01" }],
         blockers: ["Separate activation required"], requests: [{
           id: "request-1", state: "uncertain", amount_minor: 1000, currency: "KES", recipient_revision: "opaque-revision",
           events: [{ state: "executing", actor_id: "sender-1", evidence_id: null }]
@@ -48,6 +49,7 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
     await page.locator("#manual-payout-control").waitFor();
     assert.match(await page.locator("#manual-payout-control").innerText(), /OFF/);
     assert.match(await page.locator("#manual-payout-control").innerText(), /uncertain/);
+    assert.match(await page.locator("#manual-payout-control [role=alert]").innerText(), /held across both payout channels.*no release or resend/);
     assert.equal(await page.locator('[data-ps="sent"], [data-ps="approved"]').count(), 0);
     assert.equal(await page.locator('[data-manual-action="request"] button').isDisabled(), true);
     assert.equal(await page.locator('[data-manual-action="transition"] button').isDisabled(), true);

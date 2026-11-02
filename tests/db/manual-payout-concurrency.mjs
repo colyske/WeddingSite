@@ -19,7 +19,7 @@ function sql(input, onOutput = () => {}) {
 }
 const maker = randomUUID(), checker = randomUUID(), sender = randomUUID(), wedding = randomUUID();
 const contribution = randomUUID(), custody = randomUUID(), recipient = randomUUID(), account = randomUUID(), batch = randomUUID();
-const evidence = Array.from({ length: 6 }, () => randomUUID());
+const evidence = Array.from({ length: 7 }, () => randomUUID());
 const originalGate = await sql("select pg_get_functiondef('public.manual_payouts_enabled()'::regprocedure);");
 const actor = id => `set local role authenticated; select set_config('request.jwt.claim.sub','${id}',true);
   select set_config('request.jwt.claim.role','authenticated',true);`;
@@ -56,7 +56,8 @@ try {
       ('${evidence[2]}','settlement','${randomUUID()}',repeat('c',64),'${maker}'),
       ('${evidence[3]}','receipt','${randomUUID()}',repeat('d',64),'${sender}'),
       ('${evidence[4]}','receipt','${randomUUID()}',repeat('e',64),'${sender}'),
-      ('${evidence[5]}','account','${randomUUID()}',repeat('f',64),'${maker}');
+      ('${evidence[5]}','account','${randomUUID()}',repeat('f',64),'${maker}'),
+      ('${evidence[6]}','receipt','${randomUUID()}',repeat('1',64),'${sender}');
     insert into public.manual_payout_evidence_checks(evidence_id,checked_by)
       select id,'${checker}' from public.manual_payout_evidence where id in (${evidence.map(e => `'${e}'`).join(",")});
     insert into public.manual_payout_accounts(id,provider,canonical_registry_reference,evidence_id,recorded_by)
@@ -100,12 +101,6 @@ try {
     insert into public.manual_payout_claims(payout_id,execution_channel,claim_key,sender_id)
       values('${second}','automatic_b2c','${randomUUID()}','${checker}'); commit;`), /unique/);
   await Promise.all([manualClaim, otherRail]);
-  const receipts = await Promise.allSettled([
-    call(sender, `public.manual_payout_report('${payout}','CONCURRENT-RECEIPT',6000,0,'KES',now(),'${evidence[3]}')`),
-    call(sender, `public.manual_payout_report('${second}','CONCURRENT-RECEIPT',3000,0,'KES',now(),'${evidence[4]}')`)
-  ]);
-  assert.equal(receipts.filter(r => r.status === "fulfilled").length, 1);
-  assert.match(receipts.find(r => r.status === "rejected").reason.message, /unique/);
   assert.equal(await sql(`select count(*) from public.manual_payout_claims where payout_id in ('${payout}','${second}')`), "2");
   const third = idFrom(await call(maker, request(randomUUID(), 1000)));
   await call(checker, `public.manual_payout_transition('${third}','approved')`);
@@ -125,11 +120,12 @@ try {
   // Prove authorization is re-read AFTER an advisory wait, not just at admission.
   const revoked = randomUUID();
   await sql(`insert into auth.users(id) values('${revoked}');`);
-  const reported = await sql(`select payout_id from public.manual_payout_receipts where payout_id in ('${payout}','${second}') limit 1;`);
+  await call(sender, `public.manual_payout_report('${payout}','FIRST-RECEIPT',6000,0,'KES',now(),'${evidence[6]}')`);
+  const reported = payout;
   const attempts = [
     request(randomUUID(), 1000),
     `public.manual_payout_transition('${third}','executing','${randomUUID()}')`,
-    `public.manual_payout_reconcile('${reported}','daraja','${account}','${randomUUID()}','${randomUUID()}','CONCURRENT-RECEIPT',1000,0,'KES',now(),'${evidence[3]}')`
+    `public.manual_payout_reconcile('${reported}','daraja','${account}','${randomUUID()}','${randomUUID()}','FIRST-RECEIPT',6000,0,'KES',now(),'${evidence[3]}')`
   ];
   for (let index = 0; index < attempts.length; index++) {
     await sql(`update public.profiles set platform_role='superadmin' where id='${revoked}';`);
@@ -151,6 +147,17 @@ try {
     update public.profiles set platform_role='client' where id='${revoked}';`);
     await Promise.all([barrier, waiting]);
   }
+  await sql(`update public.payment_adjustments set status='cancelled',hold_minor=0
+    where provider_adjustment_id='isolated-concurrent-refund' and wedding_id='${wedding}';`);
+  await call(sender, `public.manual_payout_transition('${third}','executing','${randomUUID()}')`);
+  const receipts = await Promise.all([
+    call(sender, `public.manual_payout_report('${third}','CONCURRENT-RECEIPT',1000,0,'KES',now(),'${evidence[3]}')`),
+    call(sender, `public.manual_payout_report('${second}','CONCURRENT-RECEIPT',3000,0,'KES',now(),'${evidence[4]}')`)
+  ]);
+  assert.equal(receipts.filter(output => output.split("\n").includes("t")).length, 1, "One receipt accepted");
+  assert.equal(receipts.filter(output => output.split("\n").includes("f")).length, 1, "Conflicting receipt explicitly held");
+  assert.equal(await sql(`select count(*) from public.manual_payout_account_holds where custody_id='${custody}'`), "1");
+  await assert.rejects(call(maker, request(randomUUID(), 1000)), /Held custody account/);
   console.log("Two-connection replay, overdraw, cross-rail claims, duplicate receipts and refund/execution race passed.");
 } finally {
   await sql(originalGate);
