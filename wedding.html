@@ -469,7 +469,7 @@
     <!-- Withdrawals / Payouts -->
     <div id="withdrawals-section" class="card" hidden>
       <h2>💰 Payouts & Withdrawals</h2>
-      <p class="notice" id="manual-payout-status">Manual external payouts are OFF pending separate operational approval and activation. A request is not a payment: independent review, an external execution claim, a unique receipt and independent statement reconciliation are required. Uncertain transfers stay held; payment is never instant. Test payments and direct-settled funds cannot be withdrawn here.</p>
+      <p class="notice" id="manual-payout-status">Manual external payouts are OFF pending separate operational approval and activation. A request is not a payment: review, an external execution claim, a unique receipt and statement reconciliation are required. Staff need two distinct authorized actors; the protected Owner may explicitly use audited solo manual mode. Uncertain transfers stay held; payment is never instant. Test payments and direct-settled funds cannot be withdrawn here.</p>
       <p class="notice" id="payout-kyc-notice" role="status">Add both partners&rsquo; private identity details before requesting a payout. <a href="#kyc-section">Complete identity details</a>. Publishing is not blocked.</p>
       
       <section id="paystack-onboarding" class="notice" aria-labelledby="paystack-onboarding-title">
@@ -482,12 +482,13 @@
         <div id="paystack-settlement-rows" aria-live="polite"></div>
       </section>
       <div id="payout-balance" style="padding: 1.5rem; background: #f3faf3; border-radius: 8px; margin-bottom: 1.5rem;">
-        <p class="fine" style="margin: 0 0 0.5rem;">Available balance:</p>
+        <p class="fine" style="margin: 0 0 0.5rem;">Available for manual withdrawal (OFF):</p>
         <p style="margin: 0; font-size: 1.5rem; font-weight: bold; color: #244b3a;">
           <span id="balance-display">$0.00</span>
         </p>
         <p class="fine" style="margin: 0.6rem 0 0;">Settling: <strong id="settling-display">$0.00</strong>
           &middot; Held for fee/refund/dispute review: <strong id="held-display">$0.00</strong></p>
+        <p id="manual-balance-detail" class="fine">Statement backing, reservations, reconciled spending and unknown funds are being checked. Estimates are not spendable.</p>
         <p class="fine" style="margin: 0.75rem 0 0; color: #666;">
           💡 Amounts exclude pending or failed payments. Refunds, open disputes and unconfirmed payment fees reduce available funds until they are resolved. Transfer holds also apply.
         </p>
@@ -2247,6 +2248,10 @@
           $("balance-display").textContent = WS.money(balData.available_minor || 0, balData.currency);
           $("settling-display").textContent = WS.money(balData.settling_minor || 0, balData.currency);
           $("held-display").textContent = WS.money(balData.held_minor || 0, balData.currency);
+          const manual = balData.manual;
+          $("manual-balance-detail").textContent = manual ?
+            `Statement-backed: ${WS.money(manual.statement_backed_minor,balData.currency)}; reserved (including uncertain): ${WS.money(manual.reserved_minor,balData.currency)}; reconciled spent: ${WS.money(manual.spent_minor,balData.currency)}; known obligations: ${WS.money(manual.known_obligations_minor,balData.currency)}; unknown/held: ${WS.money(manual.unknown_or_held_minor,balData.currency)}. OFF: estimates are not spendable.` :
+            "Shared payout accounting unavailable. No estimate is spendable.";
         }
 
         // Load history
@@ -2268,7 +2273,7 @@
           $("withdrawals-body").innerHTML = withdrawals.map(w => `
             <tr style="border-bottom: 1px solid #ddd;">
               <td style="padding: 0.75rem;">${WS.money(w.amount_minor, w.currency)}</td>
-              <td style="padding: 0.75rem;"><span class="tag">${WS.esc(w.manual ? manualLabels[w.status] || "Manual review required" : `Legacy record: ${w.status} (not independent reconciliation evidence)`)}</span>${w.staff_reason ? `<p>${WS.esc(w.staff_reason)}</p>` : ""}</td>
+              <td style="padding: 0.75rem;"><span class="tag">${WS.esc(w.manual ? w.owner_solo && w.status === "paid" ? "Statement-reconciled payment (audited Owner solo mode)" : manualLabels[w.status] || "Manual review required" : `Legacy record: ${w.status} (not independent reconciliation evidence)`)}</span>${w.staff_reason ? `<p>${WS.esc(w.staff_reason)}</p>` : ""}</td>
               <td style="padding: 0.75rem; font-size: 0.9rem;">${new Date(w.requested_at).toLocaleDateString()}</td>
             </tr>
           `).join("");

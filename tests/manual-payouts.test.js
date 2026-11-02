@@ -23,6 +23,8 @@ test("manual payout commands whitelist immutable inputs, reject unsafe values an
   for (const role of ["admin", "client", "helper", undefined]) {
     assert.equal(manualPayoutCommand("request", request, role).status, 403);
   }
+  assert.equal(manualPayoutCommand("request", { ...request, owner_solo: true }, "superadmin").status, 403);
+  assert.equal(manualPayoutCommand("request", { ...request, owner_solo: true }, "owner").args.p_owner_solo, true);
   const policy = { kind: "policy", reference: id, sha256: "a".repeat(64), confirmed: true };
   assert.equal(manualPayoutCommand("evidence", policy, "superadmin").status, 403);
   assert.equal(manualPayoutCommand("evidence", policy, "owner").rpc, "manual_payout_submit_evidence");

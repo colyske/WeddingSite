@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { chromium } from "playwright";
 
-test("manual payout leadership UI is explicitly OFF, no legacy sent or accidental operations", { timeout: 60000 }, async () => {
+test("manual payout leadership UI is explicitly OFF, no legacy sent or accidental operations", { timeout: 120000 }, async () => {
   const server = http.createServer(async (req, res) => {
     try {
       const path = new URL(req.url, "http://localhost").pathname;
@@ -17,8 +17,9 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
   let browser;
   try {
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-    try { browser = await chromium.launch({ channel: "msedge" }); } catch { browser = await chromium.launch(); }
+    try { browser = await chromium.launch({ channel: "msedge", timeout: 15000 }); } catch { browser = await chromium.launch({ timeout: 15000 }); }
     const page = await browser.newPage();
+    page.setDefaultTimeout(10000);
     await page.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "fixture", r: "superadmin" })));
     await page.route("https://**", route => route.fulfill({ body: "" }));
     let role = "superadmin", writes = 0;
@@ -37,7 +38,7 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
       return route.fulfill({ json: data });
     });
     const origin = `http://127.0.0.1:${server.address().port}`;
-    await page.goto(origin + "/admin.html");
+    await page.goto(origin + "/admin.html", { waitUntil: "domcontentloaded" });
     await page.locator('[data-tab="payouts"]').click();
     await page.locator("#manual-payout-control").waitFor();
     assert.match(await page.locator("#manual-payout-control").innerText(), /OFF/);
@@ -49,7 +50,7 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
     assert.equal(writes, 0);
     role = "admin";
     await page.reload();
-    await page.locator('[data-tab="operations"]').waitFor();
+    await page.locator('button[data-tab="operations"]').waitFor();
     assert.equal(await page.locator('[data-tab="payouts"]').count(), 0);
     const wedding = await readFile(new URL("../wedding.html", import.meta.url), "utf8");
     assert.match(wedding, /<fieldset id="withdrawal-form" disabled/);

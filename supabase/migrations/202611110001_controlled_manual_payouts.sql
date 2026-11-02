@@ -16,15 +16,17 @@ insert into public.manual_payout_policy(singleton) values(true);
 -- bank details, names, KYC documents or proof of automatic provider verification.
 create table public.manual_payout_evidence (
   id uuid primary key default extensions.gen_random_uuid(),
-  kind text not null check (kind in ('recipient','custody','settlement','receipt','no_transfer','policy')),
+  kind text not null check (kind in ('account','commitment','statement','recipient','custody','settlement','receipt','reconciliation','no_transfer','policy')),
   external_reference uuid not null unique,
   sha256 text not null check (sha256 ~ '^[0-9a-f]{64}$'),
   submitted_by uuid not null references public.profiles(id),
   submitted_at timestamptz not null default now()
 );
 create table public.manual_payout_evidence_checks (
-  evidence_id uuid primary key references public.manual_payout_evidence(id),
+  evidence_id uuid not null references public.manual_payout_evidence(id),
   checked_by uuid not null references public.profiles(id),
+  owner_solo boolean not null default false,
+  primary key(evidence_id,checked_by),
   checked_at timestamptz not null default now()
 );
 create table public.manual_payout_recipients (
@@ -38,18 +40,57 @@ create table public.manual_payout_recipients (
   recorded_by uuid not null default auth.uid() references public.profiles(id),
   created_at timestamptz not null default now()
 );
--- One immutable opening custody envelope per account/currency. Refresh/top-ups are
--- deliberately unsupported: replacing a snapshot must not re-credit spent money.
+create table public.manual_payout_accounts (
+  id uuid primary key,
+  provider text not null check (provider ~ '^[a-z][a-z0-9_-]{1,39}$'),
+  canonical_registry_reference uuid not null unique,
+  evidence_id uuid not null unique references public.manual_payout_evidence(id),
+  recorded_by uuid not null references public.profiles(id),
+  unique(id,provider)
+);
 create table public.manual_payout_custody (
   id uuid primary key default extensions.gen_random_uuid(),
   provider text not null check (provider ~ '^[a-z][a-z0-9_-]{1,39}$'),
   account_reference uuid not null,
   currency text not null check (currency ~ '^[A-Z]{3}$'),
-  available_minor bigint not null check (available_minor > 0),
+  available_minor bigint not null check (available_minor >= 0),
   statement_at timestamptz not null,
   evidence_id uuid not null unique references public.manual_payout_evidence(id),
   recorded_by uuid not null default auth.uid() references public.profiles(id),
+  foreign key(account_reference,provider) references public.manual_payout_accounts(id,provider),
   unique(provider, account_reference, currency)
+);
+create table public.manual_payout_statement_batches (
+  id uuid primary key default extensions.gen_random_uuid(),
+  sequence bigint generated always as identity unique,
+  custody_id uuid not null references public.manual_payout_custody(id),
+  previous_batch uuid unique references public.manual_payout_statement_batches(id),
+  statement_reference uuid not null,
+  statement_at timestamptz not null,
+  opening_minor bigint not null check (opening_minor>=0),
+  credit_minor bigint not null check (credit_minor>=0),
+  debit_minor bigint not null check (debit_minor>=0),
+  closing_minor bigint not null check (closing_minor>=0),
+  held_minor bigint not null check (held_minor>=0 and held_minor<=closing_minor),
+  evidence_id uuid not null unique references public.manual_payout_evidence(id),
+  statement_digest text not null,
+  recorded_by uuid not null references public.profiles(id),
+  check (closing_minor::numeric=opening_minor::numeric+credit_minor-debit_minor),
+  unique(custody_id,statement_reference),
+  unique(custody_id,statement_digest)
+);
+create unique index manual_payout_first_batch on public.manual_payout_statement_batches(custody_id) where previous_batch is null;
+create table public.manual_payout_statement_lines (
+  custody_id uuid not null references public.manual_payout_custody(id),
+  batch_id uuid not null references public.manual_payout_statement_batches(id),
+  line_reference uuid not null,
+  source_kind text not null check (source_kind in ('contribution','payout','expense','adjustment','manual_payout')),
+  source_id uuid not null,
+  amount_minor bigint not null check (amount_minor>=0),
+  direction text not null check (direction in ('credit','debit','hold')),
+  evidence_id uuid not null references public.manual_payout_evidence(id),
+  recorded_by uuid not null references public.profiles(id),
+  primary key(custody_id,line_reference)
 );
 create table public.manual_payout_settlements (
   contribution_id uuid primary key references public.contributions(id),
@@ -58,7 +99,25 @@ create table public.manual_payout_settlements (
   settled_minor bigint not null check (settled_minor > 0),
   evidence_id uuid not null unique references public.manual_payout_evidence(id),
   recorded_by uuid not null default auth.uid() references public.profiles(id),
+  batch_id uuid not null references public.manual_payout_statement_batches(id),
+  settled_at timestamptz not null,
   unique(custody_id, statement_line_reference)
+);
+-- Each revision binds the current source hash. Never edit a prior allocation.
+create table public.manual_payout_source_allocations (
+  id bigint generated always as identity primary key,
+  source_kind text not null check (source_kind in ('payout','expense','adjustment')),
+  source_id uuid not null,
+  snapshot_hash text not null,
+  custody_id uuid not null references public.manual_payout_custody(id),
+  reflected_batch uuid references public.manual_payout_statement_batches(id),
+  line_reference uuid,
+  booked_at timestamptz,
+  debit_minor bigint not null check (debit_minor>=0),
+  hold_minor bigint not null check (hold_minor>=0),
+  evidence_id uuid not null unique references public.manual_payout_evidence(id),
+  recorded_by uuid not null references public.profiles(id),
+  unique(source_kind,source_id,snapshot_hash)
 );
 create table public.manual_payout_requests (
   id uuid primary key default extensions.gen_random_uuid(),
@@ -70,6 +129,7 @@ create table public.manual_payout_requests (
   fee_minor bigint not null check (fee_minor >= 0),
   currency text not null check (currency ~ '^[A-Z]{3}$'),
   requested_by uuid not null references public.profiles(id),
+  owner_solo boolean not null default false,
   requested_at timestamptz not null default now()
 );
 create table public.manual_payout_events (
@@ -78,6 +138,7 @@ create table public.manual_payout_events (
   state text not null check (state in
     ('requested','approved','executing','uncertain','reported','paid','cancelled','resolution_proposed','not_transferred')),
   actor_id uuid not null references public.profiles(id),
+  owner_solo boolean not null default false,
   evidence_id uuid references public.manual_payout_evidence(id),
   created_at timestamptz not null default now(),
   unique(payout_id, state)
@@ -103,6 +164,31 @@ create table public.manual_payout_receipts (
   evidence_id uuid not null unique references public.manual_payout_evidence(id),
   unique(provider, account_reference, transaction_reference)
 );
+create table public.manual_payout_reconciliations (
+  payout_id uuid primary key references public.manual_payout_requests(id),
+  provider text not null,
+  account_reference uuid not null,
+  statement_reference uuid not null,
+  line_reference uuid not null,
+  transaction_reference text not null,
+  actual_minor bigint not null check (actual_minor>0),
+  actual_fee_minor bigint not null check (actual_fee_minor>=0),
+  currency text not null check (currency ~ '^[A-Z]{3}$'),
+  booked_at timestamptz not null,
+  evidence_id uuid not null unique references public.manual_payout_evidence(id),
+  reconciled_by uuid not null references public.profiles(id),
+  owner_solo boolean not null,
+  reconciled_at timestamptz not null default now(),
+  unique(provider,account_reference,statement_reference,line_reference)
+);
+create table public.manual_payout_statement_debits (
+  payout_id uuid primary key references public.manual_payout_reconciliations(payout_id),
+  batch_id uuid not null references public.manual_payout_statement_batches(id),
+  line_reference uuid not null,
+  evidence_id uuid not null unique references public.manual_payout_evidence(id),
+  recorded_by uuid not null references public.profiles(id),
+  unique(batch_id,line_reference)
+);
 
 create function public.manual_payout_immutable() returns trigger
 language plpgsql set search_path = '' as $$
@@ -111,9 +197,10 @@ begin raise exception 'Manual payout history is append-only.'; end $$;
 do $$
 declare t text;
 begin
-  foreach t in array array['manual_payout_policy','manual_payout_evidence','manual_payout_evidence_checks',
+  foreach t in array array['manual_payout_policy','manual_payout_evidence','manual_payout_evidence_checks','manual_payout_accounts',
     'manual_payout_recipients','manual_payout_custody','manual_payout_settlements','manual_payout_requests',
-    'manual_payout_events','manual_payout_claims','manual_payout_receipts'] loop
+    'manual_payout_events','manual_payout_claims','manual_payout_receipts','manual_payout_reconciliations',
+    'manual_payout_statement_batches','manual_payout_statement_lines','manual_payout_source_allocations','manual_payout_statement_debits'] loop
     execute format('alter table public.%I enable row level security',t);
     execute format('revoke all on public.%I from public, anon, authenticated, service_role',t);
     execute format('create trigger manual_payout_immutable before update or delete on public.%I
@@ -129,21 +216,33 @@ language sql stable security definer set search_path = '' as $$
 $$;
 create function public.manual_payout_require_enabled() returns void
 language plpgsql security definer set search_path = '' as $$
+declare actual_role public.platform_role;
 begin
   perform public.require_staff('superadmin');
+  perform pg_advisory_xact_lock(71110001);
+  -- Locking SELECT observes a concurrent revocation after an advisory-lock wait.
+  -- Retain the share lock through COMMIT so authority cannot change mid-write.
+  select platform_role into actual_role from public.profiles where id=auth.uid() for share;
+  if actual_role is null or actual_role not in ('owner','superadmin') then raise exception 'Staff authority revoked.'; end if;
   if not public.manual_payouts_enabled() then
     raise exception 'MANUAL_PAYOUT_BLOCKED: Manual payouts are OFF; policy, secure evidence custody, limits, fees and funded rail entitlement require separate approval.';
   end if;
-  -- Serialize manual operations including idempotency before any row locks.
-  perform pg_advisory_xact_lock(71110001);
 end $$;
 
-create function public.manual_payout_evidence_require(p_id uuid, p_kind text) returns void
+create function public.manual_payout_evidence_accepted(p_id uuid,p_kind text,p_allow_owner_solo boolean default false) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select exists(select 1 from public.manual_payout_evidence e
+    join public.manual_payout_evidence_checks c on c.evidence_id=e.id
+    join public.profiles checker on checker.id=c.checked_by
+    where e.id=p_id and e.kind=p_kind and checker.platform_role in ('owner','superadmin')
+      and (c.checked_by<>e.submitted_by or (p_allow_owner_solo and c.owner_solo and checker.platform_role='owner')))
+$$;
+create function public.manual_payout_evidence_require(p_id uuid, p_kind text, p_allow_owner_solo boolean default false) returns void
 language plpgsql security definer set search_path = '' as $$
 begin
-  if not exists(select 1 from public.manual_payout_evidence e
-    join public.manual_payout_evidence_checks c on c.evidence_id=e.id
-    where e.id=p_id and e.kind=p_kind and c.checked_by<>e.submitted_by) then
+  perform 1 from public.profiles where id in (select checked_by from public.manual_payout_evidence_checks
+    where evidence_id=p_id) order by id for share;
+  if not public.manual_payout_evidence_accepted(p_id,p_kind,p_allow_owner_solo) then
     raise exception 'Independently checked manual evidence required.';
   end if;
 end $$;
@@ -159,16 +258,19 @@ begin
     values(p_kind,p_reference,p_sha256,auth.uid()) returning id into v_id;
   return v_id;
 end $$;
-create function public.manual_payout_check_evidence(p_id uuid) returns boolean
+create function public.manual_payout_check_evidence(p_id uuid,p_owner_solo boolean default false) returns boolean
 language plpgsql security definer set search_path = '' as $$
 declare e public.manual_payout_evidence;
 begin
   perform public.manual_payout_require_enabled();
   select * into e from public.manual_payout_evidence where id=p_id;
-  if not found or e.submitted_by=auth.uid() or e.kind='policy' then
+  if p_owner_solo is null or (p_owner_solo and public.current_platform_role()<>'owner') then
+    raise exception 'Only protected Owner may explicitly attest evidence solo.';
+  end if;
+  if not found or (e.submitted_by=auth.uid() and not p_owner_solo) or e.kind='policy' then
     raise exception 'A different leader must check operational evidence.';
   end if;
-  insert into public.manual_payout_evidence_checks(evidence_id,checked_by) values(p_id,auth.uid());
+  insert into public.manual_payout_evidence_checks(evidence_id,checked_by,owner_solo) values(p_id,auth.uid(),p_owner_solo);
   return true;
 end $$;
 
@@ -177,7 +279,7 @@ language plpgsql security definer set search_path = '' as $$
 declare v_id uuid; v_hash text;
 begin
   perform public.manual_payout_require_enabled();
-  perform public.manual_payout_evidence_require(p_evidence,'recipient');
+  perform public.manual_payout_evidence_require(p_evidence,'recipient',public.current_platform_role()='owner');
   perform 1 from public.weddings where id=p_wedding for update;
   perform 1 from public.wedding_kyc where wedding_id=p_wedding for share;
   if not public.kyc_is_complete(p_wedding) then raise exception 'PAYOUT_KYC_REQUIRED: Complete KYC and consent.'; end if;
@@ -188,47 +290,202 @@ begin
   return v_id;
 end $$;
 
+create function public.manual_payout_register_account(p_account uuid,p_provider text,p_registry uuid,p_evidence uuid) returns uuid
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform public.manual_payout_require_enabled();
+  perform public.manual_payout_evidence_require(p_evidence,'account',public.current_platform_role()='owner');
+  insert into public.manual_payout_accounts(id,provider,canonical_registry_reference,evidence_id,recorded_by)
+    values(p_account,p_provider,p_registry,p_evidence,auth.uid());
+  return p_account;
+end $$;
+
+create function public.manual_payout_custody_snapshot(p_custody uuid,p_owner_solo boolean default false) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select jsonb_build_object('batch_id',b.id,'statement_at',b.statement_at,
+    'available_minor',b.closing_minor-b.held_minor,'currency',a.currency,
+    'provider',a.provider,'account_reference',a.account_reference)
+  from public.manual_payout_custody a join public.manual_payout_statement_batches b on b.custody_id=a.id
+  where a.id=p_custody and not exists(select 1 from public.manual_payout_statement_batches bad
+    where bad.custody_id=a.id and not public.manual_payout_evidence_accepted(bad.evidence_id,
+      case when bad.previous_batch is null then 'custody' else 'statement' end,p_owner_solo))
+  order by b.sequence desc limit 1
+$$;
+
+create function public.manual_payout_append_statement(p_custody uuid,p_previous uuid,p_statement uuid,p_at timestamptz,
+  p_opening bigint,p_credit bigint,p_debit bigint,p_closing bigint,p_held bigint,p_evidence uuid) returns uuid
+language plpgsql security definer set search_path = '' as $$
+declare prior public.manual_payout_statement_batches; v_id uuid;
+begin
+  perform public.manual_payout_require_enabled();
+  perform public.manual_payout_evidence_require(p_evidence,'statement',public.current_platform_role()='owner');
+  perform 1 from public.manual_payout_custody where id=p_custody for update;
+  select * into strict prior from public.manual_payout_statement_batches where custody_id=p_custody order by sequence desc limit 1;
+  if p_previous is distinct from prior.id or p_opening is distinct from prior.closing_minor
+    or p_at is null or p_at<=prior.statement_at or p_at>now() then
+    raise exception 'Statement chain, opening balance or time watermark conflict.';
+  end if;
+  insert into public.manual_payout_statement_batches(custody_id,previous_batch,statement_reference,statement_at,
+    opening_minor,credit_minor,debit_minor,closing_minor,held_minor,evidence_id,statement_digest,recorded_by)
+    select p_custody,p_previous,p_statement,p_at,p_opening,p_credit,p_debit,p_closing,p_held,p_evidence,e.sha256,auth.uid()
+    from public.manual_payout_evidence e where e.id=p_evidence returning id into v_id;
+  return v_id;
+end $$;
+
+-- A source snapshot is private; only controlled definer RPCs can inspect it.
+-- Positive adjustments never add entitlement beyond a verified original credit.
+create function public.manual_payout_sources()
+returns table(kind text,id uuid,wedding_id uuid,currency text,debit_minor bigint,hold_minor bigint,paid boolean,snapshot_hash text)
+language sql stable security definer set search_path = '' as $$
+  select 'payout',p.id,p.wedding_id,p.currency::text,
+    case when p.status in ('requested','approved','sent') then p.amount_minor else 0 end,
+    0::bigint,p.status='sent',encode(extensions.digest(to_jsonb(p)::text,'sha256'),'hex')
+    from public.payout_records p
+  union all
+  select 'expense',e.id,e.wedding_id,e.currency::text,
+    case when e.status in ('approved','paid') then e.amount_minor else 0 end,
+    0::bigint,e.status='paid',encode(extensions.digest(to_jsonb(e)::text,'sha256'),'hex')
+    from public.expenses e
+  union all
+  select 'adjustment',a.id,a.wedding_id,a.currency::text,greatest(-coalesce(l.delta,0),0)::bigint,
+    greatest(a.hold_minor,case when l.delta is null and a.status in ('pending','open','review','processed','lost')
+      then a.amount_minor else 0 end)::bigint,
+    coalesce(l.delta,0)<0,encode(extensions.digest((to_jsonb(a)||jsonb_build_object('ledger',l.history))::text,'sha256'),'hex')
+    from public.payment_adjustments a left join lateral (
+      select sum(x.couple_net_delta_minor) as delta,jsonb_agg(to_jsonb(x) order by x.id) as history
+      from public.financial_adjustment_ledger x where x.adjustment_id=a.id
+    ) l on true
+$$;
+
+create function public.manual_payout_record_line(p_batch uuid,p_line uuid,p_kind text,p_source uuid,
+  p_amount bigint,p_direction text,p_evidence uuid) returns void
+language plpgsql security definer set search_path = '' as $$
+declare existing public.manual_payout_statement_lines; custody uuid;
+begin
+  select custody_id into strict custody from public.manual_payout_statement_batches where id=p_batch;
+  select * into existing from public.manual_payout_statement_lines where custody_id=custody and line_reference=p_line;
+  if found then
+    if (existing.batch_id,existing.source_kind,existing.source_id,existing.amount_minor,existing.direction)
+      is distinct from (p_batch,p_kind,p_source,p_amount,p_direction) then
+      raise exception 'Canonical statement line already allocated; conflicting evidence remains held.';
+    end if;
+    return;
+  end if;
+  insert into public.manual_payout_statement_lines values(custody,p_batch,p_line,p_kind,p_source,p_amount,p_direction,p_evidence,auth.uid());
+end $$;
+
+create function public.manual_payout_map_source(p_kind text,p_source uuid,p_custody uuid,p_batch uuid,p_evidence uuid,
+  p_line uuid default null,p_at timestamptz default null)
+returns bigint language plpgsql security definer set search_path = '' as $$
+declare s record; b public.manual_payout_statement_batches; v_id bigint; v_debits numeric; v_holds numeric;
+begin
+  perform public.manual_payout_require_enabled();
+  perform public.manual_payout_evidence_require(p_evidence,'commitment',public.current_platform_role()='owner');
+  select * into strict s from public.manual_payout_sources() where kind=p_kind and id=p_source;
+  perform public.manual_payout_lock(p_custody,s.wedding_id);
+  -- Read after locking: a concurrent refund/status change must not bind an old snapshot.
+  select * into strict s from public.manual_payout_sources() where kind=p_kind and id=p_source;
+  if not exists(select 1 from public.manual_payout_custody where id=p_custody and currency=s.currency) then
+    raise exception 'Commitment currency/account binding conflict.';
+  end if;
+  if p_batch is not null then
+    select * into strict b from public.manual_payout_statement_batches where id=p_batch and custody_id=p_custody;
+    if p_line is null or p_at is null or p_at>b.statement_at or exists(select 1 from public.manual_payout_statement_batches
+      where id=b.previous_batch and p_at<=statement_at) then raise exception 'Exact statement line/date watermark required.'; end if;
+    if s.debit_minor>0 and not s.paid then raise exception 'Unpaid commitments cannot be declared statement-reflected debits.'; end if;
+    select coalesce(sum(x.debit_minor),0),coalesce(sum(x.hold_minor),0) into v_debits,v_holds
+      from (select distinct on (source_kind,source_id) * from public.manual_payout_source_allocations
+        order by source_kind,source_id,id desc) x
+      where x.reflected_batch=p_batch and (x.source_kind,x.source_id) is distinct from (p_kind,p_source);
+    v_debits:=v_debits+coalesce((select sum(r.actual_minor::numeric+r.actual_fee_minor)
+      from public.manual_payout_statement_debits d join public.manual_payout_reconciliations r on r.payout_id=d.payout_id
+      where d.batch_id=p_batch),0);
+    if v_debits+s.debit_minor>b.debit_minor or v_holds+s.hold_minor>b.held_minor then
+      raise exception 'Statement debit/hold capacity already allocated.';
+    end if;
+    perform public.manual_payout_record_line(p_batch,p_line,p_kind,p_source,
+      (s.debit_minor::numeric+s.hold_minor)::bigint,case when s.debit_minor>0 then 'debit' else 'hold' end,p_evidence);
+  end if;
+  insert into public.manual_payout_source_allocations(source_kind,source_id,snapshot_hash,custody_id,
+    reflected_batch,line_reference,booked_at,debit_minor,hold_minor,evidence_id,recorded_by)
+    values(p_kind,p_source,s.snapshot_hash,p_custody,p_batch,p_line,p_at,s.debit_minor,s.hold_minor,p_evidence,auth.uid()) returning id into v_id;
+  return v_id;
+end $$;
+
+create function public.manual_payout_include_debit(p_id uuid,p_batch uuid,p_line uuid,p_evidence uuid) returns boolean
+language plpgsql security definer set search_path = '' as $$
+declare r public.manual_payout_requests; b public.manual_payout_statement_batches; receipt public.manual_payout_reconciliations; used numeric;
+begin
+  perform public.manual_payout_require_enabled();
+  select * into strict r from public.manual_payout_requests where id=p_id;
+  perform public.manual_payout_lock(r.custody_id,r.wedding_id);
+  perform public.manual_payout_evidence_require(p_evidence,'statement',r.owner_solo and public.current_platform_role()='owner');
+  select * into strict b from public.manual_payout_statement_batches where id=p_batch and custody_id=r.custody_id;
+  select * into strict receipt from public.manual_payout_reconciliations where payout_id=p_id;
+  if public.manual_payout_state(p_id)<>'paid' or receipt.statement_reference<>b.statement_reference
+    or receipt.line_reference<>p_line or receipt.booked_at>b.statement_at then
+    raise exception 'Only the exact reconciled statement debit may be included once.';
+  end if;
+  select coalesce(sum(x.actual_minor::numeric+x.actual_fee_minor),0) into used from public.manual_payout_statement_debits d
+    join public.manual_payout_reconciliations x on x.payout_id=d.payout_id where d.batch_id=p_batch;
+  used:=used+coalesce((select sum(a.debit_minor) from (
+    select distinct on (source_kind,source_id) * from public.manual_payout_source_allocations
+      order by source_kind,source_id,id desc) a where reflected_batch=p_batch),0);
+  if used+receipt.actual_minor+receipt.actual_fee_minor>b.debit_minor then raise exception 'Statement debit capacity exceeded.'; end if;
+  perform public.manual_payout_record_line(p_batch,p_line,'manual_payout',p_id,
+    (receipt.actual_minor::numeric+receipt.actual_fee_minor)::bigint,'debit',p_evidence);
+  insert into public.manual_payout_statement_debits values(p_id,p_batch,p_line,p_evidence,auth.uid());
+  return true;
+end $$;
+
 create function public.manual_payout_register_custody(p_provider text, p_account uuid, p_currency text,
-  p_available bigint, p_statement_at timestamptz, p_evidence uuid) returns uuid
+  p_available bigint, p_statement_at timestamptz, p_evidence uuid,p_held bigint default null) returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare v_id uuid;
 begin
   perform public.manual_payout_require_enabled();
-  perform public.manual_payout_evidence_require(p_evidence,'custody');
-  if exists(select 1 from public.payout_records where status<>'cancelled')
-      or exists(select 1 from public.expenses)
-      or exists(select 1 from public.payment_adjustments) then
-    raise exception 'Unmapped historical commitments require an approved custody allocation before opening an envelope.';
-  end if;
-  if p_statement_at > now() then raise exception 'Future statement is invalid.'; end if;
+  perform public.manual_payout_evidence_require(p_evidence,'custody',public.current_platform_role()='owner');
+  perform public.manual_payout_evidence_require((select evidence_id from public.manual_payout_accounts
+    where id=p_account and provider=p_provider),'account',public.current_platform_role()='owner');
+  if p_statement_at > now() or p_held is null or p_held<0 then raise exception 'Explicit available/held statement funds and valid date required.'; end if;
   insert into public.manual_payout_custody(provider,account_reference,currency,available_minor,statement_at,evidence_id)
     values(p_provider,p_account,p_currency,p_available,p_statement_at,p_evidence) returning id into v_id;
+  insert into public.manual_payout_statement_batches(custody_id,statement_reference,statement_at,opening_minor,
+    credit_minor,debit_minor,closing_minor,held_minor,evidence_id,statement_digest,recorded_by)
+    select v_id,e.external_reference,p_statement_at,(p_available::numeric+p_held)::bigint,0,0,
+      (p_available::numeric+p_held)::bigint,p_held,e.id,e.sha256,auth.uid()
+    from public.manual_payout_evidence e where id=p_evidence;
   return v_id;
 end $$;
 
 create function public.manual_payout_register_settlement(p_contribution uuid, p_custody uuid,
-  p_line uuid, p_settled bigint, p_evidence uuid) returns boolean
+  p_line uuid, p_settled bigint, p_evidence uuid,p_batch uuid default null,p_at timestamptz default null) returns boolean
 language plpgsql security definer set search_path = '' as $$
-declare c public.contributions; a public.manual_payout_custody;
+declare c public.contributions; a public.manual_payout_custody; b public.manual_payout_statement_batches; prior_at timestamptz;
 begin
   perform public.manual_payout_require_enabled();
-  perform public.manual_payout_evidence_require(p_evidence,'settlement');
+  perform public.manual_payout_evidence_require(p_evidence,'settlement',public.current_platform_role()='owner');
   select * into strict a from public.manual_payout_custody where id=p_custody for update;
+  select * into strict b from public.manual_payout_statement_batches
+    where custody_id=p_custody and (p_batch is null or id=p_batch) order by sequence desc limit 1;
+  select statement_at into prior_at from public.manual_payout_statement_batches where id=b.previous_batch;
   select * into strict c from public.contributions where id=p_contribution for update;
   if c.payment_environment<>'live' or c.settlement_route<>'platform_wallet'
     or not c.verified_provider_payment or c.payment_status<>'paid' or c.provider_fee_pending
     or c.provider_fee_minor is null or c.provider_name is distinct from a.provider
     or c.currency<>a.currency or p_settled is null or p_settled<=0
     or p_settled<>c.net_paid_minor-c.provider_fee_minor or c.paid_at is null
-    or c.paid_at>a.statement_at then
+    or p_at is null or p_at>b.statement_at or p_at<c.paid_at
+    or (prior_at is not null and p_at<=prior_at) then
     raise exception 'Only provider-verified, fee-known, statement-backed custody entitlements qualify.';
   end if;
   if p_settled + coalesce((select sum(settled_minor) from public.manual_payout_settlements
-      where custody_id=p_custody),0)>a.available_minor then
+      where batch_id=b.id),0)>(case when b.previous_batch is null then b.closing_minor-b.held_minor else b.credit_minor end) then
     raise exception 'Statement envelope cannot be credited twice or overallocated.';
   end if;
-  insert into public.manual_payout_settlements(contribution_id,custody_id,statement_line_reference,settled_minor,evidence_id)
-    values(p_contribution,p_custody,p_line,p_settled,p_evidence);
+  perform public.manual_payout_record_line(b.id,p_line,'contribution',p_contribution,p_settled,'credit',p_evidence);
+  insert into public.manual_payout_settlements(contribution_id,custody_id,statement_line_reference,settled_minor,evidence_id,batch_id,settled_at)
+    values(p_contribution,p_custody,p_line,p_settled,p_evidence,b.id,p_at);
   return true;
 end $$;
 
@@ -238,6 +495,11 @@ create function public.manual_payout_lock(p_custody uuid, p_wedding uuid) return
 language plpgsql security definer set search_path = '' as $$
 begin
   perform 1 from public.manual_payout_custody where id=p_custody for update;
+  perform 1 from public.profiles where id in (
+    select checked_by from public.manual_payout_evidence_checks
+    union select requested_by from public.manual_payout_requests where wedding_id=p_wedding
+    union select actor_id from public.manual_payout_events where state='approved'
+  ) order by id for share;
   perform 1 from public.contributions where wedding_id=p_wedding order by id for update;
   perform 1 from public.weddings where id=p_wedding for update;
   perform 1 from public.wedding_kyc where wedding_id=p_wedding for share;
@@ -248,12 +510,37 @@ language sql stable security definer set search_path = '' as $$
   select state from public.manual_payout_events where payout_id=p_id order by id desc limit 1
 $$;
 
+create function public.manual_payout_check_amount(p_wedding uuid,p_currency text,p_amount bigint) returns void
+language plpgsql security definer set search_path = '' as $$
+declare minimum bigint; maximum bigint;
+begin
+  perform 1 from public.platform_policies where id for share;
+  select min_payout_minor,max_payout_minor into minimum,maximum from public.platform_policies where id;
+  if not exists(select 1 from public.weddings where id=p_wedding and currency=p_currency) then
+    raise exception 'Payout currency must match wedding currency.';
+  end if;
+  if p_amount is null or minimum is null or maximum is null or p_amount<minimum or p_amount>maximum then
+    raise exception 'Payout amount outside configured minimum or maximum.';
+  end if;
+end $$;
+
 create function public.manual_payout_eligible(p_wedding uuid, p_custody uuid, p_recipient uuid,
-  p_currency text, p_required bigint, p_excluding uuid default null) returns void
+  p_currency text, p_required bigint, p_excluding uuid default null,p_owner_solo boolean default false) returns void
 language plpgsql security definer set search_path = '' as $$
 declare v_funds numeric; v_reserved numeric; v_account_reserved numeric; a public.manual_payout_custody;
+  v_source_wedding numeric; v_source_account numeric; snapshot jsonb;
 begin
   select * into strict a from public.manual_payout_custody where id=p_custody;
+  if not exists(select 1 from public.weddings where id=p_wedding and currency=p_currency) then
+    raise exception 'Payout currency must match wedding currency.';
+  end if;
+  perform public.manual_payout_evidence_require((select evidence_id from public.manual_payout_accounts where id=a.account_reference),
+    'account',p_owner_solo);
+  snapshot:=public.manual_payout_custody_snapshot(p_custody,p_owner_solo);
+  if snapshot is null then raise exception 'Accepted current custody statement required.'; end if;
+  perform public.manual_payout_evidence_require(a.evidence_id,'custody',p_owner_solo);
+  perform public.manual_payout_evidence_require((select evidence_id from public.manual_payout_recipients where id=p_recipient),
+    'recipient',p_owner_solo);
   if a.currency<>p_currency or p_required is null or p_required<=0 then raise exception 'Invalid amount or currency.'; end if;
   if not public.kyc_is_complete(p_wedding) or not exists(
     select 1 from public.manual_payout_recipients r join public.wedding_kyc k on k.wedding_id=r.wedding_id
@@ -262,29 +549,44 @@ begin
       and not exists(select 1 from public.manual_payout_recipients newer
         where newer.wedding_id=p_wedding and newer.provider=r.provider and newer.currency=r.currency and newer.revision>r.revision)
   ) then raise exception 'Recipient revision, KYC or consent changed; request a new revision.'; end if;
-  -- Conservative bounded scope: any adjustment or legacy commitment blocks the
-  -- whole wedding, rather than inventing fee/refund allocation or double-spending it.
-  if exists(select 1 from public.payment_adjustments where wedding_id=p_wedding)
-    or exists(select 1 from public.financial_adjustment_ledger where wedding_id=p_wedding)
-    or exists(select 1 from public.payout_records where wedding_id=p_wedding and status<>'cancelled')
-    or exists(select 1 from public.expenses where wedding_id=p_wedding) then
-    raise exception 'Existing adjustments, payouts or expenses require a separately approved allocation.';
-  end if;
   select coalesce(sum(s.settled_minor),0) into v_funds
     from public.manual_payout_settlements s join public.contributions c on c.id=s.contribution_id
     where s.custody_id=p_custody and c.wedding_id=p_wedding and c.currency=p_currency
       and c.payment_environment='live' and c.settlement_route='platform_wallet'
       and c.payment_status='paid' and c.verified_provider_payment and not c.provider_fee_pending
+      and (c.funds_available_at is null or c.funds_available_at<=now())
       and c.provider_name=a.provider and c.provider_fee_minor is not null
+      and public.manual_payout_evidence_accepted(s.evidence_id,'settlement',p_owner_solo)
       and s.settled_minor=c.net_paid_minor-c.provider_fee_minor;
+  -- Unknown or stale account mappings hold the affected amounts, not all history.
+  -- Reflected debits reduce wedding entitlement once, but are already in the bank
+  -- available balance. Paid manual amounts remain reserved until explicitly included.
+  with sources as (
+    select s.*,m.custody_id as mapped_custody,m.reflected_batch
+    from public.manual_payout_sources() s left join lateral (
+      select x.* from public.manual_payout_source_allocations x
+        where x.source_kind=s.kind and x.source_id=s.id and x.snapshot_hash=s.snapshot_hash
+          and public.manual_payout_evidence_accepted(x.evidence_id,'commitment',p_owner_solo)
+        order by x.id desc limit 1
+    ) m on true where s.currency=p_currency
+  )
+  select coalesce(sum(debit_minor::numeric+hold_minor) filter(where wedding_id=p_wedding
+      and (mapped_custody is null or mapped_custody=p_custody)),0),
+    coalesce(sum(debit_minor::numeric+hold_minor) filter(where mapped_custody is null
+      or (mapped_custody=p_custody and reflected_batch is null)),0)
+    into v_source_wedding,v_source_account from sources;
   select coalesce(sum(amount_minor::numeric+fee_minor),0) into v_reserved
-    from public.manual_payout_requests r where r.wedding_id=p_wedding and r.currency=p_currency
+    from public.manual_payout_requests r where r.wedding_id=p_wedding and r.custody_id=p_custody and r.currency=p_currency
       and r.id is distinct from p_excluding
       and public.manual_payout_state(r.id) not in ('cancelled','not_transferred');
   select coalesce(sum(amount_minor::numeric+fee_minor),0) into v_account_reserved
     from public.manual_payout_requests r where r.custody_id=p_custody and r.id is distinct from p_excluding
-      and public.manual_payout_state(r.id) not in ('cancelled','not_transferred');
-  if v_funds-v_reserved<p_required or a.available_minor-v_account_reserved<p_required then
+      and public.manual_payout_state(r.id) not in ('cancelled','not_transferred')
+      and not (public.manual_payout_state(r.id)='paid' and exists(
+        select 1 from public.manual_payout_statement_debits d where d.payout_id=r.id
+          and public.manual_payout_evidence_accepted(d.evidence_id,'statement',p_owner_solo)));
+  if v_funds-v_reserved-v_source_wedding<p_required
+      or (snapshot->>'available_minor')::numeric-v_account_reserved-v_source_account<p_required then
     raise exception 'Insufficient statement-backed uncommitted custody funds.';
   end if;
 end $$;
@@ -308,50 +610,61 @@ grant execute on function public.admin_set_payout_status(uuid,text,text) to auth
 create function public.manual_payout_guard_commitment() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  perform 1 from public.weddings where id=new.wedding_id for update;
-  if exists(select 1 from public.manual_payout_requests r where r.wedding_id=new.wedding_id
-      and public.manual_payout_state(r.id) not in ('cancelled','not_transferred')) then
-    raise exception 'Manual payout commitments require independent allocation before other spending.';
+  -- Existing legacy RPCs may already hold a wedding lock. Never wait here in
+  -- reverse order against a manual transaction: fail explicitly and retry.
+  if not pg_try_advisory_xact_lock(71110001) then
+    raise exception 'Payout accounting is busy; retry the commitment after review.';
   end if;
+  perform 1 from public.weddings where id=new.wedding_id for update;
   return new;
 end $$;
 create trigger manual_payout_guard_commitment before insert or update on public.expenses
   for each row execute function public.manual_payout_guard_commitment();
 create trigger manual_payout_guard_commitment before insert or update on public.payout_records
   for each row execute function public.manual_payout_guard_commitment();
+create trigger manual_payout_guard_commitment before insert or update on public.payment_adjustments
+  for each row execute function public.manual_payout_guard_commitment();
+create trigger manual_payout_guard_commitment before insert on public.financial_adjustment_ledger
+  for each row execute function public.manual_payout_guard_commitment();
 
 create function public.manual_payout_request(p_key uuid, p_wedding uuid, p_custody uuid,
-  p_recipient uuid, p_amount bigint, p_fee bigint, p_currency text) returns uuid
+  p_recipient uuid, p_amount bigint, p_fee bigint, p_currency text,p_owner_solo boolean default false) returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare r public.manual_payout_requests; v_id uuid;
 begin
   perform public.manual_payout_require_enabled();
+  if p_owner_solo is null or (p_owner_solo and public.current_platform_role()<>'owner') then
+    raise exception 'Only protected Owner may explicitly request solo manual execution.';
+  end if;
   select * into r from public.manual_payout_requests where request_key=p_key;
   if found then
-    if (r.wedding_id,r.custody_id,r.recipient_revision,r.amount_minor,r.fee_minor,r.currency,r.requested_by)
-      is distinct from (p_wedding,p_custody,p_recipient,p_amount,p_fee,p_currency,auth.uid()) then
+    if (r.wedding_id,r.custody_id,r.recipient_revision,r.amount_minor,r.fee_minor,r.currency,r.requested_by,r.owner_solo)
+      is distinct from (p_wedding,p_custody,p_recipient,p_amount,p_fee,p_currency,auth.uid(),p_owner_solo) then
       raise exception 'Idempotency key input conflict.';
     end if;
     return r.id;
   end if;
   if p_amount is null or p_amount<=0 or p_fee is null or p_fee<0 then raise exception 'Invalid amount or fee.'; end if;
   perform public.manual_payout_lock(p_custody,p_wedding);
+  perform public.manual_payout_check_amount(p_wedding,p_currency,p_amount);
   perform public.manual_payout_eligible(p_wedding,p_custody,p_recipient,p_currency,
-    (p_amount::numeric+p_fee)::bigint);
+    (p_amount::numeric+p_fee)::bigint,null,p_owner_solo);
   insert into public.manual_payout_requests(request_key,wedding_id,custody_id,recipient_revision,
-    amount_minor,fee_minor,currency,requested_by)
-    values(p_key,p_wedding,p_custody,p_recipient,p_amount,p_fee,p_currency,auth.uid()) returning id into v_id;
-  insert into public.manual_payout_events(payout_id,state,actor_id) values(v_id,'requested',auth.uid());
+    amount_minor,fee_minor,currency,requested_by,owner_solo)
+    values(p_key,p_wedding,p_custody,p_recipient,p_amount,p_fee,p_currency,auth.uid(),p_owner_solo) returning id into v_id;
+  insert into public.manual_payout_events(payout_id,state,actor_id,owner_solo) values(v_id,'requested',auth.uid(),p_owner_solo);
   return v_id;
 end $$;
 
 create function public.manual_payout_transition(p_id uuid, p_action text, p_key uuid default null,
   p_evidence uuid default null) returns boolean
 language plpgsql security definer set search_path = '' as $$
-declare r public.manual_payout_requests; v_state text; v_checker uuid; v_sender uuid;
+declare r public.manual_payout_requests; v_state text; v_checker uuid; v_sender uuid; v_solo boolean;
 begin
   perform public.manual_payout_require_enabled();
   select * into strict r from public.manual_payout_requests where id=p_id;
+  v_solo:=r.owner_solo and r.requested_by=auth.uid() and public.current_platform_role()='owner';
+  if r.owner_solo and not v_solo then raise exception 'Protected Owner owns this explicitly solo manual request.'; end if;
   perform public.manual_payout_lock(r.custody_id,r.wedding_id);
   perform 1 from public.manual_payout_requests where id=p_id for update;
   v_state:=public.manual_payout_state(p_id);
@@ -361,44 +674,82 @@ begin
     raise exception 'Another execution channel owns this reservation; manual actions cannot resend or resolve it.';
   end if;
   if p_action='approved' and v_state='requested' then
-    if auth.uid()=r.requested_by then raise exception 'A different leader must approve.'; end if;
+    perform public.manual_payout_check_amount(r.wedding_id,r.currency,r.amount_minor);
+    if not exists(select 1 from public.profiles where id=r.requested_by and platform_role in ('owner','superadmin')) then
+      raise exception 'Requester authority was revoked; cancel before execution.';
+    end if;
+    if auth.uid()=r.requested_by and not v_solo then raise exception 'A different leader must approve.'; end if;
     perform public.manual_payout_eligible(r.wedding_id,r.custody_id,r.recipient_revision,r.currency,
-      (r.amount_minor::numeric+r.fee_minor)::bigint,r.id);
+      (r.amount_minor::numeric+r.fee_minor)::bigint,r.id,v_solo);
   elsif p_action='executing' then
     if exists(select 1 from public.manual_payout_claims where payout_id=p_id) then
       if v_sender=auth.uid() and exists(select 1 from public.manual_payout_claims
           where payout_id=p_id and claim_key=p_key and execution_channel='manual_external') then return true; end if;
       raise exception 'Transfer already claimed. Never resend.';
     end if;
-    if v_state<>'approved' or auth.uid()=v_checker or p_key is null then
+    if v_state<>'approved' or (auth.uid()=v_checker and not v_solo) or p_key is null then
       raise exception 'Independent sender and approved request required.';
     end if;
+    perform public.manual_payout_check_amount(r.wedding_id,r.currency,r.amount_minor);
+    if not exists(select 1 from public.profiles where id=v_checker and platform_role in ('owner','superadmin'))
+      or not exists(select 1 from public.profiles where id=r.requested_by and platform_role in ('owner','superadmin')) then
+      raise exception 'Approval or requester authority was revoked; do not execute.';
+    end if;
     perform public.manual_payout_eligible(r.wedding_id,r.custody_id,r.recipient_revision,r.currency,
-      (r.amount_minor::numeric+r.fee_minor)::bigint,r.id);
+      (r.amount_minor::numeric+r.fee_minor)::bigint,r.id,v_solo);
     insert into public.manual_payout_claims(payout_id,claim_key,sender_id) values(p_id,p_key,auth.uid());
   elsif p_action='cancelled' and v_state in ('requested','approved') and v_sender is null then
     null;
   elsif p_action='uncertain' and v_state='executing' and auth.uid()=v_sender then
     null;
   elsif p_action='resolution_proposed' and v_state in ('executing','uncertain') then
-    perform public.manual_payout_evidence_require(p_evidence,'no_transfer');
+    perform public.manual_payout_evidence_require(p_evidence,'no_transfer',v_solo);
   elsif p_action='not_transferred' and v_state='resolution_proposed' then
-    if auth.uid() in (v_sender,r.requested_by) or exists(select 1 from public.manual_payout_events
-        where payout_id=p_id and state='resolution_proposed' and actor_id=auth.uid()) then
+    if not v_solo and (auth.uid() in (v_sender,r.requested_by) or exists(select 1 from public.manual_payout_events
+        where payout_id=p_id and state='resolution_proposed' and actor_id=auth.uid())) then
       raise exception 'Independent no-transfer resolution checker required.';
     end if;
     if p_evidence is distinct from (select evidence_id from public.manual_payout_events
         where payout_id=p_id and state='resolution_proposed') then raise exception 'Resolution evidence changed.'; end if;
-    perform public.manual_payout_evidence_require(p_evidence,'no_transfer');
-  elsif p_action='paid' and v_state='reported' then
-    if auth.uid() in (v_sender,r.requested_by) then raise exception 'Independent reconciler required.'; end if;
-    if p_evidence is distinct from (select evidence_id from public.manual_payout_receipts where payout_id=p_id)
-      then raise exception 'Receipt evidence changed.'; end if;
-    perform public.manual_payout_evidence_require(p_evidence,'receipt');
+    perform public.manual_payout_evidence_require(p_evidence,'no_transfer',v_solo);
+  elsif p_action='paid' then
+    raise exception 'Explicit statement reconciliation required; a receipt alone cannot declare payment.';
   else raise exception 'Invalid manual payout transition; reservations remain held.';
   end if;
-  insert into public.manual_payout_events(payout_id,state,actor_id,evidence_id)
-    values(p_id,p_action,auth.uid(),p_evidence);
+  insert into public.manual_payout_events(payout_id,state,actor_id,evidence_id,owner_solo)
+    values(p_id,p_action,auth.uid(),p_evidence,v_solo);
+  return true;
+end $$;
+
+create function public.manual_payout_reconcile(p_id uuid,p_provider text,p_account uuid,p_statement uuid,p_line uuid,
+  p_reference text,p_actual bigint,p_fee bigint,p_currency text,p_at timestamptz,p_evidence uuid) returns boolean
+language plpgsql security definer set search_path = '' as $$
+declare r public.manual_payout_requests; receipt public.manual_payout_receipts; sender uuid; solo boolean;
+begin
+  perform public.manual_payout_require_enabled();
+  select * into strict r from public.manual_payout_requests where id=p_id;
+  perform public.manual_payout_lock(r.custody_id,r.wedding_id);
+  solo:=r.owner_solo and r.requested_by=auth.uid() and public.current_platform_role()='owner';
+  if r.owner_solo and not solo then raise exception 'Protected Owner owns this explicitly solo manual request.'; end if;
+  select sender_id into sender from public.manual_payout_claims
+    where payout_id=p_id and execution_channel='manual_external';
+  if sender is null or public.manual_payout_state(p_id)<>'reported' then
+    raise exception 'Reported manual external transfer required for reconciliation.';
+  end if;
+  if not solo and auth.uid() in (sender,r.requested_by) then raise exception 'Independent reconciler required.'; end if;
+  select * into strict receipt from public.manual_payout_receipts where payout_id=p_id;
+  perform public.manual_payout_evidence_require(receipt.evidence_id,'receipt',solo);
+  perform public.manual_payout_evidence_require(p_evidence,'reconciliation',solo);
+  if (p_provider,p_account,upper(btrim(p_reference)),p_actual,p_fee,p_currency) is distinct from
+      (receipt.provider,receipt.account_reference,receipt.transaction_reference,receipt.actual_minor,receipt.actual_fee_minor,receipt.currency)
+      or p_at is null or p_at<receipt.transferred_at or p_at>now() then
+    raise exception 'Statement debit/account/reference/amount/fee/currency/date mismatch; retain reservation.';
+  end if;
+  insert into public.manual_payout_reconciliations(payout_id,provider,account_reference,statement_reference,line_reference,
+    transaction_reference,actual_minor,actual_fee_minor,currency,booked_at,evidence_id,reconciled_by,owner_solo)
+    values(p_id,p_provider,p_account,p_statement,p_line,upper(btrim(p_reference)),p_actual,p_fee,p_currency,p_at,p_evidence,auth.uid(),solo);
+  insert into public.manual_payout_events(payout_id,state,actor_id,evidence_id,owner_solo)
+    values(p_id,'paid',auth.uid(),p_evidence,solo);
   return true;
 end $$;
 
@@ -409,6 +760,9 @@ declare r public.manual_payout_requests; a public.manual_payout_custody;
 begin
   perform public.manual_payout_require_enabled();
   select * into strict r from public.manual_payout_requests where id=p_id;
+  if r.owner_solo and (r.requested_by<>auth.uid() or public.current_platform_role()<>'owner') then
+    raise exception 'Protected Owner owns this explicitly solo manual request.';
+  end if;
   perform public.manual_payout_lock(r.custody_id,r.wedding_id);
   if public.manual_payout_state(p_id) not in ('executing','uncertain','resolution_proposed') or not exists(
     select 1 from public.manual_payout_claims where payout_id=p_id and sender_id=auth.uid() and execution_channel='manual_external'
@@ -422,8 +776,8 @@ begin
   select * into strict a from public.manual_payout_custody where id=r.custody_id;
   insert into public.manual_payout_receipts values(p_id,a.provider,a.account_reference,
     upper(btrim(p_reference)),p_actual,p_fee,p_currency,p_at,p_evidence);
-  insert into public.manual_payout_events(payout_id,state,actor_id,evidence_id)
-    values(p_id,'reported',auth.uid(),p_evidence);
+  insert into public.manual_payout_events(payout_id,state,actor_id,evidence_id,owner_solo)
+    values(p_id,'reported',auth.uid(),p_evidence,r.owner_solo);
   return true;
 end $$;
 
@@ -437,7 +791,7 @@ begin
       'Funded merchant-rail entitlement unconfirmed','Operational limits and fee/refund/hold policy unapproved'),
     'requests',coalesce((select jsonb_agg(jsonb_build_object('id',r.id,'wedding_id',r.wedding_id,
       'amount_minor',r.amount_minor,'fee_minor',r.fee_minor,'currency',r.currency,'recipient_revision',r.recipient_revision,
-      'state',public.manual_payout_state(r.id),'requested_at',r.requested_at,
+      'state',public.manual_payout_state(r.id),'requested_at',r.requested_at,'owner_solo',r.owner_solo,
       'events',(select jsonb_agg(to_jsonb(e) order by e.id) from public.manual_payout_events e where e.payout_id=r.id)))
       from (select * from public.manual_payout_requests order by requested_at desc limit 100) r),'[]'::jsonb));
 end $$;
@@ -448,9 +802,43 @@ begin
   if auth.uid() is null or not exists(select 1 from public.weddings
       where id=p_wedding and client_owner_id=auth.uid()) then raise exception 'Access denied.'; end if;
   return coalesce((select jsonb_agg(jsonb_build_object('id',r.id,'amount_minor',r.amount_minor,
-    'currency',r.currency,'status',public.manual_payout_state(r.id),'requested_at',r.requested_at))
+    'currency',r.currency,'status',public.manual_payout_state(r.id),'requested_at',r.requested_at,'owner_solo',r.owner_solo))
     from (select * from public.manual_payout_requests where wedding_id=p_wedding
       order by requested_at desc limit 100) r),'[]'::jsonb);
+end $$;
+
+create function public.manual_payout_balance(p_wedding uuid) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare backing numeric; reserved numeric; spent numeric; obligations numeric; unknown_funds numeric; v_currency text;
+begin
+  select w.currency into v_currency from public.weddings w where id=p_wedding and client_owner_id=auth.uid();
+  if auth.uid() is null or v_currency is null then raise exception 'Access denied.'; end if;
+  select coalesce(sum(s.settled_minor),0) into backing
+    from public.manual_payout_settlements s join public.contributions c on c.id=s.contribution_id
+    where c.wedding_id=p_wedding and c.currency=v_currency and c.payment_environment='live'
+      and c.settlement_route='platform_wallet' and c.payment_status='paid' and c.verified_provider_payment
+      and not c.provider_fee_pending and c.provider_fee_minor is not null
+      and (c.funds_available_at is null or c.funds_available_at<=now())
+      and s.settled_minor=c.net_paid_minor-c.provider_fee_minor
+      and public.manual_payout_evidence_accepted(s.evidence_id,'settlement',true);
+  select coalesce(sum(r.amount_minor::numeric+r.fee_minor) filter(where public.manual_payout_state(r.id)<>'paid'),0),
+    coalesce(sum(r.amount_minor::numeric+r.fee_minor) filter(where public.manual_payout_state(r.id)='paid'),0)
+    into reserved,spent from public.manual_payout_requests r where r.wedding_id=p_wedding
+      and public.manual_payout_state(r.id) not in ('cancelled','not_transferred');
+  select coalesce(sum(s.debit_minor::numeric+s.hold_minor),0) into obligations
+    from public.manual_payout_sources() s where s.wedding_id=p_wedding and s.currency=v_currency;
+  select coalesce(sum(c.net_paid_minor),0) into unknown_funds from public.contributions c
+    where c.wedding_id=p_wedding and c.currency=v_currency and c.payment_environment='live'
+      and c.settlement_route='platform_wallet' and c.verified_provider_payment and c.payment_status='paid'
+      and not exists(select 1 from public.manual_payout_settlements s where s.contribution_id=c.id
+        and not c.provider_fee_pending and c.provider_fee_minor is not null
+        and (c.funds_available_at is null or c.funds_available_at<=now())
+        and public.manual_payout_evidence_accepted(s.evidence_id,'settlement',true));
+  return jsonb_build_object('currency',v_currency,'enabled',public.manual_payouts_enabled(),
+    'available_minor',0,'statement_backed_minor',backing,'reserved_minor',reserved,'spent_minor',spent,
+    'known_obligations_minor',obligations,'unknown_or_held_minor',unknown_funds,
+    'nonwithdrawable_estimate_minor',greatest(backing-reserved-spent-obligations,0),
+    'status','OFF: no live activation path; estimate is not spendable or a transfer promise');
 end $$;
 
 -- No direct table access, even service_role. Only explicitly audited RPCs are callable.
@@ -460,9 +848,10 @@ begin
   for f in select p.oid::regprocedure as signature, p.proname from pg_proc p
     join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname like 'manual_payout%' loop
     execute format('revoke all on function %s from public, anon, authenticated, service_role',f.signature);
-    if f.proname in ('manual_payout_overview','manual_payout_history','manual_payout_submit_evidence','manual_payout_check_evidence',
+    if f.proname in ('manual_payout_overview','manual_payout_history','manual_payout_balance','manual_payout_submit_evidence','manual_payout_check_evidence',
       'manual_payout_recipient','manual_payout_register_custody','manual_payout_register_settlement',
-      'manual_payout_request','manual_payout_transition','manual_payout_report') then
+      'manual_payout_request','manual_payout_transition','manual_payout_report','manual_payout_reconcile',
+      'manual_payout_register_account','manual_payout_append_statement','manual_payout_map_source','manual_payout_include_debit') then
       execute format('grant execute on function %s to authenticated',f.signature);
     end if;
   end loop;

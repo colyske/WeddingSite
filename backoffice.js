@@ -46,21 +46,31 @@
       : '<p class="empty">Nothing here yet.</p>';
   const btn = (label, attrs) => `<button type="button" class="mini" ${attrs}>${esc(label)}</button>`;
   const manualFields = {
-    evidence: ["kind", "reference", "sha256"], check: ["id"], recipient: ["wedding", "evidence", "provider", "currency"],
-    custody: ["provider", "account", "currency", "available", "statement_at", "evidence"],
-    settlement: ["contribution", "custody", "line", "settled", "evidence"],
-    request: ["key", "wedding", "custody", "recipient", "amount", "fee", "currency"],
+    evidence: ["kind", "reference", "sha256"], check: ["id", "owner_solo"], recipient: ["wedding", "evidence", "provider", "currency"],
+    account: ["account", "provider", "registry", "evidence"],
+    custody: ["provider", "account", "currency", "available", "statement_at", "evidence", "held"],
+    statement: ["custody", "previous", "statement", "at", "opening", "credit", "debit", "closing", "held", "evidence"],
+    source: ["kind", "source", "custody", "batch", "evidence", "line", "at"],
+    debit: ["id", "batch", "line", "evidence"],
+    settlement: ["contribution", "custody", "line", "settled", "evidence", "batch", "at"],
+    request: ["key", "wedding", "custody", "recipient", "amount", "fee", "currency", "owner_solo"],
     transition: ["id", "action", "key", "evidence"],
-    receipt: ["id", "reference", "actual", "fee", "currency", "at", "evidence"]
+    receipt: ["id", "reference", "actual", "fee", "currency", "at", "evidence"],
+    reconcile: ["id", "provider", "account", "statement", "line", "reference", "actual", "fee", "currency", "at", "evidence"]
   };
-  const manualNumbers = new Set(["available", "settled", "amount", "actual", "fee"]);
+  const manualNumbers = new Set(["available", "settled", "amount", "actual", "fee", "held", "opening", "credit", "debit", "closing"]);
   function manualForms() {
     return Object.entries(manualFields).map(([action, fields]) => `<details><summary>Manual-only: ${esc(action)}</summary>
       <form data-manual-action="${action}"><fieldset disabled><legend>Unavailable until separately approved activation</legend>
       ${fields.map(field => {
-        const options = field === "kind" ? ["recipient", "custody", "settlement", "receipt", "no_transfer"] :
-          field === "action" ? ["approved", "executing", "cancelled", "uncertain", "resolution_proposed", "not_transferred", "paid"] : null;
-        const optional = action === "transition" && ["key", "evidence"].includes(field);
+        if (field === "owner_solo") return role === "owner" ?
+          '<label><input name="owner_solo" type="checkbox"> Explicit protected-Owner solo manual mode (audited; all evidence and custody controls still apply)</label>' :
+          '<input name="owner_solo" type="hidden" value="">';
+        const options = field === "kind" ? action === "source" ? ["payout", "expense", "adjustment"] :
+          ["account", "commitment", "statement", "recipient", "custody", "settlement", "receipt", "reconciliation", "no_transfer"] :
+          field === "action" ? ["approved", "executing", "cancelled", "uncertain", "resolution_proposed", "not_transferred"] : null;
+        const optional = (action === "transition" && ["key", "evidence"].includes(field)) ||
+          (action === "source" && ["batch", "line", "at"].includes(field)) || (action === "settlement" && field === "batch");
         const label = `${field.replaceAll("_", " ")}${manualNumbers.has(field) ? " (minor units; explicit, no defaults)" :
           ["at", "statement_at"].includes(field) ? " (UTC ISO timestamp)" : field === "sha256" ? " (evidence digest)" : ""}`;
         return `<label>${esc(label)}${options ? `<select name="${field}">${options.map(o => `<option>${o}</option>`).join("")}</select>` :
@@ -392,7 +402,7 @@
           <p>Automatic transfers remain OFF. Code readiness does not authorize use of a funded merchant rail. Operators transfer only outside this site in the official authorized portal, after a durable execution claim. Never resend an uncertain transfer.</p>
           <p>${esc(manual.verification)}</p>
           <p class="notice">${(manual.blockers || []).map(esc).join(". ")}.</p>
-          <p>Request &rarr; independent review &rarr; execution claim &rarr; receipt reported &rarr; independent statement reconciliation. Only reconciled transfers are paid. Uncertain transfers retain funds; there is no timeout release.</p>
+          <p>Request &rarr; review &rarr; execution claim &rarr; receipt reported &rarr; statement reconciliation. Other eligible leaders require two distinct actors. The protected Owner may explicitly opt into audited solo manual mode; evidence, funds and reconciliation are still mandatory. Only statement-reconciled transfers are paid. Uncertain transfers retain funds; there is no timeout release.</p>
           <p>Evidence reference fields accept opaque repository UUIDs only. Do not enter bank details, names, KYC, credentials or public document URLs. Identity evidence must include consent and actual verification by the appointed reviewer; an attestation is not a provider lookup.</p>
           ${manualForms()}
           ${role === "owner" ? `<details><summary>Protected Owner: record policy evidence only (cannot activate)</summary>
@@ -401,7 +411,7 @@
               <label>Policy evidence SHA-256 digest<input name="sha256" pattern="[0-9a-f]{64}" required autocomplete="off"></label>
               <label><input name="confirmed" type="checkbox" required> Record review evidence only; no funded rail, limits, fees or activation is approved by this action.</label>
               <button type="submit">Record Owner policy evidence</button></form></details>` : ""}
-          ${(manual.requests || []).map(r => `<article><h4>${esc(r.id)}: ${esc(r.state)}</h4><p>${esc(WS.money(Number(r.amount_minor),r.currency,false))}; recipient revision ${esc(r.recipient_revision)}</p><details><summary>Append-only actor / evidence history</summary>${(r.events || []).map(e => `<p>${esc(e.state)}: actor ${esc(e.actor_id)}, evidence ${esc(e.evidence_id || "-")} (${date(e.created_at)})</p>`).join("")}</details></article>`).join("")}
+          ${(manual.requests || []).map(r => `<article><h4>${esc(r.id)}: ${esc(r.state)}</h4><p>${esc(WS.money(Number(r.amount_minor),r.currency,false))}; recipient revision ${esc(r.recipient_revision)}; ${r.owner_solo ? "explicit Owner solo mode" : "two-person review"}</p><details><summary>Append-only actor / evidence history</summary>${(r.events || []).map(e => `<p>${esc(e.state)}: actor ${esc(e.actor_id)}, evidence ${esc(e.evidence_id || "-")}, Owner solo: ${e.owner_solo ? "yes" : "no"} (${date(e.created_at)})</p>`).join("")}</details></article>`).join("")}
         </section><h3>Legacy requests (cannot be approved or marked sent)</h3><p class="fine">Identity submissions are not independent recipient verification. <a href="/wedding.html">Wedding identity details</a> remain private. A bare Mark sent can never declare payment.</p>` +
         table(["Requested", "Wedding", "Amount", "Status", "Note", "Actions"], payouts.map((p) => {
           const acts = [];
@@ -541,7 +551,7 @@
         const form = e.target, action = form.dataset.manualAction;
         const body = Object.fromEntries(manualFields[action].map(key => {
           const value = form.elements[key]?.value || "";
-          return [key, manualNumbers.has(key) ? Number(value) : value || null];
+          return [key, key === "owner_solo" ? form.elements[key]?.checked === true : manualNumbers.has(key) ? Number(value) : value || null];
         }));
         body.confirmed = form.elements.confirmed.checked;
         try {

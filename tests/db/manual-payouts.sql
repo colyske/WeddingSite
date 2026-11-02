@@ -19,10 +19,12 @@ end $$;
 do $$
 declare k text; u uuid; wid uuid:=extensions.gen_random_uuid(); cid uuid;
 begin
-  foreach k in array array['maker','checker','sender','admin','client'] loop
+  foreach k in array array['owner','maker','checker','sender','admin','client'] loop
     u:=extensions.gen_random_uuid();
-    insert into auth.users(id) values(u);
-    if k<>'client' then update public.profiles set platform_role=
+    insert into auth.users(id,email,email_confirmed_at) values(u,
+      case when k='owner' then 'colyske@gmail.com' else u::text||'@example.test' end,now());
+    if k='owner' then perform public.bootstrap_protected_owner(u);
+    elsif k<>'client' then update public.profiles set platform_role=
       (case when k='admin' then 'admin' else 'superadmin' end)::public.platform_role where id=u; end if;
     insert into mp_ids values(k,u);
   end loop;
@@ -71,12 +73,26 @@ create function pg_temp.evidence(p_kind text,p_submitter text default 'maker') r
 declare e uuid;
 begin
   perform pg_temp.actor(p_submitter);
-  e:=public.manual_payout_submit_evidence(p_kind,extensions.gen_random_uuid(),repeat('a',64));
+  e:=public.manual_payout_submit_evidence(p_kind,extensions.gen_random_uuid(),
+    encode(extensions.digest(extensions.gen_random_uuid()::text,'sha256'),'hex'));
   perform pg_temp.reject(format('select public.manual_payout_check_evidence(%L)',e),'different leader');
   perform pg_temp.actor('checker');
   perform public.manual_payout_check_evidence(e);
   perform pg_temp.actor('maker');
   return e;
+end $$;
+create function pg_temp.account() returns uuid language plpgsql as $$
+declare e uuid;
+begin
+  e:=pg_temp.evidence('account');
+  return public.manual_payout_register_account(extensions.gen_random_uuid(),'daraja',extensions.gen_random_uuid(),e);
+end $$;
+create function pg_temp.reconcile(p_id uuid,p_evidence uuid,p_reference text,p_actual bigint) returns boolean language plpgsql as $$
+declare a uuid;
+begin
+  select account_reference into a from public.manual_payout_receipts where payout_id=p_id;
+  return public.manual_payout_reconcile(p_id,'daraja',a,extensions.gen_random_uuid(),extensions.gen_random_uuid(),
+    p_reference,p_actual,0,'KES',now(),p_evidence);
 end $$;
 do $$
 declare e uuid; a uuid; r uuid; p uuid; w uuid; c uuid; v_key uuid:=extensions.gen_random_uuid();
@@ -84,12 +100,12 @@ begin
   select id into w from mp_ids where key='wedding';
   select id into c from mp_ids where key='contribution';
   e:=pg_temp.evidence('custody');
-  a:=public.manual_payout_register_custody('daraja',extensions.gen_random_uuid(),'KES',10000,now()-interval '1 day',e);
+  a:=public.manual_payout_register_custody('daraja',pg_temp.account(),'KES',10000,now()-interval '1 day',e,0);
   insert into mp_ids values('custody',a);
   r:=public.manual_payout_recipient(w,pg_temp.evidence('recipient'),'daraja','KES');
   insert into mp_ids values('recipient',r);
-  perform public.manual_payout_register_settlement(c,a,extensions.gen_random_uuid(),10000,pg_temp.evidence('settlement'));
-  perform pg_temp.reject(format('select public.manual_payout_register_settlement(%L,%L,extensions.gen_random_uuid(),10000,%L)',
+  perform public.manual_payout_register_settlement(c,a,extensions.gen_random_uuid(),10000,pg_temp.evidence('settlement'),null,now()-interval '36 hours');
+  perform pg_temp.reject(format('select public.manual_payout_register_settlement(%L,%L,extensions.gen_random_uuid(),10000,%L,null,now()-interval ''36 hours'')',
     c,a,pg_temp.evidence('settlement')),'envelope');
   p:=public.manual_payout_request(v_key,w,a,r,6000,0,'KES');
   insert into mp_ids values('payout',p);
@@ -107,11 +123,11 @@ end $$;
 savepoint adjustment_race;
 insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
   amount_minor,currency,status,hold_minor)
-  select 'paystack','refund','isolated-race',c.id,c.wedding_id,100,'KES','pending',100
+  select 'paystack','refund','isolated-race',c.id,c.wedding_id,5000,'KES','pending',5000
     from public.contributions c where c.id=(select id from mp_ids where key='contribution');
 select pg_temp.actor('sender');
 select pg_temp.reject(format('select public.manual_payout_transition(%L,''executing'',extensions.gen_random_uuid())',
-  (select id from mp_ids where key='payout')),'adjustments');
+  (select id from mp_ids where key='payout')),'Insufficient');
 rollback to adjustment_race;
 savepoint recipient_race;
 select pg_temp.actor('maker');
@@ -126,6 +142,12 @@ select pg_temp.actor('sender');
 select pg_temp.reject(format('select public.manual_payout_transition(%L,''executing'',extensions.gen_random_uuid())',
   (select id from mp_ids where key='payout')),'consent');
 rollback to consent_race;
+savepoint revoked_authority;
+update public.profiles set platform_role='client' where id=(select id from mp_ids where key='checker');
+select pg_temp.actor('sender');
+select pg_temp.reject(format('select public.manual_payout_transition(%L,''executing'',extensions.gen_random_uuid())',
+  (select id from mp_ids where key='payout')),'revoked');
+rollback to revoked_authority;
 do $$
 declare p uuid; claim uuid:=extensions.gen_random_uuid(); e uuid;
 begin
@@ -145,9 +167,12 @@ begin
   perform pg_temp.actor('sender');
   perform pg_temp.reject(format('select public.manual_payout_report(%L,''RECEIPT-ONE'',6001,0,''KES'',now(),%L)',p,e),'mismatch');
   perform public.manual_payout_report(p,'receipt-one',6000,0,'KES',now(),e);
-  perform pg_temp.reject(format('select public.manual_payout_transition(%L,''paid'',null,%L)',p,e),'Independent');
+  perform pg_temp.reject(format('select public.manual_payout_transition(%L,''paid'',null,%L)',p,e),'statement reconciliation');
+  perform pg_temp.reject(format('select pg_temp.reconcile(%L,%L,''RECEIPT-ONE'',6000)',p,e),'Independent');
+  e:=pg_temp.evidence('reconciliation','sender');
   perform pg_temp.actor('checker');
-  perform public.manual_payout_transition(p,'paid',null,e);
+  perform pg_temp.reject(format('select pg_temp.reconcile(%L,%L,''RECEIPT-ONE'',5999)',p,e),'mismatch');
+  perform pg_temp.reconcile(p,e,'RECEIPT-ONE',6000);
   if public.manual_payout_state(p)<>'paid' then raise exception 'Expected independent reconciliation'; end if;
   if (select count(distinct actor_id) from public.manual_payout_events where payout_id=p
       and state in ('requested','approved','executing'))<>3 then raise exception 'Actors overwritten'; end if;
@@ -181,10 +206,58 @@ end $$;
 do $$
 declare a uuid;
 begin
-  a:=public.manual_payout_register_custody('daraja',extensions.gen_random_uuid(),'KES',10000,
-    now(),pg_temp.evidence('custody'));
-  perform pg_temp.reject(format('select public.manual_payout_register_settlement(%L,%L,extensions.gen_random_uuid(),10000,%L)',
+  a:=public.manual_payout_register_custody('daraja',pg_temp.account(),'KES',10000,
+    now(),pg_temp.evidence('custody'),0);
+  perform pg_temp.reject(format('select public.manual_payout_register_settlement(%L,%L,extensions.gen_random_uuid(),10000,%L,null,now()-interval ''36 hours'')',
     (select id from mp_ids where key='contribution'),a,pg_temp.evidence('settlement')),'unique');
+end $$;
+-- Exactly two eligible actors can complete a normal manual request.
+do $$
+declare p uuid; e uuid;
+begin
+  perform pg_temp.actor('maker');
+  p:=public.manual_payout_request(extensions.gen_random_uuid(),(select id from mp_ids where key='wedding'),
+    (select id from mp_ids where key='custody'),(select id from mp_ids where key='recipient'),1000,0,'KES');
+  perform pg_temp.actor('checker'); perform public.manual_payout_transition(p,'approved');
+  perform pg_temp.actor('maker'); perform public.manual_payout_transition(p,'executing',extensions.gen_random_uuid());
+  e:=public.manual_payout_submit_evidence('receipt',extensions.gen_random_uuid(),repeat('b',64));
+  perform public.manual_payout_report(p,'TWO-ACTORS',1000,0,'KES',now(),e);
+  perform pg_temp.reject(format('select pg_temp.reconcile(%L,%L,''TWO-ACTORS'',1000)',p,e),'Independent');
+  perform pg_temp.actor('checker'); perform public.manual_payout_check_evidence(e);
+  perform pg_temp.actor('maker');
+  e:=public.manual_payout_submit_evidence('reconciliation',extensions.gen_random_uuid(),repeat('e',64));
+  perform pg_temp.actor('checker'); perform public.manual_payout_check_evidence(e);
+  perform pg_temp.reconcile(p,e,'TWO-ACTORS',1000);
+  if (select count(distinct actor_id) from public.manual_payout_events where payout_id=p)<>2 then
+    raise exception 'Normal review must work with exactly two authorized actors'; end if;
+end $$;
+-- Explicit protected Owner solo mode retains evidence, claims, receipts and audit.
+do $$
+declare p uuid; e uuid; r uuid; w uuid;
+begin
+  select id into w from mp_ids where key='wedding';
+  perform pg_temp.actor('maker');
+  perform pg_temp.reject(format('select public.manual_payout_request(extensions.gen_random_uuid(),%L,%L,%L,1000,0,''KES'',true)',
+    w,(select id from mp_ids where key='custody'),(select id from mp_ids where key='recipient')),'Only protected Owner');
+  perform pg_temp.actor('owner');
+  e:=public.manual_payout_submit_evidence('recipient',extensions.gen_random_uuid(),repeat('c',64));
+  perform public.manual_payout_check_evidence(e,true);
+  r:=public.manual_payout_recipient(w,e,'daraja','KES');
+  p:=public.manual_payout_request(extensions.gen_random_uuid(),w,(select id from mp_ids where key='custody'),r,1000,0,'KES',true);
+  perform public.manual_payout_transition(p,'approved');
+  perform public.manual_payout_transition(p,'executing',extensions.gen_random_uuid());
+  perform pg_temp.reject(format('select public.manual_payout_transition(%L,''cancelled'')',p),'Invalid');
+  e:=public.manual_payout_submit_evidence('receipt',extensions.gen_random_uuid(),repeat('d',64));
+  perform public.manual_payout_check_evidence(e,true);
+  perform public.manual_payout_report(p,'OWNER-SOLO',1000,0,'KES',now(),e);
+  e:=public.manual_payout_submit_evidence('reconciliation',extensions.gen_random_uuid(),repeat('e',64));
+  perform public.manual_payout_check_evidence(e,true);
+  perform pg_temp.reconcile(p,e,'OWNER-SOLO',1000);
+  if (select count(distinct actor_id) from public.manual_payout_events where payout_id=p)<>1 or
+    exists(select 1 from public.manual_payout_events where payout_id=p and not owner_solo) then
+    raise exception 'Owner solo mode must explicitly audit the actual single actor on every transition'; end if;
+  perform pg_temp.actor('checker');
+  perform pg_temp.reject(format('select public.manual_payout_transition(%L,''cancelled'')',p),'Protected Owner');
 end $$;
 set local role authenticated;
 select pg_temp.actor('client');
