@@ -44,7 +44,8 @@ legal/payment minimum validation remain separate and unchanged.
 
 `/inspiration.html` offers three author-owned, explicitly fictional examples,
 classified by the static `author-owned-fictional-inspiration` allowlist in
-`inspiration-fixtures.js`. Previewing or selecting a style makes no server writes.
+`inspiration-fixtures.js`. Previewing makes no server writes; **Use this style**
+creates an unpaid private draft and opens the native guide.
 Fictional names, dates, times and venues never fill required answers. Curated
 sample event titles/notes and offering/goal structures can be personalized.
 Welcome stories remain preview-only; editable illustrative attire/travel/FAQ
@@ -74,36 +75,37 @@ package, event, registry, milestone and meal labels. Sources are never edited.
 | Money/account/privacy | Nothing | Own receiving/payment configuration and real consent | KYC, payout/provider/referral settings, helpers/invites, financial records |
 | Publication/lifecycle | New private draft only | Own publication readiness/review | Published/paid/archive/moderation state, live-readiness claims |
 
-The names-only dashboard entry adds a source preview, supported-currency choice,
-prefill summary and explicit review checklist. It creates a new private draft
-and opens the existing shared wedding guide. The native guide controls edit
+Style entry goes directly to a private wedding guide, without a collection
+preflight or redundant review form. Names may be left blank until the native
+couple step; ordinary dashboard creation still asks for names. Actual referral
+attribution still requires an explicit accept/decline decision. The native guide controls edit
 packages, RSVP settings, registry/VIP, fundraising goals/milestones, featured
 campaign structure and guest prompts; there is no duplicate setup form.
 Other ordinary wizard entry points remain unchanged. No custom RSVP-question
 schema is introduced. Names/story/date/venue readiness is not inherited.
 Cover photos and guest instructions remain optional (the current wizard contract).
 
-The user must select a currency from the authenticated, fresh
-`collection-capabilities` response before accepting numeric money configuration.
-Unavailable or empty support fails closed; static ISO membership is not proof
-of current collection readiness. Same-currency public prices may be retained
-only after selection/review. Choosing a different currency omits all source
-fees/prices/goals and their priced offerings; the summary explicitly requires
-adding new offerings/goals in the shared guide. A persisted read-only starter
-review note lists what was omitted and links to the native offerings, goals,
-RSVP, event, attire and travel/FAQ steps. It describes choices made at creation,
-not current readiness or unsaved answers. Free RSVP defaults remain.
-It never relabels or FX-converts amounts.
-Fictional USD/KES/EUR/GBP/NGN/ZAR sample amounts are hand-authored independent
-examples, accepted only after explicit currency choice and review. For other
-supported currencies, priced offerings/goals are omitted and must be configured
-with the couple's own amounts in the guide. Standard custom-sponsorship/legal
-minimums are unchanged.
+Numeric configuration is retained owner-only in `starter_pending_setup`, marked
+`reviewed:false` in its original source currency. No active fees, packages, goals,
+VIP or featured offering is created until review. Palette/events/guest prompts,
+meal labels and feature preferences are immediately editable; RSVP starts free.
+The native currency step offers explicit same-currency application only after a
+fresh authenticated collection check, or explicit omission of source prices.
+A mismatch, empty result or failure is inline and does not block personalization
+or discard pending structure. Changing currency never relabels or converts
+source amounts. Explicit omission keeps personalized settings and lets the
+couple supply their own prices/goals. Pending monetary review blocks publication,
+not private saves. Static accounting membership is pinned to the existing SQL
+allowlist, not runtime ICU defaults, and is never proof of collection readiness.
+Fictional samples remain hand-authored, not FX conversions or received funds.
+Standard custom-sponsorship/legal minimums are unchanged.
 
 `server/starter-capabilities.js` reuses the shared read-only
 `collectionCapabilities()` export; it does not duplicate provider rules or invoke
 recording mode. An unavailable/malformed capability response fails explicitly
-with 503. Migration `202611090001_wedding_starter_drafts.sql` is DB-first:
+with 503 during money application, not unpaid creation. Migrations
+`202611090001_wedding_starter_drafts.sql` and
+`202611100002_deferred_wedding_starters.sql` are DB-first:
 CI commits it on a populated predecessor and checks unchanged wedding/venue rows,
 then tests the fresh schema and rollback-only `tests/db/wedding-starter-drafts.sql`.
 Push CI also uploads `starter-mobile-evidence`: 320px/375px screenshots plus
@@ -112,14 +114,20 @@ browser APIs are mocked; this is not deployed-backend or payment evidence.
 It does not backfill live wedding content. Existing guided-draft/readiness
 migrations through `202611080001` are prerequisites.
 
-The additive `create_wedding_from_starter` RPC wraps the existing authenticated,
-referral-aware `create_wedding_draft` transaction. The entire normalized setup is
-included in its owner/request-key idempotency hash. For a new request only, the
-backend must freshly resolve collection support and stage a service-role-only
-proof bound to owner, request key, currency and full input hash. The wrapper
-checks and consumes that proof (two-minute TTL) inside the same transaction as
-all inserts; direct authenticated callers cannot forge it. A replay returns the
-original draft without requiring a new proof or overwriting later edits.
+`create_deferred_wedding_starter` wraps the existing authenticated, referral-aware
+`create_wedding_draft` transaction. The backend stages only a positively checked
+source (not fabricated payment readiness). The entire normalized setup is bound
+to owner/request key/full input hash, with a two-minute source-validation TTL.
+It atomically stores pending money and reusable nonmoney setup. A retry returns
+the same draft even after a lost response, without new source checks or overwriting
+later edits. Money review is a separate owner-checked, service-only transaction;
+the API freshly verifies supported same-currency collection for `apply`.
+Review request keys/hashes prevent duplicate application and preserve replay
+after a lost response even if availability later changes. Application refuses
+to overwrite prices/goals already personalized while review was pending.
+Late insertion failures roll back all changes and retain pending configuration.
+The older reviewed-starter RPC remains compatible and still requires its
+service-only capability proof; no existing payment gates are weakened.
 Nothing records a provider configuration, transaction or publication state.
 Tab drafts require explicit replacement, and sign-in retains the selected source.
 The persisted tab snapshot keeps the complete original request stable through
@@ -135,7 +143,9 @@ Optional giving and fee settings are disclosed progressively, not enabled by the
 guide. Team invitations ask who should help, with what task and until when;
 administrative tables and account/KYC/payout readiness remain separate.
 
-The minimum identity is **nonblank couple names**. Currency, capacity and time
+Ordinary creation asks for **nonblank couple names**; a selected style can start
+an unpaid private draft with names still unanswered. Publication always requires
+the couple's own names. Currency, capacity and time
 zone retain the visible existing defaults; the guide never invents names,
 dates, venues or prices. Before creation, unsent answers are kept in this browser
 tab only. After creating a draft, explicit **Save changes** writes answers to the

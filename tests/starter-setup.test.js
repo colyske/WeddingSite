@@ -73,7 +73,7 @@ test("capability dependency is read-only and fails closed, never invents provide
   })), expected);
   assert.deepEqual(args, [], "must not use recording/snapshot mode as a read-only check");
   await assert.rejects(starterCapabilities(async () => { const error = new Error("Missing helper"); error.code = "ERR_MODULE_NOT_FOUND"; throw error; }),
-    error => error.status === 503 && /depends on the unified wizard/.test(error.message));
+    error => error.status === 503 && /money review depends on the collection/.test(error.message));
   await assert.rejects(starterCapabilities(async () => ({ collectionCapabilities() { throw new Error("Provider health unavailable"); } })),
     error => error.status === 503 && error.code === "STARTER_CAPABILITIES_UNAVAILABLE" && error.cause.message === "Provider health unavailable");
   for (const invalid of [null, {}, [{ code: "USD", name: "Dollar", methods: [] }],

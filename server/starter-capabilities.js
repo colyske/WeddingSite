@@ -1,16 +1,18 @@
 // Reuse the unified wizard's capability resolver. No provider rules or recording here.
-export async function starterCapabilities(load = () => import("./collection-capabilities.js")) {
+export async function starterCapabilities(load = () => import("./collection-capabilities.js"), options) {
   let helper;
   try { helper = await load(); }
   catch (error) {
     if (error.code !== "ERR_MODULE_NOT_FOUND") throw error;
-    const unavailable = new Error("Starter collection support depends on the unified wizard capability update. Creation is paused until that dependency is installed.");
+    const unavailable = new Error("Starter money review depends on the collection capability helper. Keep personalizing your private draft and review source prices when that dependency is available.");
     unavailable.status = 503;
     unavailable.code = "STARTER_DEPENDENCY";
     throw unavailable;
   }
   try {
-    const currencies = await helper.collectionCapabilities();
+    const currencies = await (options
+      ? helper.collectionCapabilities({ weddingId: options.weddingId })
+      : helper.collectionCapabilities());
     if (!Array.isArray(currencies) || currencies.some(item =>
       !item || typeof item.code !== "string" || !/^[A-Z]{3}$/.test(item.code) ||
       typeof item.name !== "string" || !item.name.trim() ||
