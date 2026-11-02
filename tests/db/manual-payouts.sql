@@ -88,11 +88,22 @@ begin
   return public.manual_payout_register_account(extensions.gen_random_uuid(),'daraja',extensions.gen_random_uuid(),e);
 end $$;
 create function pg_temp.reconcile(p_id uuid,p_evidence uuid,p_reference text,p_actual bigint) returns boolean language plpgsql as $$
-declare a uuid;
+declare a uuid; custody uuid; prior public.manual_payout_statement_batches; b uuid; statement uuid:=extensions.gen_random_uuid();
+  line uuid:=extensions.gen_random_uuid(); e uuid; caller uuid:=auth.uid(); receipt public.manual_payout_receipts; booked timestamptz;
 begin
-  select account_reference into a from public.manual_payout_receipts where payout_id=p_id;
-  return public.manual_payout_reconcile(p_id,'daraja',a,extensions.gen_random_uuid(),extensions.gen_random_uuid(),
-    p_reference,p_actual,0,'KES',now(),p_evidence);
+  select * into strict receipt from public.manual_payout_receipts where payout_id=p_id;
+  select custody_id into custody from public.manual_payout_requests where id=p_id;
+  select * into strict prior from public.manual_payout_statement_batches where custody_id=custody order by sequence desc limit 1;
+  e:=pg_temp.evidence('statement');
+  booked:=clock_timestamp();
+  b:=public.manual_payout_append_statement(custody,prior.id,statement,clock_timestamp(),
+    prior.closing_minor,0,receipt.actual_minor+receipt.actual_fee_minor,
+    prior.closing_minor-receipt.actual_minor-receipt.actual_fee_minor,0,e);
+  perform public.manual_payout_register_statement_debit(b,line,receipt.transaction_reference,receipt.actual_minor,
+    receipt.actual_fee_minor,receipt.currency,booked,e);
+  perform set_config('request.jwt.claim.sub',caller::text,true);
+  return public.manual_payout_reconcile(p_id,'daraja',receipt.account_reference,statement,line,
+    p_reference,p_actual,0,'KES',booked,p_evidence);
 end $$;
 do $$
 declare e uuid; a uuid; r uuid; p uuid; w uuid; c uuid; v_key uuid:=extensions.gen_random_uuid();
@@ -193,7 +204,45 @@ begin
   e:=pg_temp.evidence('reconciliation','sender');
   perform pg_temp.actor('checker');
   perform pg_temp.reject(format('select pg_temp.reconcile(%L,%L,''RECEIPT-ONE'',5999)',p,e),'mismatch');
-  perform pg_temp.reconcile(p,e,'RECEIPT-ONE',6000);
+  declare custody uuid; prior uuid; b uuid; statement uuid:=extensions.gen_random_uuid(); line uuid:=extensions.gen_random_uuid();
+    statement_evidence uuid; unrelated uuid; booked timestamptz;
+  begin
+    select custody_id into custody from public.manual_payout_requests where id=p;
+    select id into prior from public.manual_payout_statement_batches where custody_id=custody order by sequence desc limit 1;
+    statement_evidence:=pg_temp.evidence('statement'); booked:=clock_timestamp();
+    b:=public.manual_payout_append_statement(custody,prior,statement,clock_timestamp(),10000,0,6000,4000,0,statement_evidence);
+    unrelated:=public.manual_payout_register_custody('daraja',pg_temp.account(),'KES',10000,
+      clock_timestamp(),pg_temp.evidence('custody'),0);
+    select statement_reference into unrelated from public.manual_payout_statement_batches where custody_id=unrelated;
+    perform pg_temp.actor('checker');
+    perform pg_temp.reject(format('select public.manual_payout_reconcile(%L,''daraja'',%L,extensions.gen_random_uuid(),%L,''RECEIPT-ONE'',6000,0,''KES'',%L,%L)',
+      p,(select account_reference from public.manual_payout_receipts where payout_id=p),line,booked,e),'Registered statement batch');
+    perform pg_temp.reject(format('select public.manual_payout_reconcile(%L,''daraja'',%L,%L,%L,''RECEIPT-ONE'',6000,0,''KES'',%L,%L)',
+      p,(select account_reference from public.manual_payout_receipts where payout_id=p),unrelated,line,booked,e),'Registered statement batch');
+    perform pg_temp.reject(format('select public.manual_payout_reconcile(%L,''daraja'',%L,%L,%L,''RECEIPT-ONE'',6000,0,''KES'',%L,%L)',
+      p,(select account_reference from public.manual_payout_receipts where payout_id=p),statement,line,booked,e),'Exact registered statement debit');
+    perform pg_temp.reject(format('insert into public.manual_payout_events(payout_id,state,actor_id) values(%L,''paid'',auth.uid())',p),
+      'Paid requires atomically');
+    perform pg_temp.reject(format('select public.manual_payout_register_statement_debit(%L,extensions.gen_random_uuid(),''OVER-CAPACITY'',6001,0,''KES'',%L,%L)',
+      b,booked,statement_evidence),'capacity');
+    perform pg_temp.reject(format('select public.manual_payout_register_statement_debit(%L,extensions.gen_random_uuid(),''FEE-CAPACITY'',6000,1,''KES'',%L,%L)',
+      b,booked,statement_evidence),'capacity');
+    perform pg_temp.reject(format('select public.manual_payout_register_statement_debit(%L,extensions.gen_random_uuid(),''WRONG-CURRENCY'',6000,0,''USD'',%L,%L)',
+      b,booked,statement_evidence),'currency');
+    perform public.manual_payout_register_statement_debit(b,line,'RECEIPT-ONE',6000,0,'KES',booked,statement_evidence);
+    perform pg_temp.reject(format('select public.manual_payout_register_statement_debit(%L,%L,''DUPLICATE-LINE'',6000,0,''KES'',%L,%L)',
+      b,line,booked,statement_evidence),'unique');
+    perform pg_temp.reject(format('select public.manual_payout_reconcile(%L,''daraja'',%L,%L,extensions.gen_random_uuid(),''RECEIPT-ONE'',6000,0,''KES'',%L,%L)',
+      p,(select account_reference from public.manual_payout_receipts where payout_id=p),statement,booked,e),'Exact registered statement debit');
+    perform pg_temp.reject(format('select public.manual_payout_reconcile(%L,''daraja'',%L,%L,%L,''RECEIPT-ONE'',6000,0,''KES'',%L,%L)',
+      p,(select account_reference from public.manual_payout_receipts where payout_id=p),statement,line,booked+interval '1 microsecond',e),'Exact registered statement debit');
+    if public.manual_payout_state(p)<>'reported' or exists(select 1 from public.manual_payout_reconciliations where payout_id=p) then
+      raise exception 'Rejected statement mapping exposed paid/reconciliation'; end if;
+    perform public.manual_payout_reconcile(p,'daraja',(select account_reference from public.manual_payout_receipts where payout_id=p),
+      statement,line,'RECEIPT-ONE',6000,0,'KES',booked,e);
+    if not exists(select 1 from public.manual_payout_statement_debits where payout_id=p and batch_id=b and line_reference=line) then
+      raise exception 'Successful reconciliation did not allocate its exact debit atomically'; end if;
+  end;
   if public.manual_payout_state(p)<>'paid' then raise exception 'Expected independent reconciliation'; end if;
   if (select count(distinct actor_id) from public.manual_payout_events where payout_id=p
       and state in ('requested','approved','executing'))<>3 then raise exception 'Actors overwritten'; end if;
@@ -295,22 +344,25 @@ begin
   select id into a from mp_ids where key='custody';
   select id into w from mp_ids where key='wedding';
   select id into p from mp_ids where key='payout';
-  select id into original_batch from public.manual_payout_statement_batches where custody_id=a;
+  select id into original_batch from public.manual_payout_statement_batches where custody_id=a and previous_batch is null;
   select statement_reference,line_reference into statement,line from public.manual_payout_reconciliations where payout_id=p;
   e:=pg_temp.evidence('statement');
-  b:=public.manual_payout_append_statement(a,original_batch,statement,clock_timestamp(),10000,5000,6000,9000,0,e);
+  select id into b2 from public.manual_payout_statement_batches where custody_id=a order by sequence desc limit 1;
+  b:=public.manual_payout_append_statement(a,b2,extensions.gen_random_uuid(),clock_timestamp(),2000,5000,0,7000,0,e);
   perform pg_temp.reject(format('select public.manual_payout_append_statement(%L,%L,extensions.gen_random_uuid(),clock_timestamp(),10000,1,0,10001,0,%L)',
     a,original_batch,pg_temp.evidence('statement')),'chain');
-  perform public.manual_payout_include_debit(p,b,line,e);
-  perform pg_temp.reject(format('select public.manual_payout_include_debit(%L,%L,%L,%L)',p,b,line,e),'unique');
+  if not exists(select 1 from public.manual_payout_statement_debits where payout_id=p) then
+    raise exception 'Paid was visible without its atomically allocated statement debit'; end if;
+  perform pg_temp.reject(format('select public.manual_payout_include_debit(%L,%L,%L,%L)',p,b,line,e),'retired');
   c:=extensions.gen_random_uuid();
   insert into public.contributions(id,wedding_id,stream_name,pledged_amount_minor,paid_amount_minor,
     platform_fee_minor,net_paid_minor,currency,payment_status,verified_provider_payment,provider_fee_pending,
     provider_fee_minor,payment_environment,provider_name,paid_at)
     values(c,w,'Additional verified statement credit',5000,5000,0,5000,'KES','paid',true,false,0,'live','daraja',now()-interval '12 hours');
-  perform public.manual_payout_register_settlement(c,a,extensions.gen_random_uuid(),5000,pg_temp.evidence('settlement'),b,now()-interval '6 hours');
-  perform pg_temp.reject(format('select public.manual_payout_register_settlement(%L,%L,extensions.gen_random_uuid(),5000,%L,%L,now()-interval ''6 hours'')',
-    c,a,pg_temp.evidence('settlement'),b),'envelope');
+  perform public.manual_payout_register_settlement(c,a,extensions.gen_random_uuid(),5000,pg_temp.evidence('settlement'),b,
+    (select statement_at from public.manual_payout_statement_batches where id=b));
+  perform pg_temp.reject(format('select public.manual_payout_register_settlement(%L,%L,extensions.gen_random_uuid(),5000,%L,%L,%L)',
+    c,a,pg_temp.evidence('settlement'),b,(select statement_at from public.manual_payout_statement_batches where id=b)),'envelope');
   perform pg_temp.actor('client'); balance:=public.manual_payout_balance(w);
   if (balance->>'statement_backed_minor')::bigint<>15000 or (balance->>'spent_minor')::bigint<>8000
     or (balance->>'reserved_minor')::bigint<>0 or (balance->>'available_minor')::bigint<>0 then
@@ -332,7 +384,7 @@ begin
   expense:=extensions.gen_random_uuid(); at_expense:=clock_timestamp();
   insert into public.expenses(id,wedding_id,category,description,amount_minor,currency,status,paid_at)
     values(expense,w,'Fixture','New paid expense',100,'KES','paid',at_expense);
-  b2:=public.manual_payout_append_statement(a,b,extensions.gen_random_uuid(),clock_timestamp(),9000,0,100,8900,0,pg_temp.evidence('statement'));
+  b2:=public.manual_payout_append_statement(a,b,extensions.gen_random_uuid(),clock_timestamp(),7000,0,100,6900,0,pg_temp.evidence('statement'));
   perform public.manual_payout_map_source('expense',expense,a,b2,pg_temp.evidence('commitment'),extensions.gen_random_uuid(),at_expense);
   -- A newer source snapshot must never free an old statement's consumed capacity.
   begin

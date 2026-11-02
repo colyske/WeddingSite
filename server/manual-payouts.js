@@ -30,7 +30,10 @@ const specs = {
     kind: v => ["payout", "expense", "adjustment"].includes(v), source: uuid, custody: uuid,
     batch: optionalUuid, evidence: uuid, line: optionalUuid, at: v => v === null || timestamp(v)
   }],
-  debit: ["manual_payout_include_debit", { id: uuid, batch: uuid, line: uuid, evidence: uuid }],
+  debit: ["manual_payout_register_statement_debit", {
+    batch: uuid, line: uuid, reference: v => typeof v === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(v),
+    actual: amount, fee, currency, at: timestamp, evidence: uuid
+  }],
   settlement: ["manual_payout_register_settlement", {
     contribution: uuid, custody: uuid, line: uuid, settled: amount, evidence: uuid, batch: optionalUuid, at: timestamp
   }],

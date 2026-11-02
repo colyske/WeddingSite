@@ -66,6 +66,29 @@ designed exception process; do not mutate history or create a blind resend.
 kinds and appends the immutable debit reconciliation before the terminal event.
 Receipt attestation alone never declares payment.
 
+The batch must already exist for the request's custody account and currency, with
+accepted statement evidence. First register the observed debit using
+`manual_payout_register_statement_debit(batch,line,reference,actual,fee,currency,at,evidence)`.
+This records immutable `manual_payout_statement_debit_entries`, checks the batch's
+period watermark, reserves its unique canonical line and debit capacity, and requires
+checked statement evidence separate from the sender's receipt. The reconciler must
+match that existing entry's exact reference, amount, fee, currency and booked date.
+Missing, unrelated, duplicate, over-capacity or mismatched entries cannot make paid.
+The reconciliation row, its `statement_entry_id`, allocated `statement_debits` row
+and paid event commit together; a database trigger also rejects a paid event without
+the bound allocation. The former post-paid `include_debit` path is retired.
+
+The channel-neutral revoked
+`manual_payout_finalize_reconciliation_internal(id,channel,provider,account,statement,
+line,reference,actual,fee,currency,at,evidence,allow_owner_solo DEFAULT false)`
+performs the same current-role, independence, evidence, account, period, line and
+capacity checks and atomic writes for both channels. Automatic wrappers must pass
+`automatic_b2c,false` and retain their own policy/eligibility checks; they must not
+insert their own paid events. Its non-execution intake counterpart is
+`manual_payout_register_statement_debit_internal(batch,line,reference,actual,fee,
+currency,at,evidence,allow_owner_solo DEFAULT false)`. Neither helper is executable
+by authenticated/service roles directly.
+
 Claims have no expiry. Claim replay is rejected with a conflict; inspect the original
 recorded claim and external outcome rather than treating a retry as transfer permission.
 Duplicate receipts and mismatches in amount, currency, fee or date atomically preserve
@@ -121,8 +144,8 @@ expense/payout is mapped, its wedding, amount, currency, status and paid date ca
 be edited to erase the obligation; nonfinancial revisions require fresh evidence.
 Historical statement line capacity stays consumed across later source revisions.
 Paid sources mapped to statement debit capacity reduce wedding entitlement once, without
-subtracting bank available funds twice. Manual paid debits remain account commitments
-until their exact independently reconciled statement line is included once. In-flight,
+subtracting bank available funds twice. A paid manual debit is already included in
+its exact independently reconciled statement at the atomic paid transition. In-flight,
 uncertain, reported and resolution-proposed amounts always remain reserved, even when
 a newer statement arrives. A negative adjustment followed by its positive dispute
 reversal restores only the prior deduction, bounded by the original verified source;
