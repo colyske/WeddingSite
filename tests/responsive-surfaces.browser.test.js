@@ -83,10 +83,17 @@ test("public, organizer and back-office surfaces fit small and large screens", a
         }));
         assert.ok(metrics.scroll <= metrics.width, `${surface} at ${width}: ${JSON.stringify(metrics)}`);
         for (const link of metrics.topLinks) assert.ok(link.left >= 0 && link.right <= width, `${surface}: ${link.text} visible at ${width}`);
+        if (surface === "dashboard.html" && width <= 414) {
+          assert.equal(await page.locator(".guide-jump").evaluate(el => el.open), false,
+            `mobile setup section overview starts collapsed at ${width}`);
+          assert.ok(await page.locator("#guide-heading-couple").evaluate(el => el.getBoundingClientRect().top < 700),
+            `first setup question is near the top at ${width}`);
+        }
         if (process.env.WEDDING_SCREENSHOTS && width <= 414 &&
             ["index.html", "dashboard.html", "wedding.html", "guest.html", "team.html", "referrals.html"]
               .some(name => surface.startsWith(name))) await page.screenshot({
-          path: join(process.env.WEDDING_SCREENSHOTS, `refinement-${surface.split(".")[0]}-${width}.png`),
+          path: join(process.env.WEDDING_SCREENSHOTS,
+            `refinement-${surface === "dashboard.html" ? "wizard" : surface.split(".")[0]}-${width}.png`),
           fullPage: !surface.startsWith("wedding.html")
         });
       }
@@ -94,6 +101,15 @@ test("public, organizer and back-office surfaces fit small and large screens", a
     wedding.published_at = null;
     await page.goto(`http://127.0.0.1:${server.address().port}/wedding.html?id=${id}`, { waitUntil: "domcontentloaded" });
     await page.locator("#edit-section").waitFor({ state: "visible" });
+    await page.setViewportSize({ width: 320, height: 800 });
+    for (const width of [320, 375, 414]) {
+      await page.setViewportSize({ width, height: 800 });
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        `guided editor has no horizontal overflow at ${width}`);
+      if (process.env.WEDDING_SCREENSHOTS) await page.locator("#edit-section").screenshot({
+        path: join(process.env.WEDDING_SCREENSHOTS, `refinement-editor-${width}.png`)
+      });
+    }
     await page.setViewportSize({ width: 320, height: 800 });
     await page.locator("[data-guide-all]").click();
     await page.click("#edit-colors-btn");

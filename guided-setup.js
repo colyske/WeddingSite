@@ -15,9 +15,11 @@
     const review = form.querySelector("[data-guide-review]");
     const header = document.createElement("div");
     header.className = "guide-header";
-    header.innerHTML = `<p class="fine">One question group at a time. Back, Next and Skip never submit or discard answers.</p>
+    header.innerHTML = `<p class="fine">Next and Skip only navigate; Save is separate.</p>
       <p class="guide-state" role="status" aria-live="polite" data-guide-state></p>
-      <nav class="guide-nav" aria-label="Wedding setup sections"></nav>
+      <details class="guide-jump"><summary>Jump to section <span data-guide-progress></span></summary>
+        <nav class="guide-nav" aria-label="Wedding setup sections"></nav>
+      </details>
       <button type="button" class="link" data-guide-all>Show all questions</button>
       <div class="guide-errors" role="alert" hidden></div>
       <p class="guide-sr" aria-live="polite" aria-atomic="true" data-guide-announcement></p>`;
@@ -26,6 +28,8 @@
     const announcement = header.querySelector("[data-guide-announcement]");
     const errors = header.querySelector(".guide-errors");
     const nav = header.querySelector("nav");
+    const jump = header.querySelector(".guide-jump");
+    const progress = header.querySelector("[data-guide-progress]");
     const actions = document.createElement("div");
     actions.className = "guide-actions";
     actions.innerHTML = `<button type="button" class="ghost" data-guide-back>Back</button>
@@ -57,7 +61,7 @@
     const updateState = () => {
       if (pendingCreate) return;
       if (mode === "create") {
-        setState("Before creation, answers stay in this tab only. Create your draft to save to your account and resume on another device.");
+        setState("Draft answers stay in this tab until you create it.");
       } else {
         const weddingChanges = dirty(), privateChanges = hasExternalChanges();
         setState(saving ? "Saving changes..." : weddingChanges && privateChanges
@@ -117,6 +121,10 @@
       nav.append(button);
     });
     const navButtons = [...nav.children];
+    const mobileNavigation = global.matchMedia("(max-width: 600px)");
+    const syncNavigationMode = () => { jump.open = !mobileNavigation.matches; };
+    syncNavigationMode();
+    mobileNavigation.addEventListener("change", syncNavigationMode);
     function refresh() {
       navButtons.forEach((button, index) => {
         button.querySelector("small").textContent = sectionStatus(steps[index]);
@@ -135,11 +143,13 @@
       actions.querySelector("[data-guide-next]").hidden = index === steps.length - 1;
       actions.querySelector("[data-guide-skip]").hidden = index === steps.length - 1;
       announcement.textContent = `Step ${index + 1} of ${steps.length}: ${steps[index].dataset.guideTitle}`;
+      progress.textContent = ` · Step ${index + 1} of ${steps.length}`;
       refresh();
       if (focus) steps[index].querySelector("h2").focus({ preventScroll: false });
     }
     function go(index) {
       all = false;
+      if (mobileNavigation.matches) jump.open = false;
       header.querySelector("[data-guide-all]").textContent = "Show all questions";
       const hash = `#step=${steps[index].dataset.guideStep}`;
       if (location.hash !== hash) history.pushState(null, "", hash);

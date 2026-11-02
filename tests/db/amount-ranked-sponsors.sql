@@ -143,24 +143,21 @@ insert into public.contributions(
   'Song bid', 300, 'KES', 'pending', 'Trigger song', 'daraja', 'live', '12345',
   'song_bid', '{"songTitle":"Trigger-linked song","artist":"Trigger artist"}'
 );
-insert into public.dj_song_bids(
-  id, wedding_id, song_title, artist_name, bid_amount_minor, currency, bidder_name, payment_status
-) values (
-  '55000000-0000-4000-8000-000000000098', '52000000-0000-4000-8000-000000000092',
-  'Trigger-linked song', 'Trigger artist', 300, 'KES', 'Guest', 'paid'
-);
 select set_config('request.jwt.claim.role', 'service_role', true);
 update public.contributions set payment_status = 'paid', paid_amount_minor = 300,
-  net_paid_minor = 300, verified_provider_payment = true, paid_at = now(),
-  action_completed_at = now()
+  net_paid_minor = 300, verified_provider_payment = true, paid_at = now()
 where id = '53000000-0000-4000-8000-000000000108';
 alter table public.contributions enable trigger guard_live_payment_context;
 do $$
 begin
   if not exists (select 1 from public.dj_song_bids
-      where id = '55000000-0000-4000-8000-000000000098'
-        and contribution_id = '53000000-0000-4000-8000-000000000108') then
-    raise exception 'Verified live song bids must be linked to their contribution.';
+      where wedding_id = '52000000-0000-4000-8000-000000000092'
+        and song_title = 'Trigger-linked song' and artist_name = 'Trigger artist'
+        and contribution_id = '53000000-0000-4000-8000-000000000108')
+      or not exists (select 1 from public.contributions
+        where id = '53000000-0000-4000-8000-000000000108'
+          and action_completed_at is not null) then
+    raise exception 'The BEFORE finalizer must create and complete a live song bid before the AFTER trigger links it.';
   end if;
 end $$;
 
