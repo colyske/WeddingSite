@@ -52,6 +52,14 @@ allocation must not be reused to credit money twice. New settlement/custody
 evidence must use the shared foundation's accounting controls, not reset an
 available-balance counter.
 
+All B2C accounting intake calls the foundation's revoked `*_internal`
+validators with `p_allow_owner_solo=false`, after current Owner authority is
+locked and rechecked. The independent manual gate is never substituted or
+enabled. Account registry, linear statement batches, canonical statement lines,
+source snapshots, credit/debit capacity and paid-debit inclusion therefore use
+the same rules in both channels. Freshness reads the latest accepted shared
+statement snapshot, not the original opening envelope.
+
 Only live, paid, provider-verified Daraja/KES `platform_wallet` contributions
 with known actual provider fees and official settled allocations qualify.
 Test receipts, Paystack (standard and direct/split), unknown provider fees and
@@ -211,8 +219,13 @@ Evidence intake (`intake` action, `kind`, `data`) accepts these exact shapes:
 | `evidence` | `{kind:"account"|"commitment"|"statement"|"recipient"|"custody"|"settlement"|"receipt"|"reconciliation"|"no_transfer"|"policy", reference:UUID, sha256:HEX}`; policy evidence submitted by Owner only. |
 | `check` | `{evidence:UUID}`; must be a different leader. |
 | `recipient` | `{wedding:UUID, evidence:UUID, msisdn:STRING, partner:1|2}`; checked exact partner identity/name/destination/consent evidence, current KYC. Couple then binds that exact confirmed phone separately. |
-| `custody` | `{account:UUID, availableMinor:INTEGER, statementAt:ISO_TIMESTAMP, evidence:UUID, fundingEvidence:UUID, shortcode:STRING, disbursableCollectedFunds:true}`; Owner-only, official collected custody that is actually disbursable. |
-| `settlement` | `{contribution:UUID, custody:UUID, settledMinor:INTEGER, line:UUID, evidence:UUID}`; Owner-only exact fee-known settled allocation; no duplicated statement line/contribution. |
+| `account` | `{account:UUID, registry:UUID, evidence:UUID}`; Owner-only canonical Daraja account registration with checked account-kind evidence. |
+| `custody` | `{account:UUID, availableMinor:INTEGER, heldMinor:INTEGER, statementAt:ISO_TIMESTAMP, evidence:UUID, fundingEvidence:UUID, shortcode:STRING, disbursableCollectedFunds:true}`; Owner-only opening envelope of official collected custody that is actually disbursable; available and held are both explicit. |
+| `statement` | `{custody:UUID, previous:UUID, statement:UUID, at:ISO_TIMESTAMP, opening:INTEGER, credit:INTEGER, debit:INTEGER, closing:INTEGER, held:INTEGER, evidence:UUID}`; append a checked statement-kind batch to the exact predecessor. |
+| `settlement` | `{contribution:UUID, custody:UUID, settledMinor:INTEGER, line:UUID, evidence:UUID, batch:UUID|null, at:ISO_TIMESTAMP}`; Owner-only exact fee-known settled allocation and explicit settlement date; no duplicated statement line/contribution. |
+| `source` | `{kind:"payout"|"expense"|"adjustment", source:UUID, custody:UUID, batch:UUID|null, evidence:UUID, line:UUID|null, at:ISO_TIMESTAMP|null}`; checked commitment-kind evidence maps the current historical obligation snapshot; reflected debits require exact batch/line/date. |
+| `debit` | `{payout:UUID, batch:UUID, line:UUID, evidence:UUID}`; include the exact independently reconciled paid debit once using checked statement-kind evidence and the shared debit capacity. |
+| `funding` | `{custody:UUID, shortcode:STRING, fundingEvidence:UUID}`; append a new independently checked funding/shortcode relationship without creating another balance or credit. |
 
 UUID references identify approved secure-evidence storage, not public URLs.
 Digest/reference entries are attestations, not automatic document verification.

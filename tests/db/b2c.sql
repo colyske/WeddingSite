@@ -13,18 +13,25 @@ create function pg_temp.b2c_evidence(kind text,submitter uuid,checker uuid) retu
 declare result uuid; previous text:=current_setting('request.jwt.claim.sub',true);
 begin
   perform set_config('request.jwt.claim.sub',submitter::text,true);
-  result:=(public.b2c_intake('evidence',jsonb_build_object('kind',kind,'reference',extensions.gen_random_uuid(),'sha256',repeat('a',64)))->>'id')::uuid;
+  result:=(public.b2c_intake('evidence',jsonb_build_object('kind',kind,'reference',extensions.gen_random_uuid(),
+    'sha256',encode(extensions.digest(extensions.gen_random_uuid()::text,'sha256'),'hex')))->>'id')::uuid;
   perform set_config('request.jwt.claim.sub',checker::text,true);
   perform public.b2c_intake('check',jsonb_build_object('evidence',result));
   perform set_config('request.jwt.claim.sub',previous,true);
   return result;
 end $$;
+create function pg_temp.b2c_reconcile(dispatch uuid,receipt uuid,evidence uuid,account uuid,statement uuid,line uuid,fee bigint,at_time timestamptz)
+returns text language sql as $$
+  select public.b2c_reconcile(dispatch,receipt,evidence,'daraja',account,statement,line,'SYNRECEIPT',
+    10000,fee,'KES','254700000001',at_time,at_time)
+$$;
 do $$
 declare owner_id uuid:=extensions.gen_random_uuid(); staff_id uuid:=extensions.gen_random_uuid();
   client_id uuid:=extensions.gen_random_uuid(); wid uuid:=extensions.gen_random_uuid();
   contribution uuid:=extensions.gen_random_uuid(); recipient uuid; custody uuid; evidence uuid;
   funding uuid; contract uuid; payout uuid; key uuid:=extensions.gen_random_uuid(); result jsonb;
-  dispatch uuid; second uuid; paid_evidence uuid; receipt_at timestamptz;
+  dispatch uuid; second uuid; third uuid; receipt_evidence uuid; paid_evidence uuid; receipt_at timestamptz;
+  account uuid:=extensions.gen_random_uuid(); statement uuid:=extensions.gen_random_uuid(); line uuid:=extensions.gen_random_uuid();
 begin
   if exists(select 1 from public.b2c_policy where enabled or not require_four_eyes or per_payout_minor is not null
     or daily_minor is not null or payout_fee_minor is not null or cardinality(custody_ids)>0 or cardinality(recipient_ids)>0) then
@@ -55,18 +62,26 @@ begin
   recipient:=(public.b2c_intake('recipient',jsonb_build_object('wedding',wid,'evidence',evidence,
     'msisdn','254700000001','partner',1))->>'id')::uuid;
   perform set_config('request.jwt.claim.sub',client_id::text,true);
+  perform pg_temp.b2c_reject(format('select public.b2c_request(%L,%L,%L,%L,10000)',
+    key,wid,extensions.gen_random_uuid(),recipient),'Dispatch OFF');
   update auth.users set phone_confirmed_at=null where id=client_id;
   perform pg_temp.b2c_reject(format('select public.b2c_bind_destination(%L)',recipient),'Verified current phone');
   update auth.users set phone_confirmed_at=now() where id=client_id;
+  update auth.users set phone='254700000002' where id=client_id;
+  perform pg_temp.b2c_reject(format('select public.b2c_bind_destination(%L)',recipient),'Verified current phone');
+  update auth.users set phone='254700000001' where id=client_id;
+  perform public.b2c_bind_destination(recipient);
   perform public.b2c_bind_destination(recipient);
   perform public.b2c_phone_start(wid,'254700000001');
   perform pg_temp.b2c_reject(format('select public.b2c_phone_start(%L,''254700000001'')',wid),'rate limit');
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   funding:=pg_temp.b2c_evidence('policy',owner_id,staff_id);
   contract:=pg_temp.b2c_evidence('policy',owner_id,staff_id);
+  evidence:=pg_temp.b2c_evidence('account',owner_id,staff_id);
+  perform public.b2c_intake('account',jsonb_build_object('account',account,'registry',extensions.gen_random_uuid(),'evidence',evidence));
   evidence:=pg_temp.b2c_evidence('custody',owner_id,staff_id);
-  custody:=(public.b2c_intake('custody',jsonb_build_object('account',extensions.gen_random_uuid(),
-    'availableMinor',100000,'statementAt',now(),'evidence',evidence,
+  custody:=(public.b2c_intake('custody',jsonb_build_object('account',account,
+    'availableMinor',100000,'heldMinor',0,'statementAt',now(),'evidence',evidence,
     'fundingEvidence',funding,'shortcode','123456','disbursableCollectedFunds',true))->>'id')::uuid;
   -- Synthetic receipt admission bypasses collection guards only in this rollback.
   alter table public.contributions disable trigger guard_payment_environment;
@@ -79,16 +94,19 @@ begin
   evidence:=pg_temp.b2c_evidence('settlement',owner_id,staff_id);
   update public.contributions set payment_environment='test' where id=contribution;
   perform pg_temp.b2c_reject(format('select public.b2c_intake(''settlement'',%L::jsonb)',
-    jsonb_build_object('contribution',contribution,'custody',custody,'settledMinor',100000,'line',extensions.gen_random_uuid(),'evidence',evidence)),'Only verified live');
+    jsonb_build_object('contribution',contribution,'custody',custody,'settledMinor',100000,
+      'line',extensions.gen_random_uuid(),'evidence',evidence,'at',now()-interval '1 hour')),'Only provider-verified');
   update public.contributions set payment_environment='live',provider_fee_pending=true where id=contribution;
   perform pg_temp.b2c_reject(format('select public.b2c_intake(''settlement'',%L::jsonb)',
-    jsonb_build_object('contribution',contribution,'custody',custody,'settledMinor',100000,'line',extensions.gen_random_uuid(),'evidence',evidence)),'Only verified live');
+    jsonb_build_object('contribution',contribution,'custody',custody,'settledMinor',100000,
+      'line',extensions.gen_random_uuid(),'evidence',evidence,'at',now()-interval '1 hour')),'Only provider-verified');
   update public.contributions set provider_fee_pending=false,provider_name='paystack' where id=contribution;
   perform pg_temp.b2c_reject(format('select public.b2c_intake(''settlement'',%L::jsonb)',
-    jsonb_build_object('contribution',contribution,'custody',custody,'settledMinor',100000,'line',extensions.gen_random_uuid(),'evidence',evidence)),'Only verified live');
+    jsonb_build_object('contribution',contribution,'custody',custody,'settledMinor',100000,
+      'line',extensions.gen_random_uuid(),'evidence',evidence,'at',now()-interval '1 hour')),'Only provider-verified');
   update public.contributions set provider_name='daraja' where id=contribution;
   perform public.b2c_intake('settlement',jsonb_build_object('contribution',contribution,'custody',custody,
-    'settledMinor',100000,'line',extensions.gen_random_uuid(),'evidence',evidence));
+    'settledMinor',100000,'line',extensions.gen_random_uuid(),'evidence',evidence,'at',now()-interval '1 hour'));
   perform set_config('request.jwt.claim.sub',staff_id::text,true);
   perform pg_temp.b2c_reject($q$select public.owner_update_b2c_policy(1,'{"enabled":true}','Synthetic staff attempt')$q$,'Owner');
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
@@ -136,12 +154,20 @@ begin
   perform pg_temp.b2c_reject(format('select public.b2c_request(%L,%L,%L,%L,90000)',extensions.gen_random_uuid(),wid,custody,recipient),'outside explicit');
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   perform public.owner_update_b2c_policy(2,'{"enabled":false}','Synthetic kill switch after claim');
-  paid_evidence:=pg_temp.b2c_evidence('receipt',owner_id,staff_id);
+  receipt_evidence:=pg_temp.b2c_evidence('receipt',owner_id,staff_id);
+  paid_evidence:=pg_temp.b2c_evidence('reconciliation',owner_id,staff_id);
   receipt_at:=now();
-  perform pg_temp.b2c_reject(format('select public.b2c_reconcile(%L,%L,''SYNRECEIPT'',10000,100,''254700000001'',%L)',dispatch,paid_evidence,receipt_at),'Independent final');
+  perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,100,%L)',
+    dispatch,receipt_evidence,paid_evidence,account,statement,line,receipt_at),'Independent final');
   perform set_config('request.jwt.claim.sub',staff_id::text,true);
-  perform pg_temp.b2c_reject(format('select public.b2c_reconcile(%L,%L,''SYNRECEIPT'',10000,0,''254700000001'',%L)',dispatch,paid_evidence,receipt_at),'Exact independently');
-  perform public.b2c_reconcile(dispatch,paid_evidence,'SYNRECEIPT',10000,100,'254700000001',receipt_at);
+  perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,0,%L)',
+    dispatch,receipt_evidence,paid_evidence,account,statement,line,receipt_at),'Exact independently');
+  perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,100,%L)',
+    dispatch,receipt_evidence,receipt_evidence,account,statement,line,receipt_at),'Independently checked');
+  perform pg_temp.b2c_reconcile(dispatch,receipt_evidence,paid_evidence,account,statement,line,100,receipt_at);
+  perform pg_temp.b2c_reconcile(dispatch,receipt_evidence,paid_evidence,account,statement,line,100,receipt_at);
+  if not exists(select 1 from public.manual_payout_reconciliations where payout_id=payout and statement_reference=statement
+    and line_reference=line and not owner_solo) then raise exception 'Separate immutable exact statement debit required'; end if;
   if public.manual_payout_state(payout)<>'paid' then raise exception 'Independent exact evidence must settle even after admission stop'; end if;
   -- Automated approval is explicit Owner policy, not manual Owner-solo permission.
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
@@ -155,9 +181,26 @@ begin
     raise exception 'Automatic approval must audit exact policy authority';
   end if;
   if (select count(*) from public.b2c_policy_history)<>3 then raise exception 'Policy revision history missing'; end if;
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',client_id::text,true);
+  third:=public.b2c_request(extensions.gen_random_uuid(),wid,custody,recipient,10000);
+  perform set_config('request.jwt.claim.role','service_role',true);
+  result:=public.b2c_claim(third,extensions.gen_random_uuid(),repeat('c',64),'123456','BusinessPayment',true);
+  dispatch:=(result->>'id')::uuid;
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  evidence:=pg_temp.b2c_evidence('no_transfer',owner_id,staff_id);
+  perform pg_temp.b2c_reject(format('select public.b2c_resolve(%L,%L,false,null)',dispatch,evidence),'zero-charge');
+  perform public.b2c_resolve(dispatch,evidence,false,0);
+  perform pg_temp.b2c_reject(format('select public.b2c_resolve(%L,%L,true,0)',dispatch,evidence),'different independent');
+  perform set_config('request.jwt.claim.sub',staff_id::text,true);
+  perform public.b2c_resolve(dispatch,evidence,true,0);
+  perform set_config('request.jwt.claim.role','service_role',true);
+  if (public.b2c_claim(third,extensions.gen_random_uuid(),repeat('d',64),'123456','BusinessPayment',true)->>'claimed')::boolean
+    then raise exception 'No-transfer decision must never resend an existing claim'; end if;
   if current_setting('b2c.test_concurrency',true)='on' then
     insert into public.b2c_ci_context(data) values(jsonb_build_object('owner',owner_id,'staff',staff_id,
-      'client',client_id,'wedding',wid,'custody',custody,'recipient',recipient,'existing',second));
+      'client',client_id,'wedding',wid,'custody',custody,'account',account,'recipient',recipient,'existing',second));
   end if;
 end $$;
 rollback;

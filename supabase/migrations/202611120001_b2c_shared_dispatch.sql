@@ -54,9 +54,13 @@ create table public.b2c_human_reviews (
   unique(payout_id,policy_revision,reviewer_id)
 );
 create table public.b2c_custody_bindings (
-  custody_id uuid primary key references public.manual_payout_custody(id),
+  id bigint generated always as identity primary key,
+  custody_id uuid not null references public.manual_payout_custody(id),
   shortcode text not null check(shortcode ~ '^[0-9]{5,7}$'),
-  funding_evidence uuid not null references public.manual_payout_evidence(id)
+  funding_evidence uuid not null references public.manual_payout_evidence(id),
+  recorded_by uuid not null default auth.uid() references public.profiles(id),
+  created_at timestamptz not null default now(),
+  unique(custody_id,shortcode,funding_evidence)
 );
 create table public.b2c_destinations (
   recipient_id uuid primary key references public.manual_payout_recipients(id),
@@ -211,6 +215,13 @@ begin
     or r.kyc_snapshot_hash<>encode(extensions.digest(to_jsonb(k)::text,'sha256'),'hex') then
     raise exception 'B2C: Verified current phone control and current independently reviewed identity/name evidence required.';
   end if;
+  if exists(select 1 from public.b2c_destinations where recipient_id=r.id) then
+    if not exists(select 1 from public.b2c_destinations where recipient_id=r.id and user_id=u.id
+      and msisdn=u.phone and phone_confirmed_at=u.phone_confirmed_at) then
+      raise exception 'B2C: Destination binding is immutable; obtain a new reviewed recipient revision.';
+    end if;
+    return true;
+  end if;
   insert into public.b2c_destinations(recipient_id,user_id,msisdn,phone_confirmed_at)
     values(r.id,u.id,u.phone,u.phone_confirmed_at);
   perform public.b2c_audit(r.wedding_id,r.id::text,'phone_control_bound_not_identity_verification',auth.uid());
@@ -251,8 +262,8 @@ begin
   end if;
   select * into strict a from public.manual_payout_custody where id=p_custody;
   snapshot:=public.manual_payout_custody_snapshot(p_custody,false);
-  if snapshot is null or a.provider<>'daraja' or a.currency<>'KES' or (snapshot->>'statement_at')::timestamptz>now()
-    or (snapshot->>'statement_at')::timestamptz<now()-make_interval(mins=>p.statement_max_age_minutes) then
+  if snapshot is null or a.provider<>'daraja' or a.currency<>'KES' or (snapshot->>'statement_at')::timestamptz>clock_timestamp()
+    or (snapshot->>'statement_at')::timestamptz<clock_timestamp()-make_interval(mins=>p.statement_max_age_minutes) then
     raise exception 'B2C_FUNDING_NEEDED: Current documented disbursable collected custody is missing or stale.';
   end if;
   perform public.manual_payout_evidence_require(a.evidence_id,'custody');
@@ -499,8 +510,8 @@ begin
     or p_actual is distinct from r.amount_minor or p_fee is distinct from r.fee_minor
     or (p_provider,p_account,p_currency) is distinct from (a.provider,a.account_reference,r.currency)
     or p_statement is null or p_line is null
-    or p_msisdn is distinct from d.msisdn or p_at is null or p_at<c.claimed_at or p_at>now()
-    or p_booked_at is null or p_booked_at<p_at or p_booked_at>now()
+    or p_msisdn is distinct from d.msisdn or p_at is null or p_at<c.claimed_at or p_at>clock_timestamp()
+    or p_booked_at is null or p_booked_at<p_at or p_booked_at>clock_timestamp()
     or p_reference is null or upper(btrim(p_reference)) !~ '^[A-Z0-9][A-Z0-9._:-]{0,119}$' then
     raise exception 'B2C: Exact independently checked receipt and separate statement debit/account/line/amount/fee/destination required; retain holds.';
   end if;
@@ -561,13 +572,12 @@ end $$;
 -- execution channels are OFF. No account balance is inferred from collection.
 create function public.b2c_intake(p_action text,p_data jsonb) returns jsonb
 language plpgsql security definer set search_path='' as $$
-declare result uuid; e public.manual_payout_evidence; c public.contributions;
-  a public.manual_payout_custody; k public.wedding_kyc; wid uuid;
+declare result text; e public.manual_payout_evidence; k public.wedding_kyc; wid uuid; custody uuid;
 begin
   perform public.b2c_lock_staff();
   if p_data is null or jsonb_typeof(p_data)<>'object' then raise exception 'B2C: Structured evidence fields required.'; end if;
   if p_action='evidence' then
-    if p_data->>'kind'='policy' then perform public.require_staff('owner'); end if;
+    if p_data->>'kind'='policy' then perform public.b2c_lock_staff('owner'); end if;
     insert into public.manual_payout_evidence(kind,external_reference,sha256,submitted_by)
       values(p_data->>'kind',(p_data->>'reference')::uuid,p_data->>'sha256',auth.uid()) returning id into result;
   elsif p_action='check' then
@@ -587,48 +597,55 @@ begin
         case when p_data->>'partner'='1' then k.partner1_phone else k.partner2_phone end then
       raise exception 'B2C: Evidence must identify the exact reviewed partner and destination MSISDN.';
     end if;
-    insert into public.manual_payout_recipients(wedding_id,evidence_id,provider,currency,kyc_snapshot_hash,recorded_by)
-      values(wid,(p_data->>'evidence')::uuid,'daraja','KES',
-        encode(extensions.digest(to_jsonb(k)::text,'sha256'),'hex'),auth.uid()) returning id into result;
+    result:=public.manual_payout_recipient_internal(wid,(p_data->>'evidence')::uuid,'daraja','KES',false);
     insert into public.b2c_reviewed_destinations(recipient_id,msisdn,partner_slot,reviewed_by)
-      values(result,p_data->>'msisdn',(p_data->>'partner')::smallint,auth.uid());
+      values(result::uuid,p_data->>'msisdn',(p_data->>'partner')::smallint,auth.uid());
+  elsif p_action='account' then
+    perform public.b2c_lock_staff('owner');
+    result:=public.manual_payout_register_account_internal((p_data->>'account')::uuid,'daraja',
+      (p_data->>'registry')::uuid,(p_data->>'evidence')::uuid,false);
   elsif p_action='custody' then
-    perform public.require_staff('owner');
-    perform public.manual_payout_evidence_require((p_data->>'evidence')::uuid,'custody');
+    perform public.b2c_lock_staff('owner');
     perform public.manual_payout_evidence_require((p_data->>'fundingEvidence')::uuid,'policy');
-    if p_data->>'disbursableCollectedFunds' is distinct from 'true'
-      or (p_data->>'statementAt')::timestamptz is null or (p_data->>'statementAt')::timestamptz>now()
-      or exists(select 1 from public.payout_records where status<>'cancelled')
-      or exists(select 1 from public.expenses) or exists(select 1 from public.payment_adjustments)
-      or exists(select 1 from public.financial_adjustment_ledger) then
-      raise exception 'B2C_FUNDING_NEEDED: Verified disbursable collected-funds statement and unmapped-commitment resolution required.';
+    if p_data->>'disbursableCollectedFunds' is distinct from 'true' then
+      raise exception 'B2C_FUNDING_NEEDED: Official disbursable collected-funds evidence is required.';
     end if;
-    insert into public.manual_payout_custody(provider,account_reference,currency,available_minor,statement_at,evidence_id,recorded_by)
-      values('daraja',(p_data->>'account')::uuid,'KES',(p_data->>'availableMinor')::bigint,
-        (p_data->>'statementAt')::timestamptz,(p_data->>'evidence')::uuid,auth.uid()) returning id into result;
+    result:=public.manual_payout_register_custody_internal('daraja',(p_data->>'account')::uuid,'KES',
+      (p_data->>'availableMinor')::bigint,(p_data->>'statementAt')::timestamptz,(p_data->>'evidence')::uuid,
+      (p_data->>'heldMinor')::bigint,false);
     insert into public.b2c_custody_bindings(custody_id,shortcode,funding_evidence)
-      values(result,p_data->>'shortcode',(p_data->>'fundingEvidence')::uuid);
-  elsif p_action='settlement' then
-    perform public.require_staff('owner');
-    perform public.manual_payout_evidence_require((p_data->>'evidence')::uuid,'settlement');
-    select * into strict a from public.manual_payout_custody where id=(p_data->>'custody')::uuid for update;
-    select * into strict c from public.contributions where id=(p_data->>'contribution')::uuid for update;
-    if a.provider<>'daraja' or a.currency<>'KES' or c.payment_environment<>'live'
-      or c.settlement_route<>'platform_wallet' or not c.verified_provider_payment
-      or c.payment_status<>'paid' or c.provider_fee_pending or c.provider_fee_minor is null
-      or c.provider_name is distinct from a.provider or c.currency<>a.currency
-      or c.paid_at is null or c.paid_at>a.statement_at
-      or (p_data->>'settledMinor')::bigint is distinct from c.net_paid_minor-c.provider_fee_minor
-      or (p_data->>'settledMinor')::bigint<=0 then
-      raise exception 'B2C: Only verified live fee-known Daraja receipts allocated from actual disbursable collected custody qualify.';
+      values(result::uuid,p_data->>'shortcode',(p_data->>'fundingEvidence')::uuid);
+  elsif p_action in ('statement','settlement','source','debit','funding') then
+    perform public.b2c_lock_staff('owner');
+    custody:=case when p_action='debit' then (select custody_id from public.manual_payout_requests
+      where id=(p_data->>'payout')::uuid) else (p_data->>'custody')::uuid end;
+    if not exists(select 1 from public.manual_payout_custody where id=custody and provider='daraja' and currency='KES') then
+      raise exception 'B2C: Daraja/KES custody is required for this intake.';
     end if;
-    if (p_data->>'settledMinor')::numeric+coalesce((select sum(settled_minor)
-      from public.manual_payout_settlements where custody_id=a.id),0)>a.available_minor then
-      raise exception 'B2C: Custody statement would be overallocated.';
+    if p_action='statement' then
+      result:=public.manual_payout_append_statement_internal(custody,(p_data->>'previous')::uuid,
+        (p_data->>'statement')::uuid,(p_data->>'at')::timestamptz,(p_data->>'opening')::bigint,
+        (p_data->>'credit')::bigint,(p_data->>'debit')::bigint,(p_data->>'closing')::bigint,
+        (p_data->>'held')::bigint,(p_data->>'evidence')::uuid,false);
+    elsif p_action='settlement' then
+      perform public.manual_payout_register_settlement_internal((p_data->>'contribution')::uuid,custody,
+        (p_data->>'line')::uuid,(p_data->>'settledMinor')::bigint,(p_data->>'evidence')::uuid,
+        (p_data->>'batch')::uuid,(p_data->>'at')::timestamptz,false);
+      result:=p_data->>'contribution';
+    elsif p_action='source' then
+      result:=public.manual_payout_map_source_internal(p_data->>'kind',(p_data->>'source')::uuid,custody,
+        (p_data->>'batch')::uuid,(p_data->>'evidence')::uuid,(p_data->>'line')::uuid,
+        (p_data->>'at')::timestamptz,false);
+    elsif p_action='debit' then
+      perform public.manual_payout_include_debit_internal((p_data->>'payout')::uuid,(p_data->>'batch')::uuid,
+        (p_data->>'line')::uuid,(p_data->>'evidence')::uuid,false);
+      result:=p_data->>'payout';
+    else
+      perform public.manual_payout_evidence_require((p_data->>'fundingEvidence')::uuid,'policy',false);
+      insert into public.b2c_custody_bindings(custody_id,shortcode,funding_evidence)
+        values(custody,p_data->>'shortcode',(p_data->>'fundingEvidence')::uuid);
+      result:=custody;
     end if;
-    insert into public.manual_payout_settlements(contribution_id,custody_id,statement_line_reference,settled_minor,evidence_id,recorded_by)
-      values(c.id,a.id,(p_data->>'line')::uuid,(p_data->>'settledMinor')::bigint,(p_data->>'evidence')::uuid,auth.uid());
-    result:=c.id;
   else raise exception 'B2C: Unsupported evidence intake action.'; end if;
   perform public.b2c_audit(wid,result::text,'intake_'||p_action,auth.uid());
   return jsonb_build_object('id',result,'recorded',true);

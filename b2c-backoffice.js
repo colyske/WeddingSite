@@ -43,9 +43,10 @@
         <p>Only opaque secure-evidence UUIDs and SHA-256 digests. Never paste names, ID documents,
         statements, OTP codes or credentials. A different leader checks each evidence record.</p>
         <label>Operation<select name="kind"><option>evidence</option><option>check</option>
-          <option>recipient</option><option>custody</option><option>settlement</option></select></label>
+          <option>recipient</option><option>account</option><option>custody</option><option>statement</option>
+          <option>settlement</option><option>source</option><option>debit</option><option>funding</option></select></label>
         <label>Structured metadata JSON<textarea name="data" rows="5" required></textarea></label>
-        <p>See operator guide for each exact shape. Custody/settlement are Owner-only.
+        <p>See operator guide for each exact shape. Account/funds/batch/allocation operations are Owner-only.
         A Paybill collection receipt is not evidence that the balance is currently disbursable.</p>
         <button type="submit">Record evidence metadata</button>
       </form>

@@ -63,6 +63,9 @@ try {
   const payout = await sql(`select id from public.manual_payout_requests where request_key='${claimKey}';`);
   await run(context.owner, `select public.staff_approve_b2c('${payout}')`);
   await run(context.staff, `select public.staff_approve_b2c('${payout}')`);
+  // Give the synthetic couple requester a legitimate staff role so both actual
+  // execution paths can compete, rather than one failing requester authority.
+  await run(context.owner, `select public.assign_platform_role('${context.client}','superadmin')`);
   const other = randomUUID();
   await sql(`begin; insert into auth.users(id) values('${other}');
     select set_config('request.jwt.claim.sub','${context.owner}',true);
@@ -93,16 +96,24 @@ try {
     await sql(`begin; set local session_replication_role=replica;
       delete from public.b2c_callback_events where dispatch_id in (select id from public.b2c_dispatches where payout_id in
         (select id from public.manual_payout_requests where wedding_id='${context.wedding}'));
+      delete from public.b2c_resolution_proposals where dispatch_id in (select id from public.b2c_dispatches where payout_id in
+        (select id from public.manual_payout_requests where wedding_id='${context.wedding}'));
       delete from public.b2c_dispatches where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
       delete from public.b2c_human_reviews where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
       delete from public.b2c_request_intents where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
+      delete from public.manual_payout_statement_debits where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
+      delete from public.manual_payout_reconciliations where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
       delete from public.manual_payout_receipts where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
       delete from public.manual_payout_claims where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
       delete from public.manual_payout_events where payout_id in (select id from public.manual_payout_requests where wedding_id='${context.wedding}');
       delete from public.manual_payout_requests where wedding_id='${context.wedding}';
       delete from public.manual_payout_settlements where custody_id='${context.custody}';
+      delete from public.manual_payout_statement_lines where custody_id='${context.custody}';
+      delete from public.manual_payout_source_allocations where custody_id='${context.custody}';
+      delete from public.manual_payout_statement_batches where custody_id='${context.custody}';
       delete from public.b2c_custody_bindings where custody_id='${context.custody}';
       delete from public.manual_payout_custody where id='${context.custody}';
+      delete from public.manual_payout_accounts where id='${context.account}';
       delete from public.b2c_destinations where recipient_id='${context.recipient}';
       delete from public.b2c_reviewed_destinations where recipient_id='${context.recipient}';
       delete from public.manual_payout_recipients where wedding_id='${context.wedding}';
