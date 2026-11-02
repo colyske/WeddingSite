@@ -389,7 +389,7 @@
     <!-- Sponsorship tiers -->
     <section id="sponsor-tiers" class="card" hidden>
       <h2>Sponsorship Levels</h2>
-      <p class="fine">Fixed-price packages support the celebration. Sponsor placement appears only after verified payment.</p>
+      <p class="fine">Packages include the benefits listed. Sponsors are ordered by verified paid amount, so larger contributions appear higher; package level does not set list order.</p>
       <div id="tiers-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;"></div>
     </section>
 
@@ -1239,7 +1239,7 @@ const payIntent = WSPaymentIntent.create({ name: slug });
       next.summary = kind === "fund" ? "Your contribution is added to this campaign only after the payment is confirmed." : "Your gift is recorded only after the payment is confirmed.";
       next.exact = false;
     } else if (kind === "sponsor") {
-      next.summary = `Minimum package amount ${min.toFixed(2)} ${wedding.currency || "USD"}. Sponsor placement is shown only after verified payment.`;
+      next.summary = `Minimum package amount ${min.toFixed(2)} ${wedding.currency || "USD"}. This package includes the benefits listed. Sponsors are ordered by verified paid amount, so larger contributions appear higher; package level does not set list order.`;
       next.exact = true;
     } else if (kind === "vip") {
       next.summary = `Fixed price ${min.toFixed(2)} ${wedding.currency || "USD"}. Your seat is reserved only after the payment is confirmed.`;
