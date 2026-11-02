@@ -255,6 +255,17 @@ begin
       and e.batch_id=next_batch and e.line_reference=line) then
     raise exception 'Paid must already have consumed the exact registered statement debit atomically'; end if;
   if public.manual_payout_state(payout)<>'paid' then raise exception 'Independent exact evidence must settle even after admission stop'; end if;
+  begin
+    outcome:=pg_temp.b2c_reconcile(dispatch,receipt_evidence,paid_evidence,account,statement,line,0,receipt_at);
+    if outcome is distinct from 'account_held'
+      or not exists(select 1 from public.manual_payout_account_holds where payout_id=payout)
+      or (select count(*) from public.manual_payout_events where payout_id=payout and state='paid')<>1
+      or (select actual_fee_minor from public.manual_payout_reconciliations where payout_id=payout)<>100
+      or public.manual_payout_state(payout)<>'paid' then
+      raise exception 'Contradictory paid replay must hold the account without rewriting immutable paid history'; end if;
+    raise exception using errcode='P9999',message='Rollback synthetic paid replay incident';
+  exception when sqlstate 'P9999' then null;
+  end;
   -- Automated approval is explicit Owner policy, not manual Owner-solo permission.
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   perform public.owner_update_b2c_policy(3,'{"enabled":true,"require_four_eyes":false}','Synthetic explicit auto approval');
@@ -333,21 +344,29 @@ begin
     insert into public.b2c_ci_context(data) values(jsonb_build_object('owner',owner_id,'staff',staff_id,
       'client',client_id,'wedding',wid,'custody',custody,'account',account,'recipient',recipient,'existing',second));
   end if;
-  alter table public.contributions enable trigger guard_payment_environment;
-  alter table public.contributions enable trigger guard_live_payment_context;
-  alter table public.contributions enable trigger guard_paystack_context;
 end $$;
+set constraints all immediate;
+alter table public.contributions enable trigger guard_payment_environment;
+alter table public.contributions enable trigger guard_live_payment_context;
+alter table public.contributions enable trigger guard_paystack_context;
 set local role authenticated;
 select pg_temp.b2c_reject(
   'select public.b2c_claim(extensions.gen_random_uuid(),extensions.gen_random_uuid(),repeat(''a'',64),''123456'',''BusinessPayment'',true)',
   'permission denied');
 select pg_temp.b2c_reject('select * from public.b2c_destinations','permission denied');
 select pg_temp.b2c_reject('select public.manual_payout_register_account_internal(extensions.gen_random_uuid(),''daraja'',extensions.gen_random_uuid(),extensions.gen_random_uuid(),false)','permission denied');
+select pg_temp.b2c_reject(
+  'select public.manual_payout_register_statement_debit_internal(null,null,''SYN'',10000,100,''KES'',now(),null,false)',
+  'permission denied');
 reset role;
 set local role service_role;
 select pg_temp.b2c_reject('select public.owner_update_b2c_policy(1,''{}'',''Synthetic service bypass'')','permission denied');
 select pg_temp.b2c_reject('select public.b2c_intake(''evidence'',''{}'')','permission denied');
 select pg_temp.b2c_reject('select * from public.manual_payout_claims','permission denied');
+select pg_temp.b2c_reject('select * from public.manual_payout_statement_debit_entries','permission denied');
+select pg_temp.b2c_reject(
+  'select public.manual_payout_finalize_reconciliation_internal(null,''automatic_b2c'',''daraja'',null,null,null,''SYN'',10000,100,''KES'',now(),null,false)',
+  'permission denied');
 reset role;
 set local role anon;
 select pg_temp.b2c_reject('select public.b2c_status()','permission denied');
