@@ -760,15 +760,22 @@ export default async function handler(req, res) {
 
       if (action === "balance") {
         const rows = await supabaseRequest("/rest/v1/rpc/withdrawable_balance", { ...opts, method: "POST", body: { p_wedding_id: weddingId, p_currency: currency } });
+        const manual = await supabaseRequest("/rest/v1/rpc/manual_payout_balance", {
+          ...opts, method: "POST", body: { p_wedding: weddingId }
+        });
         const r = rows?.[0] || {};
         return sendJson(res, 200, {
-          currency, available_minor: Number(r.available_minor || 0), settling_minor: Number(r.settling_minor || 0),
+          currency, available_minor: 0, legacy_nonwithdrawable_estimate_minor: Number(r.available_minor || 0),
+          manual, settling_minor: Number(r.settling_minor || 0),
           held_minor: Number(r.held_minor || 0), next_available_at: r.next_available_at || null
         });
       }
       if (action === "withdrawals") {
         const rows = await supabaseRequest(`/rest/v1/payout_records?wedding_id=eq.${weddingId}&select=id,amount_minor,currency,status,requested_at,staff_reason&order=requested_at.desc&limit=100`, opts);
-        return sendJson(res, 200, { withdrawals: rows || [] });
+        const manual = await supabaseRequest("/rest/v1/rpc/manual_payout_history", {
+          ...opts, method: "POST", body: { p_wedding: weddingId }
+        });
+        return sendJson(res, 200, { withdrawals: rows || [], manualWithdrawals: manual, manualEnabled: false });
       }
       if (action === "withdraw") {
         if (!methodOnly(req, res, "POST")) return;

@@ -44,6 +44,7 @@ test("moderation API requires actionable reasons, preserves caller credentials, 
     assert.equal(result.statusCode, 409);
     assert.match(result.data.error, /Reload/);
     failure = false;
+    role = "superadmin";
     result = await invoke(admin, "payout-status", { payout_id: id, status: "cancelled" });
     assert.equal(result.statusCode, 400);
     assert.deepEqual(calls, []);
