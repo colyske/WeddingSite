@@ -532,6 +532,8 @@ begin
         is not distinct from (a.provider,a.account_reference,b.statement_reference,e.line_reference,e.transaction_reference,
           e.actual_minor,e.actual_fee_minor,e.currency,e.booked_at)
       and e.custody_id=a.id and b.custody_id=a.id and d.batch_id=b.id and d.line_reference=e.line_reference
+      and (e.actual_minor,e.actual_fee_minor,e.currency) is not distinct from
+        (request.amount_minor,request.fee_minor,request.currency)
       and l.batch_id=b.id and l.source_kind='statement_debit' and l.source_id=e.id and l.direction='debit'
       and l.amount_minor=e.actual_minor::numeric+e.actual_fee_minor
   ) then raise exception 'Paid requires atomically allocated registered statement reconciliation.'; end if;
@@ -911,6 +913,7 @@ begin
   perform public.manual_payout_evidence_require(p_evidence,'reconciliation',solo);
   if (p_provider,p_account,upper(btrim(p_reference)),p_actual,p_fee,p_currency) is distinct from
       (receipt.provider,receipt.account_reference,receipt.transaction_reference,receipt.actual_minor,receipt.actual_fee_minor,receipt.currency)
+      or (receipt.actual_minor,receipt.actual_fee_minor,receipt.currency) is distinct from (r.amount_minor,r.fee_minor,r.currency)
       or p_at is null or p_at<receipt.transferred_at or p_at>clock_timestamp() then
     raise exception 'Statement debit/account/reference/amount/fee/currency/date mismatch; retain reservation.';
   end if;

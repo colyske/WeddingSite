@@ -457,6 +457,35 @@ begin
   perform public.manual_payout_transition(p,'cancelled');
 end $$;
 rollback to net_opening;
+savepoint fee_reconciliation;
+do $$
+declare p uuid; a uuid; prior public.manual_payout_statement_batches; b uuid; line uuid:=extensions.gen_random_uuid();
+  statement uuid:=extensions.gen_random_uuid(); evidence uuid; reconciliation uuid; booked timestamptz;
+begin
+  select id into a from mp_ids where key='custody';
+  perform pg_temp.actor('maker');
+  p:=public.manual_payout_request(extensions.gen_random_uuid(),(select id from mp_ids where key='wedding'),a,
+    (select id from public.manual_payout_recipients where wedding_id=(select id from mp_ids where key='wedding')
+      order by revision desc limit 1),1000,100,'KES');
+  perform pg_temp.actor('checker'); perform public.manual_payout_transition(p,'approved');
+  perform pg_temp.actor('maker'); perform public.manual_payout_transition(p,'executing',extensions.gen_random_uuid());
+  evidence:=pg_temp.evidence('receipt');
+  perform public.manual_payout_report(p,'WITH-ACTUAL-FEE',1000,100,'KES',clock_timestamp(),evidence);
+  evidence:=pg_temp.evidence('statement'); booked:=clock_timestamp();
+  select * into strict prior from public.manual_payout_statement_batches where custody_id=a order by sequence desc limit 1;
+  b:=public.manual_payout_append_statement(a,prior.id,statement,clock_timestamp(),prior.closing_minor,0,1100,
+    prior.closing_minor-1100,0,evidence);
+  perform public.manual_payout_register_statement_debit(b,line,'WITH-ACTUAL-FEE',1000,100,'KES',booked,evidence);
+  reconciliation:=pg_temp.evidence('reconciliation'); perform pg_temp.actor('checker');
+  perform pg_temp.reject(format('select public.manual_payout_reconcile(%L,''daraja'',%L,%L,%L,''WITH-ACTUAL-FEE'',1000,0,''KES'',%L,%L)',
+    p,(select account_reference from public.manual_payout_custody where id=a),statement,line,booked,reconciliation),'mismatch');
+  perform public.manual_payout_reconcile(p,'daraja',(select account_reference from public.manual_payout_custody where id=a),
+    statement,line,'WITH-ACTUAL-FEE',1000,100,'KES',booked,reconciliation);
+  if not exists(select 1 from public.manual_payout_statement_lines where batch_id=b and line_reference=line
+    and direction='debit' and amount_minor=1100) or public.manual_payout_state(p)<>'paid' then
+    raise exception 'Actual fee was not included exactly once in atomic paid debit'; end if;
+end $$;
+rollback to fee_reconciliation;
 -- Contradictory late evidence cannot resurrect or rewrite terminal history.
 savepoint late_outcome;
 do $$
