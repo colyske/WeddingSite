@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import "../inspiration-fixtures.js";
 import guest from "../api/guest.js";
 import weddings from "../api/weddings.js";
+import { paystackCredentialFingerprint } from "../server/paystack.js";
 
 const inspiration = globalThis.WSInspiration;
 test("fictional inspiration is immutable and starters have an explicit safe allowlist", () => {
@@ -39,14 +40,21 @@ test("public design extraction rejects invalid colours and includes only generic
   assert.throws(() => inspiration.publicDesign(["red; background:url(unsafe)"]), /cannot be reused/);
 });
 
-test("style endpoints allowlist public configuration, ignore dates, and fail closed on missing capabilities", async () => {
-  const names = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"];
+test("style endpoints allowlist public configuration, stage only current currencies, and replay atomically", async () => {
+  const env = {
+    SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "anon", SUPABASE_SERVICE_ROLE_KEY: "service",
+    WEDDINGSITE_PAYMENT_MODE: "live", PAYSTACK_SECRET_KEY: "sk_live_fixture", PAYSTACK_MERCHANT_ID: "12345",
+    PAYSTACK_LIVE_MERCHANT_CONFIRMED: "12345", PAYSTACK_LIVE_COLLECTION_ENABLED: "true",
+    PAYSTACK_RECONCILIATION_ENABLED: "true", PAYSTACK_SUPPORTED_CURRENCIES: "USD", PAYSTACK_SUPPORTED_MARKETS: "US"
+  };
+  const names = Object.keys(env);
   const previous = names.map(name => process.env[name]);
-  Object.assign(process.env, { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "anon", SUPABASE_SERVICE_ROLE_KEY: "service" });
+  Object.assign(process.env, env);
   const oldFetch = globalThis.fetch;
   const calls = [];
   const creates = new Map();
   let existingDraft = null;
+  let staged = null, capabilityFailure = false;
   const key = "550e8400-e29b-41d4-a716-446655440002";
   const owner = "550e8400-e29b-41d4-a716-446655440000";
   const referral = { intentId: owner, revision: key, decision: "accept", termsVersion: "client-referrals-v1" };
@@ -56,16 +64,33 @@ test("style endpoints allowlist public configuration, ignore dates, and fail clo
     const body = options.body ? JSON.parse(options.body) : null;
     calls.push({ url, options, body });
     if (url.pathname === "/auth/v1/user") return response({ id: owner });
+    if (url.pathname === "/rest/v1/platform_policies") return capabilityFailure
+      ? new Response(JSON.stringify({ message: "Capability lookup unavailable." }), { status: 503 })
+      : response([{ enabled_payment_providers: ["paystack"] }]);
+    if (url.pathname === "/rest/v1/paystack_live_policy") return response([{
+      approved: true, merchant_id: "12345", credential_fingerprint: paystackCredentialFingerprint(),
+      settlement_mode: "standard", standard_enabled: true, capabilities: [{ currency: "USD", market: "US" }]
+    }]);
+    if (url.pathname === "/rest/v1/rpc/stage_wedding_starter_capability") {
+      assert.equal(options.headers.apikey, "service", "only backend service role may stage capability proof");
+      assert.equal(body.p_owner, owner);
+      assert.equal(body.p_request_key, key);
+      assert.equal(body.p_input.currency, "USD");
+      staged = body.p_input;
+      return response(null);
+    }
     if (url.pathname === "/rest/v1/weddings") {
       assert.equal(options.method, "GET");
-      assert.equal(url.searchParams.get("select"), "id,palette,currency,revenue_features,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,amount_presets", "only public configuration may be read");
+      assert.equal(url.searchParams.get("select"), "id,palette,currency,revenue_features,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options", "only public configuration may be read");
       assert.equal(url.searchParams.get("published_at"), "not.is.null");
       assert.equal(url.searchParams.get("archived_at"), "is.null");
       assert.equal(url.searchParams.get("lifecycle_admin_restricted"), "eq.false");
       assert.equal(url.searchParams.has("wedding_date"), false, "past/current/future are equally eligible");
-      return response(["eq.past-wedding", "eq.current-wedding", "eq.future-wedding"].includes(url.searchParams.get("slug"))
+      return response(["eq.past-wedding", "eq.current-wedding", "eq.future-wedding", "eq.opted-out-wedding"].includes(url.searchParams.get("slug"))
         ? [{ id: owner, currency: "KES", palette: ["#112233", "#445566", "#778899", "#eeeeee"],
           rsvp_fee_minor: 0, premium_diet_options: ["A personal menu label"],
+          revenue_features: url.searchParams.get("slug") === "eq.opted-out-wedding"
+            ? Object.fromEntries(WSStarterSetup.featureKeys.map(key => [key, false])) : null,
           amount_presets: null }] : []);
     }
     if (url.pathname === "/rest/v1/sponsor_tiers") {
@@ -80,8 +105,13 @@ test("style endpoints allowlist public configuration, ignore dates, and fail clo
       assert.equal(url.searchParams.get("select"), "seats_total,price_minor");
       return response([{ seats_total: 12, price_minor: 250000 }]);
     }
+    if (url.pathname === "/rest/v1/sponsor_featured_campaigns") {
+      assert.equal(url.searchParams.get("select"), "slot_count,minimum_bid_minor,bid_increment_minor");
+      assert.equal(url.searchParams.get("enabled"), "eq.true");
+      return response([{ slot_count: 3, minimum_bid_minor: 1000000, bid_increment_minor: 250000 }]);
+    }
     if (url.pathname === "/rest/v1/venues") {
-      assert.equal(url.searchParams.get("select"), "kind");
+      assert.equal(url.searchParams.get("select"), "kind,is_main");
       return response([{ kind: "pre" }, { kind: "main" }]);
     }
     if (url.pathname === "/rest/v1/fundraising_streams") {
@@ -100,6 +130,13 @@ test("style endpoints allowlist public configuration, ignore dates, and fail clo
       assert.deepEqual(Object.keys(body.p_input).sort(), ["coupleNames", "currency", "location", "maxCapacity",
         "palette", "paletteNames", "referral", "slug", "starterSetup", "timeZone", "venues", "weddingDate"]);
       if (existingDraft) return response(existingDraft);
+      if (staged) {
+        assert.deepEqual(body.p_input, staged);
+        const draft = { weddingId: owner, slug: body.p_input.slug };
+        creates.set(key, draft);
+        staged = null;
+        return response(draft);
+      }
       return new Response(JSON.stringify({ message: "STARTER_CAPABILITY_REQUIRED: Check support." }), { status: 400 });
     }
     throw new Error(`Unexpected external call: ${input}`);
@@ -128,18 +165,30 @@ test("style endpoints allowlist public configuration, ignore dates, and fail clo
     for (const slug of ["private-wedding", "unpublished-wedding", "restricted-wedding", "archived-wedding", "../invalid"]) {
       assert.equal((await run(guest, "style", null, slug, false)).statusCode, 404);
     }
+    const beforeOptOut = calls.length;
+    const optedOut = await run(guest, "style", null, "opted-out-wedding", false);
+    assert.equal(optedOut.statusCode, 200);
+    assert.ok(Object.values(optedOut.body.style.setup.features).every(enabled => enabled === false));
+    assert.equal(optedOut.body.style.setup.tiers.length, 0);
+    assert.equal(optedOut.body.style.setup.campaigns.length, 0);
+    assert.equal(optedOut.body.style.setup.vip, null);
+    assert.equal(optedOut.body.style.setup.featured, null);
+    assert.deepEqual(calls.slice(beforeOptOut).map(call => call.url.pathname),
+      ["/rest/v1/weddings", "/rest/v1/venues"], "nonpublic/disabled feature configuration is not read");
     assert.equal((await run(guest, "style", {}, "past-wedding", false)).statusCode, 405);
-    const payload = { coupleNames: "Our own names", requestKey: key, currency: "EUR", referral,
+    const payload = { coupleNames: "Our own names", requestKey: key, currency: "USD", referral,
       styleSlug: "past-wedding", ...inspiration.publicDesign(["#112233"]),
-      starterSetup: { ...globalThis.WSStarterSetup.fictional("garden-gathering", "EUR"), reviewed: true,
-        amountPresets: { song: "", gift: "" } },
+      starterSetup: { ...globalThis.WSStarterSetup.fictional("garden-gathering", "USD"), reviewed: true },
       published_at: "2099-01-01", enabled_payment_methods: ["stripe"], payout: { method: "test" } };
     delete payload.classification;
+    capabilityFailure = true;
+    assert.equal((await run(weddings, "create", payload)).statusCode, 503, "unavailable capabilities fail closed");
+    capabilityFailure = false;
     const initial = await run(weddings, "create", payload);
-    assert.equal(initial.statusCode, 503, "missing shared capability dependency blocks creation");
-    assert.equal(creates.size, 0);
+    assert.equal(initial.statusCode, 201);
+    assert.equal(creates.size, 1);
     const input = calls.find(call => call.url.pathname.endsWith("/create_wedding_from_starter")).body.p_input;
-    assert.equal(input.currency, "EUR");
+    assert.equal(input.currency, "USD");
     assert.equal(input.weddingDate, null);
     assert.equal(input.location, null);
     assert.equal((await run(weddings, "create", payload, null, false)).statusCode, 401);
@@ -148,7 +197,10 @@ test("style endpoints allowlist public configuration, ignore dates, and fail clo
     assert.equal((await run(weddings, "create", { ...payload, currency: "JPY" })).statusCode, 400);
     assert.equal((await run(weddings, "create", { ...payload, inspirationId: "garden-gathering" })).statusCode, 400);
     const fictional = { ...payload, styleSlug: undefined, inspirationId: "coastal-weekend" };
-    assert.equal((await run(weddings, "create", fictional)).statusCode, 503);
+    assert.equal((await run(weddings, "create", fictional)).statusCode, 201);
+    const unsupported = { ...fictional, currency: "EUR",
+      starterSetup: { ...globalThis.WSStarterSetup.fictional("garden-gathering", "EUR"), reviewed: true } };
+    assert.equal((await run(weddings, "create", unsupported)).statusCode, 400, "accounting membership does not prove collection readiness");
     assert.equal((await run(weddings, "create", { ...fictional, inspirationId: "unclassified-client" })).statusCode, 400);
     assert.equal((await run(weddings, "create", { ...fictional, currency: undefined })).statusCode, 400);
     existingDraft = { weddingId: owner, slug: "our-own-names" };

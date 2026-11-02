@@ -9,8 +9,8 @@ import { isShowcase } from "../server/showcase.js";
 import { contentError } from "../server/content-policy.js";
 import { handlePublicationPayment } from "../server/publication-payments.js";
 import { publicationQuote } from "../server/publication-fx.js";
+import { collectionCapabilities } from "../server/collection-capabilities.js";
 import "../currencies.js";
-import "../amount-presets.js";
 import "../inspiration-fixtures.js";
 import { publicWeddingStyle } from "../server/wedding-style.js";
 import "../starter-setup.js";
@@ -44,17 +44,8 @@ const friendlyColorName = hex => {
   return closest[0];
 };
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,amount_presets,revenue_features,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted";
+const FIELDS = "id,slug,couple_names,welcome_story,cover_image_url,guest_instructions,wedding_date,time_zone,public_location,currency,revenue_features,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,faq,travel_info,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted";
 const REVENUE_FEATURES = ["giving", "sponsors", "featured_sponsors", "song_requests", "vip_seating"];
-const canonicalJson = value => Array.isArray(value) ? `[${value.map(canonicalJson).join(",")}]`
-  : value && typeof value === "object" ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`
-    : JSON.stringify(value);
-const amountPresetCap = async () => {
-  const policy = (await supabaseRequest("/rest/v1/platform_policies?id=eq.true&select=max_contribution_minor", { service: true }))?.[0];
-  const cap = Number(policy?.max_contribution_minor);
-  if (!Number.isSafeInteger(cap) || cap < 1) throw new Error("Suggested amount checkout limit is unavailable.");
-  return cap;
-};
 const DEFAULT_ZONE = "Africa/Nairobi";
 const validZone = tz => {
   if (typeof tz !== "string" || !tz || tz.length > 64) return false;
@@ -135,15 +126,31 @@ export default async function handler(req, res) {
   const opts = { token: session.token };
   const action = String(req.query?.action || "list");
   const body = req.body && typeof req.body === "object" ? req.body : {};
+  if (action === "collection-capabilities") {
+    if (!methodOnly(req, res, "GET")) return;
+    const weddingId = String(req.query.weddingId || "");
+    if (weddingId && !UUID.test(weddingId)) return sendJson(res, 400, { error: "Invalid wedding." });
+    if (weddingId) {
+      const rows = await supabaseRequest(
+        `/rest/v1/weddings?id=eq.${weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=id`,
+        opts
+      );
+      if (!rows?.length) return sendJson(res, 404, { error: "Wedding not found." });
+    }
+    try {
+      return sendJson(res, 200, { currencies: await collectionCapabilities({ weddingId: weddingId || null }) });
+    } catch (error) {
+      console.error("Wedding payment currency capabilities unavailable:", error.message);
+      return sendJson(res, 503, {
+        error: "We could not check which guest-payment options are ready right now. Your saved wedding currency and answers are safe; try checking again later."
+      });
+    }
+  }
   if (["publication-options", "publication-create", "publication-status"].includes(action)) {
     return handlePublicationPayment(req, res, session, action);
   }
 
   try {
-    if (action === "collection-capabilities") {
-      if (!methodOnly(req, res, "GET")) return;
-      return sendJson(res, 200, { currencies: await starterCapabilities() });
-    }
     const invalidContent = req.method === "POST" && contentError(body);
     if (invalidContent) return sendJson(res, 400, { error: invalidContent });
     if (action === "paystack-onboarding" || action === "paystack-consent") {
@@ -182,8 +189,7 @@ export default async function handler(req, res) {
       const [wedding] = await loadWeddingDetails(rows, opts);
       const moderation = await supabaseRequest("/rest/v1/rpc/wedding_moderation_status", {
         ...opts, method: "POST", body: { p_wedding_id: req.query.weddingId } });
-      return sendJson(res, 200, { wedding: { ...wedding, moderation: moderation || null },
-        amountPresetMaxMinor: await amountPresetCap() });
+      return sendJson(res, 200, { wedding: { ...wedding, moderation: moderation || null } });
     }
 
     if (action === "moderation-correction") {
@@ -218,14 +224,6 @@ export default async function handler(req, res) {
         catch (error) { return sendJson(res, 400, { error: error.message, field: "starter-setup" }); }
         const invalidStarter = contentError(starterSetup);
         if (invalidStarter) return sendJson(res, 400, { error: invalidStarter, field: "starter-setup" });
-        const presets = starterSetup.amountPresets;
-        if (presets.song.length || presets.gift.length) {
-          try {
-            starterSetup.amountPresets = globalThis.WSAmountPresets.normalize({
-              currency: body.currency, song: presets.song, gift: presets.gift
-            }, body.currency, await amountPresetCap());
-          } catch (error) { return sendJson(res, 400, { error: error.message, field: "starter-setup" }); }
-        } else starterSetup.amountPresets = null;
       }
       if (body.referral !== undefined && body.referral !== null &&
           (typeof body.referral !== "object" || Array.isArray(body.referral) ||
@@ -327,27 +325,10 @@ export default async function handler(req, res) {
       if (!UUID.test(String(body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
       const patch = {};
       let baseCurrency = null;
-      if (body.currency !== undefined || body.amountPresets !== undefined) {
-        const current = (await supabaseRequest(`/rest/v1/weddings?id=eq.${body.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=currency,amount_presets`, opts))?.[0];
+      if (body.currency !== undefined) {
+        const current = (await supabaseRequest(`/rest/v1/weddings?id=eq.${body.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=currency`, opts))?.[0];
         if (!current) return sendJson(res, 404, { error: "Wedding not found." });
         baseCurrency = current.currency;
-        const currency = body.currency === undefined ? current.currency : String(body.currency).toUpperCase();
-        const changingCurrency = currency !== current.currency;
-        if (changingCurrency && body.amountPresets === undefined) {
-          return sendJson(res, 400, { error: "Currency changes require reviewed new suggested amounts or an explicit reset." });
-        }
-        if (body.amountPresets !== undefined) {
-          if (body.amountPresetsReviewed !== true || body.amountPresetsBaseCurrency !== current.currency ||
-              canonicalJson(body.amountPresetsBase ?? null) !== canonicalJson(current.amount_presets ?? null)) {
-            return sendJson(res, 409, { error: "Review suggested amounts again against the current wedding currency." });
-          }
-          try {
-            patch.amount_presets = body.amountPresets === null ? null
-              : globalThis.WSAmountPresets.normalize(body.amountPresets, currency, await amountPresetCap());
-          } catch (error) {
-            return sendJson(res, 400, { error: error.message, field: "preset-song" });
-          }
-        }
       }
       let normalizedVenues = null;
       if (body.venues !== undefined) {
@@ -421,6 +402,18 @@ export default async function handler(req, res) {
         patch.couple_names = body.coupleNames.trim().slice(0, 120);
       }
       if (body.welcomeStory !== undefined) patch.welcome_story = String(body.welcomeStory ?? "").slice(0, 500);
+      if (body.coverImageUrl !== undefined) {
+        const value = String(body.coverImageUrl ?? "").trim();
+        if (value) {
+          let url;
+          try { url = new URL(value); } catch { return sendJson(res, 400, { error: "Use a public HTTPS photo link.", field: "cover-image-url" }); }
+          if (url.protocol !== "https:" || url.username || url.password || value.length > 2048) {
+            return sendJson(res, 400, { error: "Use a public HTTPS photo link without a username or password.", field: "cover-image-url" });
+          }
+          patch.cover_image_url = url.toString();
+        } else patch.cover_image_url = null;
+      }
+      if (body.guestInstructions !== undefined) patch.guest_instructions = String(body.guestInstructions ?? "").trim().slice(0, 1000) || null;
       if (body.weddingDate !== undefined) {
         if (body.weddingDate !== null && body.weddingDate !== "" && !validDate(body.weddingDate)) return sendJson(res, 400, { error: "Enter a real wedding date (YYYY-MM-DD), or clear it on a draft.", field: "wedding-date" });
         patch.wedding_date = body.weddingDate || null;
@@ -681,6 +674,16 @@ export default async function handler(req, res) {
     if (action === "publish") {
       if (!methodOnly(req, res, "POST")) return;
       if (!UUID.test(String(body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+      const ownerRows = await supabaseRequest(
+        `/rest/v1/weddings?id=eq.${body.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=id,currency`, opts);
+      if (!ownerRows?.length) return sendJson(res, 404, { error: "Wedding not found." });
+      const liveCurrencies = await collectionCapabilities({ weddingId: body.weddingId, record: true });
+      if (!liveCurrencies.some(currency => currency.code === ownerRows[0].currency)) {
+        return sendJson(res, 409, {
+          error: "There is no currently ready guest-payment option for this wedding currency. Save your draft, choose a currency shown as available, or ask support to review payment availability. Nothing was enabled or converted.",
+          missingFields: ["fundraising-route"]
+        });
+      }
       const missing = await supabaseRequest("/rest/v1/rpc/wedding_publication_readiness", {
         ...opts, method: "POST", body: { p_wedding_id: body.weddingId }
       });

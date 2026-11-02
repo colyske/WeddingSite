@@ -33,36 +33,12 @@ providers even from stale tabs. Disabling affects new intents, never reroutes,
 cancels or prevents verification of an already-created payment. Changes require
 confirmation and are audited. No configuration is silently enabled on save.
 
-### Organizer-selected guest amount suggestions
+### Guest-entered contribution amounts
 
-The wedding editor stores optional `amount_presets` as
-`{ currency, song: [minorUnits], gift: [minorUnits] }` via migration
-`202610300014_wedding_amount_presets.sql`. Song suggestions cover new requests,
-existing songs and their payment dialog. Gift suggestions cover registry gifts,
-celebration/fundraising campaigns and milestone payment dialogs. Custom entry
-remains available. Fixed offers, sponsor bid minimums, RSVP/publication fees,
-account balances and protected Owner financial policy are not changed.
-
-Lists contain 1-6 amounts, sorted and deduplicated on both API and database
-writes. The editor parses at most two decimal places; persisted values must be
-integer hundredths in a supported two-decimal currency and within the configured
-checkout cap. Suggested shortcuts must be at least one major unit to match the
-existing guest form minimum; this does not change checkout or custom-entry
-policy. Unset weddings retain legacy song `[500,1000,2500,5000]` and gift
-`[1000,2500,5000]` minor-unit defaults. Opening or saving unrelated settings
-does not persist defaults or overwrite saved choices.
-
-Changing currency clears the editor's draft lists, never converts or re-labels
-saved amounts. Enter new lists or explicitly apply deterministic currency-aware
-suggestions (KES or USD), then review/confirm before saving. API clients must
-send `amountPresetsReviewed: true` and `amountPresetsBaseCurrency` with new
-`amountPresets`, or an explicit `null` reset; stale currency edits are rejected.
-The database rejects a saved preset currency that differs from its wedding.
-Suggestions are not AI, do not infer guest wealth, do not call a model, and
-never autosave. Non-USD labels may show a dated indicative USD equivalent from
-the existing approved daily feed only while fresh (36 hours); FX never changes
-the organizer's selected amounts. The read-only showcase keeps KES song
-100/500/1000 and gift 500/1000/5000.
+Guests type contribution and song-bid amounts; organizer/guest suggested-amount
+controls are not shown. Starter copying neither reads nor writes legacy
+`amount_presets`. Fixed package/offer prices, campaign goals, RSVP fees and
+legal/payment minimum validation remain separate and unchanged.
 
 ### Wedding inspiration and public design reuse
 
@@ -71,7 +47,8 @@ classified by the static `author-owned-fictional-inspiration` allowlist in
 `inspiration-fixtures.js`. Previewing or selecting a style makes no server writes.
 Fictional names, dates, times and venues never fill required answers. Curated
 sample event titles/notes and offering/goal structures can be personalized.
-Welcome, attire, travel and FAQ examples are reference copy only. These fixtures
+Welcome stories remain preview-only; editable illustrative attire/travel/FAQ
+examples can enter the new private draft. These fixtures
 have no checkout, guests, purchased sponsorships, donations or activity.
 
 Eligible public wedding pages also offer **Use this style**, for past, current
@@ -91,37 +68,43 @@ package, event, registry, milestone and meal labels. Sources are never edited.
 | Sponsorship offerings | Public tier count/prices; curated sample offerings; generic real-source package names/terms | Own names, offering promises and minimums | Sponsor identities, purchased sponsorships, paid amounts |
 | Registry / fundraising | Goal and milestone structure, public target amounts, public feature switches | Own purpose/labels/targets and visibility | Amounts raised, reached-state, contributions, ledger |
 | VIP offerings | Public total-seat offering and price, generic title/notes | Actual availability, description, own price | Seats sold, reservations, purchasers |
-| Suggested amounts | Public currency-tagged song/gift suggestions | Explicit selected currency and review; existing minimum/cap validation | Existing bids or payments |
-| Featured sponsorship | Public feature preference only | Separate fresh campaign dates, slots, minimum/increment | Prior auction windows, bids, winners |
-| FAQ/travel/attire | Curated reference copy only | Own answers and guest guidance | Client-authored FAQ/travel/attire/personal instructions |
+| Contribution/bid suggestions | Nothing; guests type amounts | Existing minimum validation remains | Source suggested amounts, bids or payments |
+| Featured sponsorship | Public enabled offering's slot/minimum/increment structure; starter is always disabled with null dates | New campaign window and explicit enablement | Prior auction windows, bids, winners |
+| FAQ/travel/attire | Curated illustrative copy or neutral editable prompts | Own answers and guest guidance | Client-authored FAQ/travel/attire/personal instructions |
 | Money/account/privacy | Nothing | Own receiving/payment configuration and real consent | KYC, payout/provider/referral settings, helpers/invites, financial records |
 | Publication/lifecycle | New private draft only | Own publication readiness/review | Published/paid/archive/moderation state, live-readiness claims |
 
-Within the existing setup wizard, the currency step exposes editable sponsor
-packages, RSVP settings, registry/VIP offerings, fundraising goals/milestones,
-feature preferences and suggested amounts, plus an explicit review checklist.
-Other ordinary wizard entry points remain unchanged. No separate form or
-custom RSVP-question schema is introduced. Existing editor controls load these
-same persisted fields after creation.
+The names-only dashboard entry adds a source preview, supported-currency choice,
+prefill summary and explicit review checklist. It creates a new private draft
+and opens the existing shared wedding guide. The native guide controls edit
+packages, RSVP settings, registry/VIP, fundraising goals/milestones, featured
+campaign structure and guest prompts; there is no duplicate setup form.
+Other ordinary wizard entry points remain unchanged. No custom RSVP-question
+schema is introduced. Names/story/date/venue readiness is not inherited.
+Cover photos and guest instructions remain optional (the current wizard contract).
 
 The user must select a currency from the authenticated, fresh
 `collection-capabilities` response before accepting numeric money configuration.
 Unavailable or empty support fails closed; static ISO membership is not proof
 of current collection readiness. Same-currency public prices may be retained
-only after selection/review. Switching currencies clears every fee, price, goal,
-target and suggested list. It never relabels or FX-converts amounts.
+only after selection/review. Choosing a different currency omits all source
+fees/prices/goals and their priced offerings; the summary explicitly requires
+adding new offerings/goals in the shared guide. Free RSVP defaults remain.
+It never relabels or FX-converts amounts.
 Fictional USD/KES/EUR/GBP/NGN/ZAR sample amounts are hand-authored independent
-examples, loaded only by an explicit action. Other supported currencies require
-the user's own amounts. Standard custom-sponsorship/legal minimums are unchanged.
+examples, accepted only after explicit currency choice and review. For other
+supported currencies, priced offerings/goals are omitted and must be configured
+with the couple's own amounts in the guide. Standard custom-sponsorship/legal
+minimums are unchanged.
 
-**Release dependencies (currently held):** the unified wizard's
-`server/collection-capabilities.js` must provide the shared read-only
-`collectionCapabilities()` export; the helper is not present in this branch.
-`server/starter-capabilities.js` fails explicitly with 503 while it is missing,
-never assumes a provider/currency is ready, and never invokes recording mode.
-Migration `202611070001_wedding_starter_drafts.sql` and its rollback-only
-`tests/db/wedding-starter-drafts.sql` are authored only, not executed/applied.
-The existing guided-draft migration remains a prerequisite.
+`server/starter-capabilities.js` reuses the shared read-only
+`collectionCapabilities()` export; it does not duplicate provider rules or invoke
+recording mode. An unavailable/malformed capability response fails explicitly
+with 503. Migration `202611090001_wedding_starter_drafts.sql` is DB-first:
+CI commits it on a populated predecessor and checks unchanged wedding/venue rows,
+then tests the fresh schema and rollback-only `tests/db/wedding-starter-drafts.sql`.
+It does not backfill live wedding content. Existing guided-draft/readiness
+migrations through `202611080001` are prerequisites.
 
 The additive `create_wedding_from_starter` RPC wraps the existing authenticated,
 referral-aware `create_wedding_draft` transaction. The entire normalized setup is
@@ -133,6 +116,8 @@ all inserts; direct authenticated callers cannot forge it. A replay returns the
 original draft without requiring a new proof or overwriting later edits.
 Nothing records a provider configuration, transaction or publication state.
 Tab drafts require explicit replacement, and sign-in retains the selected source.
+The persisted tab snapshot keeps the complete original request stable through
+retry/reload even if a public source later changes.
 
 ### Guided setup behaviour
 

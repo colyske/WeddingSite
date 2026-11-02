@@ -23,7 +23,9 @@ test("curated starter structures cover existing configurable sections with expli
       assert.equal(parsed.vip.seats, 12);
       assert.equal(parsed.rsvp.feeMinor, 0);
       assert.deepEqual(Object.keys(parsed.features).sort(), WSStarterSetup.featureKeys.toSorted());
-      assert.deepEqual(Object.keys(parsed).sort(), ["amountPresets", "campaigns", "currency", "features", "registry", "reviewed", "rsvp", "tiers", "vip"]);
+      assert.deepEqual(Object.keys(parsed).sort(), ["campaigns", "content", "currency", "featured", "features", "registry", "reviewed", "rsvp", "tiers", "vip"]);
+      assert.equal(Object.hasOwn(parsed, "amountPresets"), false);
+      assert.equal(parsed.content.faq.length, 3);
       assert.equal(JSON.stringify(parsed).includes(fixture.names), false);
       assert.equal(JSON.stringify(parsed).includes("raised"), false);
       assert.throws(() => WSStarterSetup.normalize(value, currency === "KES" ? "USD" : "KES"), /review and confirm/);
@@ -33,9 +35,10 @@ test("curated starter structures cover existing configurable sections with expli
       assert.equal(cleared.tiers[0].minAmount, "");
       assert.equal(cleared.registry[0].target, "");
       assert.equal(cleared.vip.price, "");
+      assert.equal(cleared.featured.minimum, "");
+      assert.equal(cleared.featured.increment, "");
       assert.equal(cleared.campaigns[0].goal, "");
       assert.equal(cleared.campaigns[0].milestones[0].target, "");
-      assert.deepEqual(cleared.amountPresets, { song: "", gift: "" });
       assert.equal(cleared.tiers[0].name, value.tiers[0].name);
     }
   }
@@ -58,8 +61,7 @@ test("starter validation rejects foreign state, invalid prices/limits and out-of
   value.campaigns[0].milestones[0].target = "1500.01";
   assert.throws(() => WSStarterSetup.normalize(value, "USD"), /limits/);
   value.campaigns[0].milestones[0].target = "1500";
-  value.amountPresets.song = "0.99";
-  assert.throws(() => WSStarterSetup.normalize(value, "USD"), /limits/);
+  assert.throws(() => WSStarterSetup.normalize({ ...valid(), amountPresets: { song: [100] } }, "USD"), /configuration/);
   assert.throws(() => WSStarterSetup.normalize(valid(), "JPY"), /currency/);
 });
 
@@ -91,6 +93,6 @@ test("saved editable starter answers restore unfinished values but reject malfor
     { ...value, tiers: [null] },
     { ...value, campaigns: [{ name: 42 }] },
     { ...value, vip: {} },
-    { ...value, amountPresets: [] }
+    { ...value, content: [] }
   ]) assert.throws(() => WSStarterSetup.restoreEditable(corrupt), /saved/);
 });

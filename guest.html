@@ -15,8 +15,7 @@
     #pay-dialog { border:1px solid #d8cfb4; border-radius:14px; max-width:min(440px,92vw); padding:1.25rem; }
     #pay-dialog input, #pay-dialog select { width:100%; box-sizing:border-box; }
     .buy-btn { margin-top:.75rem; }
-    [data-song-bid], [data-new-song-amount], [data-preset] { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
-    #song-request-presets { display:flex; flex-wrap:wrap; gap:.4rem; margin-bottom:.75rem; }
+    [data-song-bid] { max-width:100%; white-space:normal; overflow-wrap:anywhere; }
     .song-request { margin-top:1.5rem; padding:1.25rem; border:1px solid #e3dcc7; border-radius:12px; background:rgba(255,255,255,.55); }
     .song-request h3 { margin-top:0; }
     .song-highlight td { background:#fff3c4; transition:background .6s; }
@@ -265,6 +264,7 @@
     <!-- RSVP form -->
     <section id="rsvp" class="card" hidden>
       <h2>Will You Join Us?</h2>
+      <p id="guest-instructions" class="fine" hidden></p>
       <form id="rsvp-form">
         <label for="guest-name">Your name *</label>
         <input id="guest-name" type="text" maxlength="100" required>
@@ -361,7 +361,6 @@
                     <input id="song-request-amount" type="number" min="1" step="1" inputmode="decimal" required>
                   </label>
                 </div>
-                <div id="song-request-presets" role="group" aria-label="Suggested new song bid amounts"></div>
                 <p id="song-request-error" class="fine" role="alert" hidden></p>
                 <button type="submit" class="btn">Request &amp; pay</button>
               </form>
@@ -479,7 +478,7 @@
   <script src="auth-client.js"></script>
   <script src="currencies.js"></script>
   <script src="fx.js"></script>
-  <script src="amount-presets.js"></script>
+
 <script src="payment-intent.js"></script>
   <script src="social-links.js"></script>
   <script src="sponsor-cards.js"></script>
@@ -504,13 +503,6 @@
       .map(platform => [platform, $(`${prefix}-social-${platform}`).value.trim()])));
   }
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const presetLabel = amount => esc(WSAmountPresets.label(amount, wedding.currency));
-  const presetFx = amounts => {
-    const text = WSAmountPresets.fxNote(amounts, wedding.currency);
-    return `<p class="fine preset-fx" data-preset-fx="${amounts.join(",")}" data-currency="${esc(wedding.currency)}"${text ? "" : " hidden"}>${esc(text)}</p>`;
-  };
-  const giftButtons = item => WSAmountPresets.amounts(wedding, "gift").map(amount =>
-    `<button type="button" class="buy-btn" data-buy="registry" data-ref="${esc(item.id)}" data-label="${esc(item.name)}" data-min="${amount}" data-preset>${presetLabel(amount)}</button>`).join(" ");
   const safeUrl = value => {
     try {
       const url = new URL(value);
@@ -573,13 +565,19 @@
 
       document.title = `${wedding.couple_names || "Wedding"} — Wedding`;
       document.dispatchEvent(new CustomEvent("ws:wedding", { detail: wedding }));
+      if (wedding.cover_image_url) {
+        const cover = safeUrl(wedding.cover_image_url);
+        if (cover && new URL(cover).protocol === "https:") {
+          document.querySelector(".hero-image").style.backgroundImage = `url(${JSON.stringify(cover)})`;
+        }
+      }
+      if (wedding.guest_instructions?.trim()) {
+        $("guest-instructions").textContent = wedding.guest_instructions;
+        $("guest-instructions").hidden = false;
+      }
       applyRsvpFees();
       $("song-request-currency").textContent = wedding.currency || "USD";
       $("song-request-amount").step = "0.01";
-      $("song-request-presets").innerHTML = WSAmountPresets.amounts(wedding, "song").map(amount =>
-        `<button type="button" class="buy-btn" data-new-song-amount="${amount}">${presetLabel(amount)}</button>`).join(" ") +
-        '<button type="button" class="buy-btn" data-new-song-amount="0">Custom amount</button>' +
-        presetFx(WSAmountPresets.amounts(wedding, "song"));
       $("song-request-form").hidden = Boolean(wedding.is_past || !wedding.revenue_features.song_requests);
       $("song-request-closed").hidden = !wedding.is_past && wedding.revenue_features.song_requests;
       if (!wedding.revenue_features.song_requests) {
@@ -664,7 +662,7 @@
                 ${WS.money(raised, wedding.currency || "USD", true)} of ${WS.money(target, wedding.currency || "USD", true)}
               </p>
               ${item.notes ? `<p style="margin: 0.5rem 0 0; font-size: 0.9rem; color: #5a5f5a;">${esc(item.notes)}</p>` : ""}
-              ${wedding.is_past ? "" : `${giftButtons(item)} <button type="button" class="buy-btn" data-buy="registry" data-ref="${esc(item.id)}" data-label="${esc(item.name)}">Contribute now</button>${presetFx(WSAmountPresets.amounts(wedding, "gift"))}`}
+              ${wedding.is_past ? "" : `<button type="button" class="buy-btn" data-buy="registry" data-ref="${esc(item.id)}" data-label="${esc(item.name)}">Choose an amount to contribute</button>`}
             </div>
           `;
         }).join("");
@@ -753,14 +751,13 @@
         const cur = wedding.currency || "USD";
         $("campaigns-display").innerHTML = camps.map(c => {
           const pct = c.goal_minor > 0 ? Math.min(100, Math.round(c.raised_minor / c.goal_minor * 100)) : 0;
-          const presets = WSAmountPresets.amounts(wedding, "gift");
           return `<article class="campaign" data-campaign="${esc(c.id)}">
             <h3>${esc(c.name)}</h3>
             ${c.purpose && c.purpose !== c.name ? `<p>${esc(c.purpose)}</p>` : ""}
             <div class="camp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="${esc(c.name)} progress"><span style="width:${pct}%"></span></div>
             <p class="camp-total"><strong>${pct}%</strong> of ${WS.money(c.goal_minor, cur, false)} · ${WS.money(c.raised_minor, cur, false)} raised</p>
             ${c.milestones.length ? `<ul class="camp-ms">${c.milestones.map(m => `<li class="${m.reached ? "done" : ""}"><span aria-hidden="true">${m.reached ? "☑" : "☐"}</span> <span><strong>${esc(m.name)}</strong> · ${WS.money(m.target_minor, cur, false)}${m.description ? `<br><small>${esc(m.description)}</small>` : ""}<span class="sr-only">${m.reached ? " (reached)" : " (not yet reached)"}</span>${wedding.is_past ? "" : `<br><button type="button" class="link" data-buy="fund" data-ref="${esc(c.id)}" data-milestone="${esc(m.id)}" data-label="${esc(c.name)} · ${esc(m.name)}">Contribute to this milestone</button>`}</span></li>`).join("")}</ul>` : ""}
-            ${wedding.is_past ? "" : `<div class="camp-give">${presets.map(p => `<button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-min="${p}" data-preset data-label="${esc(c.name)}">${presetLabel(p)}</button>`).join("")}<button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-preset data-label="${esc(c.name)}">Other</button>${presetFx(presets)}</div>`}
+            ${wedding.is_past ? "" : `<div class="camp-give"><button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-label="${esc(c.name)}">Choose an amount to contribute</button></div>`}
           </article>`;
         }).join("");
       }
@@ -1213,19 +1210,11 @@ const payIntent = WSPaymentIntent.create({ name: slug });
     });
   });
   document.addEventListener("click", e => {
-    const newSongPreset = e.target.closest("[data-new-song-amount]");
-    if (newSongPreset) {
-      const input = $("song-request-amount");
-      const amount = Number(newSongPreset.dataset.newSongAmount);
-      input.value = amount ? String(amount / 100) : "";
-      input.focus();
-      return;
-    }
     const bidBtn = e.target.closest("[data-song-bid]");
     if (bidBtn && wedding) {
       showPaymentDialog({
         action: "song_bid", title: "Bid on this song", exact: false,
-        amountMinor: Number(bidBtn.dataset.amount),
+        amountMinor: 0, minAmountMinor: 100,
         summary: `This paid bid adds to “${bidBtn.dataset.title}” and supports the wedding fund, not the DJ.`,
         data: { songTitle: bidBtn.dataset.title, artist: bidBtn.dataset.artist }
       });
@@ -1238,16 +1227,21 @@ const payIntent = WSPaymentIntent.create({ name: slug });
     const minAmountMinor = Number(btn.dataset.min || 0);
     const exact = btn.dataset.exact === "1";
     const next = {
-    kind, action, refId: btn.dataset.ref, milestoneId: btn.dataset.milestone || null, exact, title: btn.dataset.label || "Complete your payment",
-      amountMinor: exact ? minAmountMinor : (btn.dataset.preset !== undefined ? minAmountMinor : 0)
+    kind, action, refId: btn.dataset.ref, milestoneId: btn.dataset.milestone || null, exact,
+      minAmountMinor, title: btn.dataset.label || "Complete your payment",
+      amountMinor: exact ? minAmountMinor : 0
     };
     const min = Number(btn.dataset.min || 0) / 100;
     if (kind === "fund" || kind === "registry") {
       next.summary = kind === "fund" ? "Your contribution is added to this campaign only after the payment is confirmed." : "Your gift is recorded only after the payment is confirmed.";
       next.exact = false;
     } else if (kind === "sponsor") {
-      next.summary = `Minimum package amount ${min.toFixed(2)} ${wedding.currency || "USD"}. This package includes the benefits listed. Sponsors are ordered by verified paid amount, so larger contributions appear higher; package level does not set list order.`;
-      next.exact = true;
+      next.summary = `Minimum package amount ${min.toFixed(2)} ${wedding.currency || "USD"}. Enter any amount at or above the minimum. This package includes the benefits listed; sponsors are ordered by verified paid amount, and package level does not set list order.`;
+      next.exact = false;
+    } else if (kind === "sponsor_featured_bid") {
+      next.summary = `Minimum eligible bid ${min.toFixed(2)} ${wedding.currency || "USD"}. Enter that amount or more; featured placement is confirmed only after verified payment and campaign close.`;
+      next.exact = false;
+      next.amountMinor = 0;
     } else if (kind === "vip") {
       next.summary = `Fixed price ${min.toFixed(2)} ${wedding.currency || "USD"}. Your seat is reserved only after the payment is confirmed.`;
     }
@@ -1493,9 +1487,7 @@ const payIntent = WSPaymentIntent.create({ name: slug });
           <td class="lb-song" style="padding: 0.75rem;">${esc(b.song_title)}${Number(b.bid_count) > 1 ? ` <small class="fine">(${Number(b.bid_count)} bids)</small>` : ""}</td>
           <td class="lb-artist" style="padding: 0.75rem; color: var(--sage);">${esc(b.artist_name || "—")}</td>
           <td class="lb-total" style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, b.currency || wedding.currency)}</td>
-          <td class="lb-bid" style="padding: 0.75rem;">${wedding.is_past ? "Closed" : `<details class="song-bid-options"><summary aria-label="Bid on ${esc(b.song_title)}">Bid on song</summary><div class="song-bid-amounts" role="group" aria-label="Bid amounts for ${esc(b.song_title)}">` + WSAmountPresets.amounts(wedding, "song").map(amount =>
-            `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}" data-amount="${amount}">${presetLabel(amount)}</button>`
-          ).join(" ") + `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}" data-amount="0">Custom amount</button>${presetFx(WSAmountPresets.amounts(wedding, "song"))}</div></details>`}</td>
+          <td class="lb-bid" style="padding: 0.75rem;">${wedding.is_past ? "Closed" : `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}">Enter a bid</button>`}</td>
         </tr>
       `).join("");
     } catch (err) {

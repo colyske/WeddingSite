@@ -138,8 +138,15 @@ do $$
 declare cid uuid := (select id from auth.users where email is null order by created_at desc limit 1);
   wid uuid := extensions.gen_random_uuid(); rid uuid; old_id uuid; blocked boolean;
 begin
-  insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date,published_at)
-    values(wid,cid,'Recovery sample','KES',current_date+30,now());
+  insert into public.weddings(id,client_owner_id,slug,couple_names,welcome_story,cover_image_url,
+      guest_instructions,currency,wedding_date)
+    values(wid,cid,'recovery-sample','Recovery sample','A local celebration sample.',
+      'https://example.test/cover.jpg','Please reply before the celebration.','KES',current_date+30);
+  insert into public.venues(wedding_id,name,event_date,event_time,address)
+    values(wid,'Local event',current_date+30,'12:00','Local street');
+  insert into public.wedding_collection_capabilities(wedding_id,provider,currency,market)
+    values(wid,'daraja','KES','KE');
+  update public.weddings set published_at=now() where id=wid;
   insert into public.contributions(wedding_id,stream_name,pledged_amount_minor,currency,payment_status,
       provider_name,payment_environment,daraja_shortcode,purchase_action,purchase_data)
     values(wid,'Song bid: Recovery Song',500,'KES','pending','daraja','live','174379','song_bid',

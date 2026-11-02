@@ -20,7 +20,7 @@
       if (!Array.isArray(items) || items.length > max) throw new Error("Check saved starter sections.");
       items.forEach(check);
     };
-    keysOnly(value, ["currency", "reviewed", "features", "rsvp", "tiers", "campaigns", "registry", "vip", "amountPresets"], "saved starter");
+    keysOnly(value, ["currency", "reviewed", "features", "rsvp", "tiers", "campaigns", "registry", "vip", "featured", "content"], "saved starter");
     if (typeof value.currency !== "string" || (value.currency && !root.WSCurrencies.supportsAccounting(value.currency)) ||
         typeof value.reviewed !== "boolean") throw new Error("Check saved starter currency and review.");
     keysOnly(value.features, featureKeys, "saved starter features");
@@ -30,8 +30,11 @@
     list(value.rsvp.premiumDietOptions, 10, option => {
       if (typeof option !== "string") throw new Error("Check saved meal options.");
     });
-    record(value.amountPresets, ["song", "gift"]);
+    keysOnly(value.content, ["attire", "travel", "faq"], "saved guest prompts");
+    record({ attire: value.content.attire, travel: value.content.travel }, ["attire", "travel"]);
+    list(value.content.faq, 12, item => record(item, ["q", "a"]));
     if (value.vip !== null) record(value.vip, ["title", "description", "seats", "price"]);
+    if (value.featured !== null) record(value.featured, ["slots", "minimum", "increment"]);
     list(value.registry, 20, item => record(item, ["name", "category", "description", "target"]));
     list(value.tiers, 6, item => record(item, ["name", "minAmount", "perks"]));
     list(value.campaigns, 6, campaign => {
@@ -52,7 +55,7 @@
     return minor;
   }
   function normalize(value, currency) {
-    keysOnly(value, ["currency", "reviewed", "features", "rsvp", "tiers", "campaigns", "registry", "vip", "amountPresets"], "starter configuration");
+    keysOnly(value, ["currency", "reviewed", "features", "rsvp", "tiers", "campaigns", "registry", "vip", "featured", "content"], "starter configuration");
     if (!root.WSCurrencies.supportsAccounting(currency) || value.currency !== currency || value.reviewed !== true) {
       throw new Error("Choose your currency, then review and confirm every starter price and goal in that currency.");
     }
@@ -64,15 +67,16 @@
     if (!Array.isArray(value.campaigns) || value.campaigns.length > 6) throw new Error("Use up to six fundraising goals.");
     if (new Set(value.campaigns.map(campaign => typeof campaign?.name === "string" ? campaign.name.trim() : "")).size !== value.campaigns.length) throw new Error("Give each fundraising goal a different name.");
     if (!Array.isArray(value.registry) || value.registry.length > 20) throw new Error("Use up to twenty gift registry goals.");
-    keysOnly(value.amountPresets, ["song", "gift"], "suggested amounts");
-    const presets = {};
-    for (const kind of ["song", "gift"]) {
-      if (typeof value.amountPresets[kind] !== "string") throw new Error("Check suggested amounts.");
-      const amounts = value.amountPresets[kind].trim();
-      presets[kind] = amounts ? amounts.split(",").map(amount => money(amount.trim(), 100, 100000000000, "Suggested amount")) : [];
-      if (presets[kind].length > 6) throw new Error("Use up to six suggested amounts.");
-    }
+    keysOnly(value.content, ["attire", "travel", "faq"], "guest prompts");
+    if (!Array.isArray(value.content.faq) || value.content.faq.length > 12) throw new Error("Use up to twelve guest questions.");
     let vip = null;
+    let featured = null;
+    if (value.featured !== null) {
+      keysOnly(value.featured, ["slots", "minimum", "increment"], "featured sponsor setup");
+      if (!/^\d+$/.test(value.featured.slots) || Number(value.featured.slots) < 1 || Number(value.featured.slots) > 20) throw new Error("Use 1 to 20 featured sponsor slots.");
+      featured = { slots: Number(value.featured.slots), minimumMinor: money(value.featured.minimum, 1, 100000000000, "Featured minimum"),
+        incrementMinor: money(value.featured.increment, 1, 100000000000, "Featured increment") };
+    }
     if (value.vip !== null) {
       keysOnly(value.vip, ["title", "description", "seats", "price"], "VIP offer");
       if (!/^\d+$/.test(value.vip.seats) || Number(value.vip.seats) < 1 || Number(value.vip.seats) > 500) throw new Error("Use 1 to 500 VIP seats.");
@@ -82,7 +86,14 @@
     return {
       currency, reviewed: true,
       features: clone(value.features),
-      amountPresets: presets, vip,
+      vip, featured, content: {
+        attire: text(value.content.attire, 300, "attire prompt", true),
+        travel: text(value.content.travel, 2000, "travel prompt", true),
+        faq: value.content.faq.map(item => {
+          keysOnly(item, ["q", "a"], "guest question");
+          return { q: text(item.q, 160, "guest question"), a: text(item.a, 600, "guest answer", true) };
+        })
+      },
       registry: value.registry.map(item => {
         keysOnly(item, ["name", "category", "description", "target"], "registry item");
         return { name: text(item.name, 100, "registry name"), category: text(item.category, 50, "registry category", true),
@@ -137,7 +148,9 @@
       currency, reviewed: false, features: defaultFeatures(),
       registry: [{ name: "Our next chapter", category: "Celebration", description: "Sample registry goal - describe your own plans.", target: sample[2] }],
       vip: { title: "Celebration lounge", description: "Sample seating offering - confirm your actual arrangements.", seats: "12", price: sample[0] },
-      amountPresets: { song: sample[0], gift: sample[0] },
+      featured: { slots: "3", minimum: sample[1], increment: sample[0] },
+      content: { attire: `Illustrative - review: ${source.attire}`.slice(0, 300), travel: source.travel,
+        faq: source.faq.map(([q, a]) => ({ q, a: `Illustrative - personalize: ${a}` })) },
       rsvp: { fee: "0", extraGuestFee: "0", premiumDietFee: "0", premiumDietOptions: ["Celebration menu"] },
       tiers: [
         { name: names[0], minAmount: sample[0], perks: "Sample offering: a clearly labelled supporter card. Review and personalize." },
@@ -158,13 +171,16 @@
     next.tiers.forEach(tier => { tier.minAmount = ""; });
     next.registry.forEach(item => { item.target = ""; });
     if (next.vip) next.vip.price = "";
-    next.amountPresets = { song: "", gift: "" };
+    if (next.featured) next.featured.minimum = next.featured.increment = "";
     next.campaigns.forEach(campaign => {
       campaign.goal = "";
       campaign.milestones.forEach(milestone => { milestone.target = ""; });
     });
     return next;
   }
-  root.WSStarterSetup = Object.freeze({ featureKeys, defaultFeatures, normalize, restoreEditable, fictional, clearMoney,
+  const prompts = () => ({ attire: "Add your own dress guidance and accessibility considerations.",
+    travel: "Add confirmed transport, accommodation and accessibility guidance for your own venues.",
+    faq: [{ q: "What should guests know before attending?", a: "Replace this prompt with guidance for your own celebration." }] });
+  root.WSStarterSetup = Object.freeze({ featureKeys, defaultFeatures, normalize, restoreEditable, fictional, clearMoney, prompts,
     hasSamples: currency => Object.hasOwn(prices, currency), clone });
 })(globalThis);

@@ -19,7 +19,8 @@ begin
         "tiers":[{"name":"Our package","minimumMinor":250000,"perks":"Our offering"}],
         "registry":[{"name":"Our gift goal","category":"Home","description":"Our own plans","targetMinor":15000000}],
         "vip":{"title":"Our lounge","description":"Our arrangement","seats":12,"priceMinor":250000},
-        "amountPresets":null,
+        "featured":{"slots":3,"minimumMinor":1000000,"incrementMinor":250000},
+        "content":{"attire":"Personalize dress guidance.","travel":"Add your confirmed travel guidance.","faq":[{"q":"What should guests know?","a":"Personalize this answer."}]},
         "campaigns":[{"name":"Our goal","purpose":"Our own celebration","goalMinor":15000000,"enabled":true,
           "milestones":[{"name":"First milestone","description":"Our milestone","targetMinor":5000000}]}]
       }'::jsonb),null);
@@ -110,11 +111,25 @@ begin
     raise exception 'Starter configuration was not saved exactly once with zero sold seats';
   end if;
   if exists(select 1 from public.weddings where id=wid and
-      (published_at is not null or wedding_date is not null or public_location is not null)) or
+      (published_at is not null or wedding_date is not null or public_location is not null or
+       nullif(btrim(welcome_story),'') is not null or cardinality(enabled_payment_methods) <> 0 or
+       not publication_minimum_enforced)) or
       exists(select 1 from public.venues where wedding_id=wid and (event_date is not null or event_time is not null or address is not null)) or
       exists(select 1 from public.contributions where wedding_id=wid) or
       exists(select 1 from public.sponsors where wedding_id=wid) or
       exists(select 1 from public.guest_rsvps where wedding_id=wid) then raise exception 'Starter copied facts or activity'; end if;
+  if not exists(select 1 from public.sponsor_featured_campaigns where wedding_id=wid and
+      not enabled and starts_at is null and closes_at is null and slot_count=3 and minimum_bid_minor=1000000) then
+    raise exception 'Featured structure must stay disabled without inherited dates';
+  end if;
+  if (select attire_notes from public.weddings where id=wid) <> 'Personalize dress guidance.' or
+      (select jsonb_array_length(faq) from public.weddings where id=wid) <> 1 then
+    raise exception 'Guest prompts missing';
+  end if;
+  blocked := false;
+  begin update public.sponsor_featured_campaigns set enabled=true where wedding_id=wid;
+  exception when check_violation then blocked := true; end;
+  if not blocked then raise exception 'A featured campaign enabled without dates'; end if;
   if (select array_agg(kind order by sort_order) from public.venues where wedding_id=wid) <> array['pre','main'] then
     raise exception 'Pre-wedding and wedding-day event order/type lost';
   end if;

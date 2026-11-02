@@ -2,6 +2,21 @@
 begin;
 create temporary table draft_actors(kind text, id uuid);
 grant select on draft_actors to authenticated;
+create function public.guided_test_seed_collection_capability(p_wedding_id uuid)
+returns void language plpgsql security definer set search_path = ''
+as $$
+declare selected_provider text;
+begin
+  select providers.provider into selected_provider
+  from public.platform_policies p
+  cross join unnest(p.enabled_payment_providers) as providers(provider)
+  where providers.provider in ('stripe','paystack','daraja')
+  limit 1;
+  if selected_provider is null then raise exception 'No enabled provider for local readiness fixture'; end if;
+  insert into public.wedding_collection_capabilities(wedding_id,provider,currency,market)
+    values(p_wedding_id,selected_provider,'USD','US');
+end $$;
+grant execute on function public.guided_test_seed_collection_capability(uuid) to authenticated;
 do $$
 declare k text; uid uuid;
 begin
@@ -52,7 +67,9 @@ begin
     raise exception 'Unknown date must not receive a final fee quote: %',q;
   end if;
   missing := public.wedding_publication_readiness(w.id);
-  if not ('wedding-date'=any(missing) and 'location'=any(missing) and 'venues-section'=any(missing)) then
+  if not ('wedding-date'=any(missing) and 'venues-section'=any(missing)
+      and 'welcome-story'=any(missing) and 'fundraising-route'=any(missing))
+      or 'location'=any(missing) or 'cover-image-url'=any(missing) or 'guest-instructions'=any(missing) then
     raise exception 'Actionable required content must be returned';
   end if;
   blocked := false;
@@ -73,7 +90,7 @@ begin
   perform public.save_wedding_content(w.id,jsonb_build_object('wedding_date',current_date+30,'public_location','Nairobi'),
     jsonb_build_array(jsonb_build_object('name','Garden','eventDate',current_date+30,'eventTime','12:00',
       'address','Garden Road','kind','main')));
-  -- Even staff waiver cannot bypass the missing real location.
+  -- A staff waiver cannot bypass missing required setup answers.
   perform public.save_wedding_content(w.id,'{"public_location":null}'::jsonb);
   perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='admin'),true);
   blocked := false;
@@ -81,11 +98,24 @@ begin
   exception when raise_exception then blocked:=sqlerrm like 'PUBLISH_INCOMPLETE:%'; end;
   if not blocked then raise exception 'Staff publication bypass'; end if;
   perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='client'),true);
-  perform public.save_wedding_content(w.id,'{"public_location":"Nairobi"}'::jsonb);
+  perform public.save_wedding_content(w.id,jsonb_build_object(
+    'welcome_story','We are excited to celebrate with you.',
+    'revenue_features',jsonb_build_object('giving',true,'sponsors',true,
+      'featured_sponsors',true,'song_requests',true,'vip_seating',true)));
+  insert into public.registry_items(wedding_id,name,target_amount_minor)
+    values(w.id,'Celebration fund',10000);
+  perform public.guided_test_seed_collection_capability(w.id);
+  missing := public.wedding_publication_readiness(w.id);
+  if cardinality(missing) > 0 then raise exception 'Complete approved minimum should be ready without a location, cover photo or guest instructions: %',missing; end if;
   perform public.publish_wedding_with_fee(w.id,true);
-  select to_jsonb(x) into before_publish from public.weddings x where x.id=w.id;
   -- Assert the new invariants without requiring KYC.
   if not (select published_at is not null from public.weddings where id=w.id) then raise exception 'Complete wedding should publish'; end if;
+  set constraints saved_wedding_content immediate;
+  update public.weddings set welcome_story='We are looking forward to celebrating with you.' where id=w.id;
+  set constraints saved_venue_content immediate;
+  update public.venues set address='Updated garden road' where wedding_id=w.id;
+  set constraints saved_wedding_content, saved_venue_content deferred;
+  select to_jsonb(x) into before_publish from public.weddings x where x.id=w.id;
   blocked := false;
   begin perform public.save_wedding_content(w.id,'{"wedding_date":null}'::jsonb);
   exception when check_violation then blocked:=true; end;
@@ -107,7 +137,7 @@ begin
   perform public.admin_wedding_action(w.id,'unpublish','inaccurate_details','The venue address needs correction.','Correct the venue address.');
   select id into case_id from public.moderation_cases where wedding_id=w.id;
   perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='client'),true);
-  perform public.save_wedding_content(w.id,'{"public_location":null}'::jsonb);
+  perform public.save_wedding_content(w.id,'{"welcome_story":""}'::jsonb);
   perform public.submit_moderation_correction(case_id,'I reviewed the venue details.',1);
   perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='admin'),true);
   blocked := false;

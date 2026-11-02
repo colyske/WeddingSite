@@ -16,7 +16,7 @@ export async function starterCapabilities(load = () => import("./collection-capa
       typeof item.name !== "string" || !item.name.trim() ||
       !Array.isArray(item.methods) || !item.methods.length || item.methods.some(method =>
         !method || typeof method.name !== "string" || !method.name.trim() ||
-        !Array.isArray(method.markets) || method.markets.some(market => typeof market !== "string" || !/^[A-Z]{2}$/.test(market)))) ||
+        !Array.isArray(method.markets) || !method.markets.length || method.markets.some(market => typeof market !== "string" || !market.trim()))) ||
       new Set(currencies.map(item => item.code)).size !== currencies.length) {
       throw new Error("Invalid collection capability response.");
     }

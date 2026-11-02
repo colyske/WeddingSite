@@ -66,13 +66,15 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       `ecard.html?slug=qa-couple&guest_id=${id}`, "privacy.html", "terms.html"];
     for (const surface of pages) {
       await page.goto(`http://127.0.0.1:${server.address().port}/${surface}`, { waitUntil: "domcontentloaded" });
-      if (surface.startsWith("wedding.html")) await page.locator("#edit-section").waitFor({ state: "visible" });
+      if (surface.startsWith("wedding.html")) {
+        await page.locator("#edit-section").waitFor({ state: "visible" });
+        await page.locator(".guide-jump").waitFor();
+      }
       if (surface === "dashboard.html") assert.equal(await page.locator("#sign-out").isVisible(), false, "the hidden sign-out fallback does not distort the mobile account menu");
-      if (surface === "dashboard.html") await page.locator(".guide-jump").waitFor();
       if (surface === "admin.html" || surface === "owner.html") await page.locator(".stat-card").first().waitFor();
       for (const width of [320, 375, 414, 768, 1280]) {
         await page.setViewportSize({ width, height: 800 });
-        if (surface === "dashboard.html" && width <= 414) {
+        if (surface.startsWith("wedding.html") && width <= 414) {
           await page.evaluate(() => document.fonts.ready);
           await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         }
@@ -88,7 +90,7 @@ test("public, organizer and back-office surfaces fit small and large screens", a
         }));
         assert.ok(metrics.scroll <= metrics.width, `${surface} at ${width}: ${JSON.stringify(metrics)}`);
         for (const link of metrics.topLinks) assert.ok(link.left >= 0 && link.right <= width, `${surface}: ${link.text} visible at ${width}`);
-        if (surface === "dashboard.html" && width <= 414) {
+        if (surface.startsWith("wedding.html") && width <= 414) {
           assert.equal(await page.locator(".guide-jump").evaluate(el => el.open), false,
             `mobile setup section overview starts collapsed at ${width}`);
           const headingTop = await page.locator("#guide-heading-couple").evaluate(el => el.getBoundingClientRect().top);
@@ -116,10 +118,13 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       });
     }
     await page.setViewportSize({ width: 320, height: 800 });
-    await page.locator("[data-guide-all]").click();
-    await page.click("#edit-colors-btn");
+    await page.locator(".guide-jump > summary").click();
+    await page.locator(".guide-nav button").filter({ hasText: "Wedding theme & attire" }).click();
+    await page.locator("#color-inputs").waitFor({ state: "visible" });
     const paletteFits = await page.locator("#color-inputs").evaluate(el => el.scrollWidth <= el.clientWidth);
     assert.ok(paletteFits, "palette name/hex controls wrap on mobile");
+    if (!(await page.locator(".guide-jump").evaluate(el => el.open))) await page.locator(".guide-jump > summary").click();
+    await page.locator(".guide-nav button").filter({ hasText: "Status & publication" }).click();
     await page.locator("#pay-fee-btn").click();
     await page.waitForFunction(() => document.getElementById("publication-status").textContent.includes("No configured payment method"));
     assert.ok(await page.locator("#publication-submit").isDisabled(), "editor fails closed without a configured publication method");
