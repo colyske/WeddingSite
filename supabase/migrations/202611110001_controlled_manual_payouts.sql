@@ -84,7 +84,7 @@ create table public.manual_payout_statement_lines (
   custody_id uuid not null references public.manual_payout_custody(id),
   batch_id uuid not null references public.manual_payout_statement_batches(id),
   line_reference uuid not null,
-  source_kind text not null check (source_kind in ('contribution','payout','expense','adjustment','manual_payout')),
+  source_kind text not null check (source_kind in ('contribution','payout','expense','adjustment','manual_payout','statement_debit')),
   source_id uuid not null,
   amount_minor bigint not null check (amount_minor>=0),
   direction text not null check (direction in ('credit','debit','hold')),
@@ -165,8 +165,24 @@ create table public.manual_payout_receipts (
   evidence_id uuid not null unique references public.manual_payout_evidence(id),
   unique(provider, account_reference, transaction_reference)
 );
+create table public.manual_payout_statement_debit_entries (
+  id uuid primary key default extensions.gen_random_uuid(),
+  custody_id uuid not null references public.manual_payout_custody(id),
+  batch_id uuid not null references public.manual_payout_statement_batches(id),
+  line_reference uuid not null,
+  transaction_reference text not null check (transaction_reference ~ '^[A-Z0-9][A-Z0-9._:-]{0,119}$'),
+  actual_minor bigint not null check (actual_minor>0),
+  actual_fee_minor bigint not null check (actual_fee_minor>=0),
+  currency text not null check (currency ~ '^[A-Z]{3}$'),
+  booked_at timestamptz not null,
+  evidence_id uuid not null references public.manual_payout_evidence(id),
+  recorded_by uuid not null references public.profiles(id),
+  unique(custody_id,line_reference),
+  unique(custody_id,transaction_reference)
+);
 create table public.manual_payout_reconciliations (
   payout_id uuid primary key references public.manual_payout_requests(id),
+  statement_entry_id uuid not null unique references public.manual_payout_statement_debit_entries(id),
   provider text not null,
   account_reference uuid not null,
   statement_reference uuid not null,
@@ -226,7 +242,7 @@ begin
     'manual_payout_recipients','manual_payout_custody','manual_payout_settlements','manual_payout_requests',
     'manual_payout_events','manual_payout_claims','manual_payout_receipts','manual_payout_reconciliations',
     'manual_payout_statement_batches','manual_payout_statement_lines','manual_payout_source_allocations','manual_payout_statement_debits',
-    'manual_payout_account_holds'] loop
+    'manual_payout_account_holds','manual_payout_statement_debit_entries'] loop
     execute format('alter table public.%I enable row level security',t);
     execute format('revoke all on public.%I from public, anon, authenticated, service_role',t);
     execute format('create trigger manual_payout_immutable before update or delete on public.%I
@@ -440,13 +456,9 @@ begin
     if p_line is null or p_at is null or p_at>b.statement_at or exists(select 1 from public.manual_payout_statement_batches
       where id=b.previous_batch and p_at<=statement_at) then raise exception 'Exact statement line/date watermark required.'; end if;
     if s.debit_minor>0 and not s.paid then raise exception 'Unpaid commitments cannot be declared statement-reflected debits.'; end if;
-    select coalesce(sum(x.debit_minor),0),coalesce(sum(x.hold_minor),0) into v_debits,v_holds
-      from (select line_reference,max(debit_minor) as debit_minor,max(hold_minor) as hold_minor
-        from public.manual_payout_source_allocations where reflected_batch=p_batch and line_reference<>p_line
-        group by line_reference) x;
-    v_debits:=v_debits+coalesce((select sum(r.actual_minor::numeric+r.actual_fee_minor)
-      from public.manual_payout_statement_debits d join public.manual_payout_reconciliations r on r.payout_id=d.payout_id
-      where d.batch_id=p_batch),0);
+    select coalesce(sum(amount_minor) filter(where direction='debit'),0),
+      coalesce(sum(amount_minor) filter(where direction='hold'),0) into v_debits,v_holds
+      from public.manual_payout_statement_lines where batch_id=p_batch and line_reference<>p_line;
     -- Historical paid debits before the opening watermark are already reflected
     -- in the opening available balance; subsequent periods consume debit capacity.
     if (b.previous_batch is not null and v_debits+s.debit_minor>b.debit_minor) or v_holds+s.hold_minor>b.held_minor then
@@ -464,34 +476,69 @@ end $$;
 create function public.manual_payout_include_debit_internal(p_id uuid,p_batch uuid,p_line uuid,p_evidence uuid,
   p_allow_owner_solo boolean default false) returns boolean
 language plpgsql security definer set search_path = '' as $$
-declare r public.manual_payout_requests; b public.manual_payout_statement_batches; receipt public.manual_payout_reconciliations; used numeric;
 begin
   perform public.manual_payout_intake_authority(p_allow_owner_solo);
-  select * into strict r from public.manual_payout_requests where id=p_id;
-  perform public.manual_payout_lock(r.custody_id,r.wedding_id);
-  perform public.manual_payout_evidence_require(p_evidence,'statement',p_allow_owner_solo);
-  select * into strict b from public.manual_payout_statement_batches where id=p_batch and custody_id=r.custody_id;
-  select * into strict receipt from public.manual_payout_reconciliations where payout_id=p_id;
-  if exists(select 1 from public.manual_payout_statement_debits where payout_id=p_id) then
-    raise exception 'Reconciled debit must be unique; already included in a statement.';
-  end if;
-  if public.manual_payout_state(p_id)<>'paid' or receipt.statement_reference<>b.statement_reference
-    or receipt.line_reference<>p_line or receipt.booked_at>b.statement_at
-    or exists(select 1 from public.manual_payout_statement_batches prior
-      where prior.id=b.previous_batch and receipt.booked_at<=prior.statement_at) then
-    raise exception 'Only the exact reconciled statement debit may be included once.';
-  end if;
-  select coalesce(sum(x.actual_minor::numeric+x.actual_fee_minor),0) into used from public.manual_payout_statement_debits d
-    join public.manual_payout_reconciliations x on x.payout_id=d.payout_id where d.batch_id=p_batch;
-  used:=used+coalesce((select sum(a.debit_minor) from (
-    select line_reference,max(debit_minor) as debit_minor from public.manual_payout_source_allocations
-      where reflected_batch=p_batch group by line_reference) a),0);
-  if used+receipt.actual_minor+receipt.actual_fee_minor>b.debit_minor then raise exception 'Statement debit capacity exceeded.'; end if;
-  perform public.manual_payout_record_line(p_batch,p_line,'manual_payout',p_id,
-    (receipt.actual_minor::numeric+receipt.actual_fee_minor)::bigint,'debit',p_evidence);
-  insert into public.manual_payout_statement_debits values(p_id,p_batch,p_line,p_evidence,auth.uid());
-  return true;
+  raise exception 'Post-paid debit inclusion retired: registered unique statement debit must finalize atomically with paid.';
 end $$;
+
+create function public.manual_payout_register_statement_debit_internal(p_batch uuid,p_line uuid,p_reference text,
+  p_actual bigint,p_fee bigint,p_currency text,p_at timestamptz,p_evidence uuid,
+  p_allow_owner_solo boolean default false) returns uuid
+language plpgsql security definer set search_path = '' as $$
+declare b public.manual_payout_statement_batches; a public.manual_payout_custody; used numeric; entry_id uuid;
+begin
+  perform public.manual_payout_intake_authority(p_allow_owner_solo);
+  select * into strict b from public.manual_payout_statement_batches where id=p_batch;
+  select * into strict a from public.manual_payout_custody where id=b.custody_id for update;
+  perform public.manual_payout_evidence_require(p_evidence,'statement',p_allow_owner_solo);
+  perform public.manual_payout_evidence_require(b.evidence_id,
+    case when b.previous_batch is null then 'custody' else 'statement' end,p_allow_owner_solo);
+  if b.previous_batch is null or p_line is null or p_at is null or p_at>b.statement_at
+    or p_at<=(select statement_at from public.manual_payout_statement_batches where id=b.previous_batch)
+    or p_actual is null or p_actual<=0 or p_fee is null or p_fee<0
+    or p_currency is distinct from a.currency then
+    raise exception 'Registered statement debit requires exact period, currency, amount and fee.';
+  end if;
+  if exists(select 1 from public.manual_payout_statement_debit_entries where custody_id=a.id
+    and (line_reference=p_line or transaction_reference=upper(btrim(p_reference)))) then
+    raise exception 'Registered statement debit line/reference must be unique.';
+  end if;
+  select coalesce(sum(amount_minor),0) into used from public.manual_payout_statement_lines
+    where batch_id=b.id and direction='debit';
+  if used+p_actual+p_fee>b.debit_minor then raise exception 'Statement debit capacity exceeded.'; end if;
+  insert into public.manual_payout_statement_debit_entries(custody_id,batch_id,line_reference,transaction_reference,
+    actual_minor,actual_fee_minor,currency,booked_at,evidence_id,recorded_by)
+    values(a.id,b.id,p_line,upper(btrim(p_reference)),p_actual,p_fee,p_currency,p_at,p_evidence,auth.uid())
+    returning id into entry_id;
+  perform public.manual_payout_record_line(b.id,p_line,'statement_debit',entry_id,
+    (p_actual::numeric+p_fee)::bigint,'debit',p_evidence);
+  return entry_id;
+end $$;
+
+create function public.manual_payout_guard_paid() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  if new.state='paid' and not exists(
+    select 1 from public.manual_payout_reconciliations r
+    join public.manual_payout_statement_debits d on d.payout_id=r.payout_id
+    join public.manual_payout_statement_debit_entries e on e.id=r.statement_entry_id
+    join public.manual_payout_statement_batches b on b.id=e.batch_id
+    join public.manual_payout_requests request on request.id=r.payout_id
+    join public.manual_payout_custody a on a.id=request.custody_id
+    join public.manual_payout_statement_lines l on l.custody_id=a.id and l.line_reference=e.line_reference
+    where r.payout_id=new.payout_id and r.reconciled_by=new.actor_id and r.owner_solo=new.owner_solo
+      and (r.provider,r.account_reference,r.statement_reference,r.line_reference,r.transaction_reference,
+        r.actual_minor,r.actual_fee_minor,r.currency,r.booked_at)
+        is not distinct from (a.provider,a.account_reference,b.statement_reference,e.line_reference,e.transaction_reference,
+          e.actual_minor,e.actual_fee_minor,e.currency,e.booked_at)
+      and e.custody_id=a.id and b.custody_id=a.id and d.batch_id=b.id and d.line_reference=e.line_reference
+      and l.batch_id=b.id and l.source_kind='statement_debit' and l.source_id=e.id and l.direction='debit'
+      and l.amount_minor=e.actual_minor::numeric+e.actual_fee_minor
+  ) then raise exception 'Paid requires atomically allocated registered statement reconciliation.'; end if;
+  return new;
+end $$;
+create trigger manual_payout_guard_paid before insert on public.manual_payout_events
+  for each row execute function public.manual_payout_guard_paid();
 
 create function public.manual_payout_register_custody_internal(p_provider text, p_account uuid, p_currency text,
   p_available bigint, p_statement_at timestamptz, p_evidence uuid,p_held bigint default null,
@@ -840,20 +887,23 @@ begin
   return true;
 end $$;
 
-create function public.manual_payout_reconcile(p_id uuid,p_provider text,p_account uuid,p_statement uuid,p_line uuid,
-  p_reference text,p_actual bigint,p_fee bigint,p_currency text,p_at timestamptz,p_evidence uuid) returns boolean
+create function public.manual_payout_finalize_reconciliation_internal(p_id uuid,p_channel text,p_provider text,p_account uuid,
+  p_statement uuid,p_line uuid,p_reference text,p_actual bigint,p_fee bigint,p_currency text,p_at timestamptz,
+  p_evidence uuid,p_allow_owner_solo boolean default false) returns boolean
 language plpgsql security definer set search_path = '' as $$
 declare r public.manual_payout_requests; receipt public.manual_payout_receipts; sender uuid; solo boolean;
+  b public.manual_payout_statement_batches; entry public.manual_payout_statement_debit_entries; a public.manual_payout_custody;
 begin
-  perform public.manual_payout_require_enabled();
+  perform public.manual_payout_intake_authority(p_allow_owner_solo);
   select * into strict r from public.manual_payout_requests where id=p_id;
   perform public.manual_payout_lock(r.custody_id,r.wedding_id);
-  solo:=r.owner_solo and r.requested_by=auth.uid() and public.current_platform_role()='owner';
+  solo:=p_channel='manual_external' and p_allow_owner_solo and r.owner_solo
+    and r.requested_by=auth.uid() and public.current_platform_role()='owner';
   if r.owner_solo and not solo then raise exception 'Protected Owner owns this explicitly solo manual request.'; end if;
   select sender_id into sender from public.manual_payout_claims
-    where payout_id=p_id and execution_channel='manual_external';
+    where payout_id=p_id and execution_channel=p_channel;
   if sender is null or public.manual_payout_state(p_id)<>'reported' then
-    raise exception 'Reported manual external transfer required for reconciliation.';
+    raise exception 'Reported claimed transfer for the exact channel required for reconciliation.';
   end if;
   if not solo and auth.uid() in (sender,r.requested_by) then raise exception 'Independent reconciler required.'; end if;
   select * into strict receipt from public.manual_payout_receipts where payout_id=p_id;
@@ -864,12 +914,45 @@ begin
       or p_at is null or p_at<receipt.transferred_at or p_at>clock_timestamp() then
     raise exception 'Statement debit/account/reference/amount/fee/currency/date mismatch; retain reservation.';
   end if;
-  insert into public.manual_payout_reconciliations(payout_id,provider,account_reference,statement_reference,line_reference,
+  select * into strict a from public.manual_payout_custody where id=r.custody_id;
+  select * into b from public.manual_payout_statement_batches
+    where custody_id=r.custody_id and statement_reference=p_statement;
+  if not found or b.previous_batch is null or (a.provider,a.account_reference,a.currency)
+    is distinct from (p_provider,p_account,p_currency) then
+    raise exception 'Registered statement batch for exact custody account/currency required.';
+  end if;
+  perform public.manual_payout_evidence_require(b.evidence_id,'statement',solo);
+  select * into entry from public.manual_payout_statement_debit_entries
+    where custody_id=r.custody_id and batch_id=b.id and line_reference=p_line;
+  if not found or (entry.transaction_reference,entry.actual_minor,entry.actual_fee_minor,entry.currency,entry.booked_at)
+    is distinct from (upper(btrim(p_reference)),p_actual,p_fee,p_currency,p_at)
+    or p_at>b.statement_at or p_at<=(select statement_at from public.manual_payout_statement_batches where id=b.previous_batch) then
+    raise exception 'Exact registered statement debit line/reference/amount/fee/currency/date required.';
+  end if;
+  perform public.manual_payout_evidence_require(entry.evidence_id,'statement',solo);
+  if not exists(select 1 from public.manual_payout_statement_lines where custody_id=r.custody_id and batch_id=b.id
+    and line_reference=p_line and source_kind='statement_debit' and source_id=entry.id and direction='debit'
+    and amount_minor=p_actual::numeric+p_fee)
+    or (select coalesce(sum(amount_minor),0) from public.manual_payout_statement_lines
+      where batch_id=b.id and direction='debit')>b.debit_minor then
+    raise exception 'Canonical statement debit line or capacity conflict.';
+  end if;
+  insert into public.manual_payout_reconciliations(payout_id,statement_entry_id,provider,account_reference,statement_reference,line_reference,
     transaction_reference,actual_minor,actual_fee_minor,currency,booked_at,evidence_id,reconciled_by,owner_solo)
-    values(p_id,p_provider,p_account,p_statement,p_line,upper(btrim(p_reference)),p_actual,p_fee,p_currency,p_at,p_evidence,auth.uid(),solo);
+    values(p_id,entry.id,p_provider,p_account,p_statement,p_line,upper(btrim(p_reference)),p_actual,p_fee,p_currency,p_at,p_evidence,auth.uid(),solo);
+  insert into public.manual_payout_statement_debits values(p_id,b.id,p_line,entry.evidence_id,auth.uid());
   insert into public.manual_payout_events(payout_id,state,actor_id,evidence_id,owner_solo)
     values(p_id,'paid',auth.uid(),p_evidence,solo);
   return true;
+end $$;
+
+create function public.manual_payout_reconcile(p_id uuid,p_provider text,p_account uuid,p_statement uuid,p_line uuid,
+  p_reference text,p_actual bigint,p_fee bigint,p_currency text,p_at timestamptz,p_evidence uuid) returns boolean
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform public.manual_payout_require_enabled();
+  return public.manual_payout_finalize_reconciliation_internal(p_id,'manual_external',p_provider,p_account,
+    p_statement,p_line,p_reference,p_actual,p_fee,p_currency,p_at,p_evidence,public.current_platform_role()='owner');
 end $$;
 
 create function public.manual_payout_report(p_id uuid, p_reference text, p_actual bigint,
@@ -985,7 +1068,8 @@ begin
   for f in select p.oid,p.proname,p.proargnames,p.pronargs from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname='public' and p.proname in ('manual_payout_recipient_internal','manual_payout_register_account_internal',
       'manual_payout_append_statement_internal','manual_payout_map_source_internal','manual_payout_include_debit_internal',
-      'manual_payout_register_custody_internal','manual_payout_register_settlement_internal') loop
+      'manual_payout_register_custody_internal','manual_payout_register_settlement_internal',
+      'manual_payout_register_statement_debit_internal') loop
     arguments:=regexp_replace(pg_get_function_arguments(f.oid),', p_allow_owner_solo boolean DEFAULT false$','');
     if arguments=pg_get_function_arguments(f.oid) or f.proargnames[f.pronargs]<>'p_allow_owner_solo' then
       raise exception 'Unexpected shared intake signature: %',f.proname;
@@ -1011,7 +1095,8 @@ begin
     if f.proname in ('manual_payout_overview','manual_payout_history','manual_payout_balance','manual_payout_submit_evidence','manual_payout_check_evidence',
       'manual_payout_recipient','manual_payout_register_custody','manual_payout_register_settlement',
       'manual_payout_request','manual_payout_transition','manual_payout_report','manual_payout_reconcile',
-      'manual_payout_register_account','manual_payout_append_statement','manual_payout_map_source','manual_payout_include_debit') then
+      'manual_payout_register_account','manual_payout_append_statement','manual_payout_map_source','manual_payout_include_debit',
+      'manual_payout_register_statement_debit') then
       execute format('grant execute on function %s to authenticated',f.signature);
     end if;
   end loop;

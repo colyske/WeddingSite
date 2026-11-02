@@ -30,6 +30,10 @@ test("manual payout commands whitelist immutable inputs, reject unsafe values an
   assert.equal(manualPayoutCommand("evidence", policy, "owner").rpc, "manual_payout_submit_evidence");
   assert.equal(manualPayoutCommand("transition", { id, action: "executing", key: id, evidence: null, confirmed: true }, "owner").rpc, "manual_payout_transition");
   assert.equal(manualPayoutCommand("transition", { id, action: "sent", key: null, evidence: null, confirmed: true }, "owner").status, 400);
+  const debit = { batch: id, line: id, reference: "STATEMENT-DEBIT", actual: 1000, fee: 100,
+    currency: "KES", at: "2026-01-01T00:00:00Z", evidence: id, confirmed: true };
+  assert.equal(manualPayoutCommand("debit", debit, "superadmin").rpc, "manual_payout_register_statement_debit");
+  assert.equal(manualPayoutCommand("debit", { id, batch: id, line: id, evidence: id, confirmed: true }, "owner").status, 400);
 });
 
 test("manual payout API rejects nonleaders, preserves token, surfaces OFF and retires legacy sent", async () => {

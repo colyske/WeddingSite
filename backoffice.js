@@ -51,7 +51,7 @@
     custody: ["provider", "account", "currency", "available", "statement_at", "evidence", "held"],
     statement: ["custody", "previous", "statement", "at", "opening", "credit", "debit", "closing", "held", "evidence"],
     source: ["kind", "source", "custody", "batch", "evidence", "line", "at"],
-    debit: ["id", "batch", "line", "evidence"],
+    debit: ["batch", "line", "reference", "actual", "fee", "currency", "at", "evidence"],
     settlement: ["contribution", "custody", "line", "settled", "evidence", "batch", "at"],
     request: ["key", "wedding", "custody", "recipient", "amount", "fee", "currency", "owner_solo"],
     transition: ["id", "action", "key", "evidence"],
@@ -403,6 +403,7 @@
           <p>${esc(manual.verification)}</p>
           <p class="notice">${(manual.blockers || []).map(esc).join(". ")}.</p>
           <p>Request &rarr; review &rarr; execution claim &rarr; receipt reported &rarr; statement reconciliation. Other eligible leaders require two distinct actors. The protected Owner may explicitly opt into audited solo manual mode; evidence, funds and reconciliation are still mandatory. Only statement-reconciled transfers are paid. Uncertain transfers retain funds; there is no timeout release.</p>
+          <p>Record the checked statement batch and its actual debit line before reconciling. Reconciliation must match that existing line exactly and atomically allocates it before paid; arbitrary statement/line IDs and post-paid inclusion are not accepted.</p>
           <p>Evidence reference fields accept opaque repository UUIDs only. Do not enter bank details, names, KYC, credentials or public document URLs. Identity evidence must include consent and actual verification by the appointed reviewer; an attestation is not a provider lookup.</p>
           ${manualForms()}
           ${role === "owner" ? `<details><summary>Protected Owner: record policy evidence only (cannot activate)</summary>
