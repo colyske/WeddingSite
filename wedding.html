@@ -138,12 +138,12 @@
         <section data-guide-step="money" data-guide-title="Choose your wedding currency">
         <p class="fine">Choose from currencies with a guest-payment option enabled and configured for your account and market. Setup does not check provider uptime or payout readiness.</p>
         <label for="currency">Wedding currency <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
-        <select id="currency" data-wedding-currency required aria-required="true"></select>
+        <select id="currency" data-wedding-currency data-guide-segment="currency" required aria-required="true" disabled></select>
         <p class="fine" id="collection-currency-help" role="status" aria-live="polite"></p>
         <p class="fine" id="currency-change-help" role="status" aria-live="polite" hidden></p>
         <ul id="collection-currency-options" class="fine"></ul>
         <label for="payout-method">Preferred way to receive eligible funds</label>
-        <select id="payout-method" aria-describedby="payout-method-help">
+        <select id="payout-method" data-guide-segment="payout" aria-describedby="payout-method-help" disabled>
           <option value="">Choose an available option…</option>
         </select>
         <p class="fine" id="payout-method-help">Available receiving options depend on your currency. Guest-payment availability does not confirm payout readiness. Saving a preference does not collect account details or transfer money.</p>
@@ -264,7 +264,7 @@
         </section>
         <section data-guide-step="extras" data-guide-title="Travel and guest questions" data-guide-optional>
           <p class="fine">Help guests feel prepared with travel details and answers to common questions. These are optional and can be added later.</p>
-          <div id="extras-form">
+          <div id="extras-form" data-guide-segment="extras">
             <p id="extras-status" class="fine" role="status" aria-live="polite"></p>
             <label for="travel-info">Travel &amp; accommodation</label>
             <textarea id="travel-info" rows="3" maxlength="2000" placeholder="Parking, nearby hotels, shuttle times..."></textarea>
@@ -277,7 +277,7 @@
           <p class="fine">Create a campaign for a goal that matters to you, such as a home or honeymoon. Add a goal and milestones in your wedding currency. Guests choose the amount they wish to give; existing offers and minimums stay as set.</p>
           <p class="notice feature-off-hint" data-feature-hint="feature-giving" hidden>Campaigns are hidden from guests because the gift registry and fundraising feature is off.
             <button type="button" class="ghost" data-feature-enable="feature-giving">Show registry &amp; campaigns to guests</button></p>
-          <div id="campaign-list"></div>
+          <div id="campaign-list" data-guide-segment="campaigns"></div>
           <div class="row"><button type="button" class="ghost" id="add-campaign">+ Add another campaign</button> <span id="campaign-status" class="fine" role="status"></span></div>
         </section>
         <section data-guide-step="team" data-guide-title="Wedding helpers" data-guide-optional>
@@ -333,10 +333,9 @@
           <div id="share-panel" class="card" hidden></div>
           <div id="setup-progress" class="card" aria-live="polite" aria-atomic="false"></div>
           <p class="fine">Your guest RSVPs, song requests, campaign ledger, guestbook and payout tools stay in <a href="#wedding-workspace">your wedding workspace</a>.</p>
+          <p class="fine">When every detail needed before publishing is saved, a gold <strong>Publish wedding site</strong> button appears under the guide controls. Publishing still shows any publication fee and checks your details again before your site goes live.</p>
         </section>
-          <div class="row">
-            <button type="button" id="publish-btn" class="ghost">Publish wedding site</button>
-          </div>
+          <button type="button" id="publish-btn" class="guide-publish-btn" hidden>Publish wedding site</button>
       </form>
     </div>
 
@@ -1113,8 +1112,11 @@
           help.textContent += ` Your saved ${currentCurrency} currency and past records are kept; no amount is converted.`;
         }
         select.disabled = !currencies.length;
+        capabilitiesReady = true;
       } catch (error) {
         window.__wedding = { ...window.__wedding, collectionCapabilities: [] };
+        capabilitiesReady = false;
+        select.disabled = false;
         select.options[0].disabled = true;
         help.textContent = `${error.message} Your saved currency and answers are safe. You can keep saving this draft and check again later.`;
         list.replaceChildren();
@@ -1134,11 +1136,67 @@
     }
     $("currency").addEventListener("change", () => updateCurrencyLabels());
 
-    async function loadPayoutMethods() {
+    function showSavedPayoutPreference(method) {
       const select = $("payout-method");
-      const res = await WS.api(`/api/weddings?action=payout-methods&weddingId=${encodeURIComponent(weddingId)}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not load payout methods.");
+      select.replaceChildren(new Option(method ? "Your saved preference (checking options…)" : "Checking receiving options…", method, true, true));
+      select.disabled = true;
+    }
+
+    function setSecondaryLoading(loading) {
+      ["add-campaign", "faq-add", "travel-info"].forEach(id => { $(id).disabled = loading; });
+      if (loading) {
+        $("campaign-status").textContent = "Loading your saved campaigns…";
+        $("extras-status").textContent = "Loading your saved travel details and questions…";
+        $("collection-currency-help").textContent = "Checking guest-payment options for your account…";
+      }
+    }
+
+    // The guide opens on the core wedding record; independent panels load together and report their own errors.
+    function loadSecondaryPanels(w) {
+      const settle = (task, segment, after) => task()
+        .catch(error => console.error("Wedding panel load failed:", error))
+        .finally(() => {
+          after?.();
+          if (segment) weddingGuide?.adoptSaved(segment);
+          weddingGuide?.refresh();
+        });
+      return Promise.allSettled([
+        settle(() => loadCollectionCurrencies(w.currency), "currency"),
+        settle(() => loadPayoutMethods(w.payout?.method || "", true), "payout"),
+        settle(loadSponsorEnquiries),
+        settle(loadSponsorCards),
+        settle(loadCampaigns, "campaigns", () => { $("add-campaign").disabled = false; }),
+        settle(loadEngagement, "extras", () => { $("faq-add").disabled = false; $("travel-info").disabled = false; })
+      ]);
+    }
+
+    let capabilitiesReady = false;
+    function syncPublishControl() {
+      const button = $("publish-btn");
+      const slot = weddingGuide?.publishSlot;
+      if (slot && button.parentElement !== slot) slot.append(button);
+      const w = window.__wedding || {};
+      const readiness = capabilitiesReady && window.WSSetupProgress ? window.WSSetupProgress.calculate(w) : null;
+      const blocked = !!w.published_at || !!w.archived_at || !!w.lifecycle_admin_restricted ||
+        ["open", "submitted", "returned"].includes(w.moderation?.status);
+      const show = !!slot && !weddingGuide.isSaving() && !weddingGuide.dirty() && !blocked && !!readiness?.requiredReady;
+      button.hidden = !show;
+      if (slot) slot.hidden = !show;
+    }
+
+    async function loadPayoutMethods(savedMethod = "", initial = false) {
+      const select = $("payout-method");
+      let res, data;
+      try {
+        res = await WS.api(`/api/weddings?action=payout-methods&weddingId=${encodeURIComponent(weddingId)}`);
+        data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not load payout methods.");
+      } catch (error) {
+        if (!initial) throw error;
+        select.disabled = true;
+        $("payout-method-help").textContent = "Receiving options could not be loaded, so your saved preference is unchanged. You can keep editing and saving the rest of your wedding; reload this page to choose a receiving option.";
+        throw error;
+      }
       select.replaceChildren(new Option("Choose payout method…", ""));
       const methodLabels = {
         paystack: "Direct transfer to your verified account",
@@ -1148,6 +1206,7 @@
         select.add(new Option(methodLabels[method.id] || "Available payout option", method.id));
       }
       select.disabled = !(data.methods || []).length;
+      if (savedMethod) select.value = savedMethod;
       $("payout-method-help").textContent = (data.methods || []).length
         ? "These receiving options are separate from guest-payment availability. Saving a preference does not collect account details or move money, and does not prove payout readiness."
         : "No payout option is configured for this currency right now. This does not tell you whether guests can pay or whether payouts are ready. You can still save the rest of your draft; ask support to review receiving options.";
@@ -1411,18 +1470,9 @@
           $("vip-seats").value = "20";
           $("vip-description").value = "";
         }
-        await loadCollectionCurrencies(w.currency);
-        await loadPayoutMethods(w.currency);
-        await loadSponsorEnquiries();
-        await loadSponsorCards();
-        await loadCampaigns();
-        await loadEngagement();
-
-        // Load payout preferences
-        if (w.payout) {
-          const p = w.payout;
-          $("payout-method").value = p.method || "";
-        }
+        // Saved values are shown while their option lists load; these controls stay locked until then.
+        showSavedPayoutPreference(w.payout?.method || "");
+        setSecondaryLoading(true);
 
         $("edit-section").hidden = false;
         $("withdrawals-section").hidden = false;
@@ -1434,16 +1484,13 @@
           $("rsvps-section").hidden = false;
           $("bids-section").hidden = false;
           $("seating-section").hidden = false;
-          $("publish-btn").hidden = true;
           loadRsvps();
           loadBids();
-        } else {
-          $("publish-btn").hidden = !!w.archived_at || !!w.lifecycle_admin_restricted ||
-            ["open", "submitted", "returned"].includes(w.moderation?.status);
         }
         if (!weddingGuide) {
           weddingGuide = WSGuidedSetup.create($("edit-form"), {
             mode: "edit",
+            onRefresh: () => syncPublishControl(),
             stepOrder: ["couple", "date", "money", "venues", "guests", "theme", "giving", "campaigns", "extras", "team", "publication", "review"],
             states: {
               money: () => $("currency").value ? "complete" : "notstarted",
@@ -1489,6 +1536,7 @@
             }
           });
         }
+        loadSecondaryPanels(w);
       } catch (err) {
         console.error("Load failed:", err);
         notice("Could not load wedding: " + (err.message || "network error"), true);
@@ -1810,7 +1858,7 @@
         $("bids-section").hidden = false;
         $("seating-section").hidden = false;
         $("withdrawals-section").hidden = false;
-        $("publish-btn").hidden = true;
+        syncPublishControl();
         setGuestSiteLink(data.wedding?.slug || $("wedding-slug").value, true);
         notice("Wedding published successfully!");
         window.__wedding = { ...(window.__wedding || {}), ...(data.wedding || {}), published_at: (data.wedding && data.wedding.published_at) || new Date().toISOString(), archived_at: null };
@@ -1874,7 +1922,7 @@
       $("archive-btn").textContent = w.archived_at ? "Restore from archive" : "Archive";
       $("archive-btn").dataset.archived = w.archived_at ? "1" : "";
       $("archive-btn").disabled = restricted && !!w.archived_at;
-      $("publish-btn").hidden = restricted || !!w.published_at || !!w.archived_at;
+      syncPublishControl();
       try {
         const res = await WS.api(`/api/weddings?action=quote&weddingId=${encodeURIComponent(weddingId)}`);
         const data = await res.json();
@@ -2072,33 +2120,35 @@
     async function loadEngagement() {
       $("engage-section").hidden = false;
       const q = encodeURIComponent(weddingId);
-      try {
+      const analytics = (async () => {
         const r = await WS.api(`/api/weddings?action=analytics&weddingId=${q}`); const d = await r.json();
         const a = d.analytics || {};
         const cells = [["Visitors", a.visitors], ["Via invite links", a.referred_visitors], ["RSVPs yes", a.rsvps_confirmed], ["RSVPs no", a.rsvps_declined], ["RSVPs from invites", a.rsvps_referred], ["DJ bids", a.bids], ["Wishes to review", a.wishes_pending]];
         $("analytics-grid").innerHTML = cells.map(c => `<div><strong style="font-size:1.4rem">${Number(c[1] || 0)}</strong><br>${WS.esc(c[0])}</div>`).join("");
-      } catch (_) {}
-      try {
+      })().catch(() => {});
+      const referrals = (async () => {
         const r = await WS.api(`/api/weddings?action=referrals&weddingId=${q}`); const d = await r.json();
         const rows = (d.referrals || []).filter(x => x.visits > 0 || x.rsvps_brought > 0);
         $("referral-list").innerHTML = rows.length ? '<table><thead><tr><th>#</th><th>Guest</th><th>Visits</th><th>RSVPs brought in</th></tr></thead><tbody>' + rows.map((x, i) => `<tr><td>${i + 1}</td><td>${WS.esc(x.guest_name)}</td><td>${x.visits}</td><td>${x.rsvps_brought}</td></tr>`).join("") + "</tbody></table>" : "No invited visits yet. Guests receive a personal link after they RSVP.";
-      } catch (_) {}
-      await loadWishes();
-      try {
-        const r = await WS.api(`/api/weddings?action=extras-get&weddingId=${q}`); const d = await r.json();
-        if (!r.ok) throw new Error(d.error || "Could not load guest questions and travel details.");
-        $("travel-info").value = d.travel || "";
-        $("faq-rows").innerHTML = "";
-        (d.faq || []).forEach(f => faqRow(f.q, f.a));
-        if (!d.faq?.length) faqRow();
-        extrasLoaded = true;
-        extrasDirty = false;
-        $("extras-status").textContent = "";
-      } catch (error) {
-        extrasLoaded = false;
-        $("extras-status").textContent = "We couldn’t load your saved travel details and questions. Reload this page before editing or saving them.";
-        console.error("Guest extras load failed:", error);
-      }
+      })().catch(() => {});
+      const extras = (async () => {
+          try {
+          const r = await WS.api(`/api/weddings?action=extras-get&weddingId=${q}`); const d = await r.json();
+          if (!r.ok) throw new Error(d.error || "Could not load guest questions and travel details.");
+          $("travel-info").value = d.travel || "";
+          $("faq-rows").innerHTML = "";
+          (d.faq || []).forEach(f => faqRow(f.q, f.a));
+          if (!d.faq?.length) faqRow();
+          extrasLoaded = true;
+          extrasDirty = false;
+          $("extras-status").textContent = "";
+        } catch (error) {
+          extrasLoaded = false;
+          $("extras-status").textContent = "We couldn’t load your saved travel details and questions. Reload this page before editing or saving them.";
+          console.error("Guest extras load failed:", error);
+        }
+      })();
+      await Promise.all([analytics, referrals, loadWishes(), extras]);
     }
     async function loadWishes() {
       try {

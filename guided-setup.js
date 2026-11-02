@@ -1,7 +1,7 @@
 (function (global) {
   "use strict";
 
-  function create(form, { mode, onKeep, summaries = {}, states = {}, externalSteps = [], externalStepsAfter, stepOrder = [] } = {}) {
+  function create(form, { mode, onKeep, onRefresh, summaries = {}, states = {}, externalSteps = [], externalStepsAfter, stepOrder = [] } = {}) {
     const formSteps = [...form.querySelectorAll("[data-guide-step]")];
     const reviewStep = formSteps.find(step => step.dataset.guideStep === "review");
     let steps = [];
@@ -47,7 +47,8 @@
         <button type="button" class="ghost" data-guide-save>Save changes</button>
         <button type="button" data-guide-next>Next <span aria-hidden="true">&rarr;</span></button>
         ${mode === "create" ? '<button type="button" class="ghost" data-guide-keep>Keep answers in this tab</button>' : ""}
-      </div>`;
+      </div>
+      <div class="guide-publish" data-guide-publish hidden></div>`;
     form.append(actions);
     const meter = actions.querySelector(".guide-meter-track");
     const meterFill = actions.querySelector(".guide-meter-fill");
@@ -68,11 +69,20 @@
     const hasExternalChanges = () => externalSteps.some(externalDirty);
     const ignored = input => !!input.closest("[data-guide-ignore]");
     const fields = root => [...root.querySelectorAll("input, select, textarea")].filter(input => !ignored(input));
-    const fingerprint = () => JSON.stringify([
-      fields(form).map(input =>
-        [input.id, input.name, input.value, input.checked]),
-      [...form.querySelectorAll("[data-palette]")].map(el => [el.dataset.palette, el.dataset.names])
-    ]);
+    const entry = input => [input.id, input.name, input.value, input.checked];
+    // Panels loaded after the guide opens are fingerprinted by segment so their saved data can be adopted independently.
+    const segmentOf = input => input.closest("[data-guide-segment]")?.dataset.guideSegment || "";
+    const segmentFingerprint = name => JSON.stringify(fields(form).filter(input => segmentOf(input) === name).map(entry));
+    const fingerprint = () => {
+      const all = fields(form);
+      const segments = {};
+      [...form.querySelectorAll("[data-guide-segment]")].forEach(el => { segments[el.dataset.guideSegment] = segmentFingerprint(el.dataset.guideSegment); });
+      return JSON.stringify([
+        all.filter(input => !segmentOf(input)).map(entry),
+        [...form.querySelectorAll("[data-palette]")].map(el => [el.dataset.palette, el.dataset.names]),
+        segments
+      ]);
+    };
     saved = fingerprint();
     const dirty = () => fingerprint() !== saved;
     const setState = text => { state.textContent = text; };
@@ -182,6 +192,7 @@
       actions.dataset.level = meter.dataset.level;
       renderReview();
       updateState();
+      onRefresh?.();
     }
     function show(index, focus = true) {
       current = index;
@@ -363,7 +374,7 @@
     };
     global.visualViewport?.addEventListener("resize", syncViewport);
     global.visualViewport?.addEventListener("scroll", syncViewport);
-    syncViewport();
+    (global.requestAnimationFrame || setTimeout)(syncViewport);
     global.addEventListener("beforeunload", event => {
       if (mode === "edit" && (dirty() || hasExternalChanges())) {
         event.preventDefault();
@@ -374,6 +385,14 @@
     fromHash();
     return {
       reveal, validate, dirty, refresh, setState, blockPublication,
+      publishSlot: actions.querySelector("[data-guide-publish]"),
+      isSaving: () => saving,
+      adoptSaved(name) {
+        const update = value => { const parsed = JSON.parse(value); parsed[2][name] = segmentFingerprint(name); return JSON.stringify(parsed); };
+        saved = update(saved);
+        if (saving) snapshot = update(snapshot);
+        refresh();
+      },
       markExternalSaved(name) {
         const step = externalSteps.find(item => item.dataset.guideStep === name);
         if (step) externalSaved.set(name, externalFingerprint(step));

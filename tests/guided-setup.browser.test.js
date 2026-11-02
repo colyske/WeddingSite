@@ -206,11 +206,14 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     assert.equal(await resume.locator("[data-guide-step=money] #currency").count(), 1);
     assert.equal(await resume.locator("#welcome-story").inputValue(), "We are making plans together.", "another device resumes server-saved answers");
     assert.equal(await resume.evaluate(() => sessionStorage.getItem("ws-create-answers")), null);
-    await resume.click("#publish-btn");
-    assert.match(await resume.locator(".guide-errors").innerText(), /Before publishing/);
+    assert.equal(await resume.locator("#publish-btn").isVisible(), false, "publishing is offered only once the saved minimum is met");
+    assert.equal(await resume.locator("[data-guide-publish]").isHidden(), true, "no empty publish area is reserved");
     assert.equal(calls.filter(call => call.action === "publish").length, 0);
-    await resume.locator(".guide-errors a").filter({ hasText: "Date" }).first().click();
-    assert.equal(await resume.locator("#wedding-date").evaluate(el => el === document.activeElement), true);
+    await openSection(resume, 11);
+    await resume.locator("#setup-progress .ws-readiness-list a").filter({ hasText: "Set the wedding date" }).click();
+    await resume.locator("#guide-heading-date").waitFor({ state: "visible" });
+    assert.equal(await resume.locator("#guide-heading-date").evaluate(el => el === document.activeElement), true,
+      "readiness links open the section that still needs answers");
     await resume.fill("#wedding-date", "2027-06-12");
     await openSection(resume, 3);
     await resume.click("#add-venue-btn");
@@ -348,10 +351,56 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     await openSection(resume, 4);
     assert.equal(await resume.locator("#kyc-p1").inputValue(), "Synthetic QA Partner", "KYC remains on the page while moving between setup steps");
     await openSection(resume, 11);
-    await resume.click("#publish-btn");
+    const publishButton = resume.locator("[data-guide-publish] #publish-btn");
+    await publishButton.waitFor({ state: "visible" });
+    assert.match(await publishButton.evaluate(el => getComputedStyle(el).backgroundImage), /gradient/, "the publish action is styled gold");
+    const savedNames = await resume.locator("#couple-names").inputValue();
+    await openSection(resume, 0);
+    await resume.fill("#couple-names", `${savedNames} edited`);
+    assert.equal(await publishButton.isVisible(), false, "unsaved answers hide the publish action");
+    await resume.fill("#couple-names", savedNames);
+    await publishButton.waitFor({ state: "visible" });
+    await openSection(resume, 11);
+    for (const [width, height] of [[320, 640], [375, 667], [414, 896], [1280, 800]]) {
+      await resume.setViewportSize({ width, height });
+      for (const position of ["guide-end", "page-bottom"]) {
+      await resume.evaluate(position => {
+        if (position === "page-bottom") window.scrollTo(0, document.documentElement.scrollHeight);
+        else document.getElementById("edit-section").scrollIntoView({ block: "end" });
+      }, position);
+      await resume.waitForTimeout(50);
+      const layout = await resume.evaluate(() => {
+        const bar = document.querySelector(".guide-actions").getBoundingClientRect();
+        const footer = document.getElementById("ws-site-footer")?.getBoundingClientRect();
+        const card = document.getElementById("edit-section").getBoundingClientRect();
+        const hits = [...document.querySelectorAll(".guide-actions button")].filter(button => button.offsetParent).map(button => {
+          const box = button.getBoundingClientRect();
+          const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+          return { text: button.textContent.trim(), ok: !!hit && button.contains(hit), height: box.height, right: box.right, inView: box.top >= 0 && box.bottom <= innerHeight };
+        });
+        return { bar: { top: bar.top, bottom: bar.bottom, left: bar.left, right: bar.right }, footerTop: footer?.top ?? null,
+          card: { left: card.left, right: card.right, bottom: card.bottom }, hits, overflow: document.documentElement.scrollWidth > innerWidth };
+      });
+      assert.equal(layout.overflow, false, `no horizontal overflow at ${width}`);
+      assert.ok(layout.footerTop === null || layout.bar.bottom <= layout.footerTop + 0.5, `guide controls stay above the footer at ${width}`);
+      assert.ok(layout.bar.left >= layout.card.left - 0.5 && layout.bar.right <= layout.card.right + 0.5 && layout.bar.bottom <= layout.card.bottom + 0.5,
+        `guide controls stay inside the guide container at ${width}`);
+      assert.ok(layout.hits.some(hit => hit.text === "Publish wedding site"), `publish action is present at ${width}`);
+      if (position === "guide-end") assert.ok(layout.hits.every(hit => hit.inView), `guide controls are in view at the end of the guide at ${width}`);
+      for (const hit of layout.hits) {
+        if (hit.inView) assert.ok(hit.ok, `${hit.text} is clickable at the page bottom at ${width} (${position})`);
+        assert.ok(hit.height >= 44 && hit.right <= width, `${hit.text} fits with a touch target at ${width}`);
+      }
+      }
+    }
+    await publishButton.focus();
+    await resume.keyboard.press("Enter");
+    await resume.locator("#confirm-publish").waitFor({ state: "visible" });
     await resume.click("#confirm-publish");
     await resume.locator("#published-section").waitFor({ state: "visible" });
     assert.equal(calls.filter(call => call.action === "publish").length, 1);
+    await resume.locator("#edit-section").waitFor({ state: "visible" });
+    assert.equal(await publishButton.isVisible(), false, "a published wedding shows no second publish action");
     assert.ok(!wedding.cover_image_url && !wedding.guest_instructions, "publishing does not require a cover photo or guest instructions");
     for (const call of calls.filter(call => call.action === "campaigns-save"))
       assert.ok(call.body.campaigns.every(campaign => campaign.name.trim()), "blank starter campaigns are never saved");
