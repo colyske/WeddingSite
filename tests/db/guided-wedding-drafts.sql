@@ -137,7 +137,7 @@ begin
   perform public.admin_wedding_action(w.id,'unpublish','inaccurate_details','The venue address needs correction.','Correct the venue address.');
   select id into case_id from public.moderation_cases where wedding_id=w.id;
   perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='client'),true);
-  perform public.save_wedding_content(w.id,'{"welcome_story":null}'::jsonb);
+  perform public.save_wedding_content(w.id,'{"welcome_story":""}'::jsonb);
   perform public.submit_moderation_correction(case_id,'I reviewed the venue details.',1);
   perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='admin'),true);
   blocked := false;
