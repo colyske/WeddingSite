@@ -78,6 +78,10 @@ test("credential encryption checks pinned certificate, validity, RSA and does no
     const configured = { ...env, DARAJA_B2C_CERTIFICATE_PEM: pem,
       DARAJA_B2C_CERTIFICATE_SHA256: cert.fingerprint256.replaceAll(":", "").toLowerCase() };
     assert.equal(Buffer.from(encryptInitiatorCredential(configured), "base64").length, 256);
+    assert.equal(Buffer.from(encryptInitiatorCredential({ ...configured,
+      DARAJA_B2C_INITIATOR_PASSWORD: "synthetic-\u00e9" }), "base64").length, 256);
+    assert.throws(() => encryptInitiatorCredential({ ...configured,
+      DARAJA_B2C_INITIATOR_PASSWORD: "\u00e9".repeat(123) }), /credential/);
     assert.throws(() => encryptInitiatorCredential({ ...configured, DARAJA_B2C_CERTIFICATE_SHA256: "0".repeat(64) }), /fingerprint/);
     assert.throws(() => encryptInitiatorCredential(configured, Date.parse(cert.validTo) + 1), /validity/);
     assert.throws(() => encryptInitiatorCredential(configured, Date.parse(cert.validFrom) - 1), /validity/);

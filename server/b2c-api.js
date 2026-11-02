@@ -98,11 +98,23 @@ export default async function handler(req, res) {
       return sendJson(res, 200, await dispatchB2c(body.payoutId, body.idempotencyKey));
     }
     if (action === "reconcile") {
-      if (!uuid(body.dispatchId) || !uuid(body.evidenceId) || !Number.isSafeInteger(body.amountMinor) ||
-        !Number.isSafeInteger(body.feeMinor)) return sendJson(res, 400, { error: "Checked statement evidence and exact amount/fee required." });
+      if (![body.dispatchId, body.receiptEvidenceId, body.evidenceId, body.accountId, body.statementId, body.lineId].every(uuid) ||
+        !Number.isSafeInteger(body.amountMinor) || !Number.isSafeInteger(body.feeMinor) ||
+        body.provider !== "daraja" || body.currency !== "KES") {
+        return sendJson(res, 400, { error: "Distinct checked receipt/reconciliation evidence, exact provider/account/statement/line and amount/fee/currency required." });
+      }
       return sendJson(res, 200, { state: await rpc("b2c_reconcile", session.token, {
-        p_id: body.dispatchId, p_evidence: body.evidenceId, p_reference: body.transactionId,
-        p_actual: body.amountMinor, p_fee: body.feeMinor, p_msisdn: body.msisdn, p_at: body.transferredAt
+        p_id: body.dispatchId, p_receipt: body.receiptEvidenceId, p_evidence: body.evidenceId,
+        p_provider: body.provider, p_account: body.accountId, p_statement: body.statementId, p_line: body.lineId,
+        p_reference: body.transactionId, p_actual: body.amountMinor, p_fee: body.feeMinor, p_currency: body.currency,
+        p_msisdn: body.msisdn, p_at: body.transferredAt, p_booked_at: body.bookedAt
+      }) });
+    }
+    if (action === "resolve") {
+      if (!uuid(body.dispatchId) || !uuid(body.evidenceId) || typeof body.confirmResolution !== "boolean" ||
+        body.actualFeeMinor !== 0) return sendJson(res, 400, { error: "Conclusive checked no-transfer and explicit zero-fee evidence required; otherwise retain holds." });
+      return sendJson(res, 200, { state: await rpc("b2c_resolve", session.token, {
+        p_id: body.dispatchId, p_evidence: body.evidenceId, p_confirm: body.confirmResolution, p_actual_fee: body.actualFeeMinor
       }) });
     }
     return sendJson(res, 400, { error: "Unknown B2C action." });

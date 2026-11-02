@@ -84,11 +84,16 @@ export async function runB2cWorker({ env = process.env, rpc = rpcDefault, fetche
   if (!b2cReadiness(env).ready) return { held: true, reason: "deployment_prerequisites" };
   const candidates = await rpc("b2c_candidates", {}, undefined, true);
   const results = [];
-  // Bounded work fits the serverless deadline; remaining rows stay reserved.
-  for (const id of candidates.slice(0, 1)) {
-    try { results.push(await dispatchB2c(id, randomUUID(), { env, rpc, fetcher, encryptCredential })); }
+  // Skip held candidates, but make at most one provider attempt per invocation.
+  for (const id of candidates.slice(0, 10)) {
+    try {
+      const result = await dispatchB2c(id, randomUUID(), { env, rpc, fetcher, encryptCredential });
+      results.push(result);
+      if (!result.alreadyClaimed) break;
+    }
     catch {
       console.error("B2C candidate held", id);
+      await rpc("b2c_candidate_hold", { p_id: id }, undefined, true);
       results.push({ payoutId: id, held: true, reason: "policy_funds_recipient_or_approval" });
     }
   }

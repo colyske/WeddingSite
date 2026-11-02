@@ -65,7 +65,9 @@ Outward fees are explicit, reserved along with principal, and not assumed zero.
    UUIDs and hashes enter this database. KYC completeness alone is not identity
    verification; an inbound payment/statement is not ownership verification.
 2. A different leader checks that evidence. Create an immutable shared recipient
-   revision bound to the exact current KYC snapshot.
+   revision bound to the exact current KYC snapshot, selected partner slot and
+   exact independently reviewed destination MSISDN. The other partner's phone
+   cannot silently substitute for that reviewed destination.
 3. The authenticated wedding account verifies the exact submitted partner phone
    through Supabase Auth phone-change OTP. Supabase SMS must be configured by
    the operator; secure phone-change verification must remain enabled.
@@ -148,11 +150,24 @@ uncertainty. The scheduler marks stale executing claims uncertain after
 30 minutes and never resends them. Housekeeping and reconciliation continue
 after the admission kill switch is OFF.
 
-Final payment requires an independent authenticated reviewer and official
-statement/receipt evidence bound to the exact provider account, unique
-transaction reference, destination, amount, fee, currency and time.
+Final payment requires an independent authenticated reviewer, checked receipt
+evidence **and separate reconciliation-kind statement evidence**, bound to the
+exact provider account, unique statement/debit line, transaction reference,
+destination, amount, fee, currency, transfer time and debit booking time.
+The shared immutable receipt and reconciliation are recorded before `paid`;
+receipt evidence alone cannot settle. A conflicting correlated success reference
+prevents finalization. Including that exact paid debit in a subsequent statement
+batch uses the shared accounting primitive, never a balance reset.
 Transaction Status is not used as recipient/amount proof, and no status query
 or balance provider call is implemented. Inconclusive evidence keeps the hold.
+
+An evidence-backed no-transfer proposal retains the hold. A different leader
+(not the sender, requester or proposer) must confirm the same independently
+checked evidence explicitly proving **no transfer and zero charge** before a
+terminal no-transfer decision can release it. Unknown/nonzero fees, existing
+receipts or correlated success observations block this path. The original claim
+remains permanently nonresendable. Contradictory later evidence is an incident,
+not permission to rewrite history or resend.
 
 ## Deployment configuration names (values never in chat)
 
@@ -186,15 +201,16 @@ review, one-shot dispatch and independent final reconciliation. Owner policy
 is readable/editable only by Owner. `/api/b2c` is rewritten into the existing
 admin function; it retains its own callback/scheduler/client/staff
 authentication. It adds no Vercel function beyond the existing plan limit.
-Scheduler processes at most one candidate each run to stay within its deadline.
+Scheduler checks up to ten candidates, skipping prerequisite holds, and makes
+at most one provider attempt each run to stay within its deadline.
 
 Evidence intake (`intake` action, `kind`, `data`) accepts these exact shapes:
 
 | Operation | Metadata |
 | --- | --- |
-| `evidence` | `{kind:"recipient"|"custody"|"settlement"|"receipt"|"no_transfer"|"policy", reference:UUID, sha256:HEX}`; policy evidence submitted by Owner only. |
+| `evidence` | `{kind:"account"|"commitment"|"statement"|"recipient"|"custody"|"settlement"|"receipt"|"reconciliation"|"no_transfer"|"policy", reference:UUID, sha256:HEX}`; policy evidence submitted by Owner only. |
 | `check` | `{evidence:UUID}`; must be a different leader. |
-| `recipient` | `{wedding:UUID, evidence:UUID}`; checked identity/name/control/consent evidence, current KYC. Couple then binds confirmed phone separately. |
+| `recipient` | `{wedding:UUID, evidence:UUID, msisdn:STRING, partner:1|2}`; checked exact partner identity/name/destination/consent evidence, current KYC. Couple then binds that exact confirmed phone separately. |
 | `custody` | `{account:UUID, availableMinor:INTEGER, statementAt:ISO_TIMESTAMP, evidence:UUID, fundingEvidence:UUID, shortcode:STRING, disbursableCollectedFunds:true}`; Owner-only, official collected custody that is actually disbursable. |
 | `settlement` | `{contribution:UUID, custody:UUID, settledMinor:INTEGER, line:UUID, evidence:UUID}`; Owner-only exact fee-known settled allocation; no duplicated statement line/contribution. |
 

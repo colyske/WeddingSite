@@ -104,6 +104,7 @@ try {
       delete from public.b2c_custody_bindings where custody_id='${context.custody}';
       delete from public.manual_payout_custody where id='${context.custody}';
       delete from public.b2c_destinations where recipient_id='${context.recipient}';
+      delete from public.b2c_reviewed_destinations where recipient_id='${context.recipient}';
       delete from public.manual_payout_recipients where wedding_id='${context.wedding}';
       delete from public.manual_payout_evidence_checks where evidence_id in (select id from public.manual_payout_evidence where submitted_by in (${users}));
       delete from public.manual_payout_evidence where submitted_by in (${users});

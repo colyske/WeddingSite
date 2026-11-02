@@ -37,14 +37,16 @@ export function encryptInitiatorCredential(env = process.env, now = Date.now()) 
   catch { throw new Error("B2C: A valid official production X.509 certificate is required."); }
   const fingerprint = cert.fingerprint256.replaceAll(":", "").toLowerCase();
   const password = env.DARAJA_B2C_INITIATOR_PASSWORD;
+  const passwordBytes = typeof password === "string" ? Buffer.from(password, "utf8") : null;
   if (fingerprint !== String(env.DARAJA_B2C_CERTIFICATE_SHA256 || "").toLowerCase() ||
       cert.publicKey.asymmetricKeyType !== "rsa" || cert.publicKey.asymmetricKeyDetails.modulusLength < 2048 ||
       Date.parse(cert.validFrom) > now || Date.parse(cert.validTo) <= now ||
-      typeof password !== "string" || !password || !/^[\x20-\x7e]+$/.test(password)) {
+      !passwordBytes?.length ||
+      passwordBytes.length > Math.ceil(cert.publicKey.asymmetricKeyDetails.modulusLength / 8) - 11) {
     throw new Error("B2C: Production certificate fingerprint, validity, RSA key or initiator credential is invalid.");
   }
   return publicEncrypt({ key: cert.publicKey, padding: constants.RSA_PKCS1_PADDING },
-    Buffer.from(password, "ascii")).toString("base64");
+    passwordBytes).toString("base64");
 }
 
 export function paymentRequest(dispatch, callbackToken, credential, env = process.env) {

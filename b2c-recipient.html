@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Payout destination | Join Our Wedding</title><link rel="stylesheet" href="platform.css">
+  <link rel="stylesheet" href="editorial.css">
   <script defer src="auth-client.js"></script><script defer src="b2c-recipient.js"></script>
 </head><body><main class="panel" style="max-width:48rem;margin:2rem auto;padding:1rem">
   <a href="account.html">Back to account</a><h1>Payout destination and request</h1>
@@ -19,7 +20,8 @@
   <form id="request"><h2>Request payout</h2><label>Recipient revision UUID<input name="recipientId" required></label>
     <label>Approved custody envelope UUID<input name="custodyId" required></label>
     <label>Principal (minor KES; 100 = KES 1)<input name="amountMinor" type="number" min="100" step="100" required></label>
-    <button>Reserve and request payout</button></form>
+    <button type="submit">Reserve and request payout</button>
+    <button id="new-request" type="button">Start a distinct request after this one is closed</button></form>
   <pre id="context" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
   <p id="notice" role="status" aria-live="polite"></p>
-</main></body></html>
+</main><script src="footer.js"></script></body></html>

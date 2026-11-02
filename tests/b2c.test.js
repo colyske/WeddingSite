@@ -73,6 +73,32 @@ test("timeout, malformed acceptance and lost acceptance journal all retain uncer
     assert.equal(kinds.at(-1), "uncertain");
   }
 });
+test("worker skips a prerequisite hold but stops after one durable provider attempt", async () => {
+  const held = "10000000-0000-4000-8000-000000000002";
+  const unvisited = "10000000-0000-4000-8000-000000000003";
+  const claims = [];
+  let payments = 0;
+  const result = await runB2cWorker({
+    env, encryptCredential: () => "synthetic",
+    rpc: async (name, body) => {
+      if (name === "b2c_candidates") return [held, id, unvisited];
+      if (name === "b2c_claim") {
+        claims.push(body.p_id);
+        if (body.p_id === held) throw new Error("B2C: Recipient evidence changed.");
+        return snapshot;
+      }
+      if (name === "b2c_event") return "executing";
+    },
+    fetcher: async url => {
+      if (!url.includes("oauth")) payments++;
+      return provider(url);
+    }
+  });
+  assert.deepEqual(claims, [held, id]);
+  assert.equal(payments, 1);
+  assert.equal(result.results[0].held, true);
+  assert.equal(result.results[1].accepted, true);
+});
 test("forged capabilities fail before audit; bound duplicates share digest and no callback settles", async () => {
   const token = "b".repeat(64), calls = [];
   const body = { Result: { ConversationID: "CONV", OriginatorConversationID: "ORIGIN",

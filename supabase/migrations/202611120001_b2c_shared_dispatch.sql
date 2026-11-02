@@ -65,6 +65,13 @@ create table public.b2c_destinations (
   phone_confirmed_at timestamptz not null,
   bound_at timestamptz not null default now()
 );
+create table public.b2c_reviewed_destinations (
+  recipient_id uuid primary key references public.manual_payout_recipients(id),
+  msisdn text not null check(msisdn ~ '^254[17][0-9]{8}$'),
+  partner_slot smallint not null check(partner_slot in (1,2)),
+  reviewed_by uuid not null references public.profiles(id),
+  created_at timestamptz not null default now()
+);
 create table public.b2c_dispatches (
   id uuid primary key default extensions.gen_random_uuid(),
   payout_id uuid not null unique references public.manual_payout_claims(payout_id),
@@ -88,12 +95,20 @@ create table public.b2c_callback_events (
   created_at timestamptz not null default now(),
   unique(dispatch_id,event_key)
 );
+create table public.b2c_resolution_proposals (
+  dispatch_id uuid primary key references public.b2c_dispatches(id),
+  evidence_id uuid not null unique references public.manual_payout_evidence(id),
+  actual_fee_minor bigint not null check(actual_fee_minor=0),
+  proposed_by uuid not null references public.profiles(id),
+  proposed_at timestamptz not null default now()
+);
 
 do $$
 declare t text;
 begin
   foreach t in array array['b2c_policy','b2c_policy_history','b2c_phone_attempts',
-    'b2c_destinations','b2c_dispatches','b2c_callback_events','b2c_request_intents','b2c_custody_bindings','b2c_human_reviews'] loop
+    'b2c_destinations','b2c_reviewed_destinations','b2c_dispatches','b2c_callback_events','b2c_resolution_proposals',
+    'b2c_request_intents','b2c_custody_bindings','b2c_human_reviews'] loop
     execute format('alter table public.%I enable row level security',t);
     execute format('revoke all on public.%I from public,anon,authenticated,service_role',t);
     if t not in ('b2c_policy','b2c_dispatches') then
@@ -121,6 +136,17 @@ begin
   insert into public.audit_events(wedding_id,actor_id,table_name,record_id,action)
     values(p_wedding,p_actor,'b2c_dispatches',p_id,p_action);
 end $$;
+create function public.b2c_lock_staff(p_min text default 'superadmin') returns void
+language plpgsql security definer set search_path='' as $$
+declare actual public.platform_role;
+begin
+  perform public.require_staff(p_min);
+  perform pg_advisory_xact_lock(71110001);
+  select platform_role into actual from public.profiles where id=auth.uid() for share;
+  if actual is null or actual not in ('owner','superadmin') or (p_min='owner' and actual<>'owner') then
+    raise exception 'B2C: Staff authority revoked.';
+  end if;
+end $$;
 create function public.owner_get_b2c_policy() returns jsonb
 language plpgsql stable security definer set search_path='' as $$
 begin perform public.require_staff('owner');
@@ -130,8 +156,7 @@ create function public.owner_update_b2c_policy(p_revision bigint,p_changes jsonb
 language plpgsql security definer set search_path='' as $$
 declare old public.b2c_policy; n public.b2c_policy; key text;
 begin
-  perform public.require_staff('owner');
-  perform pg_advisory_xact_lock(71110001);
+  perform public.b2c_lock_staff('owner');
   select * into old from public.b2c_policy where singleton for update;
   if old.revision is distinct from p_revision or p_changes is null
     or jsonb_typeof(p_changes)<>'object' or length(btrim(p_reason)) not between 10 and 240
@@ -182,6 +207,7 @@ begin
   perform public.manual_payout_evidence_require(r.evidence_id,'recipient');
   if u.phone_confirmed_at is null or u.phone is null or u.phone !~ '^254[17][0-9]{8}$'
     or u.phone not in (k.partner1_phone,k.partner2_phone)
+    or not exists(select 1 from public.b2c_reviewed_destinations where recipient_id=r.id and msisdn=u.phone)
     or r.kyc_snapshot_hash<>encode(extensions.digest(to_jsonb(k)::text,'sha256'),'hex') then
     raise exception 'B2C: Verified current phone control and current independently reviewed identity/name evidence required.';
   end if;
@@ -196,6 +222,7 @@ declare phone text;
 begin
   select d.msisdn into phone from public.b2c_destinations d join auth.users u on u.id=d.user_id
     join public.manual_payout_recipients r on r.id=d.recipient_id
+    join public.b2c_reviewed_destinations v on v.recipient_id=r.id and v.msisdn=d.msisdn
     join public.weddings w on w.id=r.wedding_id
     join public.wedding_kyc k on k.wedding_id=w.id
     where d.recipient_id=p_recipient and w.client_owner_id=u.id and u.phone=d.msisdn
@@ -212,18 +239,20 @@ begin
 end $$;
 create function public.b2c_policy_require(p_custody uuid,p_recipient uuid,p_amount bigint,p_fee bigint) returns public.b2c_policy
 language plpgsql security definer set search_path='' as $$
-declare p public.b2c_policy; a public.manual_payout_custody;
+declare p public.b2c_policy; a public.manual_payout_custody; snapshot jsonb; actor_role public.platform_role;
 begin
   select * into strict p from public.b2c_policy where singleton;
-  if not p.enabled or not exists(select 1 from public.profiles where id=p.updated_by and platform_role='owner')
+  select platform_role into actor_role from public.profiles where id=p.updated_by for share;
+  if not p.enabled or actor_role is distinct from 'owner'
     or not coalesce(p_custody=any(p.custody_ids),false) or not coalesce(p_recipient=any(p.recipient_ids),false)
     or p_amount is null or p_amount<=0 or p_amount%100<>0
     or p_amount>p.per_payout_minor or p_fee is distinct from p.payout_fee_minor then
     raise exception 'B2C: Dispatch OFF or outside explicit Owner limits, recipients, custody or fee policy.';
   end if;
   select * into strict a from public.manual_payout_custody where id=p_custody;
-  if a.provider<>'daraja' or a.currency<>'KES' or a.statement_at>now()
-    or a.statement_at<now()-make_interval(mins=>p.statement_max_age_minutes) then
+  snapshot:=public.manual_payout_custody_snapshot(p_custody,false);
+  if snapshot is null or a.provider<>'daraja' or a.currency<>'KES' or (snapshot->>'statement_at')::timestamptz>now()
+    or (snapshot->>'statement_at')::timestamptz<now()-make_interval(mins=>p.statement_max_age_minutes) then
     raise exception 'B2C_FUNDING_NEEDED: Current documented disbursable collected custody is missing or stale.';
   end if;
   perform public.manual_payout_evidence_require(a.evidence_id,'custody');
@@ -249,11 +278,15 @@ begin
   select * into r from public.manual_payout_requests where request_key=p_key;
   if found then
     if (r.wedding_id,r.custody_id,r.recipient_revision,r.amount_minor,r.requested_by)
-      is distinct from (p_wedding,p_custody,p_recipient,p_amount,auth.uid()) then raise exception 'B2C: Idempotency conflict.'; end if;
+      is distinct from (p_wedding,p_custody,p_recipient,p_amount,auth.uid())
+      or not exists(select 1 from public.b2c_request_intents where payout_id=r.id) then
+      raise exception 'B2C: Idempotency conflict.';
+    end if;
     return r.id;
   end if;
   perform public.manual_payout_lock(p_custody,p_wedding);
   p:=public.b2c_policy_require(p_custody,p_recipient,p_amount,p.payout_fee_minor);
+  perform public.manual_payout_check_amount(p_wedding,'KES',p_amount);
   perform public.manual_payout_eligible(p_wedding,p_custody,p_recipient,'KES',
     (p_amount::numeric+p.payout_fee_minor)::bigint);
   insert into public.manual_payout_requests(request_key,wedding_id,custody_id,recipient_revision,amount_minor,fee_minor,currency,requested_by)
@@ -267,15 +300,16 @@ create function public.staff_approve_b2c(p_id uuid) returns boolean
 language plpgsql security definer set search_path='' as $$
 declare r public.manual_payout_requests; p public.b2c_policy;
 begin
-  perform public.require_staff('superadmin');
-  perform pg_advisory_xact_lock(71110001);
+  perform public.b2c_lock_staff();
   select * into strict r from public.manual_payout_requests where id=p_id;
   perform public.manual_payout_lock(r.custody_id,r.wedding_id);
-  if auth.uid()=r.requested_by or public.manual_payout_state(p_id) not in ('requested','approved')
+  if not exists(select 1 from public.b2c_request_intents where payout_id=p_id)
+    or auth.uid()=r.requested_by or public.manual_payout_state(p_id) not in ('requested','approved')
     or exists(select 1 from public.manual_payout_claims where payout_id=p_id) then
     raise exception 'B2C: Different reviewer and unclaimed requested payout required.';
   end if;
   p:=public.b2c_policy_require(r.custody_id,r.recipient_revision,r.amount_minor,r.fee_minor);
+  perform public.manual_payout_check_amount(r.wedding_id,r.currency,r.amount_minor);
   perform public.manual_payout_eligible(r.wedding_id,r.custody_id,r.recipient_revision,r.currency,
     (r.amount_minor::numeric+r.fee_minor)::bigint,r.id);
   insert into public.b2c_human_reviews(payout_id,policy_revision,reviewer_role,reviewer_id)
@@ -303,7 +337,12 @@ begin
   if exists(select 1 from public.manual_payout_claims where payout_id=p_id) then
     return jsonb_build_object('claimed',false,'state',public.manual_payout_state(p_id));
   end if;
+  perform 1 from public.profiles where id in (
+    select reviewer_id from public.b2c_human_reviews where payout_id=p_id
+    union select updated_by from public.b2c_policy where singleton
+  ) order by id for share;
   p:=public.b2c_policy_require(r.custody_id,r.recipient_revision,r.amount_minor,r.fee_minor);
+  perform public.manual_payout_check_amount(r.wedding_id,r.currency,r.amount_minor);
   if p.shortcode is distinct from p_shortcode or p.command_id is distinct from p_command or p_key is null
     or p_callback_hash is null or p_callback_hash !~ '^[a-f0-9]{64}$' then raise exception 'B2C: Deployment/policy binding mismatch.'; end if;
   if public.manual_payout_state(p_id)='requested' and not p.require_four_eyes and p_auto then
@@ -398,15 +437,30 @@ begin
     where q.currency='KES' and public.manual_payout_state(q.id) in ('requested','approved')
     and p.enabled and (not p.require_four_eyes or public.manual_payout_state(q.id)='approved')
     and not exists(select 1 from public.manual_payout_claims c where c.payout_id=q.id)
-    order by q.requested_at limit 10) r),'[]'::jsonb);
+    order by coalesce((select max(a.created_at) from public.audit_events a
+      where a.table_name='b2c_dispatches' and a.record_id=q.id::text and a.action='worker_candidate_held'),
+      '-infinity'::timestamptz),q.requested_at,q.id limit 10) r),'[]'::jsonb);
+end $$;
+create function public.b2c_candidate_hold(p_id uuid) returns void
+language plpgsql security definer set search_path='' as $$
+begin
+  perform public.b2c_require_service();
+  if not exists(select 1 from public.b2c_request_intents where payout_id=p_id) then
+    raise exception 'B2C: Automatic request required.';
+  end if;
+  perform public.b2c_audit((select wedding_id from public.manual_payout_requests where id=p_id),
+    p_id::text,'worker_candidate_held',(select updated_by from public.b2c_policy where singleton));
 end $$;
 create function public.b2c_status() returns jsonb
 language plpgsql stable security definer set search_path='' as $$
 begin
   perform public.require_staff('superadmin');
-  return coalesce((select jsonb_agg((to_jsonb(d)-array['callback_hash','msisdn'])||
-    jsonb_build_object('state',public.manual_payout_state(d.payout_id)))
-    from (select * from public.b2c_dispatches order by created_at desc limit 100) d),'[]'::jsonb);
+  return coalesce((select jsonb_agg(jsonb_build_object('id',d.id,'payout_id',r.id,
+    'policy_revision',d.policy_revision,'state',public.manual_payout_state(r.id),
+    'created_at',coalesce(d.created_at,r.requested_at)) order by r.requested_at desc)
+    from (select q.* from public.manual_payout_requests q join public.b2c_request_intents i on i.payout_id=q.id
+      order by q.requested_at desc limit 100) r
+    left join public.b2c_dispatches d on d.payout_id=r.id),'[]'::jsonb);
 end $$;
 create function public.staff_b2c_controls() returns jsonb
 language plpgsql stable security definer set search_path='' as $$
@@ -415,33 +469,92 @@ begin
   return (select jsonb_build_object('enabled',enabled,'require_four_eyes',require_four_eyes,'revision',revision)
     from public.b2c_policy where singleton);
 end $$;
-create function public.b2c_reconcile(p_id uuid,p_evidence uuid,p_reference text,p_actual bigint,p_fee bigint,
-  p_msisdn text,p_at timestamptz) returns text
+create function public.b2c_reconcile(p_id uuid,p_receipt uuid,p_evidence uuid,p_provider text,p_account uuid,
+  p_statement uuid,p_line uuid,p_reference text,p_actual bigint,p_fee bigint,p_currency text,
+  p_msisdn text,p_at timestamptz,p_booked_at timestamptz) returns text
 language plpgsql security definer set search_path='' as $$
 declare d public.b2c_dispatches; r public.manual_payout_requests; a public.manual_payout_custody; c public.manual_payout_claims;
+  existing public.manual_payout_reconciliations; receipt public.manual_payout_receipts;
 begin
-  perform public.require_staff('superadmin');
-  perform pg_advisory_xact_lock(71110001);
+  perform public.b2c_lock_staff();
   select * into strict d from public.b2c_dispatches where id=p_id;
   select * into strict r from public.manual_payout_requests where id=d.payout_id;
   perform public.manual_payout_lock(r.custody_id,r.wedding_id);
   select * into strict c from public.manual_payout_claims where payout_id=r.id and execution_channel='automatic_b2c';
   if auth.uid() in (r.requested_by,c.sender_id) then raise exception 'B2C: Independent final reconciler required.'; end if;
-  perform public.manual_payout_evidence_require(p_evidence,'receipt');
-  if public.manual_payout_state(r.id) not in ('executing','uncertain')
-    or p_actual is distinct from r.amount_minor or p_fee is distinct from r.fee_minor
-    or p_msisdn is distinct from d.msisdn or p_at is null or p_at<c.claimed_at or p_at>now()
-    or p_reference is null or upper(btrim(p_reference)) !~ '^[A-Z0-9][A-Z0-9._:-]{0,119}$' then
-    raise exception 'B2C: Exact independently checked statement receipt/amount/fee/destination required; retain holds.';
-  end if;
+  perform public.manual_payout_evidence_require(p_receipt,'receipt',false);
+  perform public.manual_payout_evidence_require(p_evidence,'reconciliation',false);
   select * into strict a from public.manual_payout_custody where id=r.custody_id;
+  if public.manual_payout_state(r.id)='paid' then
+    select * into strict existing from public.manual_payout_reconciliations where payout_id=r.id;
+    select * into strict receipt from public.manual_payout_receipts where payout_id=r.id;
+    if (existing.provider,existing.account_reference,existing.statement_reference,existing.line_reference,
+      existing.transaction_reference,existing.actual_minor,existing.actual_fee_minor,existing.currency,
+      existing.booked_at,existing.evidence_id,receipt.evidence_id,receipt.transferred_at,d.msisdn) is distinct from
+      (p_provider,p_account,p_statement,p_line,upper(btrim(p_reference)),p_actual,p_fee,p_currency,
+      p_booked_at,p_evidence,p_receipt,p_at,p_msisdn) then raise exception 'B2C: Final reconciliation is immutable.'; end if;
+    return 'paid';
+  end if;
+  if public.manual_payout_state(r.id) not in ('executing','uncertain','resolution_proposed')
+    or p_actual is distinct from r.amount_minor or p_fee is distinct from r.fee_minor
+    or (p_provider,p_account,p_currency) is distinct from (a.provider,a.account_reference,r.currency)
+    or p_statement is null or p_line is null
+    or p_msisdn is distinct from d.msisdn or p_at is null or p_at<c.claimed_at or p_at>now()
+    or p_booked_at is null or p_booked_at<p_at or p_booked_at>now()
+    or p_reference is null or upper(btrim(p_reference)) !~ '^[A-Z0-9][A-Z0-9._:-]{0,119}$' then
+    raise exception 'B2C: Exact independently checked receipt and separate statement debit/account/line/amount/fee/destination required; retain holds.';
+  end if;
+  if exists(select 1 from public.b2c_callback_events where dispatch_id=d.id and kind='result'
+    and evidence->>'result_code'='0' and evidence->>'transaction_id' is not null
+    and upper(evidence->>'transaction_id')<>upper(btrim(p_reference))) then
+    raise exception 'B2C: Conflicting correlated provider reference; retain holds and investigate.';
+  end if;
   insert into public.manual_payout_receipts(payout_id,provider,account_reference,transaction_reference,actual_minor,
     actual_fee_minor,currency,transferred_at,evidence_id)
-    values(r.id,a.provider,a.account_reference,upper(btrim(p_reference)),p_actual,p_fee,r.currency,p_at,p_evidence);
+    values(r.id,a.provider,a.account_reference,upper(btrim(p_reference)),p_actual,p_fee,r.currency,p_at,p_receipt);
+  insert into public.manual_payout_reconciliations(payout_id,provider,account_reference,statement_reference,line_reference,
+    transaction_reference,actual_minor,actual_fee_minor,currency,booked_at,evidence_id,reconciled_by,owner_solo)
+    values(r.id,a.provider,a.account_reference,p_statement,p_line,upper(btrim(p_reference)),p_actual,p_fee,
+      r.currency,p_booked_at,p_evidence,auth.uid(),false);
   insert into public.manual_payout_events(payout_id,state,actor_id,evidence_id)
-    values(r.id,'reported',auth.uid(),p_evidence),(r.id,'paid',auth.uid(),p_evidence);
+    values(r.id,'reported',auth.uid(),p_receipt),(r.id,'paid',auth.uid(),p_evidence);
   perform public.b2c_audit(r.wedding_id,r.id::text,'independent_statement_paid',auth.uid());
   return 'paid';
+end $$;
+create function public.b2c_resolve(p_id uuid,p_evidence uuid,p_confirm boolean,p_actual_fee bigint) returns text
+language plpgsql security definer set search_path='' as $$
+declare d public.b2c_dispatches; r public.manual_payout_requests; proposal public.b2c_resolution_proposals;
+  sender uuid; state text;
+begin
+  perform public.b2c_lock_staff();
+  select * into strict d from public.b2c_dispatches where id=p_id;
+  select * into strict r from public.manual_payout_requests where id=d.payout_id;
+  perform public.manual_payout_lock(r.custody_id,r.wedding_id);
+  select sender_id into strict sender from public.manual_payout_claims
+    where payout_id=r.id and execution_channel='automatic_b2c';
+  perform public.manual_payout_evidence_require(p_evidence,'no_transfer',false);
+  state:=public.manual_payout_state(r.id);
+  if p_actual_fee is distinct from 0 or p_confirm is null
+    or exists(select 1 from public.manual_payout_receipts where payout_id=r.id)
+    or exists(select 1 from public.b2c_callback_events where dispatch_id=d.id and kind='result'
+      and evidence->>'result_code'='0') then
+    raise exception 'B2C: Conclusive independent no-transfer AND zero-charge evidence required; conflicting or unknown outcomes remain held.';
+  end if;
+  if not p_confirm and state in ('executing','uncertain') then
+    insert into public.b2c_resolution_proposals(dispatch_id,evidence_id,actual_fee_minor,proposed_by)
+      values(d.id,p_evidence,0,auth.uid());
+    state:='resolution_proposed';
+  elsif p_confirm and state='resolution_proposed' then
+    select * into strict proposal from public.b2c_resolution_proposals where dispatch_id=d.id;
+    if p_evidence is distinct from proposal.evidence_id or auth.uid() in (sender,r.requested_by,proposal.proposed_by) then
+      raise exception 'B2C: A different independent resolution checker and the unchanged evidence are required.';
+    end if;
+    state:='not_transferred';
+  else raise exception 'B2C: Invalid resolution transition; retain holds.'; end if;
+  insert into public.manual_payout_events(payout_id,state,actor_id,evidence_id)
+    values(r.id,state,auth.uid(),p_evidence);
+  perform public.b2c_audit(r.wedding_id,r.id::text,state||'_no_retry_of_claim',auth.uid());
+  return state;
 end $$;
 
 -- Non-transfer onboarding uses the shared evidence/custody ledger even while both
@@ -451,8 +564,7 @@ language plpgsql security definer set search_path='' as $$
 declare result uuid; e public.manual_payout_evidence; c public.contributions;
   a public.manual_payout_custody; k public.wedding_kyc; wid uuid;
 begin
-  perform public.require_staff('superadmin');
-  perform pg_advisory_xact_lock(71110001);
+  perform public.b2c_lock_staff();
   if p_data is null or jsonb_typeof(p_data)<>'object' then raise exception 'B2C: Structured evidence fields required.'; end if;
   if p_action='evidence' then
     if p_data->>'kind'='policy' then perform public.require_staff('owner'); end if;
@@ -469,9 +581,17 @@ begin
     perform 1 from public.weddings where id=wid and client_owner_id<>auth.uid() for update;
     if not found or not public.kyc_is_complete(wid) then raise exception 'B2C: Independent current couple identity/name/consent review required.'; end if;
     select * into strict k from public.wedding_kyc where wedding_id=wid for share;
+    if p_data->>'msisdn' is null or p_data->>'msisdn' !~ '^254[17][0-9]{8}$'
+      or (p_data->>'partner')::smallint not in (1,2) or p_data->>'partner' is null
+      or p_data->>'msisdn' is distinct from
+        case when p_data->>'partner'='1' then k.partner1_phone else k.partner2_phone end then
+      raise exception 'B2C: Evidence must identify the exact reviewed partner and destination MSISDN.';
+    end if;
     insert into public.manual_payout_recipients(wedding_id,evidence_id,provider,currency,kyc_snapshot_hash,recorded_by)
       values(wid,(p_data->>'evidence')::uuid,'daraja','KES',
         encode(extensions.digest(to_jsonb(k)::text,'sha256'),'hex'),auth.uid()) returning id into result;
+    insert into public.b2c_reviewed_destinations(recipient_id,msisdn,partner_slot,reviewed_by)
+      values(result,p_data->>'msisdn',(p_data->>'partner')::smallint,auth.uid());
   elsif p_action='custody' then
     perform public.require_staff('owner');
     perform public.manual_payout_evidence_require((p_data->>'evidence')::uuid,'custody');
@@ -535,9 +655,9 @@ begin
     where n.nspname='public' and (p.proname like 'b2c_%' or p.proname in ('owner_get_b2c_policy','owner_update_b2c_policy','staff_approve_b2c','staff_b2c_controls')) loop
     execute format('revoke all on function %s from public,anon,authenticated,service_role',f.signature);
     if f.proname in ('owner_get_b2c_policy','owner_update_b2c_policy','staff_approve_b2c','staff_b2c_controls',
-      'b2c_phone_start','b2c_bind_destination','b2c_request','b2c_status','b2c_reconcile','b2c_intake','b2c_recipient_context') then
+      'b2c_phone_start','b2c_bind_destination','b2c_request','b2c_status','b2c_reconcile','b2c_resolve','b2c_intake','b2c_recipient_context') then
       execute format('grant execute on function %s to authenticated',f.signature);
-    elsif f.proname in ('b2c_claim','b2c_callback_context','b2c_event','b2c_mark_stale','b2c_candidates') then
+    elsif f.proname in ('b2c_claim','b2c_callback_context','b2c_event','b2c_mark_stale','b2c_candidates','b2c_candidate_hold') then
       execute format('grant execute on function %s to service_role',f.signature);
     end if;
   end loop;

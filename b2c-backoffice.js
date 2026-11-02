@@ -56,20 +56,37 @@
         <label>Payout request UUID<input name="payoutId" required></label>
         <label><input type="checkbox" required> Not a resend of a claimed or uncertain transfer.</label>
         <button type="submit"${policy.enabled && readiness.ready ? "" : " disabled"}>Dispatch once</button></form>
-      <h3>Execution journal</h3><p>Acceptance is not payment. Callbacks retain reservations until independent
+      <h3>Request and execution journal</h3><p>Unclaimed requests have no dispatch UUID yet.
+      Acceptance is not payment. Callbacks retain reservations until independent
       official-statement reconciliation. Timeouts and errors never authorize retry.</p>
       <div class="table-wrap"><table><thead><tr><th>Payout</th><th>Dispatch</th><th>State</th></tr></thead><tbody>
       ${dispatches.map(d => `<tr><td>${esc(d.payout_id)}</td><td>${esc(d.id)}</td><td>${esc(d.state)}</td></tr>`).join("")}
       </tbody></table></div>
       <form id="b2c-reconcile"><h3>Independent final statement reconciliation</h3>
         <label>Dispatch UUID<input name="dispatchId" required></label>
-        <label>Independently checked receipt-evidence UUID<input name="evidenceId" required></label>
+        <label>Independently checked receipt-evidence UUID<input name="receiptEvidenceId" required></label>
+        <label>Separate independently checked reconciliation-evidence UUID<input name="evidenceId" required></label>
+        <label>Provider<input name="provider" value="daraja" readonly></label>
+        <label>Canonical account UUID<input name="accountId" required></label>
+        <label>Official statement UUID<input name="statementId" required></label>
+        <label>Canonical debit line UUID<input name="lineId" required></label>
+        <label>Currency<input name="currency" value="KES" readonly></label>
         <label>Official transaction reference<input name="transactionId" required></label>
         <label>Exact destination MSISDN<input name="msisdn" pattern="254[17][0-9]{8}" required></label>
         <label>Exact principal (minor KES)<input name="amountMinor" type="number" min="100" step="100" required></label>
         <label>Exact fee (minor KES)<input name="feeMinor" type="number" min="0" step="1" required></label>
         <label>Official transfer timestamp (ISO 8601 with timezone)<input name="transferredAt" required></label>
-        <button type="submit">Reconcile exact paid receipt</button></form>
+        <label>Official debit booking timestamp (ISO 8601 with timezone)<input name="bookedAt" required></label>
+        <button type="submit">Reconcile exact receipt and separate statement debit</button></form>
+      <form id="b2c-resolve"><h3>Conclusive no-transfer resolution</h3>
+        <p>Uncertain is not failed. Official evidence must prove both no transfer and zero charge.
+        Unknown/nonzero charges or conflicting success observations remain held. A different leader must confirm.</p>
+        <label>Dispatch UUID<input name="dispatchId" required></label>
+        <label>Independently checked no-transfer/zero-charge evidence UUID<input name="evidenceId" required></label>
+        <label>Decision<select name="decision"><option value="propose">Propose (hold retained)</option>
+          <option value="confirm">Independently confirm final no-transfer</option></select></label>
+        <label><input type="checkbox" required> Evidence explicitly proves no transfer AND zero fee; this does not authorize resending the claim.</label>
+        <button type="submit">Record evidence-backed resolution</button></form>
       <p id="b2c-notice" class="notice" role="status" aria-live="polite"></p>`;
     el.querySelector("#b2c-policy").hidden = !owner;
     if (owner) {
@@ -98,6 +115,7 @@
     submit("#b2c-approve", "approve", v => v);
     submit("#b2c-dispatch", "dispatch", v => ({ ...v, idempotencyKey: crypto.randomUUID() }));
     submit("#b2c-reconcile", "reconcile", v => ({ ...v, amountMinor: Number(v.amountMinor), feeMinor: Number(v.feeMinor) }));
+    submit("#b2c-resolve", "resolve", v => ({ ...v, confirmResolution: v.decision === "confirm", actualFeeMinor: 0 }));
     el.querySelector("#b2c-stop").addEventListener("click", async () => {
       try {
         await request("policy-save", { revision: policy.revision, changes: { enabled: false },

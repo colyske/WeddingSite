@@ -52,7 +52,8 @@ begin
       'Synthetic Two','passport','SYN2','Kenyan','254700000002','two@example.test',now());
   perform pg_temp.b2c_reject(format('select public.b2c_request(%L,%L,%L,%L,10000)',key,wid,extensions.gen_random_uuid(),extensions.gen_random_uuid()),'Couple account');
   evidence:=pg_temp.b2c_evidence('recipient',owner_id,staff_id);
-  recipient:=(public.b2c_intake('recipient',jsonb_build_object('wedding',wid,'evidence',evidence))->>'id')::uuid;
+  recipient:=(public.b2c_intake('recipient',jsonb_build_object('wedding',wid,'evidence',evidence,
+    'msisdn','254700000001','partner',1))->>'id')::uuid;
   perform set_config('request.jwt.claim.sub',client_id::text,true);
   update auth.users set phone_confirmed_at=null where id=client_id;
   perform pg_temp.b2c_reject(format('select public.b2c_bind_destination(%L)',recipient),'Verified current phone');
