@@ -73,9 +73,8 @@ begin
     jsonb_set(f.payload,'{starterSetup,campaigns,0,milestones,0,targetMinor}','15000001'::jsonb));
   exception when raise_exception then blocked := sqlerrm like 'Starter amount is outside allowed limits.%'; end;
   if not blocked then raise exception 'Invalid late milestone was accepted'; end if;
-  if exists(select 1 from public.weddings where client_owner_id=f.owner_id) or
-      exists(select 1 from public.wedding_create_requests where client_owner_id=f.owner_id and request_key=f.key) then
-    raise exception 'Late starter failure left a partial draft or request';
+  if exists(select 1 from public.weddings where client_owner_id=f.owner_id) then
+    raise exception 'Late starter failure left a partial draft';
   end if;
 end $$;
 reset role;
@@ -84,6 +83,10 @@ begin
   if not exists(select 1 from public.wedding_starter_capability_proofs p join starter_fixture f
       on p.client_owner_id=f.owner_id and p.request_key=f.key) then
     raise exception 'Failed transaction consumed its proof';
+  end if;
+  if exists(select 1 from public.wedding_create_requests r join starter_fixture f
+      on r.client_owner_id=f.owner_id and r.request_key=f.key) then
+    raise exception 'Late starter failure left a partial request';
   end if;
 end $$;
 set local role service_role;
