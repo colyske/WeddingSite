@@ -79,7 +79,150 @@
       return crypto.randomUUID();
     }
   }
-  const requestKey = createRequestKey();
+  let requestKey = createRequestKey();
+  const starterKey = "ws-starter-choice";
+  let selectedStarter = null, pendingStarter = null, starterLoading = false, currencies = [];
+  function rememberStarter() {
+    try { sessionStorage.setItem(starterKey, JSON.stringify({
+      source: selectedStarter?.source, snapshot: selectedStarter,
+      currency: $("starter-currency").value, names: $("couple-names").value, requestKey
+    })); }
+    catch (error) { setNotice(`Could not keep your starter choice in this tab: ${error.message}`, "bad"); }
+  }
+  function starterConfig() {
+    if (!selectedStarter) return null;
+    const currency = $("starter-currency").value;
+    let setup = selectedStarter.inspirationId
+      ? WSStarterSetup.fictional(selectedStarter.inspirationId, currency)
+      : WSStarterSetup.clone(selectedStarter.setup);
+    const retain = selectedStarter.inspirationId ? WSStarterSetup.hasSamples(currency) : setup.currency === currency;
+    if (!retain) {
+      setup.reviewNote = `At creation, source prices were NOT copied into ${currency || "the new currency"}: ` +
+        `${setup.tiers.length} sponsor packages, ${setup.registry.length} registry goals, ${setup.campaigns.length} fundraising goals and their milestones, ` +
+        `${setup.vip ? "the VIP offer" : "no VIP offer"}, ${setup.featured ? "the featured sponsor structure" : "no featured sponsor structure"}, and RSVP/extra-guest/premium-meal fees. ` +
+        "Priced offerings/goals were omitted, not converted. Add your own offerings, goals and fees using the guide links below. Event outlines, meal options, feature preferences and guest prompts still need personalization.";
+      // These schemas require actual prices/targets. Do not invent nominal prices or
+      // relabel another currency; the shared editor can add new offerings later.
+      setup = WSStarterSetup.clearMoney(setup, currency);
+      setup.tiers = []; setup.campaigns = []; setup.registry = []; setup.vip = null; setup.featured = null;
+      setup.rsvp.fee = setup.rsvp.extraGuestFee = setup.rsvp.premiumDietFee = "0";
+    }
+    setup.currency = currency;
+    setup.reviewed = $("starter-reviewed").checked;
+    return setup;
+  }
+  function renderStarterReview() {
+    $("inspiration-selection").hidden = !selectedStarter && !pendingStarter;
+    $("apply-inspiration").hidden = !pendingStarter;
+    $("keep-current-answers").hidden = !pendingStarter;
+    $("starter-review").hidden = !selectedStarter;
+    const item = pendingStarter || selectedStarter;
+    if (!item) return;
+    $("inspiration-selection-copy").textContent = pendingStarter
+      ? "Your existing names and saved answers have not been replaced. Choose explicitly whether to use this new starting point."
+      : selectedStarter.inspirationId
+        ? "Author-owned fictional inspiration, not customers, donations or paid sponsorships. Examples are illustrative and editable."
+        : "Public reusable configuration only. Public visibility is not permission to copy personal content: neutral prompts replace personal stories, photos, event details and original writing.";
+    if (!selectedStarter) return;
+    const config = starterConfig(), code = $("starter-currency").value;
+    const retained = selectedStarter.inspirationId ? WSStarterSetup.hasSamples(code) : selectedStarter.setup.currency === code;
+    $("starter-money-disclosure").textContent = !code
+      ? "Choose a currently supported currency before accepting any numeric money configuration."
+      : retained
+        ? `${code}: ${selectedStarter.inspirationId ? "hand-authored illustrative prices and goals (not an FX conversion)" : "same-currency public prices and goals"}. Review below; all settings remain editable in your private guide. No received amounts or activity are copied.`
+        : `${code}: all source prices/goals were omitted, not converted or relabelled. Priced offerings and goals are not created; add your own amounts in the shared guide. Free RSVP defaults and generic guidance remain.`;
+    const price = value => `${esc(code || "currency not chosen")} ${esc(value || "not set")}`;
+    $("starter-summary").innerHTML = `<p>${selectedStarter.venues.length} event outlines (dates, times, addresses and maps blank). Attire, travel and FAQ ${selectedStarter.inspirationId ? "illustrative examples" : "neutral prompts"}.</p>` +
+      `<p>RSVP fees: ${price(config.rsvp.fee)}; extra guest: ${price(config.rsvp.extraGuestFee)}; premium meal: ${price(config.rsvp.premiumDietFee)}. ${config.rsvp.premiumDietOptions.length} editable meal choices.</p>` +
+      `<ul>${config.tiers.map(tier => `<li>Package: ${esc(tier.name)} — ${price(tier.minAmount)}; ${esc(tier.perks)}</li>`).join("")}` +
+      `${config.registry.map(item => `<li>Registry: ${esc(item.name)} — target ${price(item.target)}</li>`).join("")}` +
+      `${config.campaigns.map(goal => `<li>Goal: ${esc(goal.name)} — ${price(goal.goal)}; ${goal.milestones.map(m => `${esc(m.name)}: ${price(m.target)}`).join("; ")}</li>`).join("")}` +
+      `${config.vip ? `<li>Seating: ${esc(config.vip.seats)} seats at ${price(config.vip.price)}; none sold.</li>` : ""}</ul>` +
+      (config.featured ? `<p>Featured sponsorship structure: ${esc(config.featured.slots)} slots, minimum ${price(config.featured.minimum)}, increment ${price(config.featured.increment)}. Disabled with blank dates until you configure your own campaign window.</p>` : "") +
+      "<p>No guests, responses, helpers, purchased packages, transactions, bids, received funds, payment/provider settings, referral settings or publication state are copied. No suggested contribution or bid amounts are added.</p>";
+  }
+  async function checkStarterCurrencies(savedCurrency = $("starter-currency").value) {
+    currencies = [];
+    $("starter-currency").replaceChildren(new Option("Checking supported currencies…", ""));
+    $("starter-reviewed").checked = false;
+    try {
+      const response = await WS.api("/api/weddings?action=collection-capabilities");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not check collection support.");
+      if (!Array.isArray(data.currencies) || data.currencies.some(item =>
+        !item || !WSCurrencies.supportsAccounting(item.code) || typeof item.name !== "string" ||
+        !Array.isArray(item.methods) || !item.methods.length)) throw new Error("Collection currency support could not be verified.");
+      currencies = data.currencies;
+      if (!currencies.length) throw new Error("No collection currencies are currently ready. Your answers are kept; starter creation is paused.");
+    } catch (error) { setNotice(error.message, "bad"); }
+    $("starter-currency").replaceChildren(new Option("Choose a supported currency", ""),
+      ...currencies.map(item => new Option(`${item.code} - ${item.name}`, item.code)));
+    if (currencies.some(item => item.code === savedCurrency)) $("starter-currency").value = savedCurrency;
+    renderStarterReview();
+  }
+  async function chooseStarter(item, { restore = false, currency = "" } = {}) {
+    selectedStarter = item; pendingStarter = null;
+    if (!restore) {
+      requestKey = crypto.randomUUID();
+      try { sessionStorage.setItem(createKey, requestKey); } catch (error) { setNotice(error.message, "bad"); }
+    }
+    if ($("include-legacy-answers")) $("include-legacy-answers").checked = false;
+    $("starter-reviewed").checked = false;
+    renderStarterReview();
+    await checkStarterCurrencies(currency);
+    rememberStarter();
+  }
+  async function loadStarter(source) {
+    if (source.inspirationId) {
+      if (!WSInspiration.get(source.inspirationId)) throw new Error("That fictional inspiration style is unavailable.");
+      return { source, inspirationId: source.inspirationId, ...WSInspiration.starter(source.inspirationId) };
+    }
+    if (typeof source.styleSlug !== "string" || !/^[a-z0-9-]{3,80}$/.test(source.styleSlug)) throw new Error("Choose an eligible public wedding.");
+    const response = await fetch(`/api/guest?action=style&slug=${encodeURIComponent(source.styleSlug)}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "This public wedding is unavailable for reuse.");
+    return { source, ...data.style, setup: WSStarterSetup.restoreEditable(data.style.setup) };
+  }
+  async function initializeStarter() {
+    starterLoading = true; renderSubmit();
+    try {
+      let saved = null;
+      try {
+        const text = sessionStorage.getItem(starterKey);
+        if (text) saved = JSON.parse(text);
+      } catch (error) { throw new Error(`Could not restore this tab's starter selection: ${error.message}`); }
+      if (saved?.source) {
+        if (!$("couple-names").value && typeof saved.names === "string") $("couple-names").value = saved.names;
+        if (/^[0-9a-f-]{36}$/i.test(saved.requestKey || "")) requestKey = saved.requestKey;
+        const snapshot = saved.snapshot;
+        if (snapshot && Array.isArray(snapshot.palette) && snapshot.palette.length === 4 &&
+            snapshot.palette.every(color => /^#[0-9a-f]{6}$/i.test(color)) &&
+            Array.isArray(snapshot.venues) && snapshot.venues.length <= 30) {
+          if (snapshot.setup) snapshot.setup = WSStarterSetup.restoreEditable(snapshot.setup);
+          await chooseStarter(snapshot, { restore: true, currency: saved.currency });
+        } else await chooseStarter(await loadStarter(saved.source), { restore: true, currency: saved.currency });
+      }
+      const params = new URLSearchParams(location.search);
+      const inspirationId = params.get("inspiration"), styleSlug = params.get("style");
+      if (inspirationId && styleSlug) throw new Error("Choose one starter source at a time.");
+      if (inspirationId || styleSlug) {
+        const initialNames = $("couple-names").value;
+        const item = await loadStarter(inspirationId ? { inspirationId } : { styleSlug });
+        if (saved || legacyAnswers || initialNames || $("couple-names").value !== initialNames) {
+          pendingStarter = item; renderStarterReview();
+        } else await chooseStarter(item);
+        const url = new URL(location.href);
+        url.searchParams.delete("inspiration"); url.searchParams.delete("style");
+        history.replaceState(null, "", url);
+      }
+    } catch (error) { setNotice(`${error.message} Your existing answers are kept.`, "bad"); }
+    finally { starterLoading = false; renderSubmit(); }
+  }
+  $("apply-inspiration").addEventListener("click", () => chooseStarter(pendingStarter));
+  $("keep-current-answers").addEventListener("click", () => { pendingStarter = null; renderStarterReview(); });
+  $("starter-currency").addEventListener("change", () => { $("starter-reviewed").checked = false; renderStarterReview(); rememberStarter(); });
+  $("starter-capabilities-retry").addEventListener("click", () => checkStarterCurrencies());
+  $("couple-names").addEventListener("input", () => { if (selectedStarter) rememberStarter(); });
 
   async function loadReferralDisclosure() {
     referralReady = false;
@@ -112,7 +255,7 @@
   });
 
   function renderSubmit() {
-    $("create-submit").disabled = state.submitting || !!state.created;
+    $("create-submit").disabled = state.submitting || !!state.created || starterLoading;
     $("create-submit").textContent = state.created
       ? "Draft created" : state.submitting ? "Creating your draft…" : "Create draft and continue setup";
   }
@@ -171,9 +314,9 @@
       .map(venue => ({
         name: venue.name.trim(), time: venue.time, eventDate: venue.eventDate || fields.date || null,
         address: venue.address.trim(), map: venue.map.trim(), description: venue.description.trim(),
-        isMain: venue.id === saved.mainVenueId
+        isMain: venue.id === saved.mainVenueId, kind: venue.kind === "pre" ? "pre" : "main"
       }));
-    return {
+    const payload = {
       requestKey,
       coupleNames: names.trim(),
       weddingDate: fields.date || null,
@@ -184,11 +327,17 @@
       palette: saved ? [...saved.palette] : [...DEFAULT_PALETTE],
       venues
     };
+    if (selectedStarter) Object.assign(payload, selectedStarter.source, {
+      currency: $("starter-currency").value, palette: [...selectedStarter.palette],
+      weddingDate: null, location: "", venues: WSStarterSetup.clone(selectedStarter.venues),
+      starterSetup: starterConfig()
+    });
+    return payload;
   }
 
   async function submitCreate(event) {
     event.preventDefault();
-    if (state.submitting || state.created) return;
+    if (state.submitting || state.created || starterLoading) return;
     const names = $("couple-names").value.trim();
     $("couple-names").removeAttribute("aria-invalid");
     if (!names) {
@@ -202,6 +351,15 @@
       return setNotice("Please keep the names within 120 characters.", "bad", $("couple-names"));
     }
     if (!window.WS.token()) return setNotice("Your sign-in has expired. Sign in again; your answers have not been sent.", "bad");
+    if (selectedStarter) {
+      const code = $("starter-currency").value;
+      if (!currencies.some(item => item.code === code)) return setNotice("Choose a currently supported currency before creating this starter.", "bad");
+      try { WSStarterSetup.normalize(starterConfig(), code); }
+      catch (error) { return setNotice(error.message, "bad", $("starter-reviewed")); }
+    }
+    state.submitting = true;
+    renderSubmit();
+    try {
     if (!referralReady) {
       try { await loadReferralDisclosure(); }
       catch (error) { return setNotice(`${error.message} Your answers are still on this page.`, "bad"); }
@@ -215,10 +373,7 @@
       intentId: referralDisclosure.intent_id, decision: $("client-referral-decision").value,
       revision: referralDisclosure.revision, termsVersion: referralDisclosure.terms_version
     };
-    state.submitting = true;
-    renderSubmit();
     setNotice("Creating your private wedding draft…");
-    try {
       const response = await WS.api("/api/weddings?action=create", {
         method: "POST", body: JSON.stringify(payload)
       });
@@ -237,6 +392,7 @@
       $("client-referral-disclosure").hidden = true;
       try {
         sessionStorage.removeItem(createKey);
+        sessionStorage.removeItem(starterKey);
         if ($("include-legacy-answers")?.checked) sessionStorage.removeItem(legacyAnswersKey);
       } catch (error) { console.error("Could not clear saved create answers:", error); }
       setNotice("Your draft is saved. Opening the wedding guide…", "good");
@@ -316,10 +472,12 @@
   });
 
   if (!WS.token()) {
-    WSReferrals.prepare().then(() => location.replace("/signin.html"))
+    const next = "/dashboard.html" + location.search + location.hash;
+    WSReferrals.prepare().then(() => location.replace(next === "/dashboard.html" ? "/signin.html" : "/signin.html?next=" + encodeURIComponent(next)))
       .catch(error => { $("client-referral-dismiss").hidden = false; setNotice(error.message, "bad"); });
   } else {
     prepareLegacyAnswerChoice();
+    initializeStarter();
     loadWeddings();
     loadReferralDisclosure().catch(error => setNotice(`${error.message} Your draft details are kept.`, "bad"));
   }

@@ -51,7 +51,7 @@ test("first valid client link survives sign-in and later codes cannot overwrite 
   });
   await page.route("**/api/weddings*", route => fulfill(route, { weddings: [] }));
   await page.goto(`${base}/dashboard.html?client_ref=${code}`);
-  await page.waitForURL("**/signin.html");
+  await page.waitForURL(url => url.pathname === "/signin.html");
   assert.equal(await page.evaluate(() => sessionStorage.getItem("ws-client-referral")), code);
   await page.evaluate(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "actor-token", role: "client" })));
   await page.goto(`${base}/dashboard.html?client_ref=${"b".repeat(32)}`);
