@@ -161,8 +161,10 @@ test("Account Settings link is accessible from wedding editor", { skip }, async 
 });
 
 test("Create wedding auto-navigates after success", { skip }, async () => {
+  const createRequests = [];
   const { page, close } = await openDashboard({
     create: async (route, body) => {
+      createRequests.push(body);
       return route.fulfill({ 
         status: 201, 
         contentType: "application/json", 
@@ -174,34 +176,16 @@ test("Create wedding auto-navigates after success", { skip }, async () => {
     }
   });
   
-  // Fill in the form
-  await page.locator("[data-guide-all]").click();
+  // Draft creation collects only the couple names; the shared guide handles the rest.
   await page.fill("#couple-names", "Sarah & John");
-  await page.fill("#location", "Nairobi");
-  await page.fill("#wedding-date", "2027-06-12");
-  await page.waitForFunction(() => [...document.querySelectorAll('[data-venue-field="eventDate"]')].every(input => input.value === "2027-06-12"));
-  await page.locator("[data-venue-field=name]").first().fill("Church");
-  await page.locator("[data-venue-field=time]").first().fill("10:00");
-  await page.locator("[data-venue-field=address]").first().fill("Nairobi Cathedral");
-  
-  // Wait for the create button to be ready
-  await page.waitForSelector("#create-submit");
-  
-  // Submit the form
-  const navigationPromise = page.waitForURL("**/wedding.html?*");
+  const navigationPromise = page.waitForURL(url =>
+    url.pathname === "/wedding.html" && url.searchParams.get("id") === "550e8400-e29b-41d4-a716-446655440001"
+  );
   await page.click("#create-submit");
-  
-  try {
-    await navigationPromise;
-    assert.ok(page.url().includes("wedding.html"), "Should navigate to wedding.html after creating");
-    assert.ok(page.url().includes("550e8400-e29b-41d4-a716-446655440001"), "URL should contain wedding ID");
-  } catch (e) {
-    // Navigation might not happen if there's an error; just verify success message shows
-    const createdElement = await page.locator("#created");
-    const isVisible = await createdElement.isVisible();
-    assert.ok(isVisible, "Created message should be visible");
-  }
-  
+  await navigationPromise;
+  assert.equal(createRequests.length, 1, "one private draft should be created");
+  assert.equal(createRequests[0].coupleNames, "Sarah & John");
+  assert.equal(new URL(page.url()).searchParams.get("slug"), "sarah-john");
   await close();
 });
 

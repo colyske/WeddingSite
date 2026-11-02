@@ -36,13 +36,7 @@ async function context(authenticated = true) {
   return { ctx, page };
 }
 async function fillWedding(page) {
-  await page.locator("[data-guide-all]").click();
   await page.fill("#couple-names", "Local couple");
-  await page.fill("#location", "Nairobi");
-  await page.fill("#wedding-date", "2027-06-12");
-  await page.locator('[data-venue-field="name"]').first().fill("Venue");
-  await page.locator('[data-venue-field="time"]').first().fill("10:00");
-  await page.locator('[data-venue-field="address"]').first().fill("Local address");
 }
 
 test("first valid client link survives sign-in and later codes cannot overwrite it", { skip }, async () => {
@@ -64,7 +58,7 @@ test("first valid client link survives sign-in and later codes cannot overwrite 
   await page.waitForSelector("#client-referral-disclosure", { state: "visible" });
   assert.deepEqual(captured, [code]);
   assert.match(await page.textContent("#client-referral-details"), /8\.88%/);
-  assert.match(await page.textContent("#client-referral-details"), /HELD and unpayable/);
+  assert.match(await page.textContent("#client-referral-details"), /held and unpayable/i);
   assert.equal(new URL(page.url()).search, "");
   await ctx.close();
 });
@@ -87,12 +81,22 @@ test("couple declines atomically; stale disclosure requires another deliberate d
   assert.equal(creations.length, 0);
   await page.selectOption("#client-referral-decision", "decline");
   await page.click("#create-submit");
-  await page.waitForFunction(() => document.querySelector("#notice").textContent.includes("policy changed"));
+  await page.waitForFunction(() =>
+    document.querySelector("#notice")?.textContent.includes("policy changed") ||
+    location.pathname.includes("wedding.html") || location.pathname.includes("signin.html"));
+  const retryState = await page.evaluate(() => ({
+    path: location.pathname,
+    notice: document.querySelector("#notice")?.textContent,
+    created: document.querySelector("#created")?.textContent
+  }));
+  assert.match(retryState.notice || "", /policy changed/i,
+    `stale disclosure should preserve the form and show its error: ${JSON.stringify({ retryState, creations })}`);
   assert.equal(await page.inputValue("#couple-names"), "Local couple");
   assert.equal(await page.inputValue("#client-referral-decision"), "");
   await page.selectOption("#client-referral-decision", "decline");
   await page.click("#create-submit");
-  await page.waitForFunction(() => document.querySelector("#created").textContent.includes("Local couple"));
+  await page.waitForURL(`**/wedding.html?id=${uuid}&slug=local-couple#step=couple`);
+  assert.equal(creations.length, 2, "one stale attempt and one confirmed retry create exactly one draft");
   assert.equal(creations[1].referral.decision, "decline");
   assert.equal(creations[1].referral.revision, revision);
   assert.equal(creations[1].requestKey, creations[0].requestKey, "stale referral retry retains the creation key");

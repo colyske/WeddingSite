@@ -79,7 +79,7 @@ test("authenticated correction and staff reason/review surfaces never auto-publi
     assert.match(await page.locator("#moderation-details").innerText(), /<venue>/, "reasons rendered as text, not markup");
     assert.ok(await page.locator("#publish-btn").isHidden());
     await page.locator("#edit-form").evaluate(form => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-    await page.waitForFunction(() => document.getElementById("notice").textContent === "Changes saved.");
+    await page.waitForFunction(() => document.getElementById("notice").textContent === "Your wedding details and setup answers are saved.");
     assert.ok(await page.locator("#moderation-form").isVisible(), "saving corrections retains the moderation response form");
     await page.locator("#moderation-note").fill("I corrected the address and the map.");
     await page.locator("#moderation-submit").click();

@@ -11,7 +11,22 @@
 .guide-heading:focus { outline: 2px solid var(--gold, #be9b52); outline-offset: 4px; }
 [data-guide-step][hidden] { display: none !important; }
 [data-guide-step] { min-width: 0; }
-.guide-actions { border-top: 1px solid #d0d5cc; margin-top: 1rem; padding-top: 1rem; }
+.guide-actions {
+  position: fixed; z-index: 1000; left: 0; right: 0; bottom: var(--guide-viewport-bottom, 0px);
+  justify-content: center; border-top: 1px solid #d0d5cc; margin: 0; padding: .65rem max(1rem, calc((100vw - 1060px) / 2));
+  padding-bottom: max(.65rem, env(safe-area-inset-bottom)); background: #fff;
+  box-shadow: 0 -4px 16px rgba(32, 58, 49, .12);
+}
+.guide-actions button { min-height: 44px; }
+.guide-actions [data-guide-save] { font-weight: 700; }
+.guide-actions [data-guide-next]:disabled, .guide-actions [data-guide-skip]:disabled { opacity: .55; }
+body:has(.guide-actions) { padding-bottom: 5.5rem; }
+body:has(.guide-actions) #ws-fb-toast {
+  bottom: calc(5.5rem + env(safe-area-inset-bottom) + var(--guide-viewport-bottom, 0px)) !important;
+  pointer-events: none;
+}
+.guide-heading { scroll-margin-block: 1rem 7rem; }
+.guide-heading:focus { scroll-margin-bottom: 7rem; }
 .guide-review-list { display: grid; gap: .75rem; padding-left: 1.25rem; }
 .guide-review-list a { font-weight: 600; }
 .guide-review-list p { margin: .25rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -32,7 +47,9 @@
   .guide-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .guide-nav button { padding: .6rem; }
   .guide-nav small { white-space: normal; }
-  .guide-actions button { flex: 1 1 100px; }
+  .guide-actions { gap: .35rem; padding-inline: .5rem; }
+  .guide-actions button { flex: 1 1 0; min-width: 0; padding-inline: .35rem; font-size: .9rem; }
+  body:has(.guide-actions) { padding-bottom: 6rem; }
   [data-guide-step] input, [data-guide-step] select, [data-guide-step] textarea { max-width: 100%; box-sizing: border-box; }
 }
 @media (min-width: 768px) and (max-width: 1023px) {
@@ -41,4 +58,9 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .guide-heading, .guide-nav button { transition: none !important; scroll-behavior: auto; }
+}
+@media (max-height: 500px) {
+  .guide-actions { position: static; box-shadow: none; padding-inline: 0; }
+  body:has(.guide-actions) { padding-bottom: 0; }
+  body:has(.guide-actions) #ws-fb-toast { bottom: 1.5rem !important; }
 }

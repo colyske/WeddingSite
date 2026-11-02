@@ -9,53 +9,59 @@
     const date = new Date(`${text}T00:00:00Z`);
     return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text;
   };
-  const validColor = value => /^#[0-9a-f]{6}$/i.test(String(value || ""));
+  const validCover = value => {
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" && !url.username && !url.password;
+    } catch { return false; }
+  };
 
   function calculate(wedding = {}) {
     const venues = Array.isArray(wedding.venues) ? wedding.venues : [];
-    const palette = Array.isArray(wedding.palette) ? wedding.palette.filter(validColor) : [];
-    const site = wedding.siteContent || {};
-    const story = wedding.welcome_story || site.story_draft || site.story_approved;
-    const travel = site.travel_notes || site.travel_approved || wedding.travel_info;
+    const features = wedding.revenue_features || {};
+    const campaigns = Array.isArray(wedding.campaigns) ? wedding.campaigns : [];
+    const registry = Array.isArray(wedding.registry) ? wedding.registry : [];
+    const tiers = Array.isArray(wedding.tiers) ? wedding.tiers : [];
+    const capabilities = Array.isArray(wedding.collectionCapabilities) ? wedding.collectionCapabilities : [];
     const hasEvent = venues.some(venue => venue.kind !== "pre") && venues.every(venue =>
       validText(venue.name) && validText(venue.event_time) && validDate(venue.event_date) && validText(venue.address));
-    const paidFeatures = Number(wedding.rsvp_fee_minor) > 0 || Number(wedding.extra_guest_fee_minor) > 0 ||
-      Number(wedding.premium_diet_fee_minor) > 0 || (Array.isArray(wedding.registry) && wedding.registry.length > 0) ||
-      (Array.isArray(wedding.campaigns) && wedding.campaigns.some(campaign => campaign.enabled !== false)) ||
-      (Array.isArray(wedding.tiers) && wedding.tiers.length > 0) || Boolean(wedding.vip);
-    const hasDirections = venues.some(venue => validText(venue.address) || validText(venue.map_link));
+    const supportedCurrency = capabilities.some(currency =>
+      currency.code === wedding.currency && Array.isArray(currency.methods) && currency.methods.length > 0);
+    const hasFundraisingRoute = supportedCurrency && (
+      features.song_requests === true ||
+      features.giving !== false && (registry.length > 0 || campaigns.some(campaign => campaign.enabled !== false)) ||
+      features.sponsors !== false && tiers.length > 0 ||
+      features.vip_seating !== false && Number(wedding.vip?.price_minor) > 0
+    );
     const publishRequired = [
-      { id: "couple-names", label: "Add the couple names and a valid site address", complete: validText(wedding.couple_names) && validSlug(wedding.slug), anchor: "couple-names" },
-      { id: "wedding-date", label: "Set the wedding date", complete: validDate(wedding.wedding_date), anchor: "wedding-date" },
-      { id: "location", label: "Add the wedding location", complete: validText(wedding.public_location), anchor: "location" },
-      { id: "venues-section", label: "Complete every event's name, date, time and street address, including a wedding-day event", complete: hasEvent, anchor: "venues-section" }
+      { id: "couple-names", label: "Add the couple names and a site address",
+        complete: validText(wedding.couple_names) && validSlug(wedding.slug), anchor: "couple" },
+      { id: "wedding-date", label: "Set the wedding date",
+        complete: validDate(wedding.wedding_date), anchor: "date" },
+      { id: "venues-section", label: "Add a complete wedding-day event with a name, date, time and street address",
+        complete: hasEvent, anchor: "venues" },
+      { id: "welcome-story", label: "Write a short welcome story",
+        complete: validText(wedding.welcome_story), anchor: "couple" },
+      { id: "cover-image-url", label: "Add a public HTTPS cover photo",
+        complete: validCover(wedding.cover_image_url), anchor: "couple" },
+      { id: "guest-instructions", label: "Tell guests what they need to know before RSVPing",
+        complete: validText(wedding.guest_instructions), anchor: "guests" },
+      { id: "fundraising-route", label: "Set up a fundraising option in a currency with a configured guest-payment option",
+        complete: hasFundraisingRoute, anchor: supportedCurrency ? "giving" : "money",
+        help: supportedCurrency ? "A guest-payment option is configured for this currency; payout readiness is separate." :
+          "No live guest-payment option is currently ready for this currency. We never convert amounts or enable payment methods automatically." }
     ].map(item => ({ ...item, required: true }));
     const optional = [
-      { id: "welcome-story", label: "Write a welcome story", complete: validText(story), anchor: "welcome-story" },
-      { id: "palette-preview", label: "Choose a wedding theme palette", complete: palette.length > 0, anchor: "palette-preview",
-        help: "Optional; a palette can be removed entirely." },
-      { id: "venues-section", label: "Add an address or map link for directions", complete: hasDirections, anchor: "venues-section" },
-      { id: "travel-info", label: "Add travel information for guests", complete: validText(travel), anchor: "travel-info" }
+      { id: "palette-preview", label: "Choose a wedding theme palette",
+        complete: Array.isArray(wedding.palette) && wedding.palette.length > 0, anchor: "theme" },
+      { id: "travel-info", label: "Add travel information",
+        complete: validText(wedding.siteContent?.travel_notes || wedding.siteContent?.travel_approved || wedding.travel_info), anchor: "extras" },
+      { id: "faq", label: "Answer common guest questions",
+        complete: Array.isArray(wedding.faq) && wedding.faq.length > 0, anchor: "extras" },
     ].map(item => ({ ...item, required: false }));
-    const payoutItem = paidFeatures ? [{
-      id: "payout-method", label: "Prepare a receiving option for payouts",
-      complete: wedding.payout?.verified === true, anchor: "payout-method",
-      required: false,
-      help: "Payout readiness is separate from publishing; both partners’ identity details may be needed."
-    }] : [];
-    const items = [...publishRequired, ...payoutItem, ...optional];
-    const completed = items.filter(item => item.complete).length;
-    const percent = items.length ? Math.round(completed / items.length * 100) : 0;
+    const items = [...publishRequired, ...optional];
     const requiredReady = publishRequired.every(item => item.complete) && !wedding.archived_at;
-    return {
-      items, percent, completed, total: items.length, requiredReady,
-      nextStep: items.find(item => !item.complete) || null
-    };
-  }
-
-  function colorAt(percent) {
-    const hue = 28 + Math.max(0, Math.min(100, percent)) * 1.05;
-    return `hsl(${hue} 78% 42%)`;
+    return { items, requiredReady, nextStep: items.find(item => !item.complete) || null };
   }
 
   function render(target, wedding, { compact = false, editorUrl = "" } = {}) {
@@ -64,55 +70,37 @@
       const style = document.createElement("style");
       style.id = "ws-setup-styles";
       style.textContent = `
-        .ws-setup-summary{display:flex;align-items:center;gap:1rem;margin:.5rem 0 1rem}
-        .ws-setup-ring{width:88px;height:88px;flex:0 0 88px;border-radius:50%;display:grid;place-items:center;
-          background:conic-gradient(var(--ws-progress-color) var(--ws-progress),#e5e5dd 0);position:relative}
-        .ws-setup-ring:before{content:"";position:absolute;inset:9px;border-radius:50%;background:#fff}
-        .ws-setup-ring span{position:relative;font-size:1.15rem;font-weight:700;color:#27382e}
-        .ws-setup-copy{display:grid;gap:.22rem}
-        .ws-setup-copy strong{font-size:1.05rem}
-        .ws-ready{color:#26723c;font-weight:700}.ws-needs-attention{color:#9a4a12;font-weight:700}
-        .ws-setup-next,.ws-setup-checklist a{color:inherit;text-decoration:underline;text-underline-offset:2px}
-        .ws-setup-checklist{list-style:none;padding:0;display:grid;gap:.65rem}
-        .ws-setup-checklist li{display:flex;gap:.6rem;align-items:flex-start}
-        .ws-setup-checklist li.complete{color:#285d39}.ws-setup-checklist li.incomplete{color:#6e461e}
-        .ws-checkmark{font-size:1.15rem;font-weight:700;line-height:1.2}
-        .ws-setup-checklist small{display:block;color:#66736a;margin-top:.15rem}
-        .ws-setup-footnote{font-size:.84rem;color:#6b756e;margin:.5rem 0}
-        @media(prefers-reduced-motion:reduce){.ws-setup-ring{transition:none!important}}
+        .ws-readiness h2{margin-top:0}.ws-readiness p{max-width:70ch}
+        .ws-readiness-list{list-style:none;padding:0;display:grid;gap:.7rem}
+        .ws-readiness-list li{display:flex;gap:.6rem;align-items:flex-start}
+        .ws-readiness-list li.complete{color:#285d39}.ws-readiness-list li.incomplete{color:#6e461e}
+        .ws-readiness-mark{font-size:1.15rem;font-weight:700;line-height:1.2}
+        .ws-readiness-list small{display:block;color:#66736a;margin-top:.15rem}
+        .ws-readiness-footnote{font-size:.84rem;color:#6b756e}
       `;
       document.head.appendChild(style);
     }
-    const progress = calculate(wedding);
-    const color = colorAt(progress.percent);
-    const list = compact ? progress.items.filter(item => !item.complete).slice(0, 2) : progress.items;
-    const nextHref = item => `${editorUrl || ""}#${encodeURIComponent(item.anchor)}`;
+    const readiness = calculate(wedding);
+    const list = compact ? readiness.items.filter(item => item.required && !item.complete) : readiness.items;
+    const href = item => `${editorUrl || ""}#step=${encodeURIComponent(item.anchor)}`;
     target.innerHTML = `
-      <div class="ws-setup-summary">
-        <div class="ws-setup-ring" role="progressbar" aria-label="Wedding site setup completion"
-          aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress.percent}"
-          aria-valuetext="${progress.percent}% complete; ${progress.completed} of ${progress.total} setup steps"
-          style="--ws-progress:${progress.percent}%;--ws-progress-color:${color}">
-          <span>${progress.percent}%</span>
-        </div>
-        <div class="ws-setup-copy">
-          <strong>Wedding site setup</strong>
-          <span>${progress.completed} of ${progress.total} steps complete</span>
-          <span class="${progress.requiredReady ? "ws-ready" : "ws-needs-attention"}">
-            ${progress.requiredReady ? "Required to publish: ready" : "Required to publish: incomplete"}
-          </span>
-          ${progress.nextStep ? `<a class="ws-setup-next" href="${nextHref(progress.nextStep)}">Next: ${escapeHtml(progress.nextStep.label)} →</a>` : "<span>Everything on the setup checklist is complete.</span>"}
-        </div>
-      </div>
-      ${compact ? "" : `<ul class="ws-setup-checklist">${list.map(item => `
-        <li class="${item.complete ? "complete" : "incomplete"}">
-          <span class="ws-checkmark" aria-hidden="true">${item.complete ? "✓" : "○"}</span>
-          <span><a href="${nextHref(item)}">${escapeHtml(item.label)}</a>
-            ${item.required ? `<small>Required to publish</small>` : ""}
-            ${item.help ? `<small>${escapeHtml(item.help)}</small>` : ""}
-          </span>
-        </li>`).join("")}</ul>`}
-      <p class="ws-setup-footnote">Progress reflects saved details. You can return to every feature and setup area whenever your plans change.</p>`;
+      <div class="ws-readiness">
+        <h2>Before your wedding can go live</h2>
+        <p class="${readiness.requiredReady ? "ws-ready" : "ws-needs-attention"}">
+          ${readiness.requiredReady ? "Your required setup is ready for publication review." :
+            "You’re making progress. Complete the items below when you’re ready; you can save your draft at any point."}
+        </p>
+        ${readiness.nextStep ? `<p><a href="${href(readiness.nextStep)}">Next helpful step: ${escapeHtml(readiness.nextStep.label)} →</a></p>` : ""}
+        <ul class="ws-readiness-list">${list.map(item => `
+          <li class="${item.complete ? "complete" : "incomplete"}">
+            <span class="ws-readiness-mark" aria-hidden="true">${item.complete ? "✓" : "○"}</span>
+            <span><a href="${href(item)}">${escapeHtml(item.label)}</a>
+              ${item.required ? `<small>Needed before publishing</small>` : ""}
+              ${item.help ? `<small>${escapeHtml(item.help)}</small>` : ""}
+            </span>
+          </li>`).join("")}</ul>
+        <p class="ws-readiness-footnote">Drafts can be saved before everything is ready. Guest-payment availability is not proof of payout readiness; private identity and payout checks stay separate.</p>
+      </div>`;
   }
 
   function escapeHtml(value) {
@@ -120,5 +108,5 @@
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]));
   }
 
-  global.WSSetupProgress = { calculate, render, colorAt };
+  global.WSSetupProgress = { calculate, render };
 })(window);

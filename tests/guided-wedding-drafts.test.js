@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import weddings from "../api/weddings.js";
+import { paystackCredentialFingerprint } from "../server/paystack.js";
 
 const owner = "550e8400-e29b-41d4-a716-446655440000";
 const id = "550e8400-e29b-41d4-a716-446655440001";
@@ -8,19 +9,31 @@ const key = "550e8400-e29b-41d4-a716-446655440002";
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
 test("draft API uses idempotent transactional creation, explicit clears, omitted fields and actionable publish readiness", async () => {
-  const env = { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "fixture-anon", SUPABASE_SERVICE_ROLE_KEY: "fixture-service" };
+  const env = {
+    SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "fixture-anon", SUPABASE_SERVICE_ROLE_KEY: "fixture-service",
+    WEDDINGSITE_PAYMENT_MODE: "live", PAYSTACK_SECRET_KEY: "sk_live_fixture", PAYSTACK_MERCHANT_ID: "12345",
+    PAYSTACK_LIVE_MERCHANT_CONFIRMED: "12345", PAYSTACK_LIVE_COLLECTION_ENABLED: "true",
+    PAYSTACK_RECONCILIATION_ENABLED: "true", PAYSTACK_SUPPORTED_CURRENCIES: "USD",
+    PAYSTACK_SUPPORTED_MARKETS: "US"
+  };
   const previous = Object.fromEntries(Object.keys(env).map(name => [name, process.env[name]]));
   const oldFetch = globalThis.fetch;
   Object.assign(process.env, env);
   const calls = [];
   const requests = new Map();
   let wedding;
-  let missing = ["wedding-date", "location", "venues-section"];
+  let missing = ["wedding-date", "venues-section", "welcome-story", "cover-image-url",
+    "guest-instructions", "fundraising-route"];
   globalThis.fetch = async (input, options = {}) => {
     const url = new URL(input);
     if (url.pathname === "/auth/v1/user") return json({ id: owner });
     const body = options.body ? JSON.parse(options.body) : null;
     calls.push({ path: url.pathname, body, method: options.method || "GET" });
+    if (url.pathname === "/rest/v1/platform_policies") return json([{ enabled_payment_providers: ["paystack"] }]);
+    if (url.pathname === "/rest/v1/paystack_live_policy") return json([{
+      approved: true, merchant_id: "12345", credential_fingerprint: paystackCredentialFingerprint(),
+      settlement_mode: "standard", standard_enabled: true, capabilities: [{ currency: "USD", market: "US" }]
+    }]);
     if (url.pathname === "/rest/v1/rpc/create_wedding_draft") {
       if (!requests.has(body.p_request_key)) {
         wedding = { id, slug: body.p_input.slug, couple_names: body.p_input.coupleNames,
@@ -35,6 +48,7 @@ test("draft API uses idempotent transactional creation, explicit clears, omitted
       return json(wedding);
     }
     if (url.pathname === "/rest/v1/rpc/wedding_publication_readiness") return json(missing);
+    if (url.pathname === "/rest/v1/rpc/replace_wedding_collection_capabilities") return json(null);
     if (url.pathname === "/rest/v1/rpc/publish_wedding_with_fee") return json(true);
     if (url.pathname === "/rest/v1/rpc/publication_quote") return json({ fee_minor: null, usd_amount_minor: null, currency: "USD", pending_date: true });
     if (url.pathname === "/rest/v1/weddings") return json([wedding]);
