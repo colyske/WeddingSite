@@ -1,0 +1,22 @@
+.inspiration-intro { max-width: 760px; margin: 3rem 0; }
+.inspiration-intro h1 { font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.12; }
+.inspiration-disclosure { padding: 1rem; border: 1px solid #ccc9bc; background: #f7f5ee; color: #38443b; border-radius: .5rem; }
+.inspiration-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr)); gap: 1.5rem; }
+.inspiration-grid[hidden] { display: none; }
+.inspiration-card { border: 1px solid #d5d5ca; border-radius: 1rem; overflow: hidden; background: #fffdf8; }
+.inspiration-card-copy { padding: 1.5rem; }
+.inspiration-card-copy h2 { margin: 0 0 .75rem; }
+.inspiration-art { min-height: 230px; padding: 2rem; display: grid; place-content: center; text-align: center; background: var(--inspiration-paper); color: var(--inspiration-ink); border-bottom: 8px solid var(--inspiration-accent); }
+.inspiration-art strong { font-family: Georgia, serif; font-size: 2.4rem; line-height: 1.2; margin: 1rem 0; }
+.inspiration-art span { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; }
+.inspiration-art::before { content: ""; display: block; width: 65px; height: 65px; margin: 0 auto; border: 2px solid currentColor; border-radius: 50% 50% 0 0; }
+.inspiration-palette { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
+.inspiration-palette span { display: flex; align-items: center; gap: .4rem; font-size: .9rem; }
+.inspiration-palette i { width: 22px; height: 22px; border: 1px solid #777; border-radius: 50%; }
+.inspiration-preview-hero { margin: 1.5rem 0; min-height: 320px; border-radius: 1rem; }
+.inspiration-preview-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 1.5rem; }
+.inspiration-event { border-bottom: 1px solid #d5d5ca; padding: 1rem 0; }
+.inspiration-event h3 { margin: 0 0 .5rem; }
+.inspiration-start { margin: 2rem 0; padding: 1.5rem; border: 1px solid #ccc9bc; border-radius: .75rem; background: #f7f5ee; }
+.inspiration-start .btn { display: inline-block; }
+.inspiration-card a:focus-visible, #inspiration-preview a:focus-visible { outline: 3px solid #175b70; outline-offset: 4px; }

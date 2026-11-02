@@ -11,7 +11,10 @@ import { handlePublicationPayment } from "../server/publication-payments.js";
 import { publicationQuote } from "../server/publication-fx.js";
 import { collectionCapabilities } from "../server/collection-capabilities.js";
 import "../currencies.js";
-import "../amount-presets.js";
+import "../inspiration-fixtures.js";
+import { publicWeddingStyle } from "../server/wedding-style.js";
+import "../starter-setup.js";
+import { starterCapabilities } from "../server/starter-capabilities.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
@@ -41,7 +44,7 @@ const friendlyColorName = hex => {
   return closest[0];
 };
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-const FIELDS = "id,slug,couple_names,welcome_story,cover_image_url,guest_instructions,wedding_date,time_zone,public_location,currency,revenue_features,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,faq,travel_info,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted";
+const FIELDS = "id,slug,couple_names,welcome_story,cover_image_url,guest_instructions,starter_review_note,wedding_date,time_zone,public_location,currency,revenue_features,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,faq,travel_info,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted";
 const REVENUE_FEATURES = ["giving", "sponsors", "featured_sponsors", "song_requests", "vip_seating"];
 const DEFAULT_ZONE = "Africa/Nairobi";
 const validZone = tz => {
@@ -202,6 +205,26 @@ export default async function handler(req, res) {
     }
 
     if (action === "create") {
+      if (!methodOnly(req, res, "POST")) return;
+      if (body.styleSlug !== undefined) {
+        if (body.inspirationId !== undefined || !globalThis.WSCurrencies.supportsAccounting(body.currency)) {
+          return sendJson(res, 400, { error: "Choose one style source and your own supported accounting currency." });
+        }
+        if (typeof body.styleSlug !== "string" || !/^[a-z0-9-]{3,80}$/.test(body.styleSlug)) return sendJson(res, 400, { error: "Choose an eligible public wedding style." });
+      }
+      if (body.inspirationId !== undefined && (!globalThis.WSInspiration.get(body.inspirationId) ||
+          !globalThis.WSCurrencies.supportsAccounting(body.currency))) {
+        return sendJson(res, 400, { error: "Choose a listed fictional inspiration style and your own supported accounting currency." });
+      }
+      const hasStarterSource = body.inspirationId !== undefined || body.styleSlug !== undefined;
+      let starterSetup;
+      if (hasStarterSource || body.starterSetup !== undefined) {
+        if (!hasStarterSource) return sendJson(res, 400, { error: "Choose an eligible inspiration source for starter configuration." });
+        try { starterSetup = globalThis.WSStarterSetup.normalize(body.starterSetup, body.currency); }
+        catch (error) { return sendJson(res, 400, { error: error.message, field: "starter-setup" }); }
+        const invalidStarter = contentError(starterSetup);
+        if (invalidStarter) return sendJson(res, 400, { error: invalidStarter, field: "starter-setup" });
+      }
       if (body.referral !== undefined && body.referral !== null &&
           (typeof body.referral !== "object" || Array.isArray(body.referral) ||
             !UUID.test(String(body.referral.intentId || "")) ||
@@ -210,7 +233,6 @@ export default async function handler(req, res) {
             body.referral.termsVersion !== "client-referrals-v1")) {
         return sendJson(res, 400, { error: "Review the referral disclosure and choose accept or decline." });
       }
-      if (!methodOnly(req, res, "POST")) return;
       if (!UUID.test(String(body.requestKey || ""))) return sendJson(res, 400, { error: "A stable create request key is required." });
       if (body.referral !== undefined && body.referral !== null &&
           (!UUID.test(String(body.referral.intentId || "")) || !UUID.test(String(body.referral.revision || "")) ||
@@ -260,15 +282,32 @@ export default async function handler(req, res) {
       const timeZone = validZone(body.timeZone) ? body.timeZone : DEFAULT_ZONE;
       for (const suffix of ["", `-${Math.random().toString(36).slice(2, 6)}`, `-${Math.random().toString(36).slice(2, 8)}`]) {
         try {
-          const created = await supabaseRequest("/rest/v1/rpc/create_wedding_draft", { ...opts, method: "POST", body: {
+          const createBody = {
             p_request_key: body.requestKey,
             p_input: {
               slug: `${base}${suffix}`.slice(0, 80).padEnd(3, "x"), coupleNames: names,
               weddingDate: body.weddingDate || null, location: location || null,
               currency, maxCapacity: capacity, palette, venues, timeZone,
-              paletteNames: palette.map(friendlyColorName), referral: body.referral || null
+              paletteNames: palette.map(friendlyColorName), referral: body.referral || null,
+              ...(starterSetup ? { starterSetup } : {})
             }
-          } });
+          };
+          const path = `/rest/v1/rpc/${starterSetup ? "create_wedding_from_starter" : "create_wedding_draft"}`;
+          let created;
+          try { created = await supabaseRequest(path, { ...opts, method: "POST", body: createBody }); }
+          catch (error) {
+            if (!starterSetup || !/STARTER_CAPABILITY_REQUIRED:/.test(error.message)) throw error;
+            if (body.styleSlug && !await publicWeddingStyle(body.styleSlug)) {
+              return sendJson(res, 400, { error: "This wedding is no longer available for public setup reuse. Choose another style." });
+            }
+            const supported = await starterCapabilities();
+            if (!supported.some(item => item.code === currency)) {
+              return sendJson(res, 400, { error: "Choose a currency currently supported for guest-payment collection.", field: "starter-setup" });
+            }
+            await supabaseRequest("/rest/v1/rpc/stage_wedding_starter_capability", { service: true, method: "POST",
+              body: { p_owner: session.user.id, p_request_key: body.requestKey, p_input: createBody.p_input } });
+            created = await supabaseRequest(path, { ...opts, method: "POST", body: createBody });
+          }
           return sendJson(res, 201, created);
         } catch (error) {
           if (/REFERRAL_CONFLICT:|Self referral|Invalid or withdrawn referral code/.test(error.message)) {
@@ -924,6 +963,7 @@ export default async function handler(req, res) {
 
     // Provide specific error messages instead of generic ones
     let userMessage = "The request could not be completed.";
+    if (["STARTER_DEPENDENCY", "STARTER_CAPABILITIES_UNAVAILABLE"].includes(error.code)) return sendJson(res, 503, { error: errorMsg });
     const moderation = errorMsg.match(/MODERATION(?:_RESTRICTED)?:\s*([^\n]{1,300})/);
     if (/CREATE_CONFLICT|DRAFT_CONFLICT|REFERRAL_CONFLICT/.test(errorMsg)) return sendJson(res, 409, { error: errorMsg.replace(/^.*(?:CREATE_CONFLICT|DRAFT_CONFLICT|REFERRAL_CONFLICT):\s*/, "") });
     if (errorMsg.includes("Self referral")) return sendJson(res, 403, { error: "Self referral is not allowed." });

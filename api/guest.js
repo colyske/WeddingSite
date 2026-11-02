@@ -9,6 +9,7 @@ import { canonicalWeddingUrl, classifyHost, isSubdomainSlug, weddingBaseDomain }
 import { isShowcase, showcase, showcaseBids, showcaseLedger, showcaseFundraising, showcaseExtras } from "../server/showcase.js";
 import { contentError } from "../server/content-policy.js";
 import "../social-links.js";
+import { publicWeddingStyle } from "../server/wedding-style.js";
 
 const BRAND = "Join Our Wedding";
 const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -101,6 +102,12 @@ export default async function handler(req, res) {
     if (invalidContent) return sendJson(res, 400, { error: invalidContent });
     const sample = [req.query.slug, req.query.weddingId, req.body?.slug, req.body?.weddingSlug, req.body?.weddingId].some(isShowcase);
     if (sample && req.method !== "GET") return sendJson(res, 403, { error: "Showcase: payments, RSVPs and messages are disabled." });
+    if (action === "style") {
+      if (!methodOnly(req, res, "GET")) return;
+      const style = await publicWeddingStyle(String(req.query.slug || "").toLowerCase());
+      if (!style) return sendJson(res, 404, { error: "This wedding is not available for public design reuse." });
+      return sendJson(res, 200, { style });
+    }
     if (sample && action === "site") return sendJson(res, 200, { wedding: showcase });
     if (sample && action === "leaderboard") return sendJson(res, 200, { bids: showcaseBids });
     if (sample && action === "ledger") return sendJson(res, 200, { ledger: showcaseLedger });

@@ -55,10 +55,26 @@
       <h2>Start your wedding guide</h2>
       <p>Create a private draft with the couple&rsquo;s names, then continue setup in the same step-by-step guide used to edit it. Nothing is published until you review and publish.</p>
       <p class="fine">New drafts start in USD and have no offers or prices. Before adding fundraising, choose a currency that currently has a ready guest-payment option. Existing saved currencies and paid amounts are never converted automatically.</p>
+      <p><a href="/inspiration.html">Explore fictional wedding inspiration</a> or use the reusable setup from an eligible public wedding.</p>
       <form id="create-form" novalidate onsubmit="return false">
         <label for="couple-names">Couple names</label>
         <input id="couple-names" type="text" maxlength="120" placeholder="For example, Amina &amp; David" autocomplete="off" required aria-required="true">
         <p id="legacy-answer-notice" class="fine" hidden></p>
+        <aside id="inspiration-selection" class="notice" hidden>
+          <h3>Use this setup as a starting point</h3>
+          <p id="inspiration-selection-copy"></p>
+          <button type="button" id="apply-inspiration" hidden>Use this setup instead of this tab's saved answers</button>
+          <button type="button" id="keep-current-answers" class="link" hidden>Keep my current answers</button>
+          <div id="starter-review" hidden>
+            <p>Only a new private draft is created. Personalize the prefilled sections in the shared wedding guide after creation. Your own names, story, dates and venue details are still needed; photos and guest instructions remain optional.</p>
+            <label for="starter-currency">Choose your supported collection currency</label>
+            <select id="starter-currency"><option value="">Check current collection support first</option></select>
+            <button type="button" class="link" id="starter-capabilities-retry">Check currency support again</button>
+            <p id="starter-money-disclosure" role="status"></p>
+            <div id="starter-summary"></div>
+            <label><input id="starter-reviewed" type="checkbox"> I reviewed the currency, illustrative/generic copy, package promises, RSVP settings and goal structures. I will personalize them in my private wedding guide before publishing.</label>
+          </div>
+        </aside>
         <fieldset id="client-referral-disclosure" hidden>
           <legend>Client referral disclosure</legend>
           <p id="client-referral-details"></p>
@@ -89,6 +105,8 @@
   <script src="setup-progress.js"></script>
   <script src="referral-client.js"></script>
   <script src="guided-setup.js"></script>
+  <script src="inspiration-fixtures.js"></script>
+  <script src="starter-setup.js"></script>
   <script src="dashboard.js"></script>
   <script src="footer.js"></script>
 <script src="/feedback.js"></script>
