@@ -68,6 +68,10 @@ begin
   if not exists(select 1 from public.publication_fees pf where pf.wedding_id=checkout.wedding_id
     and status='test_paid' and amount_minor=5000 and provider='daraja-test') then
     raise exception 'Test settlement must not be marked real paid revenue'; end if;
+  update public.platform_policies set enabled_payment_providers=array['daraja'];
+  update public.wedding_collection_capabilities set checked_at=now()
+    where wedding_id=(select id from public.weddings where slug='publication-local-check')
+      and provider='daraja' and currency='KES';
   perform public.publish_wedding_with_fee(wedding_id,true);
   if not exists(select 1 from public.weddings where id=wedding_id and published_at is not null) then
     raise exception 'Verified fee must permit explicit publishing without KYC'; end if;
