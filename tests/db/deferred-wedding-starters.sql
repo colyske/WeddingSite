@@ -178,6 +178,7 @@ do $$ begin
   end if;
 end $$;
 reset role;
+select set_config('request.jwt.claim.sub',(select owner_id::text from deferred_fixture),true);
 do $$
 declare f deferred_fixture; wid uuid; blocked boolean := false;
 begin

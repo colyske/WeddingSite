@@ -65,6 +65,10 @@ test("unpaid starter create/replay never consults collection; pending review is 
       reviewed = true;
       return json({ ok: true, decision: body.p_input.decision });
     }
+    if (["venues", "payout_preferences", "registry_items", "sponsor_tiers", "vip_offers",
+      "guest_site_content", "fundraising_streams", "sponsor_featured_campaigns"].some(table =>
+      url.pathname === `/rest/v1/${table}`) || url.pathname.endsWith("/get_wedding_setup_status") ||
+      url.pathname.endsWith("/wedding_moderation_status")) return json([]);
     throw new Error(`Unexpected request ${url.pathname}`);
   };
   async function run(action, body, authenticated = true) {
@@ -83,6 +87,12 @@ test("unpaid starter create/replay never consults collection; pending review is 
     assert.equal(pending.reviewed, false);
     assert.ok(pending.tiers.length && pending.campaigns.length);
     assert.equal(calls.some(call => call.path.includes("platform_policies")), false);
+    const restored = { statusCode: 200, status(code) { this.statusCode = code; return this; },
+      setHeader() {}, end(text) { this.body = JSON.parse(text); }, json(body) { this.body = body; } };
+    await weddings({ method: "GET", query: { action: "get", weddingId: owner },
+      headers: { authorization: ["Bearer", "user"].join(" ") } }, restored);
+    assert.equal(restored.statusCode, 200);
+    assert.deepEqual(restored.body.wedding.starter_pending_setup, pending, "owner GET exposes the agreed pending field");
     const start = calls.length;
     assert.deepEqual((await run("create", body)).body, first.body);
     assert.deepEqual(calls.slice(start).map(call => call.path), ["/auth/v1/user", "/rest/v1/rpc/create_deferred_wedding_starter"]);
