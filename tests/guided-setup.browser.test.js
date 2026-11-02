@@ -384,7 +384,13 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
           const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
           return { text: button.textContent.trim(), ok: !!hit && button.contains(hit), height: box.height, right: box.right, inView: box.top >= -1 && box.bottom <= innerHeight + 1, top: Math.round(box.top), bottom: Math.round(box.bottom), viewport: innerHeight };
         });
-        return { bar: { top: bar.top, bottom: bar.bottom, left: bar.left, right: bar.right }, footerTop: footer?.top ?? null,
+        const barEl = document.querySelector(".guide-actions");
+        const after = [...document.getElementById("edit-section").querySelectorAll("*")]
+          .filter(el => (barEl.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) && !barEl.contains(el) && el.getBoundingClientRect().height > 0)
+          .slice(0, 6).map(el => `${el.tagName}#${el.id}.${el.className}:${Math.round(el.getBoundingClientRect().height)}`);
+        const style = getComputedStyle(barEl);
+        return { bar: { top: bar.top, bottom: bar.bottom, left: bar.left, right: bar.right, position: style.position, after,
+          stepsVisible: [...document.querySelectorAll("[data-guide-step]")].filter(s => !s.hidden).map(s => s.dataset.guideStep) }, footerTop: footer?.top ?? null,
           card: { left: card.left, right: card.right, bottom: card.bottom }, hits, overflow: document.documentElement.scrollWidth > innerWidth };
       });
       assert.equal(layout.overflow, false, `no horizontal overflow at ${width}`);
