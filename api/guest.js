@@ -17,10 +17,15 @@ const OG_IMAGE = "https://images.unsplash.com/photo-1519741497674-611481863552?a
 function ogDetails(site) {
   if (!site?.id) return { title: BRAND, desc: "Create and share your wedding website at joinourwedding.site.", image: OG_IMAGE };
   const when = site.wedding_date ? String(site.wedding_date).slice(0, 10) : "";
+  let image = OG_IMAGE;
+  try {
+    const cover = new URL(site.cover_image_url);
+    if (cover.protocol === "https:" && !cover.username && !cover.password) image = cover.toString();
+  } catch {}
   return {
     title: `${site.couple_names} are getting married`,
     desc: `You are invited${when ? " - " + when : ""}${site.public_location ? " - " + site.public_location : ""}. RSVP, send wishes and save the date.`,
-    image: OG_IMAGE
+    image
   };
 }
 

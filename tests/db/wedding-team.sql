@@ -36,14 +36,19 @@ insert into team_actors(kind, id, email) select 'expired', id, email from auth.u
 insert into team_actors(kind, id, email) select 'wrong_email', id, email from auth.users where email='wrong-email@example.test';
 insert into team_actors(kind, id, email) select 'platform_admin', id, email from auth.users where email='platform-admin@example.test';
 
-insert into public.weddings(id, client_owner_id, couple_names, wedding_date)
+insert into public.weddings(id, client_owner_id, couple_names, welcome_story, cover_image_url, guest_instructions, wedding_date)
 values
-  ('52000000-0000-4000-8000-000000000001', '51000000-0000-4000-8000-000000000001', 'Couple One', current_date + 30),
-  ('52000000-0000-4000-8000-000000000002', '51000000-0000-4000-8000-000000000002', 'Couple Two', current_date + 30);
+  ('52000000-0000-4000-8000-000000000001', '51000000-0000-4000-8000-000000000001', 'Couple One',
+    'A local celebration sample.', 'https://example.test/cover.jpg', 'Please reply before the celebration.', current_date + 30),
+  ('52000000-0000-4000-8000-000000000002', '51000000-0000-4000-8000-000000000002', 'Couple Two',
+    'A local celebration sample.', 'https://example.test/cover.jpg', 'Please reply before the celebration.', current_date + 30);
 update public.weddings set slug=case id when '52000000-0000-4000-8000-000000000001'::uuid then 'team-couple-one' else 'team-couple-two' end,
   public_location='Local city' where id in ('52000000-0000-4000-8000-000000000001','52000000-0000-4000-8000-000000000002');
 insert into public.venues(wedding_id,name,event_date,event_time,address)
   select id,'Local event',wedding_date,'12:00','Local street' from public.weddings
+    where id in ('52000000-0000-4000-8000-000000000001','52000000-0000-4000-8000-000000000002');
+insert into public.wedding_collection_capabilities(wedding_id,provider,currency,market)
+  select id,'stripe',currency,'US' from public.weddings
     where id in ('52000000-0000-4000-8000-000000000001','52000000-0000-4000-8000-000000000002');
 update public.weddings set published_at = now(), time_zone = 'UTC' where id in (
   '52000000-0000-4000-8000-000000000001', '52000000-0000-4000-8000-000000000002'

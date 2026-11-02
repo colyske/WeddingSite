@@ -6,9 +6,18 @@ declare cid uuid := extensions.gen_random_uuid(); wid uuid := extensions.gen_ran
   d jsonb := '{"custom":true,"customMinimumMinor":500000,"companyName":"Sample Sponsor Co","website":"https://example.com"}';
 begin
   insert into auth.users(id) values(cid);
-  insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date,published_at)
-    values(wid,cid,'Custom sponsor sample','KES',current_date+30,now()),
-          (uwid,cid,'Custom sponsor USD sample','USD',current_date+30,now());
+  insert into public.weddings(id,client_owner_id,slug,couple_names,welcome_story,cover_image_url,
+      guest_instructions,currency,wedding_date)
+    values(wid,cid,'custom-sponsor-sample','Custom sponsor sample','A local celebration sample.',
+        'https://example.test/cover.jpg','Please reply before the celebration.','KES',current_date+30),
+      (uwid,cid,'custom-sponsor-usd-sample','Custom sponsor USD sample','A local celebration sample.',
+        'https://example.test/cover.jpg','Please reply before the celebration.','USD',current_date+30);
+  insert into public.venues(wedding_id,name,event_date,event_time,address)
+    values(wid,'Local event',current_date+30,'12:00','Local street'),
+      (uwid,'Local event',current_date+30,'12:00','Local street');
+  insert into public.wedding_collection_capabilities(wedding_id,provider,currency,market)
+    values(wid,'daraja','KES','KE'),(uwid,'stripe','USD','US');
+  update public.weddings set published_at=now() where id in (wid,uwid);
 
   -- Exact KES floor completes once, with no package and no review.
   insert into public.contributions(wedding_id,stream_name,pledged_amount_minor,currency,payment_status,purchase_action,purchase_data)

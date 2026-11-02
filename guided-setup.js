@@ -1,26 +1,31 @@
 (function (global) {
   "use strict";
 
-  function create(form, { mode, onKeep, summaries = {}, externalSteps = [], externalStepsAfter } = {}) {
+  function create(form, { mode, onKeep, summaries = {}, externalSteps = [], externalStepsAfter, stepOrder = [] } = {}) {
     const formSteps = [...form.querySelectorAll("[data-guide-step]")];
     const reviewStep = formSteps.find(step => step.dataset.guideStep === "review");
-    const steps = [];
-    for (const step of formSteps) {
-      if (step === reviewStep) continue;
-      steps.push(step);
-      if (step.dataset.guideStep === externalStepsAfter) steps.push(...externalSteps);
+    let steps = [];
+    if (stepOrder.length) {
+      const byId = new Map([...formSteps, ...externalSteps].map(step => [step.dataset.guideStep, step]));
+      steps = stepOrder.map(id => byId.get(id)).filter(step => step && step !== reviewStep);
+      steps.push(...[...formSteps, ...externalSteps].filter(step => step !== reviewStep && !steps.includes(step)));
+    } else {
+      for (const step of formSteps) {
+        if (step === reviewStep) continue;
+        steps.push(step);
+        if (step.dataset.guideStep === externalStepsAfter) steps.push(...externalSteps);
+      }
+      if (!externalStepsAfter || !steps.some(step => externalSteps.includes(step))) steps.push(...externalSteps);
     }
-    if (!externalStepsAfter || !steps.some(step => externalSteps.includes(step))) steps.push(...externalSteps);
     if (reviewStep) steps.push(reviewStep);
     const review = form.querySelector("[data-guide-review]");
     const header = document.createElement("div");
     header.className = "guide-header";
-    header.innerHTML = `<p class="fine">Next and Skip navigate. Save separately.</p>
+    header.innerHTML = `<p class="fine">Take one step at a time. Your answers stay here until you save.</p>
       <p class="guide-state" role="status" aria-live="polite" data-guide-state></p>
       <details class="guide-jump"><summary>Jump to section <span data-guide-progress></span></summary>
         <nav class="guide-nav" aria-label="Wedding setup sections"></nav>
       </details>
-      <button type="button" class="link" data-guide-all>Show all questions</button>
       <div class="guide-errors" role="alert" hidden></div>
       <p class="guide-sr" aria-live="polite" aria-atomic="true" data-guide-announcement></p>`;
     form.prepend(header);
@@ -35,13 +40,15 @@
     actions.innerHTML = `<button type="button" class="ghost" data-guide-back>Back</button>
       <button type="button" data-guide-next>Next</button>
       <button type="button" class="link" data-guide-skip>Skip for now</button>
+      <button type="button" class="ghost" data-guide-save>Save changes</button>
       ${mode === "create" ? '<button type="button" class="ghost" data-guide-keep>Keep answers in this tab</button>' : ""}`;
     form.append(actions);
-    let current = 0, all = false, saving = false, snapshot = "", saved = "";
+    let current = 0, saving = false, snapshot = "", saved = "";
     let pendingCreate = false;
     let savingControls = [];
     let nextAnswerId = 0;
     const skipped = new Set();
+    const pageTitle = document.title;
     const externalSaved = new Map(externalSteps.map(step => [step.dataset.guideStep, externalFingerprint(step)]));
     function externalFingerprint(step) {
       return JSON.stringify([...step.querySelectorAll("input, select, textarea")].map(input =>
@@ -134,23 +141,22 @@
     }
     function show(index, focus = true) {
       current = index;
-      steps.forEach((step, i) => { step.hidden = !all && i !== index; });
+      steps.forEach((step, i) => { step.hidden = i !== index; });
       navButtons.forEach((button, i) => {
         if (i === index) button.setAttribute("aria-current", "step");
         else button.removeAttribute("aria-current");
       });
       actions.querySelector("[data-guide-back]").disabled = index === 0;
-      actions.querySelector("[data-guide-next]").hidden = index === steps.length - 1;
-      actions.querySelector("[data-guide-skip]").hidden = index === steps.length - 1;
+      actions.querySelector("[data-guide-next]").disabled = index === steps.length - 1;
+      actions.querySelector("[data-guide-skip]").disabled = index === steps.length - 1;
       announcement.textContent = `Step ${index + 1} of ${steps.length}: ${steps[index].dataset.guideTitle}`;
       progress.textContent = ` · Step ${index + 1} of ${steps.length}`;
+      document.title = `Step ${index + 1} of ${steps.length}: ${steps[index].dataset.guideTitle} — ${pageTitle}`;
       refresh();
       if (focus) steps[index].querySelector("h2").focus({ preventScroll: false });
     }
     function go(index) {
-      all = false;
       if (mobileNavigation.matches) jump.open = false;
-      header.querySelector("[data-guide-all]").textContent = "Show all questions";
       const hash = `#step=${steps[index].dataset.guideStep}`;
       if (location.hash !== hash) history.pushState(null, "", hash);
       show(index);
@@ -158,8 +164,7 @@
     function reveal(target) {
       const step = target?.closest("[data-guide-step]");
       if (step && steps.includes(step)) {
-        if (all) show(steps.indexOf(step), false);
-        else go(steps.indexOf(step));
+        go(steps.indexOf(step));
       }
       let parent = target?.parentElement;
       while (parent) {
@@ -171,8 +176,6 @@
       if (location.hash.startsWith("#step=")) {
         const index = steps.findIndex(step => `#step=${step.dataset.guideStep}` === location.hash);
         if (index !== -1) {
-          all = false;
-          header.querySelector("[data-guide-all]").textContent = "Show all questions";
           show(index, focus);
         }
       } else if (location.hash) {
@@ -234,12 +237,22 @@
       const caption = document.createElement("strong");
       caption.textContent = "Before publishing, complete these saved answers:";
       errors.append(caption);
-      const labels = { "couple-names": "Couple names", "wedding-slug": "Site address",
-        "wedding-date": "Wedding date", location: "Wedding location", "venues-section": "A complete wedding-day event: name, date, start time and street address" };
+      const labels = {
+        "couple-names": ["Couple names and site address", "couple"],
+        "wedding-slug": ["Couple names and site address", "couple"],
+        "wedding-date": ["Wedding date", "date"],
+        location: ["Wedding location", "date"],
+        "venues-section": ["A complete wedding-day event: name, date, start time and street address", "venues"],
+        "welcome-story": ["A short welcome story", "couple"],
+        "cover-image-url": ["A public HTTPS cover photo", "couple"],
+        "guest-instructions": ["Guest RSVP instructions", "guests"],
+        "fundraising-route": ["A fundraising option and ready guest-payment currency", "giving"]
+      };
       missing.forEach(id => {
         const link = document.createElement("a");
-        link.href = `#${id}`;
-        link.textContent = labels[id] || id;
+        const [text, step] = labels[id] || [id, "review"];
+        link.href = `#step=${step}`;
+        link.textContent = text;
         errors.append(link);
       });
     }
@@ -274,18 +287,13 @@
     draftRequirements();
     saved = fingerprint();
     new MutationObserver(() => { draftRequirements(); }).observe(form, { childList: true, subtree: true });
-    header.querySelector("[data-guide-all]").addEventListener("click", () => {
-      all = !all;
-      header.querySelector("[data-guide-all]").textContent = all ? "Return to guided questions" : "Show all questions";
-      show(current, false);
-      if (all) form.querySelectorAll(".guide-advanced").forEach(details => { details.open = true; });
-    });
     actions.querySelector("[data-guide-back]").addEventListener("click", () => go(Math.max(0, current - 1)));
     actions.querySelector("[data-guide-next]").addEventListener("click", () => go(Math.min(steps.length - 1, current + 1)));
     actions.querySelector("[data-guide-skip]").addEventListener("click", () => {
       skipped.add(steps[current].dataset.guideStep);
       go(Math.min(steps.length - 1, current + 1));
     });
+    actions.querySelector("[data-guide-save]").addEventListener("click", () => form.requestSubmit());
     actions.querySelector("[data-guide-keep]")?.addEventListener("click", () => onKeep?.());
     form.addEventListener("input", event => {
       event.target.removeAttribute("aria-invalid");
@@ -303,6 +311,14 @@
       step.addEventListener("change", refresh);
     });
     global.addEventListener("hashchange", () => fromHash());
+    const syncViewport = () => {
+      const viewport = global.visualViewport;
+      const obscured = viewport ? Math.max(0, global.innerHeight - viewport.offsetTop - viewport.height) : 0;
+      actions.style.setProperty("--guide-viewport-bottom", `${obscured}px`);
+    };
+    global.visualViewport?.addEventListener("resize", syncViewport);
+    global.visualViewport?.addEventListener("scroll", syncViewport);
+    syncViewport();
     global.addEventListener("beforeunload", event => {
       if (mode === "edit" && (dirty() || hasExternalChanges())) {
         event.preventDefault();
@@ -319,7 +335,7 @@
         refresh();
       },
       reviewBeforePublish() {
-        if (all || current === steps.length - 1) return true;
+        if (current === steps.length - 1) return true;
         go(steps.length - 1);
         return false;
       },

@@ -60,8 +60,6 @@
 
     <h1 id="title">Wedding</h1>
     <p id="notice" class="notice" role="status" hidden></p>
-    <div id="setup-progress" class="card" aria-live="polite" aria-atomic="false"></div>
-    <div id="share-panel" class="card" hidden></div>
 
     <!-- Wedding details form -->
     <div id="edit-section" class="card" hidden>
@@ -75,10 +73,13 @@
         <input id="wedding-slug" type="text" maxlength="80" placeholder="e.g. sarah-and-john" pattern="[a-z0-9\-]+" title="Use only lowercase letters, numbers, and hyphens">
         <p class="fine" id="slug-error" style="color: #d9534f; display: none; margin-top: 0.5rem;"></p>
 
-        <label for="welcome-story">Welcome message
+        <label for="welcome-story">A short welcome story <span class="fine">(needed before publishing)</span>
           <button type="button" class="link" id="ai-story-btn" style="margin-left: 0.5rem; font-weight: normal;">Explore story starters</button>
         </label>
-        <textarea id="welcome-story" maxlength="500" rows="4" placeholder="A brief message for your guests…"></textarea>
+        <textarea id="welcome-story" maxlength="500" rows="4" placeholder="Tell guests what makes this day special, in a few sentences…" data-publish-required></textarea>
+        <label for="cover-image-url">Cover photo URL <span class="fine">(needed before publishing)</span></label>
+        <input id="cover-image-url" type="url" maxlength="2048" placeholder="https://…">
+        <p class="fine">Use a public HTTPS link to a photo you have permission to share. Your photo host may have its own access settings.</p>
         <div id="ai-story-suggestions" class="fine" style="display: none; border-left: 3px solid var(--gold); padding: 0.75rem; margin: 1rem 0; background: #fefcf7;">
           <p style="margin: 0 0 0.75rem;">Local writing templates, not connected AI. Choose one, personalize it, then review before saving.</p>
           <div id="ai-story-list" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
@@ -86,15 +87,15 @@
 
         </section>
         <section data-guide-step="date" data-guide-title="Wedding date & location">
-        <p class="fine">Still deciding? Leave date or location unanswered on your draft and return later. Both are required before publishing.</p>
+        <p class="fine">Still deciding? Save a draft and return later. Your date and a wedding-day event with its venue details are needed before publishing; a general location summary is optional.</p>
         <label for="wedding-date">Date <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="wedding-date" type="date" required aria-required="true">
 
         <label for="wedding-timezone">Time zone <span style="color: #d9534f; font-weight: bold;" title="Required">*</span> <span class="fine" style="font-weight: normal;">(venue times, countdown and calendar use this zone)</span></label>
         <select id="wedding-timezone"></select>
 
-        <label for="location">Location <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
-        <input id="location" type="text" maxlength="120" required aria-required="true">
+        <label for="location">General wedding location (optional)</label>
+        <input id="location" type="text" maxlength="120" placeholder="e.g. Nairobi, Kenya">
 
         <label for="background-music-url">Background music URL (optional)</label>
         <input id="background-music-url" type="url" maxlength="500" placeholder="Link to your wedding ceremony or cocktail music (MP3, WAV, OGG)">
@@ -105,9 +106,11 @@
         <label for="max-capacity">Maximum guests <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="max-capacity" type="number" min="1" required aria-required="true">
 
-        <details class="guide-advanced"><summary>Guest charges and premium meal choices</summary>
+        <label for="guest-instructions">What should guests know before they RSVP? <span class="fine">(needed before publishing)</span></label>
+        <textarea id="guest-instructions" maxlength="1000" rows="3" placeholder="For example: Please RSVP by 1 June and include any dietary needs." data-publish-required></textarea>
+
         <fieldset id="rsvp-fees-fieldset" style="border:1px solid #d0d5cc; border-radius:8px; padding:1rem; margin:1rem 0;">
-          <legend>RSVP fees (in your wedding currency)</legend>
+          <legend>RSVP fees (<span data-currency-code>your wedding currency</span>)</legend>
           <p class="fine">Guests see the exact charge before confirming. Enter 0 to keep RSVPs free.</p>
           <label for="rsvp-fee">Base RSVP fee</label>
           <input id="rsvp-fee" type="number" min="0" step="0.01" value="0.00">
@@ -118,27 +121,21 @@
           <label for="premium-diet-fee">Premium dietary fee</label>
           <input id="premium-diet-fee" type="number" min="0" step="0.01" value="0.00">
         </fieldset>
-        </details>
 
         </section>
-        <section data-guide-step="money" data-guide-title="Currency & receiving funds">
-        <p class="fine">Choose the currency for guest contributions and records. Saving these preferences does not request or enable a payout; both partners’ private identity details are available in the next setup step.</p>
+        <section data-guide-step="money" data-guide-title="Choose your wedding currency">
+        <p class="fine">Choose from currencies with a guest-payment option enabled and configured for your account and market. Setup does not check provider uptime or payout readiness.</p>
         <label for="currency">Wedding currency <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
-        <select id="currency" data-wedding-currency required aria-required="true">
-          <option value="USD">USD - US Dollar</option>
-          <option value="KES">KES - Kenyan Shilling</option>
-          <option value="EUR">EUR - Euro</option>
-          <option value="GBP">GBP - British Pound</option>
-          <option value="NGN">NGN - Nigerian Naira</option>
-          <option value="UGX">UGX - Ugandan Shilling</option>
-          <option value="ZAR">ZAR - South African Rand</option>
-        </select>
+        <select id="currency" data-wedding-currency required aria-required="true"></select>
+        <p class="fine" id="collection-currency-help" role="status" aria-live="polite"></p>
+        <p class="fine" id="currency-change-help" role="status" aria-live="polite" hidden></p>
+        <ul id="collection-currency-options" class="fine"></ul>
         <label for="payout-method">Preferred way to receive eligible funds</label>
         <select id="payout-method" aria-describedby="payout-method-help">
           <option value="">Choose an available option…</option>
         </select>
-        <p class="fine" id="payout-method-help">Available options depend on your currency. Saving a preference does not collect account details or transfer money. Payouts remain subject to review.</p>
-        <p class="fine">Complete both partners’ private identity details for payout readiness. This is separate from publishing your wedding site.</p>
+        <p class="fine" id="payout-method-help">Available receiving options depend on your currency. Guest-payment availability does not confirm payout readiness. Saving a preference does not collect account details or transfer money.</p>
+        <p class="fine">Private identity checks and payout readiness are handled separately and are not publishing requirements.</p>
         <p><a href="#withdrawals-section">Review balances and payout requests</a></p>
         </section>
 
@@ -163,12 +160,10 @@
 
         </section>
         <section data-guide-step="theme" data-guide-title="Wedding theme & attire" data-guide-optional>
-        <label>Wedding theme &mdash; decor and dress inspiration
-          <button type="button" class="link" id="edit-colors-btn" style="margin-left: 0.5rem; font-weight: normal;">🎨 Edit colours</button>
-        </label>
+        <label>Wedding theme &mdash; decor and dress inspiration</label>
         <p class="fine">One shared palette for your celebration and guest outfits. Existing saved colours and attire notes are kept; text colours are adjusted for readability on the guest site.</p>
         <div class="swatches" id="palette-preview"></div>
-        <div id="attire-editor" style="display: none; border: 2px dashed #d0d5cc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: #fafbf9;">
+        <div id="attire-editor" style="border: 2px dashed #d0d5cc; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; background: #fafbf9;">
           <p style="margin: 0 0 1rem; font-weight: 500;">Edit the wedding theme palette used throughout your site and lookbook. Add up to four colours, name them or enter a recognized colour name, and remove any or all colours. Guests see each name and hex code.</p>
           <div id="color-inputs" style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
             <div style="display: flex; align-items: center; gap: 0.5rem;">
@@ -181,7 +176,6 @@
           <button type="button" id="add-color-btn" class="link" style="margin-right: 1rem;">+ Add colour</button>
           <button type="button" id="restore-colors-btn" class="link" style="margin-right: 1rem;">Restore default colours</button>
           <button type="button" id="apply-colors-btn">Apply palette</button>
-          <button type="button" id="cancel-colors-btn" class="link">Cancel</button>
         </div>
 
         <div id="attire-description">
@@ -192,7 +186,7 @@
 
         </section>
         <section data-guide-step="giving" data-guide-title="Fundraising & celebration features">
-        <p class="fine">Give guests several meaningful ways to support your celebration. Set up gifts, fundraising milestones, song bid suggestions, sponsorship and VIP options in one place. You choose the amounts and terms; nothing is priced or changed without your input.</p>
+        <p class="fine">Give guests more ways to support your celebration. A complete wedding page, clear goals and fundraising options can help you work towards your wedding budget.</p>
         <fieldset>
           <legend>Choose what guests can see</legend>
           <p class="fine">These features start on for every new wedding. Turn one off here to hide it from guests and stop new payments for it. This does not create prices, packages, campaigns or payment methods.</p>
@@ -202,29 +196,11 @@
           <label><input id="feature-song-requests" type="checkbox" checked> DJ song requests and bids</label>
           <label><input id="feature-vip-seating" type="checkbox" checked> VIP seating (still requires a separately configured offer)</label>
         </fieldset>
-        <details class="guide-advanced" open><summary>Gift registry & suggested guest amounts</summary>
-        <fieldset>
-          <legend>Suggested guest amounts (<span id="preset-currency"></span>)</legend>
-          <p class="fine">Set welcoming starting amounts for DJ song bids and voluntary gifts. Guests can still choose another amount. These suggestions do not change fees, prices, tiers or minimums. Use 1 to 6 comma-separated amounts for each list, in your wedding currency, with up to two decimals.</p>
-          <label for="preset-song">Suggested DJ song bid amounts</label>
-          <input id="preset-song" type="text" maxlength="160" aria-describedby="preset-limit preset-preview">
-          <label for="preset-gift">Suggested gift amounts</label>
-          <input id="preset-gift" type="text" maxlength="160" aria-describedby="preset-limit preset-preview">
-          <button type="button" class="link" id="preset-suggest">Suggest amounts for my currency</button>
-          <label><input id="preset-reset" type="checkbox"> Clear saved suggestions and restore the guest defaults</label>
-          <p id="preset-state" class="fine" role="status"></p>
-          <p id="preset-limit" class="fine"></p>
-          <p id="preset-preview" class="fine" aria-live="polite"></p>
-          <label><input id="preset-reviewed" type="checkbox"> I have reviewed these amounts and want to save them.</label>
-        </fieldset>
         <label>Registry & Crowdfunding Milestones
           <button type="button" class="link" id="add-registry-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add item</button>
         </label>
         <div id="registry-list" style="margin-bottom: 1.5rem;"></div>
 
-        </details>
-
-          <details class="guide-advanced" open><summary>Sponsorship, featured campaigns & VIP seating</summary>
           <p class="fine">Offer sponsor packages, highlight a campaign, or reserve VIP seating. Add the dates, prices and details that fit your plans.</p>
 
           <label>Sponsorship Tiers
@@ -242,8 +218,8 @@
               <label>Starts<input id="featured-sponsor-starts" type="datetime-local"></label>
               <label>Closes<input id="featured-sponsor-closes" type="datetime-local"></label>
               <label>Featured slots<input id="featured-sponsor-slots" type="number" min="1" max="20" value="3"></label>
-              <label>Minimum bid (wedding currency)<input id="featured-sponsor-minimum" type="number" min="0.01" step="0.01" value="25"></label>
-              <label>Minimum increment (wedding currency)<input id="featured-sponsor-increment" type="number" min="0.01" step="0.01" value="5"></label>
+              <label>Minimum bid (<span data-currency-code>your wedding currency</span>)<input id="featured-sponsor-minimum" type="number" min="0.01" step="0.01" value="25"></label>
+              <label>Minimum increment (<span data-currency-code>your wedding currency</span>)<input id="featured-sponsor-increment" type="number" min="0.01" step="0.01" value="5"></label>
             </div>
           </fieldset>
           <details class="context-help"><summary>About sponsor cards and contacts</summary><p>Paid sponsors enter their website and social profiles at checkout. Phone and email appear publicly only with their explicit contact-sharing consent. Keep contact details out of free-text descriptions.</p></details>
@@ -262,7 +238,7 @@
                 <input type="text" id="vip-title" maxlength="80" placeholder="e.g. VIP Table Sponsorship" value="VIP Seating">
               </div>
               <div>
-                <label style="font-size: 0.9rem;">Price per seat (in your currency)</label>
+                <label style="font-size: 0.9rem;">Price per seat (<span data-currency-code>your wedding currency</span>)</label>
                 <input type="number" id="vip-price" min="0" step="0.01" placeholder="0.00" value="0">
               </div>
             </div>
@@ -278,7 +254,22 @@
             </div>
           </div>
 
-          </details>
+        </section>
+        <section data-guide-step="extras" data-guide-title="Travel and guest questions" data-guide-optional>
+          <p class="fine">Help guests feel prepared with travel details and answers to common questions. These are optional and can be added later.</p>
+          <div id="extras-form">
+            <p id="extras-status" class="fine" role="status" aria-live="polite"></p>
+            <label for="travel-info">Travel &amp; accommodation</label>
+            <textarea id="travel-info" rows="3" maxlength="2000" placeholder="Parking, nearby hotels, shuttle times..."></textarea>
+            <label>Frequently asked questions</label>
+            <div id="faq-rows"></div>
+            <div class="row"><button type="button" id="faq-add" class="ghost">+ Add a question</button></div>
+          </div>
+        </section>
+        <section data-guide-step="campaigns" data-guide-title="Fundraising campaigns" data-guide-optional>
+          <p class="fine">Create a campaign for a goal that matters to you, such as a home or honeymoon. Add a goal and milestones in your wedding currency. Guests choose the amount they wish to give; existing offers and minimums stay as set.</p>
+          <div id="campaign-list"></div>
+          <div class="row"><button type="button" class="ghost" id="add-campaign">+ Add campaign</button> <span id="campaign-status" class="fine" role="status"></span></div>
         </section>
         <section data-guide-step="team" data-guide-title="Wedding helpers">
           <p>Invite trusted people to help with guest check-in, seating, RSVP support, coordination or the DJ playlist. Each helper receives access only to the task you assign, and never to payouts or financial totals.</p>
@@ -286,12 +277,14 @@
           <p class="fine"><a href="#seating-section">Manage your guest list and seating</a></p>
         </section>
         <section data-guide-step="review" data-guide-title="Does everything look right?">
-          <p>Review your answers, save changes, then publish when you are ready. You can return to any setup section whenever your plans change. Identity details support payout readiness and do not block publishing.</p>
+          <p>Take a final look at your saved answers. You can return to any section whenever your plans change. A ready guest-payment option does not mean payouts are ready.</p>
+          <p class="fine">Give guests more ways to support your celebration: a complete page, clear goals and fundraising options can help you work towards your wedding budget. There are no guaranteed results.</p>
           <div data-guide-review></div>
-          <p class="fine"><a href="#campaigns-section">Fundraising campaigns &amp; milestones</a> &middot; <a href="#bids-section">DJ song requests</a> &middot; <a href="#rsvps-section">Guest RSVPs</a> &middot; <a href="#engage-section">Guestbook, referrals &amp; FAQs</a> &middot; <a href="#seating-section">Guest list &amp; seating</a> &middot; <a href="#withdrawals-section">Balances &amp; payouts</a> &middot; <a href="#ops-section">Status &amp; publication</a> &middot; <a href="#published-section">Guest site &amp; QR pass</a></p>
+          <div id="share-panel" class="card" hidden></div>
+          <div id="setup-progress" class="card" aria-live="polite" aria-atomic="false"></div>
+          <p class="fine">Your guest RSVPs, song requests, campaign ledger, guestbook, moderation and payout tools stay in their own workspace sections.</p>
         </section>
           <div class="row">
-            <button type="submit">Save changes</button>
             <button type="button" id="publish-btn" class="ghost">Publish wedding site</button>
           </div>
       </form>
@@ -363,11 +356,8 @@
       </form>
     </div>
     <div id="campaigns-section" class="card" hidden>
-      <h2>Fundraising campaigns</h2>
-      <p class="fine">Invite guests to support meaningful goals such as a home or honeymoon. Set each campaign&rsquo;s goal and milestones; guests will see them on your site. This is separate from the gift registry. Amounts are in your wedding currency. Campaigns you remove are switched off, never deleted, so your ledger is kept.</p>
-      <div id="campaign-list"></div>
-      <div class="row"><button type="button" class="ghost" id="add-campaign">+ Add campaign</button> <button type="button" id="save-campaigns">Save campaigns</button> <span id="campaign-status" class="fine"></span></div>
-      <h3>Campaign ledger</h3>
+      <h2>Campaign ledger</h2>
+      <p class="fine">This is a record of campaign gifts, separate from setup.</p>
       <div id="campaign-summary" class="fine"></div>
       <div id="campaign-ledger" class="fine" style="overflow-x:auto">No gifts yet.</div>
     </div>
@@ -379,14 +369,6 @@
       <div id="referral-list" class="fine">No data yet.</div>
       <h3>Guestbook moderation</h3>
       <div id="wish-list" class="fine">No wishes yet.</div>
-      <h3>FAQ &amp; travel info</h3>
-      <form id="extras-form">
-        <label for="travel-info">Travel &amp; accommodation</label>
-        <textarea id="travel-info" rows="3" maxlength="2000" placeholder="Parking, nearby hotels, shuttle times..."></textarea>
-        <label>FAQ (question, then answer)</label>
-        <div id="faq-rows"></div>
-        <div class="row"><button type="button" id="faq-add" class="ghost">Add question</button><button type="submit">Save FAQ &amp; travel</button></div>
-      </form>
     </div>
 
     <!-- Published section -->
@@ -519,8 +501,6 @@
   <script src="site-urls.js"></script>
   <script src="currencies.js"></script>
   <script src="fx.js"></script>
-  <script src="amount-presets.js"></script>
-  <script src="amount-presets-editor.js"></script>
   <script src="auth-client.js"></script>
   <script src="social-links.js"></script>
   <script src="sponsor-cards.js"></script>
@@ -531,8 +511,12 @@
   <script>
 (async () => {
     const $ = id => document.getElementById(id);
-    const amountPresetEditor = WSAmountPresetEditor();
     let weddingGuide;
+    let campaignsLoaded = false;
+    let campaignsDirty = false;
+    let extrasLoaded = false;
+    let extrasDirty = false;
+    let campaignCurrency = "USD";
     const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     const notice = (text, bad) => { 
       const el = $("notice");
@@ -720,17 +704,6 @@
     });
 
     // Color palette editor
-    let colorEditorOpen = false;
-    
-    $("edit-colors-btn").addEventListener("click", e => {
-      e.preventDefault();
-      colorEditorOpen = !colorEditorOpen;
-      $("attire-editor").style.display = colorEditorOpen ? "block" : "none";
-      if (colorEditorOpen) {
-        renderColorInputs();
-      }
-    });
-
     const paletteColorNames = [
       ["Forest Green", "#244b3a"], ["Eucalyptus Sage", "#a9b5a2"], ["Royal Gold", "#be9b52"], ["Ivory", "#eee8d9"],
       ["Black", "#000000"], ["White", "#ffffff"], ["Charcoal", "#36454f"], ["Navy", "#000080"],
@@ -858,14 +831,6 @@
       $("palette-preview").innerHTML = colors.length
         ? colors.map((c, i) => `<span style="background: ${c};" data-color="${c}" title="${esc((cnames[i] || "Colour " + (i + 1)) + " " + c.toUpperCase())}"></span>`).join("")
         : '<span class="fine">No wedding theme colours selected.</span>';
-      colorEditorOpen = false;
-      $("attire-editor").style.display = "none";
-    });
-
-    $("cancel-colors-btn").addEventListener("click", e => {
-      e.preventDefault();
-      colorEditorOpen = false;
-      $("attire-editor").style.display = "none";
     });
 
     // Registry management
@@ -1004,6 +969,68 @@
       e.target.value = ""; // Reset for next upload
     });
 
+    async function loadCollectionCurrencies(currentCurrency) {
+      const select = $("currency");
+      const help = $("collection-currency-help");
+      const list = $("collection-currency-options");
+      select.replaceChildren();
+      list.replaceChildren();
+      select.add(new Option(`${currentCurrency} · currently saved`, currentCurrency, true, true));
+      try {
+        const res = await WS.api(`/api/weddings?action=collection-capabilities&weddingId=${encodeURIComponent(weddingId)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not check guest-payment options.");
+        const currencies = Array.isArray(data.currencies) ? data.currencies : [];
+        window.__wedding = { ...window.__wedding, collectionCapabilities: currencies };
+        currencies.forEach(currency => {
+          if (currency.code === currentCurrency) return;
+          select.add(new Option(`${currency.code} · ${currency.name}`, currency.code));
+        });
+        if (currencies.some(currency => currency.code === currentCurrency)) {
+          const current = currencies.find(currency => currency.code === currentCurrency);
+          select.options[0].textContent = `${current.code} · ${current.name}`;
+          select.options[0].disabled = false;
+        } else {
+          select.options[0].disabled = true;
+        }
+        if (window.WSSetupProgress && window.__wedding) {
+          window.WSSetupProgress.render($("setup-progress"), window.__wedding);
+        }
+        list.innerHTML = currencies.map(currency => {
+          const methods = currency.methods.map(method =>
+            `${esc(method.name)} (${method.markets.map(esc).join(", ")})`).join("; ");
+          return `<li><strong>${esc(currency.code)} · ${esc(currency.name)}:</strong> ${methods}</li>`;
+        }).join("");
+        help.textContent = currencies.length
+          ? "These currencies have a guest-payment option enabled and configured for your account and market. We do not change providers or convert existing amounts."
+          : "No live guest-payment option is ready for this account right now. You can keep saving your draft, but choose an available currency before setting fundraising amounts or publishing. Ask support to review payment availability; nothing will be enabled automatically.";
+        if (currencies.some(currency => currency.code === currentCurrency)) {
+          help.textContent += " Guest-payment setup is not proof of provider uptime or payout readiness.";
+        } else {
+          help.textContent += ` Your saved ${currentCurrency} currency and past records are kept; no amount is converted.`;
+        }
+        select.disabled = !currencies.length;
+      } catch (error) {
+        window.__wedding = { ...window.__wedding, collectionCapabilities: [] };
+        select.options[0].disabled = true;
+        help.textContent = `${error.message} Your saved currency and answers are safe. You can keep saving this draft and check again later.`;
+        list.replaceChildren();
+      }
+    }
+
+    function updateCurrencyLabels(currency = $("currency").value) {
+      document.querySelectorAll("[data-currency-code]").forEach(label => {
+        label.textContent = currency || "your wedding currency";
+      });
+      const savedCurrency = window.__wedding?.currency;
+      const changed = Boolean(savedCurrency && currency && savedCurrency !== currency);
+      $("currency-change-help").hidden = !changed;
+      $("currency-change-help").textContent = changed
+        ? `Changing from ${savedCurrency} to ${currency} will not convert your saved fees, goals, prices or minimums. Their numbers stay the same; review them in Guest RSVP and Fundraising before saving.`
+        : "";
+    }
+    $("currency").addEventListener("change", () => updateCurrencyLabels());
+
     async function loadPayoutMethods() {
       const select = $("payout-method");
       const res = await WS.api(`/api/weddings?action=payout-methods&weddingId=${encodeURIComponent(weddingId)}`);
@@ -1019,8 +1046,8 @@
       }
       select.disabled = !(data.methods || []).length;
       $("payout-method-help").textContent = (data.methods || []).length
-        ? "Available receiving options depend on your currency. Saving a preference does not collect account details or move money."
-        : "No receiving option is currently available for this wedding currency. No account details are collected.";
+        ? "These receiving options are separate from guest-payment availability. Saving a preference does not collect account details or move money, and does not prove payout readiness."
+        : "No payout option is configured for this currency right now. This does not tell you whether guests can pay or whether payouts are ready. You can still save the rest of your draft; ask support to review receiving options.";
     }
 
     async function refreshSetupProgress() {
@@ -1033,7 +1060,7 @@
         renderModeration(data.wedding);
       } catch (error) {
         console.error("Setup progress refresh failed:", error);
-        notice("Changes were saved, but setup progress could not be refreshed. Reload this editor to see the latest saved score.", true);
+        notice("Changes were saved, but the readiness checklist could not be refreshed. Reload this editor to see the latest saved details.", true);
       }
     }
 
@@ -1116,13 +1143,15 @@
         WSTime.fillSelect($("wedding-timezone"), w.time_zone || WSTime.DEFAULT_ZONE);
         setGuestSiteLink(w.slug, !!w.published_at);
         window.__wedding = w;
+        updateCurrencyLabels(w.currency || "USD");
         if (window.WSSetupProgress) window.WSSetupProgress.render($("setup-progress"), w);
         refreshOps(w);
         $("location").value = w.public_location || "";
         $("background-music-url").value = w.background_music_url || "";
         $("currency").value = w.currency || "USD";
-        amountPresetEditor.load(w, data.amountPresetMaxMinor);
         $("max-capacity").value = w.max_guest_capacity || 150;
+        $("cover-image-url").value = w.cover_image_url || "";
+        $("guest-instructions").value = w.guest_instructions || "";
         
         // Load palette: store as data attribute and render as spans
         const palette = w.palette || ["#244b3a"];
@@ -1131,6 +1160,7 @@
         $("palette-preview").innerHTML = palette.length
           ? palette.map((c, i) => `<span style="background: ${c};" data-color="${c}" title="${esc(((w.palette_names || [])[i] || friendlyPaletteName(c)) + " " + c.toUpperCase())}"></span>`).join("")
           : '<span class="fine">No wedding theme colours selected.</span>';
+        renderColorInputs();
         $("rsvp-fee").value = ((w.rsvp_fee_minor || 0) / 100).toFixed(2);
         $("extra-guest-fee").value = ((w.extra_guest_fee_minor || 0) / 100).toFixed(2);
         $("premium-diet-fee").value = ((w.premium_diet_fee_minor || 0) / 100).toFixed(2);
@@ -1201,7 +1231,7 @@
                   <input type="text" class="registry-category" value="${esc(reg.category || "")}" placeholder="e.g. Travel" maxlength="50">
                 </div>
                 <div>
-                  <label>Target amount (${w.currency || "USD"})</label>
+                  <label>Target amount (<span data-currency-code>${esc(w.currency || "USD")}</span>)</label>
                   <input type="number" class="registry-target" value="${(reg.target_amount_minor || 0) / 100}" min="1" step="0.01" placeholder="e.g. 5000">
                 </div>
                 <div>
@@ -1239,7 +1269,7 @@
                   <input type="text" class="tier-name" value="${esc(tier.name || "")}" placeholder="e.g. Gold Sponsor" maxlength="60">
                 </div>
                 <div>
-                  <label>Minimum contribution (${w.currency || "USD"})</label>
+                  <label>Minimum contribution (<span data-currency-code>${esc(w.currency || "USD")}</span>)</label>
                   <input type="number" class="tier-min-amount" value="${(tier.min_amount_minor || 0) / 100}" min="1" step="0.01" placeholder="e.g. 1000">
                 </div>
                 <div>
@@ -1273,9 +1303,12 @@
           $("vip-seats").value = "20";
           $("vip-description").value = "";
         }
+        await loadCollectionCurrencies(w.currency);
         await loadPayoutMethods(w.currency);
         await loadSponsorEnquiries();
         await loadSponsorCards();
+        await loadCampaigns();
+        await loadEngagement();
 
         // Load payout preferences
         if (w.payout) {
@@ -1303,8 +1336,7 @@
         if (!weddingGuide) {
           weddingGuide = WSGuidedSetup.create($("edit-form"), {
             mode: "edit",
-            externalSteps: [$("kyc-section")],
-            externalStepsAfter: "money",
+            stepOrder: ["couple", "date", "money", "venues", "guests", "theme", "giving", "campaigns", "extras", "team", "review"],
             summaries: {
               couple: () => `${$("couple-names").value || "Names not answered yet"}; site address ${$("wedding-slug").value || "not answered yet"}\n${$("welcome-story").value || "Welcome message can wait"}`,
               date: () => `${$("wedding-date").value || "Date not answered yet"}; ${$("wedding-timezone").value}; ${$("location").value || "Location not answered yet"}`,
@@ -1313,9 +1345,11 @@
               venues: () => [...$("venues-list").querySelectorAll(".venue-item")].map(item =>
                 `${item.querySelector(".venue-kind").value === "pre" ? "Pre-wedding" : "Wedding day"}: ${item.querySelector(".venue-name").value || "Event not named"}: ${item.querySelector(".venue-date").value} ${item.querySelector(".venue-time").value}; ${item.querySelector(".venue-addr").value}`).join("\n") || "Add a wedding-day event before publishing",
               theme: () => `${JSON.parse($("palette-preview").dataset.palette || "[]").join(", ") || "No palette selected"}\n${$("attire-notes").value || "Attire guidance can wait"}`,
-              giving: () => `${$("registry-list").children.length} gift registry item(s); ${$("tiers-list").children.length} sponsor package(s); ${$("preset-song").value || "Song bid amounts not set"}; ${$("preset-gift").value || "Gift amounts not set"}`,
+              giving: () => `${$("registry-list").children.length} gift item(s); ${$("tiers-list").children.length} sponsor packages`,
+              campaigns: () => `${$("campaign-list").children.length} fundraising campaign(s)`,
+              extras: () => `${$("faq-rows").children.length} guest question(s); ${$("travel-info").value ? "travel information added" : "travel information can wait"}`,
               team: () => "Invite helpers for RSVP support, guest seating, check-in, coordination or the DJ playlist.",
-              kyc: () => $("kyc-notice-status").textContent || "Both partners can add private identity details for payout readiness."
+              review: () => "Save your answers before publishing."
             }
           });
         }
@@ -1375,8 +1409,8 @@
       $("edit-form").dataset.submitting = "true";
       weddingGuide?.saving();
       notice("");
+      const currencyBeforeSave = window.__wedding?.currency || "";
       try {
-        const presetPatch = amountPresetEditor.payload();
         // Collect venues
         const venues = [];
         $("venues-list").querySelectorAll(".venue-item").forEach(item => {
@@ -1398,8 +1432,7 @@
           }
         });
 
-        // Collect palette colors: extract from data-palette attribute on preview or from visible color picker inputs
-        // If color editor is open, use active color inputs; otherwise use stored data
+        // Collect palette colors from the visible color controls.
         let palette;
         const dataAttr = $("palette-preview").dataset.palette;
         if (dataAttr) {
@@ -1477,11 +1510,12 @@
         const res = await WS.api("/api/weddings?action=update", {
           method: "POST",
           body: JSON.stringify({
-            ...presetPatch,
             weddingId,
             coupleNames: $("couple-names").value,
             slug: $("wedding-slug").value,
             welcomeStory: $("welcome-story").value,
+            coverImageUrl: $("cover-image-url").value,
+            guestInstructions: $("guest-instructions").value,
             weddingDate: $("wedding-date").value,
             timeZone: $("wedding-timezone").value,
             location: $("location").value,
@@ -1536,12 +1570,37 @@
               });
             });
           }
-          amountPresetEditor.saved(data.wedding);
           window.__wedding = { ...window.__wedding, ...data.wedding };
+          updateCurrencyLabels(data.wedding.currency || $("currency").value);
+        }
+        const sectionSaveErrors = [];
+        for (const [label, saveSection, dirty] of [
+          ["fundraising campaigns", saveCampaigns, campaignsDirty],
+          ["travel details and questions", saveExtras, extrasDirty]
+        ]) {
+          if (!dirty) continue;
+          try { await saveSection(); }
+          catch (error) {
+            console.error(`${label} save failed:`, error);
+            sectionSaveErrors.push(label);
+          }
+        }
+        if (data.wedding?.currency && data.wedding.currency !== currencyBeforeSave) {
+          try {
+            await loadCollectionCurrencies(data.wedding.currency);
+            await loadPayoutMethods();
+          } catch (error) {
+            console.error("Receiving options refresh failed:", error);
+            $("payout-method-help").textContent = "Your wedding currency was saved, but receiving options could not be refreshed. Reload this page to check them.";
+          }
         }
         if (window.WSSetupProgress && data.wedding) window.WSSetupProgress.render($("setup-progress"), data.wedding);
-        notice("Changes saved.");
-        weddingGuide?.saved(answersUnchanged);
+        if (sectionSaveErrors.length) {
+          notice(`Wedding details saved. ${sectionSaveErrors.join(" and ")} could not be saved, so those answers are still on this page.`, true);
+        } else {
+          notice("Your wedding details and setup answers are saved.");
+          weddingGuide?.saved(answersUnchanged);
+        }
       } catch (err) {
         console.error("Save failed:", err);
         notice("Could not save wedding: " + (err.message || "network error"), true);
@@ -1557,7 +1616,7 @@
       if (weddingGuide?.dirty()) return notice("Save your changes before publishing. Your answers are still on this page.", true);
       const missing = window.WSSetupProgress?.calculate(window.__wedding || {}).items.filter(item => item.required && !item.complete) || [];
       if (missing.length) {
-        weddingGuide?.blockPublication(missing.map(item => item.anchor));
+        weddingGuide?.blockPublication(missing.map(item => item.id));
         return;
       }
       if (weddingGuide && !weddingGuide.reviewBeforePublish()) return;
@@ -1772,13 +1831,21 @@
     function faqRow(q, a) {
       const d = document.createElement("div");
       d.className = "faq-row";
-      d.innerHTML = '<input type="text" maxlength="160" placeholder="Question" class="faq-q"><textarea rows="2" maxlength="600" placeholder="Answer" class="faq-a"></textarea>';
+      d.innerHTML = '<label>Guest question<input type="text" maxlength="160" placeholder="e.g. What time should I arrive?" class="faq-q"></label><label>Your answer<textarea rows="2" maxlength="600" placeholder="Write a short helpful answer." class="faq-a"></textarea></label><button type="button" class="ghost faq-remove">Remove question</button>';
       d.querySelector(".faq-q").value = q || "";
       d.querySelector(".faq-a").value = a || "";
       $("faq-rows").appendChild(d);
     }
-    $("faq-add").addEventListener("click", () => faqRow());
-    let campaignCurrency = "USD";
+    $("faq-add").addEventListener("click", () => { faqRow(); extrasDirty = true; });
+    $("faq-rows").addEventListener("click", event => {
+      if (event.target.closest(".faq-remove")) {
+        event.target.closest(".faq-row").remove();
+        extrasDirty = true;
+      }
+    });
+    $("faq-rows").addEventListener("input", () => { extrasDirty = true; });
+    $("faq-rows").addEventListener("change", () => { extrasDirty = true; });
+    $("travel-info").addEventListener("input", () => { extrasDirty = true; });
     function milestoneRow(m = {}) {
       const d = document.createElement("div");
       d.className = "ms-row row";
@@ -1800,26 +1867,47 @@
       return d;
     }
     async function loadCampaigns() {
-      $("campaigns-section").hidden = false;
+      $("campaigns-section").hidden = !window.__wedding?.published_at;
       try {
         const r = await WS.api(`/api/weddings?action=campaigns&weddingId=${encodeURIComponent(weddingId)}`); const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Could not load fundraising campaigns.");
         campaignCurrency = d.currency || "USD";
         $("campaign-list").innerHTML = "";
         (d.campaigns || []).forEach(c => $("campaign-list").appendChild(campaignCard(c)));
+        campaignsDirty = false;
         const sum = d.summary || [];
         $("campaign-summary").innerHTML = sum.length ? sum.map(s => `<strong>${WS.esc(s.name)}</strong>: ${WS.money(s.raised_minor, campaignCurrency, true)} of ${WS.money(s.goal_minor, campaignCurrency, true)} · ${s.pledges} gift${s.pledges === 1 ? "" : "s"}${s.enabled ? "" : " (hidden)"}`).join("<br>") : "No campaigns yet.";
         const rows = d.rows || [];
         $("campaign-ledger").innerHTML = rows.length ? '<table><thead><tr><th>Guest</th><th>Amount</th><th>Campaign</th><th>Milestone</th><th>Status</th><th>Date</th></tr></thead><tbody>' + rows.map(x => `<tr><td>${WS.esc(x.guest)}</td><td>${WS.money(x.amount_minor, campaignCurrency, true)}</td><td>${WS.esc(x.campaign)}</td><td>${WS.esc(x.milestone || "—")}</td><td>${WS.esc(x.status)}${x.provider === "test-simulator" ? " (test payment)" : ""}</td><td>${WS.esc(String(x.created_at).slice(0, 10))}</td></tr>`).join("") + "</tbody></table>" : "No gifts yet.";
-      } catch (_) {}
+        campaignsLoaded = true;
+        $("campaign-status").textContent = "";
+      } catch (error) {
+        campaignsLoaded = false;
+        $("campaign-status").textContent = "We couldn’t load your saved campaigns. Reload this page before editing or saving them.";
+        console.error("Campaign setup load failed:", error);
+      }
     }
-    $("add-campaign").addEventListener("click", () => $("campaign-list").appendChild(campaignCard()));
+    $("add-campaign").addEventListener("click", () => {
+      $("campaign-list").appendChild(campaignCard());
+      campaignsDirty = true;
+    });
     $("campaign-list").addEventListener("click", e => {
       const card = e.target.closest(".campaign-card"); if (!card) return;
-      if (e.target.closest(".ms-add")) card.querySelector(".ms-list").appendChild(milestoneRow());
-      else if (e.target.closest(".ms-del")) e.target.closest(".ms-row").remove();
-      else if (e.target.closest(".cp-del") && confirm("Remove this campaign? It will be hidden from guests; existing gifts stay in your ledger.")) card.remove();
+      if (e.target.closest(".ms-add")) {
+        card.querySelector(".ms-list").appendChild(milestoneRow());
+        campaignsDirty = true;
+      } else if (e.target.closest(".ms-del")) {
+        e.target.closest(".ms-row").remove();
+        campaignsDirty = true;
+      } else if (e.target.closest(".cp-del") && confirm("Remove this campaign? It will be hidden from guests; existing gifts stay in your ledger.")) {
+        card.remove();
+        campaignsDirty = true;
+      }
     });
-    $("save-campaigns").addEventListener("click", async () => {
+    $("campaign-list").addEventListener("input", () => { campaignsDirty = true; });
+    $("campaign-list").addEventListener("change", () => { campaignsDirty = true; });
+    async function saveCampaigns() {
+      if (!campaignsLoaded) throw new Error("Campaigns could not be loaded. Reload the page before saving this section.");
       const campaigns = [...$("campaign-list").querySelectorAll(".campaign-card")].map(c => ({
         id: c.dataset.id || null, name: c.querySelector(".cp-name").value, goal: c.querySelector(".cp-goal").value,
         purpose: c.querySelector(".cp-purpose").value, enabled: c.querySelector(".cp-enabled").checked,
@@ -1827,12 +1915,10 @@
       }));
       const res = await WS.api("/api/weddings?action=campaigns-save", { method: "POST", body: JSON.stringify({ weddingId, campaigns }) });
       const out = await res.json().catch(() => ({}));
-      if (!res.ok) { $("campaign-status").textContent = out.error || "Could not save."; return notice(out.error || "Could not save campaigns.", true); }
-      $("campaign-status").textContent = "Saved.";
-      await refreshSetupProgress();
-      notice("Fundraising campaigns saved.");
+      if (!res.ok) throw new Error(out.error || "Could not save fundraising campaigns.");
+      $("campaign-status").textContent = "Campaigns saved.";
       await loadCampaigns();
-    });
+    }
     async function loadEngagement() {
       $("engage-section").hidden = false;
       const q = encodeURIComponent(weddingId);
@@ -1850,10 +1936,18 @@
       await loadWishes();
       try {
         const r = await WS.api(`/api/weddings?action=extras-get&weddingId=${q}`); const d = await r.json();
+        if (!r.ok) throw new Error(d.error || "Could not load guest questions and travel details.");
         $("travel-info").value = d.travel || "";
         $("faq-rows").innerHTML = "";
         (d.faq || []).forEach(f => faqRow(f.q, f.a));
-      } catch (_) {}
+        extrasLoaded = true;
+        extrasDirty = false;
+        $("extras-status").textContent = "";
+      } catch (error) {
+        extrasLoaded = false;
+        $("extras-status").textContent = "We couldn’t load your saved travel details and questions. Reload this page before editing or saving them.";
+        console.error("Guest extras load failed:", error);
+      }
     }
     async function loadWishes() {
       try {
@@ -1867,15 +1961,15 @@
       const res = await WS.api("/api/weddings?action=wish-moderate", { method: "POST", body: JSON.stringify({ weddingId, wishId: b.closest(".wish-item").dataset.id, status: b.dataset.wish }) });
       if (res.ok) { notice("Wish updated."); loadWishes(); } else notice("Could not update the wish.", true);
     });
-    $("extras-form").addEventListener("submit", async e => {
-      e.preventDefault();
+    async function saveExtras() {
+      if (!extrasLoaded) throw new Error("Travel details and questions could not be loaded. Reload the page before saving this section.");
       const faq = [...document.querySelectorAll(".faq-row")].map(r => ({ q: r.querySelector(".faq-q").value, a: r.querySelector(".faq-a").value }));
       const res = await WS.api("/api/weddings?action=extras-save", { method: "POST", body: JSON.stringify({ weddingId, faq, travel: $("travel-info").value }) });
-      notice(res.ok ? "FAQ and travel info saved." : "Could not save FAQ and travel info.", !res.ok);
-      if (res.ok) await refreshSetupProgress();
-    });
-    loadEngagement();
-    loadCampaigns();
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error || "Could not save travel details and questions.");
+      $("extras-status").textContent = "Travel details and questions saved.";
+      extrasDirty = false;
+    }
     async function loadRsvps() {
       try {
         const res = await WS.api(`/api/weddings?action=rsvps&weddingId=${encodeURIComponent(weddingId)}`);

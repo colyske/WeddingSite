@@ -4,17 +4,14 @@ import { chromium } from "playwright";
 
 const deployment = process.env.WEDDING_DEPLOYMENT_URL;
 
-test("deployed organizer assets render saved KES and USD suggested amounts without writes",
+test("deployed organizer setup has no suggested-amount controls and filters to ready currencies",
   { skip: !deployment, timeout: 180000 }, async () => {
     assert.match(deployment, /^https:\/\/[^/?#]+\/?$/, "Use an HTTPS deployment origin.");
     let browser;
     try {
       try { browser = await chromium.launch({ channel: "msedge" }); }
       catch { browser = await chromium.launch(); }
-      for (const [currency, amountPresets] of [
-        ["KES", { currency: "KES", song: [10000, 50000, 100000], gift: [50000, 100000, 500000] }],
-        ["USD", { currency: "USD", song: [725, 1250], gift: [1500, 3000] }]
-      ]) {
+      for (const currency of ["KES", "USD"]) {
         const context = await browser.newContext();
         try {
           await context.addInitScript(() => {
@@ -30,10 +27,14 @@ test("deployed organizer assets render saved KES and USD suggested amounts witho
             const wedding = {
               id: "550e8400-e29b-41d4-a716-446655440000", slug: "fixture-wedding",
               couple_names: "Fixture Couple", wedding_date: "2099-12-12", time_zone: "UTC",
-              public_location: "Nairobi", currency, amount_presets: amountPresets,
+              public_location: "Nairobi", currency,
               max_guest_capacity: 100, palette: ["#244b3a"], venues: []
             };
-            const data = action === "get" ? { wedding, amountPresetMaxMinor: 50000000 }
+            const data = action === "get" ? { wedding }
+              : action === "collection-capabilities" ? { currencies: [
+                { code: "KES", name: "Kenyan shilling", methods: [{ name: "Mobile money", markets: ["Kenya"] }] },
+                { code: "USD", name: "US dollar", methods: [{ name: "Card", markets: ["Supported markets"] }] }
+              ] }
               : action === "payout-methods" ? { methods: [] }
                 : action === "kyc-get" ? { kyc: {} }
                   : action === "quote" ? { quote: { fee_minor: 0, currency } } : {};
@@ -50,15 +51,16 @@ test("deployed organizer assets render saved KES and USD suggested amounts witho
           page.on("pageerror", error => errors.push(error.message));
           await page.goto(new URL("wedding.html?id=550e8400-e29b-41d4-a716-446655440000", deployment).href,
             { waitUntil: "domcontentloaded" });
-          await page.locator("#preset-song").waitFor({ state: "visible" });
-          await page.waitForFunction(expected => document.getElementById("preset-song").value === expected,
-            amountPresets.song.map(n => n / 100).join(", "));
-          assert.equal(await page.locator("#preset-gift").inputValue(), amountPresets.gift.map(n => n / 100).join(", "));
-          assert.equal(await page.locator("#preset-currency").innerText(), currency);
-          assert.match(await page.locator("#preset-state").innerText(), /Saved organizer choices/);
-          for (const script of ["/amount-presets.js", "/amount-presets-editor.js"]) {
-            assert.ok(loadedScripts.has(script), `real deployed asset loaded: ${script}`);
-          }
+          await page.locator("#guide-heading-couple").waitFor();
+          assert.equal(await page.locator("#preset-song, #preset-gift, #preset-currency, #preset-state").count(), 0,
+            "organizers do not see suggested amount controls");
+          await page.waitForFunction(() => {
+            const select = document.getElementById("currency");
+            return select && select.options.length === 2;
+          });
+          assert.deepEqual((await page.locator("#currency option").evaluateAll(options => options.map(option => option.value))).sort(),
+            ["KES", "USD"], "only currencies returned as ready by the collection capability endpoint are selectable");
+          assert.equal(loadedScripts.has("/amount-presets-editor.js"), false, "the deployed editor does not load amount presets");
           assert.deepEqual(errors, []);
         } finally { await context.close(); }
       }
