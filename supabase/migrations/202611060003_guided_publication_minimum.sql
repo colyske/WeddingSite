@@ -168,8 +168,12 @@ begin
     if cardinality(missing) > 0 then
       raise exception 'PUBLISH_INCOMPLETE: Complete these saved details before updating: %', array_to_string(missing, ', ');
     end if;
-    if tg_table_name = 'weddings' and tg_op = 'UPDATE' and old.published_at is null then
-      perform public.assert_wedding_publish_content(w);
+    if tg_table_name = 'weddings' then
+      if tg_op = 'UPDATE' then
+        if old.published_at is null then
+          perform public.assert_wedding_publish_content(w);
+        end if;
+      end if;
     end if;
   end if;
   return null;

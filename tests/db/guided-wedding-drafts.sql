@@ -111,9 +111,14 @@ begin
   missing := public.wedding_publication_readiness(w.id);
   if cardinality(missing) > 0 then raise exception 'Complete approved minimum should be ready without a general location: %',missing; end if;
   perform public.publish_wedding_with_fee(w.id,true);
-  select to_jsonb(x) into before_publish from public.weddings x where x.id=w.id;
   -- Assert the new invariants without requiring KYC.
   if not (select published_at is not null from public.weddings where id=w.id) then raise exception 'Complete wedding should publish'; end if;
+  set constraints saved_wedding_content immediate;
+  update public.weddings set welcome_story='We are looking forward to celebrating with you.' where id=w.id;
+  set constraints saved_venue_content immediate;
+  update public.venues set address='Updated garden road' where wedding_id=w.id;
+  set constraints saved_wedding_content, saved_venue_content deferred;
+  select to_jsonb(x) into before_publish from public.weddings x where x.id=w.id;
   blocked := false;
   begin perform public.save_wedding_content(w.id,'{"wedding_date":null}'::jsonb);
   exception when check_violation then blocked:=true; end;
