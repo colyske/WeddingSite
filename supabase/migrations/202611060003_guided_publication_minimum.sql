@@ -1,7 +1,10 @@
 alter table public.weddings
   add column if not exists cover_image_url text,
   add column if not exists guest_instructions text,
-  add column if not exists publication_minimum_enforced boolean not null default true;
+  add column if not exists publication_minimum_enforced boolean not null default false;
+
+-- Existing rows inherit the legacy marker without firing deferred content checks.
+alter table public.weddings alter column publication_minimum_enforced set default true;
 
 alter table public.weddings drop constraint if exists weddings_cover_image_url_check;
 alter table public.weddings add constraint weddings_cover_image_url_check check (
@@ -13,9 +16,6 @@ alter table public.weddings drop constraint if exists weddings_guest_instruction
 alter table public.weddings add constraint weddings_guest_instructions_check check (
   guest_instructions is null or length(guest_instructions) <= 1000
 );
-
--- Backfill only after table DDL: published rows queue deferred content triggers.
-update public.weddings set publication_minimum_enforced = false where published_at is not null;
 
 create table if not exists public.wedding_collection_capabilities (
   wedding_id uuid not null references public.weddings(id) on delete cascade,
@@ -142,6 +142,13 @@ create or replace function public.guard_wedding_publication_content() returns tr
 language plpgsql security definer set search_path = '' set row_security = off
 as $$
 begin
+  if tg_op = 'INSERT' then
+    if new.publication_minimum_enforced is distinct from true then
+      raise exception 'New weddings must enforce the publication minimum.';
+    end if;
+  elsif new.publication_minimum_enforced is distinct from old.publication_minimum_enforced then
+    raise exception 'Publication minimum enforcement cannot be changed directly.';
+  end if;
   if new.published_at is not null and
       (tg_op = 'INSERT' or old.published_at is null) then
     new.publication_minimum_enforced := true;
