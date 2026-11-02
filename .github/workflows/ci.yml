@@ -29,6 +29,8 @@ jobs:
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < supabase/migrations/202611080001_optional_cover_and_guest_instructions.sql
       - name: Commit starter migration on populated predecessor without changing existing weddings
         run: node tests/db/wedding-starter-upgrade.mjs
+      - name: Commit deferred starter upgrade without changing existing weddings or readiness
+        run: node tests/db/deferred-starter-upgrade.mjs
       - name: Apply all migrations to a fresh database
         run: supabase db reset --local --no-seed
       - name: Lint the migrated schema
@@ -69,6 +71,8 @@ jobs:
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/guided-wedding-drafts.sql
       - name: Test starter proof gates, atomic rollback and idempotent configuration copying
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/wedding-starter-drafts.sql
+      - name: Test unpaid starter creation and atomic deferred review
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/deferred-wedding-starters.sql
       - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup
