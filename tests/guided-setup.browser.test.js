@@ -364,10 +364,16 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     for (const [width, height] of [[320, 640], [375, 667], [414, 896], [1280, 800]]) {
       await resume.setViewportSize({ width, height });
       for (const position of ["guide-end", "page-bottom"]) {
-      await resume.evaluate(position => {
-        if (position === "page-bottom") window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
-        else document.getElementById("edit-section").scrollIntoView({ block: "end", behavior: "instant" });
-      }, position);
+      await resume.waitForFunction(position => {
+        const root = document.documentElement;
+        if (position === "page-bottom") {
+          window.scrollTo({ top: root.scrollHeight, behavior: "instant" });
+          return Math.abs(root.scrollTop + innerHeight - root.scrollHeight) <= 1;
+        }
+        const card = document.getElementById("edit-section");
+        card.scrollIntoView({ block: "end", behavior: "instant" });
+        return Math.abs(card.getBoundingClientRect().bottom - innerHeight) <= 1;
+      }, position, { polling: 100, timeout: 5000 });
       await resume.waitForTimeout(50);
       const layout = await resume.evaluate(() => {
         const bar = document.querySelector(".guide-actions").getBoundingClientRect();
