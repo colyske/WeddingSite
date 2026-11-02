@@ -473,14 +473,6 @@ begin
   return v_id;
 end $$;
 
-create function public.manual_payout_include_debit_internal(p_id uuid,p_batch uuid,p_line uuid,p_evidence uuid,
-  p_allow_owner_solo boolean default false) returns boolean
-language plpgsql security definer set search_path = '' as $$
-begin
-  perform public.manual_payout_intake_authority(p_allow_owner_solo);
-  raise exception 'Post-paid debit inclusion retired: registered unique statement debit must finalize atomically with paid.';
-end $$;
-
 create function public.manual_payout_register_statement_debit_internal(p_batch uuid,p_line uuid,p_reference text,
   p_actual bigint,p_fee bigint,p_currency text,p_at timestamptz,p_evidence uuid,
   p_allow_owner_solo boolean default false) returns uuid
@@ -1070,7 +1062,7 @@ declare f record; arguments text; names text;
 begin
   for f in select p.oid,p.proname,p.proargnames,p.pronargs from pg_proc p join pg_namespace n on n.oid=p.pronamespace
     where n.nspname='public' and p.proname in ('manual_payout_recipient_internal','manual_payout_register_account_internal',
-      'manual_payout_append_statement_internal','manual_payout_map_source_internal','manual_payout_include_debit_internal',
+      'manual_payout_append_statement_internal','manual_payout_map_source_internal',
       'manual_payout_register_custody_internal','manual_payout_register_settlement_internal',
       'manual_payout_register_statement_debit_internal') loop
     arguments:=regexp_replace(pg_get_function_arguments(f.oid),', p_allow_owner_solo boolean DEFAULT false$','');
@@ -1098,7 +1090,7 @@ begin
     if f.proname in ('manual_payout_overview','manual_payout_history','manual_payout_balance','manual_payout_submit_evidence','manual_payout_check_evidence',
       'manual_payout_recipient','manual_payout_register_custody','manual_payout_register_settlement',
       'manual_payout_request','manual_payout_transition','manual_payout_report','manual_payout_reconcile',
-      'manual_payout_register_account','manual_payout_append_statement','manual_payout_map_source','manual_payout_include_debit',
+      'manual_payout_register_account','manual_payout_append_statement','manual_payout_map_source',
       'manual_payout_register_statement_debit') then
       execute format('grant execute on function %s to authenticated',f.signature);
     end if;

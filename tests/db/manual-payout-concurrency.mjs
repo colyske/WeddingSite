@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 
 const container = process.env.MANUAL_PAYOUT_TEST_DB_CONTAINER;
 if (container !== "supabase_db_weddingsite") throw new Error("Explicit isolated local/CI database required.");
-function sql(input, onOutput = () => {}) {
+function sql(input, onOutput = () => {}, control) {
   return new Promise((resolve, reject) => {
     const child = spawn("docker", ["exec", "-i", container, "psql", "-U", "postgres", "-d", "postgres", "-At", "-v", "ON_ERROR_STOP=1"]);
     let output = "", errors = "";
@@ -14,7 +14,10 @@ function sql(input, onOutput = () => {}) {
     child.stderr.on("data", c => { errors += c; });
     child.on("error", reject);
     child.on("exit", code => code === 0 ? resolve(output.trim()) : reject(new Error(errors)));
-    child.stdin.end(input);
+    if (control) {
+      control.release = () => child.stdin.end("commit;\n");
+      child.stdin.write(input);
+    } else child.stdin.end(input);
   });
 }
 const maker = randomUUID(), checker = randomUUID(), sender = randomUUID(), wedding = randomUUID();
@@ -133,20 +136,25 @@ try {
     await sql(`update public.profiles set platform_role='superadmin' where id='${revoked}';`);
     let markBarrier;
     const barrierReady = new Promise(resolve => { markBarrier = resolve; });
-    const barrier = sql(`begin; select pg_advisory_xact_lock(71110001); select 'REVOCATION_BARRIER'; select pg_sleep(5); commit;`,
-      output => { if (output.includes("REVOCATION_BARRIER")) markBarrier(); });
+    const control = {};
+    const barrier = sql(`begin; set local idle_in_transaction_session_timeout='20s';
+      select pg_advisory_xact_lock(71110001); select 'REVOCATION_BARRIER';\n`,
+      output => { if (output.includes("REVOCATION_BARRIER")) markBarrier(); }, control);
     await Promise.race([barrierReady, barrier.then(() => { throw new Error("Missing role barrier"); })]);
     const name = `manual-revoke-${index}`;
     const waiting = assert.rejects(sql(`begin; set local statement_timeout='15s';
       set local application_name='${name}'; ${actor(revoked)} select ${attempts[index]}; commit;`), /authority revoked/);
-    await sql(`do $$ begin
-      for i in 1..200 loop
-        if exists(select 1 from pg_stat_activity where application_name='${name}' and wait_event='advisory') then return; end if;
-        perform pg_sleep(0.01);
-      end loop;
-      raise exception 'Writer did not reach the role-revocation advisory wait';
-    end $$;
-    update public.profiles set platform_role='client' where id='${revoked}';`);
+    try {
+      await sql(`do $$ begin
+        for i in 1..1000 loop
+          perform pg_stat_clear_snapshot();
+          if exists(select 1 from pg_stat_activity where application_name='${name}' and wait_event='advisory') then return; end if;
+          perform pg_sleep(0.01);
+        end loop;
+        raise exception 'Writer did not reach the role-revocation advisory wait';
+      end $$;
+      update public.profiles set platform_role='client' where id='${revoked}';`);
+    } finally { control.release(); }
     await Promise.all([barrier, waiting]);
   }
   await sql(`update public.payment_adjustments set status='failed',hold_minor=0
