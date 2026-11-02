@@ -45,6 +45,30 @@
       ? `<div class="table-wrap"><table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`
       : '<p class="empty">Nothing here yet.</p>';
   const btn = (label, attrs) => `<button type="button" class="mini" ${attrs}>${esc(label)}</button>`;
+  const manualFields = {
+    evidence: ["kind", "reference", "sha256"], check: ["id"], recipient: ["wedding", "evidence", "provider", "currency"],
+    custody: ["provider", "account", "currency", "available", "statement_at", "evidence"],
+    settlement: ["contribution", "custody", "line", "settled", "evidence"],
+    request: ["key", "wedding", "custody", "recipient", "amount", "fee", "currency"],
+    transition: ["id", "action", "key", "evidence"],
+    receipt: ["id", "reference", "actual", "fee", "currency", "at", "evidence"]
+  };
+  const manualNumbers = new Set(["available", "settled", "amount", "actual", "fee"]);
+  function manualForms() {
+    return Object.entries(manualFields).map(([action, fields]) => `<details><summary>Manual-only: ${esc(action)}</summary>
+      <form data-manual-action="${action}"><fieldset disabled><legend>Unavailable until separately approved activation</legend>
+      ${fields.map(field => {
+        const options = field === "kind" ? ["recipient", "custody", "settlement", "receipt", "no_transfer"] :
+          field === "action" ? ["approved", "executing", "cancelled", "uncertain", "resolution_proposed", "not_transferred", "paid"] : null;
+        const optional = action === "transition" && ["key", "evidence"].includes(field);
+        const label = `${field.replaceAll("_", " ")}${manualNumbers.has(field) ? " (minor units; explicit, no defaults)" :
+          ["at", "statement_at"].includes(field) ? " (UTC ISO timestamp)" : field === "sha256" ? " (evidence digest)" : ""}`;
+        return `<label>${esc(label)}${options ? `<select name="${field}">${options.map(o => `<option>${o}</option>`).join("")}</select>` :
+          `<input name="${field}" type="${manualNumbers.has(field) ? "number" : "text"}"${optional ? "" : " required"} autocomplete="off">`}</label>`;
+      }).join("")}
+      <label><input name="confirmed" type="checkbox" required> I reviewed immutable evidence and understand this never sends money. A claim replay is not permission to resend.</label>
+      <button type="submit">Record manual ${esc(action)}</button></fieldset></form></details>`).join("");
+  }
   async function moderationQueue(el) {
     const { cases = [] } = await get("moderation", "&closed=1");
     el.insertAdjacentHTML("afterbegin", `<section><h2>Moderation corrections</h2><p class="fine">Review the wedding changes before deciding. Republishing restores a previously published site; lifting a restriction returns it to the normal publication flow. No automatic publishing occurs.</p>${cases.map(c => `<article class="card">
@@ -362,12 +386,26 @@
         row: (l) => `<tr><td>${date(l.created_at)}</td><td>${esc(l.couple_names)}</td><td>${esc(l.stream_name)}</td><td>${esc(l.contributor || "Anonymous")}</td><td>${esc(WS.money(l.amount_minor, l.currency, false))}</td><td>${esc(WS.money(Number(l.fee_minor || 0), l.currency, false))}</td><td>${esc(WS.money(Number(l.net_minor || 0), l.currency, false))}</td><td>${esc(l.status)}</td><td>${esc(l.provider || "-")}</td></tr>`
       });
     },    async payouts(el) {
-      const { payouts } = await get("payouts");
-      el.innerHTML = `<h2>Payouts / withdrawals</h2><p class="fine">Complete KYC to receive your payout. Both partners' required details and consent must be submitted before requesting, approving or marking a payout sent; this is not independent identity verification. Four-eyes rule: you cannot approve a payout you requested. No money moves automatically; "sent" records a manual transfer.</p>` +
+      const [{ payouts }, manual] = await Promise.all([get("payouts"), get("manual-payouts")]);
+      el.innerHTML = `<h2>Payouts / withdrawals</h2>
+        <section id="manual-payout-control"><h3>Controlled manual external payouts: ${manual.enabled ? "enabled" : "OFF"}</h3>
+          <p>Automatic transfers remain OFF. Code readiness does not authorize use of a funded merchant rail. Operators transfer only outside this site in the official authorized portal, after a durable execution claim. Never resend an uncertain transfer.</p>
+          <p>${esc(manual.verification)}</p>
+          <p class="notice">${(manual.blockers || []).map(esc).join(". ")}.</p>
+          <p>Request &rarr; independent review &rarr; execution claim &rarr; receipt reported &rarr; independent statement reconciliation. Only reconciled transfers are paid. Uncertain transfers retain funds; there is no timeout release.</p>
+          <p>Evidence reference fields accept opaque repository UUIDs only. Do not enter bank details, names, KYC, credentials or public document URLs. Identity evidence must include consent and actual verification by the appointed reviewer; an attestation is not a provider lookup.</p>
+          ${manualForms()}
+          ${role === "owner" ? `<details><summary>Protected Owner: record policy evidence only (cannot activate)</summary>
+            <form data-manual-action="evidence"><input type="hidden" name="kind" value="policy">
+              <label>Opaque policy document reference (UUID)<input name="reference" required autocomplete="off"></label>
+              <label>Policy evidence SHA-256 digest<input name="sha256" pattern="[0-9a-f]{64}" required autocomplete="off"></label>
+              <label><input name="confirmed" type="checkbox" required> Record review evidence only; no funded rail, limits, fees or activation is approved by this action.</label>
+              <button type="submit">Record Owner policy evidence</button></form></details>` : ""}
+          ${(manual.requests || []).map(r => `<article><h4>${esc(r.id)}: ${esc(r.state)}</h4><p>${esc(WS.money(Number(r.amount_minor),r.currency,false))}; recipient revision ${esc(r.recipient_revision)}</p><details><summary>Append-only actor / evidence history</summary>${(r.events || []).map(e => `<p>${esc(e.state)}: actor ${esc(e.actor_id)}, evidence ${esc(e.evidence_id || "-")} (${date(e.created_at)})</p>`).join("")}</details></article>`).join("")}
+        </section><h3>Legacy requests (cannot be approved or marked sent)</h3><p class="fine">Identity submissions are not independent recipient verification. <a href="/wedding.html">Wedding identity details</a> remain private. A bare Mark sent can never declare payment.</p>` +
         table(["Requested", "Wedding", "Amount", "Status", "Note", "Actions"], payouts.map((p) => {
           const acts = [];
-          if (p.status === "requested") acts.push(btn("Approve", `data-ps="approved" data-id="${esc(p.id)}"`), btn("Cancel", `data-ps="cancelled" data-id="${esc(p.id)}"`));
-          if (p.status === "approved") acts.push(btn("Mark sent", `data-ps="sent" data-id="${esc(p.id)}"`), btn("Cancel", `data-ps="cancelled" data-id="${esc(p.id)}"`));
+          if (["requested", "approved"].includes(p.status)) acts.push(btn("Cancel legacy request", `data-ps="cancelled" data-id="${esc(p.id)}"`));
           return `<tr><td>${date(p.requested_at)}</td><td>${esc(p.couple_names)} <a href="/wedding.html?id=${encodeURIComponent(p.wedding_id)}#kyc-section">KYC details</a></td><td>${esc(WS.money(Number(p.amount_minor), p.currency, false))}</td><td>${esc(p.status)}</td><td>${esc(p.note || "")}</td><td class="acts">${acts.join(" ") || "-"}</td></tr>`;
         }));
     },
@@ -498,6 +536,21 @@
       } catch (err) { toast(err.message, true); }
     });
     panel.addEventListener("submit", async (e) => {
+      if (e.target.matches("[data-manual-action]")) {
+        e.preventDefault();
+        const form = e.target, action = form.dataset.manualAction;
+        const body = Object.fromEntries(manualFields[action].map(key => {
+          const value = form.elements[key]?.value || "";
+          return [key, manualNumbers.has(key) ? Number(value) : value || null];
+        }));
+        body.confirmed = form.elements.confirmed.checked;
+        try {
+          const result = await post("manual-payout-" + action, body);
+          toast("Manual evidence/action recorded: " + String(result.result) + ". No transfer was initiated.");
+          await show("payouts");
+        } catch (error) { toast(error.message, true); }
+        return;
+      }
       if (e.target.id === "referral-policy-form") {
         e.preventDefault();
         const form = e.target, button = form.querySelector('button[type="submit"]');

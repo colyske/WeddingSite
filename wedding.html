@@ -469,7 +469,7 @@
     <!-- Withdrawals / Payouts -->
     <div id="withdrawals-section" class="card" hidden>
       <h2>💰 Payouts & Withdrawals</h2>
-      <p class="fine">Only eligible completed payments can be withdrawn. Test payments never become withdrawable funds.</p>
+      <p class="notice" id="manual-payout-status">Manual external payouts are OFF pending separate operational approval and activation. A request is not a payment: independent review, an external execution claim, a unique receipt and independent statement reconciliation are required. Uncertain transfers stay held; payment is never instant. Test payments and direct-settled funds cannot be withdrawn here.</p>
       <p class="notice" id="payout-kyc-notice" role="status">Add both partners&rsquo; private identity details before requesting a payout. <a href="#kyc-section">Complete identity details</a>. Publishing is not blocked.</p>
       
       <section id="paystack-onboarding" class="notice" aria-labelledby="paystack-onboarding-title">
@@ -498,7 +498,7 @@
         <p id="method-display" style="margin: 0; font-weight: 500;">Not configured</p>
       </div>
 
-      <div id="withdrawal-form" style="margin-bottom: 1.5rem;">
+      <fieldset id="withdrawal-form" disabled style="margin-bottom: 1.5rem;">
         <label for="withdrawal-amount">Amount to withdraw (in your currency)</label>
         <input id="withdrawal-amount" type="number" min="0.01" step="0.01" placeholder="0.00" style="width: 100%; margin-bottom: 1rem;">
         
@@ -507,11 +507,11 @@
 
         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; margin-bottom: 1rem;">
           <input id="confirm-withdrawal" type="checkbox">
-          <span>I confirm this withdrawal request and understand the funds will be transferred to my configured payout account</span>
+          <span>I understand a request requires independently verified recipient evidence and review; receiving preferences are not verified payout instructions</span>
         </label>
 
         <button type="button" id="request-withdrawal-btn" class="btn">Request Withdrawal</button>
-      </div>
+      </fieldset>
 
       <div id="withdrawals-history" style="margin-top: 2rem;">
         <h3>Previous withdrawal requests</h3>
@@ -2253,12 +2253,22 @@
         const histRes = await WS.api(`/api/weddings?action=withdrawals&weddingId=${encodeURIComponent(weddingId)}`);
         const histData = await histRes.json();
         if (histRes.ok) {
-          const withdrawals = histData.withdrawals || [];
+          const manualLabels = {
+            requested: "Manual request awaiting independent review", approved: "Reviewed; not transferred",
+            executing: "External execution claimed; funds held", uncertain: "Outcome uncertain; funds held; do not resend",
+            reported: "Receipt reported; awaiting independent statement reconciliation", paid: "Independently statement-reconciled payment",
+            resolution_proposed: "No-transfer resolution awaiting independent review; funds held",
+            not_transferred: "Independently confirmed not transferred", cancelled: "Cancelled before execution"
+          };
+          const withdrawals = [
+            ...(histData.manualWithdrawals || []).map(w => ({ ...w, manual: true })),
+            ...(histData.withdrawals || [])
+          ];
           if (withdrawals.length === 0) return;
           $("withdrawals-body").innerHTML = withdrawals.map(w => `
             <tr style="border-bottom: 1px solid #ddd;">
               <td style="padding: 0.75rem;">${WS.money(w.amount_minor, w.currency)}</td>
-              <td style="padding: 0.75rem;"><span class="tag ${w.status === 'sent' ? 'live' : w.status === 'requested' ? '' : 'warn'}">${WS.esc(w.status)}</span>${w.staff_reason ? `<p>${WS.esc(w.staff_reason)}</p>` : w.status === "cancelled" ? '<p>Cancellation predates recorded reasons. Contact platform support for guidance.</p>' : ""}${w.status === "cancelled" ? '<p class="fine">Address the staff guidance, then submit a new request. This cancelled request cannot be reopened.</p>' : ""}</td>
+              <td style="padding: 0.75rem;"><span class="tag">${WS.esc(w.manual ? manualLabels[w.status] || "Manual review required" : `Legacy record: ${w.status} (not independent reconciliation evidence)`)}</span>${w.staff_reason ? `<p>${WS.esc(w.staff_reason)}</p>` : ""}</td>
               <td style="padding: 0.75rem; font-size: 0.9rem;">${new Date(w.requested_at).toLocaleDateString()}</td>
             </tr>
           `).join("");

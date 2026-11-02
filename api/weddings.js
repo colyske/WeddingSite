@@ -768,7 +768,10 @@ export default async function handler(req, res) {
       }
       if (action === "withdrawals") {
         const rows = await supabaseRequest(`/rest/v1/payout_records?wedding_id=eq.${weddingId}&select=id,amount_minor,currency,status,requested_at,staff_reason&order=requested_at.desc&limit=100`, opts);
-        return sendJson(res, 200, { withdrawals: rows || [] });
+        const manual = await supabaseRequest("/rest/v1/rpc/manual_payout_history", {
+          ...opts, method: "POST", body: { p_wedding: weddingId }
+        });
+        return sendJson(res, 200, { withdrawals: rows || [], manualWithdrawals: manual, manualEnabled: false });
       }
       if (action === "withdraw") {
         if (!methodOnly(req, res, "POST")) return;

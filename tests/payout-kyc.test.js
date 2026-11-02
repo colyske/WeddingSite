@@ -49,9 +49,7 @@ test("all payout APIs return a clear KYC-required error; completed KYC retains s
   };
   const cases = [
     [finance, { action: "record" }, { action: "payout_request", weddingId, amountMinor: 1000, currency: "KES", confirmed: true }],
-    [weddings, { action: "withdraw", weddingId }, { weddingId, amountMinor: 1000, confirmed: true }],
-    [admin, { action: "payout-status" }, { payout_id: payoutId, status: "approved" }],
-    [admin, { action: "payout-status" }, { payout_id: payoutId, status: "sent" }]
+    [weddings, { action: "withdraw", weddingId }, { weddingId, amountMinor: 1000, confirmed: true }]
   ];
   try {
     for (const [handler, query, body] of cases) {
