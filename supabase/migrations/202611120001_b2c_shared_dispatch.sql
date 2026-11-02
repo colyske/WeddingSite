@@ -332,6 +332,28 @@ begin
   perform public.b2c_audit(r.wedding_id,r.id::text,'human_approved',auth.uid());
   return true;
 end $$;
+create function public.b2c_cancel(p_id uuid) returns boolean
+language plpgsql security definer set search_path='' as $$
+declare r public.manual_payout_requests; actual public.platform_role;
+begin
+  perform pg_advisory_xact_lock(71110001);
+  select platform_role into actual from public.profiles where id=auth.uid() for share;
+  select * into strict r from public.manual_payout_requests where id=p_id;
+  if auth.uid() is null or not exists(select 1 from public.b2c_request_intents where payout_id=p_id)
+    or (coalesce(actual::text,'') not in ('owner','superadmin') and
+      not exists(select 1 from public.weddings where id=r.wedding_id and client_owner_id=auth.uid()
+        and r.requested_by=auth.uid())) then raise exception 'B2C: Request owner or authorized leader required.'; end if;
+  perform public.manual_payout_lock(r.custody_id,r.wedding_id);
+  perform 1 from public.manual_payout_requests where id=p_id for update;
+  if public.manual_payout_state(p_id)='cancelled' then return true; end if;
+  if exists(select 1 from public.manual_payout_claims where payout_id=p_id)
+    or public.manual_payout_state(p_id) not in ('requested','approved') then
+    raise exception 'B2C: Claimed or uncertain requests cannot be cancelled or released.';
+  end if;
+  insert into public.manual_payout_events(payout_id,state,actor_id) values(p_id,'cancelled',auth.uid());
+  perform public.b2c_audit(r.wedding_id,r.id::text,'cancelled_before_claim',auth.uid());
+  return true;
+end $$;
 
 create function public.b2c_claim(p_id uuid,p_key uuid,p_callback_hash text,p_shortcode text,p_command text,p_auto boolean)
 returns jsonb language plpgsql security definer set search_path='' as $$
@@ -515,7 +537,9 @@ begin
     or p_reference is null or upper(btrim(p_reference)) !~ '^[A-Z0-9][A-Z0-9._:-]{0,119}$' then
     raise exception 'B2C: Exact independently checked receipt and separate statement debit/account/line/amount/fee/destination required; retain holds.';
   end if;
-  if exists(select 1 from public.b2c_callback_events where dispatch_id=d.id and kind='result'
+  if exists(select 1 from public.b2c_callback_events where dispatch_id=d.id
+    and (kind='result' or (d.conversation_id is not null and evidence->>'conversation_id'=d.conversation_id
+      and evidence->>'originator_id'=d.originator_id))
     and evidence->>'result_code'='0' and evidence->>'transaction_id' is not null
     and upper(evidence->>'transaction_id')<>upper(btrim(p_reference))) then
     raise exception 'B2C: Conflicting correlated provider reference; retain holds and investigate.';
@@ -547,8 +571,9 @@ begin
   state:=public.manual_payout_state(r.id);
   if p_actual_fee is distinct from 0 or p_confirm is null
     or exists(select 1 from public.manual_payout_receipts where payout_id=r.id)
-    or exists(select 1 from public.b2c_callback_events where dispatch_id=d.id and kind='result'
-      and evidence->>'result_code'='0') then
+    or exists(select 1 from public.b2c_callback_events where dispatch_id=d.id
+      and (kind='result' or (d.conversation_id is not null and evidence->>'conversation_id'=d.conversation_id
+        and evidence->>'originator_id'=d.originator_id)) and evidence->>'result_code'='0') then
     raise exception 'B2C: Conclusive independent no-transfer AND zero-charge evidence required; conflicting or unknown outcomes remain held.';
   end if;
   if not p_confirm and state in ('executing','uncertain') then
@@ -672,7 +697,7 @@ begin
     where n.nspname='public' and (p.proname like 'b2c_%' or p.proname in ('owner_get_b2c_policy','owner_update_b2c_policy','staff_approve_b2c','staff_b2c_controls')) loop
     execute format('revoke all on function %s from public,anon,authenticated,service_role',f.signature);
     if f.proname in ('owner_get_b2c_policy','owner_update_b2c_policy','staff_approve_b2c','staff_b2c_controls',
-      'b2c_phone_start','b2c_bind_destination','b2c_request','b2c_status','b2c_reconcile','b2c_resolve','b2c_intake','b2c_recipient_context') then
+      'b2c_phone_start','b2c_bind_destination','b2c_request','b2c_cancel','b2c_status','b2c_reconcile','b2c_resolve','b2c_intake','b2c_recipient_context') then
       execute format('grant execute on function %s to authenticated',f.signature);
     elsif f.proname in ('b2c_claim','b2c_callback_context','b2c_event','b2c_mark_stale','b2c_candidates','b2c_candidate_hold') then
       execute format('grant execute on function %s to service_role',f.signature);

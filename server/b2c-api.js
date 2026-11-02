@@ -92,6 +92,11 @@ export default async function handler(req, res) {
       await rpc("staff_approve_b2c", session.token, { p_id: body.payoutId });
       return sendJson(res, 200, { approved: true });
     }
+    if (action === "cancel") {
+      if (!uuid(body.payoutId)) return sendJson(res, 400, { error: "Payout request required." });
+      await rpc("b2c_cancel", session.token, { p_id: body.payoutId });
+      return sendJson(res, 200, { cancelled: true });
+    }
     if (action === "dispatch") {
       if (!uuid(body.payoutId) || !uuid(body.idempotencyKey)) return sendJson(res, 400, { error: "Payout and idempotency key required." });
       await rpc("b2c_status", session.token); // Role check before the service-only execution wrapper.

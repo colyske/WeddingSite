@@ -22,6 +22,12 @@ Paid, executing, reported and uncertain obligations remain charged to the
 shared accounting calculation. A different HTTP key cannot send a claimed
 request again.
 
+The requesting couple or an authorized leader may cancel only an unclaimed
+requested/approved B2C request, including while admission is OFF. Cancellation
+locks the same request/account path as dispatch; claimed or uncertain transfers
+cannot be cancelled. Client keys survive lost responses. A deliberate distinct
+request key is offered only after the previous request is confirmed terminal.
+
 Owner policy defaults to OFF, two-person approval, empty custody/recipient
 allowlists and **no monetary or freshness limits**. An Owner can explicitly
 configure audited, revision-checked automated approval. No limits are invented.
@@ -238,6 +244,10 @@ certificates only. Isolated SQL tests cover shared reservations, gates,
 Owner-only audited policy, two-person default, explicit auto-approval,
 destination control, fee/test/Paystack exclusion, idempotency, callback
 correlation/duplicates, uncertainty and independent reconciliation.
+The populated shared-accounting predecessor exercises a full migration COMMIT,
+DDL rollback, preservation of existing financial/core rows and exclusion of
+manual requests from automatic adoption. Actual manual/automatic request and
+claim wrappers compete over the same account in separate connections.
 No provider request is made by tests.
 
 Passing these checks does not certify the live merchant account. Separately

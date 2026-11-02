@@ -133,6 +133,18 @@ test("callback-before-acceptance and unverified timeout body are audited holds, 
         evidence = body;
         return "uncertain";
       }
+      let event;
+      await receiveB2cCallback(id, "b".repeat(64), "result", {
+        Result: { ConversationID: "EARLY", OriginatorConversationID: "EARLY-ORIGIN", ResultCode: 0, TransactionID: "EARLYRECEIPT" }
+      }, { rpc: async (name, body) => {
+        if (name === "b2c_callback_context") return { id };
+        event = body;
+        return "uncertain";
+      } });
+      assert.equal(event.p_kind, "uncertain");
+      assert.equal(event.p_evidence.conversation_id, "EARLY");
+      assert.equal(event.p_evidence.transaction_id, "EARLYRECEIPT");
+      assert.equal(event.p_evidence.reason, "unbound_or_mismatched_conversation");
     });
     assert.equal(result.settled, false);
     assert.equal(evidence.p_kind, kind === "timeout" ? "timeout" : "uncertain");

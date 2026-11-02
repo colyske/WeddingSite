@@ -22,6 +22,9 @@
     <label>Principal (minor KES; 100 = KES 1)<input name="amountMinor" type="number" min="100" step="100" required></label>
     <button type="submit">Reserve and request payout</button>
     <button id="new-request" type="button">Start a distinct request after this one is closed</button></form>
+  <form id="cancel"><h2>Cancel before execution</h2><label>My payout request UUID<input name="payoutId" required></label>
+    <label><input type="checkbox" required> Cancel only if unclaimed; an uncertain transfer cannot be cancelled.</label>
+    <button>Cancel unclaimed request</button></form>
   <pre id="context" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
   <p id="notice" role="status" aria-live="polite"></p>
 </main><script src="footer.js"></script></body></html>

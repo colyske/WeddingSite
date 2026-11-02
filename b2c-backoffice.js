@@ -53,6 +53,10 @@
       <form id="b2c-approve"><h3>Human approval</h3>
         <label>Payout request UUID<input name="payoutId" required></label>
         <button type="submit">Approve as a different reviewer</button></form>
+      <form id="b2c-cancel"><h3>Cancel an unclaimed request</h3>
+        <label>Payout request UUID<input name="payoutId" required></label>
+        <label><input type="checkbox" required> Cancel only before an execution claim; uncertain funds must remain held.</label>
+        <button type="submit">Cancel before execution</button></form>
       <form id="b2c-dispatch"><h3>Dispatch</h3>
         <label>Payout request UUID<input name="payoutId" required></label>
         <label><input type="checkbox" required> Not a resend of a claimed or uncertain transfer.</label>
@@ -114,6 +118,7 @@
       changes: { ...JSON.parse(v.fields), require_four_eyes: v.mode === "human" }, reason: v.reason }));
     submit("#b2c-intake", "intake", v => ({ kind: v.kind, data: JSON.parse(v.data) }));
     submit("#b2c-approve", "approve", v => v);
+    submit("#b2c-cancel", "cancel", v => v);
     submit("#b2c-dispatch", "dispatch", v => ({ ...v, idempotencyKey: crypto.randomUUID() }));
     submit("#b2c-reconcile", "reconcile", v => ({ ...v, amountMinor: Number(v.amountMinor), feeMinor: Number(v.feeMinor) }));
     submit("#b2c-resolve", "resolve", v => ({ ...v, confirmResolution: v.decision === "confirm", actualFeeMinor: 0 }));

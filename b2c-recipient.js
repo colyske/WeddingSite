@@ -42,7 +42,7 @@
     } catch (error) { notice(error.message); }
     finally { event.target.disabled = false; }
   });
-  for (const action of ["phone-start", "phone-confirm", "bind", "request"]) {
+  for (const action of ["phone-start", "phone-confirm", "bind", "request", "cancel"]) {
     $(action).addEventListener("submit", async event => {
       event.preventDefault();
       const button = event.target.querySelector("button");
@@ -57,7 +57,8 @@
         }
         const result = await request(action, values);
         if (storageKey && result.id) sessionStorage.setItem(storageKey + ":id", result.id);
-        notice(result.message || (result.id ? `Payout requested: ${result.id}. This is not a payment confirmation.` : "Destination control bound to reviewed recipient."));
+        notice(result.message || (result.cancelled ? "Unclaimed request cancelled."
+          : result.id ? `Payout requested: ${result.id}. This is not a payment confirmation.` : "Destination control bound to reviewed recipient."));
         if (action === "phone-confirm") event.target.reset();
       } catch (error) { notice(error.message); }
       finally { button.disabled = false; }

@@ -31,6 +31,8 @@ jobs:
         run: node tests/db/wedding-starter-upgrade.mjs
       - name: Commit manual-payout control plane on populated predecessor and test DDL rollback
         run: node tests/db/manual-payout-upgrade.mjs
+      - name: Commit B2C extension on populated shared accounting and test DDL rollback
+        run: node tests/db/b2c-upgrade.mjs
       - name: Apply all migrations to a fresh database
         run: supabase db reset --local --no-seed
       - name: Lint the migrated schema

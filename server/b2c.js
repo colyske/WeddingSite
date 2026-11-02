@@ -48,7 +48,7 @@ export function callbackEvidence(body) {
   if (!(Number.isSafeInteger(code) || (typeof code === "string" && /^-?\d{1,8}$/.test(code)))) return null;
   return {
     conversation_id: result.ConversationID, originator_id: result.OriginatorConversationID,
-    result_code: String(code),
+    result_code: String(Number(code)),
     transaction_id: typeof result.TransactionID === "string" && /^[A-Za-z0-9]{1,120}$/.test(result.TransactionID)
       ? result.TransactionID : null,
     // Parameter meanings/recipient identity are NOT inferred from position or name text.
@@ -69,6 +69,7 @@ export async function receiveB2cCallback(dispatchId, token, kind, body, { rpc = 
   // binding can race them; no callback ever settles or frees shared reservations.
   const eventKind = bound ? kind : kind === "timeout" ? "timeout" : "uncertain";
   const evidence = bound ? parsed : {
+    ...(parsed || {}),
     reason: parsed ? "unbound_or_mismatched_conversation" : "unverified_callback_schema",
     payload_sha256: capabilityHash(JSON.stringify(body))
   };

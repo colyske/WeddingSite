@@ -32,6 +32,7 @@ declare owner_id uuid:=extensions.gen_random_uuid(); staff_id uuid:=extensions.g
   funding uuid; contract uuid; payout uuid; key uuid:=extensions.gen_random_uuid(); result jsonb;
   dispatch uuid; second uuid; third uuid; receipt_evidence uuid; paid_evidence uuid; receipt_at timestamptz;
   account uuid:=extensions.gen_random_uuid(); statement uuid:=extensions.gen_random_uuid(); line uuid:=extensions.gen_random_uuid();
+  next_batch uuid; next_contribution uuid; next_at timestamptz;
 begin
   if exists(select 1 from public.b2c_policy where enabled or not require_four_eyes or per_payout_minor is not null
     or daily_minor is not null or payout_fee_minor is not null or cardinality(custody_ids)>0 or cardinality(recipient_ids)>0) then
@@ -105,6 +106,11 @@ begin
     jsonb_build_object('contribution',contribution,'custody',custody,'settledMinor',100000,
       'line',extensions.gen_random_uuid(),'evidence',evidence,'at',now()-interval '1 hour')),'Only provider-verified');
   update public.contributions set provider_name='daraja' where id=contribution;
+  update public.contributions set provider_name='paystack',settlement_route='paystack_direct' where id=contribution;
+  perform pg_temp.b2c_reject(format('select public.b2c_intake(''settlement'',%L::jsonb)',
+    jsonb_build_object('contribution',contribution,'custody',custody,'settledMinor',100000,
+      'line',extensions.gen_random_uuid(),'evidence',evidence,'at',now()-interval '1 hour')),'Only provider-verified');
+  update public.contributions set provider_name='daraja',settlement_route='platform_wallet' where id=contribution;
   perform public.b2c_intake('settlement',jsonb_build_object('contribution',contribution,'custody',custody,
     'settledMinor',100000,'line',extensions.gen_random_uuid(),'evidence',evidence,'at',now()-interval '1 hour'));
   perform set_config('request.jwt.claim.sub',staff_id::text,true);
@@ -117,6 +123,11 @@ begin
     'contract_reference',contract,'funding_reference',funding),'Synthetic local-only reviewed policy');
   perform pg_temp.b2c_reject($q$select public.owner_update_b2c_policy(1,'{"enabled":false}','Synthetic stale revision')$q$,'revision');
   perform set_config('request.jwt.claim.sub',client_id::text,true);
+  update public.contributions set funds_available_at=now()+interval '1 day' where id=contribution;
+  perform pg_temp.b2c_reject(format('select public.b2c_request(%L,%L,%L,%L,10000)',key,wid,custody,recipient),'Insufficient');
+  update public.contributions set funds_available_at=null,provider_fee_pending=true where id=contribution;
+  perform pg_temp.b2c_reject(format('select public.b2c_request(%L,%L,%L,%L,10000)',key,wid,custody,recipient),'Insufficient');
+  update public.contributions set provider_fee_pending=false where id=contribution;
   payout:=public.b2c_request(key,wid,custody,recipient,10000);
   if public.b2c_request(key,wid,custody,recipient,10000)<>payout then raise exception 'Request key must be idempotent'; end if;
   perform pg_temp.b2c_reject(format('select public.b2c_request(%L,%L,%L,%L,10100)',key,wid,custody,recipient),'Idempotency');
@@ -146,6 +157,10 @@ begin
   if public.manual_payout_state(payout)<>'uncertain' or (select count(*) from public.b2c_callback_events where dispatch_id=dispatch and kind='timeout')<>1 then
     raise exception 'Timeout must retain reservation idempotently';
   end if;
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',client_id::text,true);
+  perform pg_temp.b2c_reject(format('select public.b2c_cancel(%L)',payout),'cannot be cancelled');
+  perform set_config('request.jwt.claim.role','service_role',true);
   perform public.b2c_event(dispatch,repeat('a',64),'result',repeat('e',64),
     '{"conversation_id":"CONV-1","originator_id":"ORIGIN-1","result_code":"0","transaction_id":"SYNRECEIPT"}');
   if public.manual_payout_state(payout)<>'uncertain' then raise exception 'Even successful callback must not bypass independent final reconciliation'; end if;
@@ -198,6 +213,34 @@ begin
   perform set_config('request.jwt.claim.role','service_role',true);
   if (public.b2c_claim(third,extensions.gen_random_uuid(),repeat('d',64),'123456','BusinessPayment',true)->>'claimed')::boolean
     then raise exception 'No-transfer decision must never resend an existing claim'; end if;
+  if current_setting('b2c.test_concurrency',true) is distinct from 'on' then
+    perform set_config('request.jwt.claim.role','authenticated',true);
+    perform set_config('request.jwt.claim.sub',owner_id::text,true);
+    next_contribution:=extensions.gen_random_uuid();
+    next_at:=clock_timestamp();
+    insert into public.contributions(id,wedding_id,stream_name,pledged_amount_minor,paid_amount_minor,platform_fee_minor,
+      net_paid_minor,currency,payment_status,verified_provider_payment,provider_fee_pending,provider_fee_minor,
+      payment_environment,provider_name,paid_at)
+      values(next_contribution,wid,'Synthetic subsequent collected funds',50000,50000,0,50000,'KES',
+        'paid',true,false,0,'live','daraja',next_at);
+    evidence:=pg_temp.b2c_evidence('statement',owner_id,staff_id);
+    next_batch:=(public.b2c_intake('statement',jsonb_build_object('custody',custody,
+      'previous',(public.manual_payout_custody_snapshot(custody)->>'batch_id')::uuid,
+      'statement',statement,'at',clock_timestamp(),'opening',100000,'credit',50000,'debit',10100,
+      'closing',139900,'held',0,'evidence',evidence))->>'id')::uuid;
+    perform public.b2c_intake('debit',jsonb_build_object('payout',payout,'batch',next_batch,'line',line,'evidence',evidence));
+    evidence:=pg_temp.b2c_evidence('settlement',owner_id,staff_id);
+    perform public.b2c_intake('settlement',jsonb_build_object('contribution',next_contribution,'custody',custody,
+      'settledMinor',50000,'line',extensions.gen_random_uuid(),'evidence',evidence,'batch',next_batch,'at',next_at));
+    if (public.manual_payout_custody_snapshot(custody)->>'available_minor')::bigint<>139900 then
+      raise exception 'Subsequent statement snapshot not used';
+    end if;
+    perform set_config('request.jwt.claim.sub',client_id::text,true);
+    third:=public.b2c_request(extensions.gen_random_uuid(),wid,custody,recipient,50000);
+    perform public.b2c_cancel(third);
+    perform public.b2c_cancel(third);
+    if public.manual_payout_state(third)<>'cancelled' then raise exception 'Only unclaimed cancellation may release'; end if;
+  end if;
   if current_setting('b2c.test_concurrency',true)='on' then
     insert into public.b2c_ci_context(data) values(jsonb_build_object('owner',owner_id,'staff',staff_id,
       'client',client_id,'wedding',wid,'custody',custody,'account',account,'recipient',recipient,'existing',second));
