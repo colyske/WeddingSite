@@ -364,18 +364,15 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     for (const [width, height] of [[320, 640], [375, 667], [414, 896], [1280, 800]]) {
       await resume.setViewportSize({ width, height });
       for (const position of ["guide-end", "page-bottom"]) {
-      await resume.waitForFunction(position => {
+      const layout = await (await resume.waitForFunction(position => {
         const root = document.documentElement;
-        if (position === "page-bottom") {
-          window.scrollTo({ top: root.scrollHeight, behavior: "instant" });
-          return Math.abs(root.scrollTop + innerHeight - root.scrollHeight) <= 1;
-        }
-        const card = document.getElementById("edit-section");
-        card.scrollIntoView({ block: "end", behavior: "instant" });
-        return Math.abs(card.getBoundingClientRect().bottom - innerHeight) <= 1;
-      }, position, { polling: 100, timeout: 5000 });
-      await resume.waitForTimeout(50);
-      const layout = await resume.evaluate(() => {
+        const section = document.getElementById("edit-section");
+        if (position === "page-bottom") window.scrollTo({ top: root.scrollHeight, behavior: "instant" });
+        else section.scrollIntoView({ block: "end", behavior: "instant" });
+        const settled = position === "page-bottom"
+          ? Math.abs(root.scrollTop + innerHeight - root.scrollHeight) <= 1
+          : Math.abs(section.getBoundingClientRect().bottom - innerHeight) <= 1;
+        if (!settled) return false;
         const bar = document.querySelector(".guide-actions").getBoundingClientRect();
         const footer = document.getElementById("ws-site-footer")?.getBoundingClientRect();
         const card = document.getElementById("edit-section").getBoundingClientRect();
@@ -391,14 +388,14 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
         const style = getComputedStyle(barEl);
         return { bar: { top: bar.top, bottom: bar.bottom, left: bar.left, right: bar.right, position: style.position, after,
           stepsVisible: [...document.querySelectorAll("[data-guide-step]")].filter(s => !s.hidden).map(s => s.dataset.guideStep) }, footerTop: footer?.top ?? null,
-          card: { left: card.left, right: card.right, bottom: card.bottom }, hits, overflow: document.documentElement.scrollWidth > innerWidth };
-      });
+          card: { left: card.left, right: card.right, bottom: card.bottom, scrollY, scrollHeight: root.scrollHeight }, hits, overflow: document.documentElement.scrollWidth > innerWidth };
+      }, position, { polling: 100, timeout: 5000 })).jsonValue();
       assert.equal(layout.overflow, false, `no horizontal overflow at ${width}`);
       assert.ok(layout.footerTop === null || layout.bar.bottom <= layout.footerTop + 0.5, `guide controls stay above the footer at ${width}`);
       assert.ok(layout.bar.left >= layout.card.left - 0.5 && layout.bar.right <= layout.card.right + 0.5 && layout.bar.bottom <= layout.card.bottom + 0.5,
         `guide controls stay inside the guide container at ${width}`);
       assert.ok(layout.hits.some(hit => hit.text === "Publish wedding site"), `publish action is present at ${width}`);
-      if (position === "guide-end") assert.ok(layout.hits.every(hit => hit.inView), `guide controls are in view at the end of the guide at ${width}: ${JSON.stringify(layout.hits)} bar ${JSON.stringify(layout.bar)}`);
+      if (position === "guide-end") assert.ok(layout.hits.every(hit => hit.inView), `guide controls are in view at the end of the guide at ${width}: ${JSON.stringify(layout.hits)} bar ${JSON.stringify(layout.bar)} card ${JSON.stringify(layout.card)}`);
       for (const hit of layout.hits) {
         if (hit.inView) assert.ok(hit.ok, `${hit.text} is clickable at the page bottom at ${width} (${position})`);
         assert.ok(hit.height >= 44 && hit.right <= width, `${hit.text} fits with a touch target at ${width}`);
