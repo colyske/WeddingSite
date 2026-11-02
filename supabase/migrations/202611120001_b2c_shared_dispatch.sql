@@ -620,7 +620,7 @@ begin
     if not found or not public.kyc_is_complete(wid) then raise exception 'B2C: Independent current couple identity/name/consent review required.'; end if;
     select * into strict k from public.wedding_kyc where wedding_id=wid for share;
     if p_data->>'msisdn' is null or p_data->>'msisdn' !~ '^254[17][0-9]{8}$'
-      or (p_data->>'partner')::smallint not in (1,2) or p_data->>'partner' is null
+      or p_data->>'partner' not in ('1','2') or p_data->>'partner' is null
       or p_data->>'msisdn' is distinct from
         (case when p_data->>'partner'='1' then k.partner1_phone else k.partner2_phone end) then
       raise exception 'B2C: Evidence must identify the exact reviewed partner and destination MSISDN.';

@@ -246,4 +246,19 @@ begin
       'client',client_id,'wedding',wid,'custody',custody,'account',account,'recipient',recipient,'existing',second));
   end if;
 end $$;
+set local role authenticated;
+select pg_temp.b2c_reject(
+  'select public.b2c_claim(extensions.gen_random_uuid(),extensions.gen_random_uuid(),repeat(''a'',64),''123456'',''BusinessPayment'',true)',
+  'permission denied');
+select pg_temp.b2c_reject('select * from public.b2c_destinations','permission denied');
+select pg_temp.b2c_reject('select public.manual_payout_register_account_internal(extensions.gen_random_uuid(),''daraja'',extensions.gen_random_uuid(),extensions.gen_random_uuid(),false)','permission denied');
+reset role;
+set local role service_role;
+select pg_temp.b2c_reject('select public.owner_update_b2c_policy(1,''{}'',''Synthetic service bypass'')','permission denied');
+select pg_temp.b2c_reject('select public.b2c_intake(''evidence'',''{}'')','permission denied');
+select pg_temp.b2c_reject('select * from public.manual_payout_claims','permission denied');
+reset role;
+set local role anon;
+select pg_temp.b2c_reject('select public.b2c_status()','permission denied');
+reset role;
 rollback;
