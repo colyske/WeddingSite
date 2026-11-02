@@ -85,3 +85,15 @@ jobs:
       - run: npm run check
       - run: npm run check:referrals
       - run: npm test
+      - name: Capture exact-head starter mobile evidence
+        if: github.event_name == 'push'
+        env:
+          STARTER_EVIDENCE_DIR: ${{ runner.temp }}/starter-mobile-evidence
+        run: node --test tests/wedding-inspiration.browser.test.js
+      - name: Upload starter mobile screenshots and asset hashes
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: starter-mobile-evidence
+          path: ${{ runner.temp }}/starter-mobile-evidence
+          if-no-files-found: error

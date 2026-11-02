@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { extname } from "node:path";
+import { extname, join } from "node:path";
 import { chromium } from "playwright";
 import "../inspiration-fixtures.js";
 import "../currencies.js";
@@ -29,12 +29,13 @@ test("safe starter selection, currency review, retry and native shared-editor cu
     const page = await context.newPage(), errors = [], creates = [];
     const evidence = { head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
       api: "Mocked APIs only; no provider or Production writes", cases: [], assets: [] };
+    if (process.env.STARTER_EVIDENCE_DIR) await mkdir(process.env.STARTER_EVIDENCE_DIR, { recursive: true });
     async function capture(label) {
       if (!process.env.STARTER_EVIDENCE_DIR) return;
       const metrics = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
       assert.ok(metrics.scroll <= metrics.width);
       const screenshot = `starter-${label}-${metrics.width}.png`;
-      await page.screenshot({ path: `${process.env.STARTER_EVIDENCE_DIR}\\${screenshot}`, fullPage: true });
+      await page.screenshot({ path: join(process.env.STARTER_EVIDENCE_DIR, screenshot), fullPage: true });
       evidence.cases.push({ label, ...metrics, screenshot });
     }
     let failCreate = true, capabilitiesFail = false, wedding = null, config = null;
@@ -221,7 +222,7 @@ test("safe starter selection, currency review, retry and native shared-editor cu
         evidence.assets.push({ name, sha256: createHash("sha256").update(await readFile(new URL(`../${name.replaceAll("\\", "/")}`, import.meta.url))).digest("hex") });
       }
       evidence.pageErrors = errors;
-      await writeFile(`${process.env.STARTER_EVIDENCE_DIR}\\starter-exact-head-mobile-evidence.json`, JSON.stringify(evidence, null, 2));
+      await writeFile(join(process.env.STARTER_EVIDENCE_DIR, "starter-exact-head-mobile-evidence.json"), JSON.stringify(evidence, null, 2));
     }
     await unsigned.close();
     await context.close();

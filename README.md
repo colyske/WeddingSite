@@ -106,6 +106,9 @@ recording mode. An unavailable/malformed capability response fails explicitly
 with 503. Migration `202611090001_wedding_starter_drafts.sql` is DB-first:
 CI commits it on a populated predecessor and checks unchanged wedding/venue rows,
 then tests the fresh schema and rollback-only `tests/db/wedding-starter-drafts.sql`.
+Push CI also uploads `starter-mobile-evidence`: 320px/375px screenshots plus
+the tested commit, asset hashes, overflow measurements and page errors. All
+browser APIs are mocked; this is not deployed-backend or payment evidence.
 It does not backfill live wedding content. Existing guided-draft/readiness
 migrations through `202611080001` are prerequisites.
 
