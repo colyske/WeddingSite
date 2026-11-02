@@ -34,7 +34,7 @@ test("the currency step reviews pending style amounts inline without blocking pe
     page.on("pageerror", error => errors.push(error.message));
     await page.addInitScript(() => location.protocol.startsWith("http") && sessionStorage.setItem("ws-session", JSON.stringify({ a: "test-token", role: "client" })));
     await page.route("https://**", route => route.fulfill({ body: "" }));
-    await page.route("**/api/**", route => {
+    await page.route("**/api/**", async route => {
       const request = route.request(), url = new URL(request.url()), action = url.searchParams.get("action");
       let data = {}, status = 200;
       const wedding = {
@@ -53,6 +53,7 @@ test("the currency step reviews pending style amounts inline without blocking pe
       if (action === "starter-review") {
         reviews.push(request.postDataJSON());
         const next = reviewResponses.shift() || { status: 200, body: { ok: true } };
+        if (next.hold) await next.hold;
         if (next.lost) { state = { ...state, pending: null }; return route.abort("failed"); }
         status = next.status; data = next.body;
         if (status === 200) state = { ...state, pending: null };
@@ -133,10 +134,42 @@ test("the currency step reviews pending style amounts inline without blocking pe
     await page.locator("#guide-heading-money").waitFor();
     assert.equal(await panel.isHidden(), true);
 
+    // While an apply is in flight the form is held like a normal save, so a stale form can't overwrite the amounts.
+    let release;
+    state = { ...state, pending };
+    await page.goto("about:blank");
+    await page.goto(`${base}/wedding.html?id=${WEDDING_ID}#step=money`);
+    await page.waitForFunction(() => !document.getElementById("starter-pending-apply").hidden);
+    reviewResponses = [{ status: 200, body: { ok: true, decision: "apply" }, hold: new Promise(resolve => { release = resolve; }) }];
+    await apply.click();
+    await status.filter({ hasText: /Adding the amounts/ }).waitFor();
+    assert.equal(await page.locator("#couple-names").isDisabled(), true, "answers can't be edited mid-apply");
+    await Promise.all([page.waitForEvent("load"), release()]);
+    await page.locator("#guide-heading-money").waitFor();
+    assert.equal(await panel.isHidden(), true);
+
+    // Answers typed while an omit is in flight are kept: no reload, the panel just closes.
+    state = { ...state, pending };
+    await page.goto("about:blank");
+    await page.goto(`${base}/wedding.html?id=${WEDDING_ID}#step=money`);
+    await page.waitForFunction(() => !document.getElementById("starter-pending-apply").hidden);
+    await page.evaluate(() => { window.__sameDocument = true; });
+    reviewResponses = [{ status: 200, body: { ok: true, decision: "omit" }, hold: new Promise(resolve => { release = resolve; }) }];
+    await omit.click();
+    await status.filter({ hasText: /Leaving the amounts out/ }).waitFor();
+    await page.evaluate(() => { location.hash = "#step=couple"; });
+    await page.locator("#couple-names").fill("Amani & Wanjiru");
+    release();
+    await page.locator("#notice").filter({ hasText: /amounts were left out\. Your other answers are still on this page/ }).waitFor();
+    assert.equal(await page.evaluate(() => window.__sameDocument), true, "the page was not reloaded");
+    assert.equal(await page.locator("#couple-names").inputValue(), "Amani & Wanjiru", "answers typed mid-review are kept");
+    assert.equal(await panel.isHidden(), true);
+    assert.equal(await page.locator("#starter-review-note").isHidden(), true);
+
     // Different saved currency: amounts are never converted; only an explicit omit is offered.
     state = { currency: "USD", pending, capabilities: { status: 200, currencies: [{ code: "USD", name: "US dollar", methods: [{ name: "Card", markets: ["US"] }] }] } };
-        await page.goto("about:blank");
-        await page.goto(`${base}/wedding.html?id=${WEDDING_ID}#step=money`);
+    await page.goto("about:blank");
+    await page.goto(`${base}/wedding.html?id=${WEDDING_ID}#step=money`);
     await panel.waitFor();
     await page.locator("#starter-pending-hint").filter({ hasText: /can't be converted or relabelled/ }).waitFor();
     assert.equal(await apply.isHidden(), true);

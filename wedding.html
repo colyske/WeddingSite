@@ -1198,15 +1198,27 @@
         return;
       }
       buttons.forEach(button => { button.disabled = true; });
+      // Applying replaces amounts the form would otherwise re-save, so hold edits like a normal save does.
+      const locked = decision === "apply" && weddingGuide;
+      if (locked) weddingGuide.saving();
       status.textContent = decision === "apply" ? "Adding the amounts…" : "Leaving the amounts out…";
       try {
         const res = await WS.api("/api/weddings?action=starter-review", { method: "POST", body: JSON.stringify({
           weddingId, requestKey: starterReviewKey(decision, w.currency), currency: w.currency, decision, reviewed: true }) });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "We couldn't save that choice. Please try again.");
+        if (decision === "omit" && weddingGuide?.dirty()) {
+          window.__wedding = { ...window.__wedding, starter_pending_setup: null, starter_review_note: null };
+          $("starter-review-note").hidden = true;
+          renderStarterPending();
+          weddingGuide.refresh();
+          notice("Done. The style's amounts were left out. Your other answers are still on this page; save them when you're ready.");
+          return;
+        }
         status.textContent = decision === "apply" ? "Done. The amounts were added; reloading this step…" : "Done. The amounts were left out; reloading this step…";
         location.reload();
       } catch (error) {
+        if (locked) weddingGuide.failed();
         status.textContent = `${error.message} Your draft and answers are safe.`;
         buttons.forEach(button => { button.disabled = false; });
         renderStarterPending();
