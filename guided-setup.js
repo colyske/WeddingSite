@@ -15,7 +15,7 @@
     const review = form.querySelector("[data-guide-review]");
     const header = document.createElement("div");
     header.className = "guide-header";
-    header.innerHTML = `<p class="fine">Next and Skip only navigate; Save is separate.</p>
+    header.innerHTML = `<p class="fine">Next and Skip navigate. Save separately.</p>
       <p class="guide-state" role="status" aria-live="polite" data-guide-state></p>
       <details class="guide-jump"><summary>Jump to section <span data-guide-progress></span></summary>
         <nav class="guide-nav" aria-label="Wedding setup sections"></nav>

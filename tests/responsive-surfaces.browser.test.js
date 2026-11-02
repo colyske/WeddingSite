@@ -68,9 +68,14 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       await page.goto(`http://127.0.0.1:${server.address().port}/${surface}`, { waitUntil: "domcontentloaded" });
       if (surface.startsWith("wedding.html")) await page.locator("#edit-section").waitFor({ state: "visible" });
       if (surface === "dashboard.html") assert.equal(await page.locator("#sign-out").isVisible(), false, "the hidden sign-out fallback does not distort the mobile account menu");
+      if (surface === "dashboard.html") await page.locator(".guide-jump").waitFor();
       if (surface === "admin.html" || surface === "owner.html") await page.locator(".stat-card").first().waitFor();
       for (const width of [320, 375, 414, 768, 1280]) {
         await page.setViewportSize({ width, height: 800 });
+        if (surface === "dashboard.html" && width <= 414) {
+          await page.evaluate(() => document.fonts.ready);
+          await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        }
         const metrics = await page.evaluate(() => ({
           width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth,
           topLinks: [...document.querySelectorAll(".top a, .top button, .site-header a, .bo-nav button")]
@@ -86,8 +91,8 @@ test("public, organizer and back-office surfaces fit small and large screens", a
         if (surface === "dashboard.html" && width <= 414) {
           assert.equal(await page.locator(".guide-jump").evaluate(el => el.open), false,
             `mobile setup section overview starts collapsed at ${width}`);
-          assert.ok(await page.locator("#guide-heading-couple").evaluate(el => el.getBoundingClientRect().top < 700),
-            `first setup question is near the top at ${width}`);
+          const headingTop = await page.locator("#guide-heading-couple").evaluate(el => el.getBoundingClientRect().top);
+          assert.ok(headingTop < 700, `first setup question is near the top at ${width} (top: ${headingTop}px)`);
         }
         if (process.env.WEDDING_SCREENSHOTS && width <= 414 &&
             ["index.html", "dashboard.html", "wedding.html", "guest.html", "team.html", "referrals.html"]
