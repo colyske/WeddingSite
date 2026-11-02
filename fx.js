@@ -12,6 +12,8 @@
   let state = "loading";
   let errorMessage = "";
   let ratePublishedText = "";
+  let platformDefault = "";
+  const usePlatformDefault = document.currentScript?.hasAttribute("data-platform-default-currency") === true;
 
   function readSettings() {
     try {
@@ -19,10 +21,10 @@
       const wedding = JSON.parse(localStorage.getItem(weddingKey) || "null");
       const savedCurrency = localStorage.getItem(currencyKey);
       const weddingCurrency = wedding?.tenants?.amara?.currency || wedding?.currency;
-      const currency = options.includes(savedCurrency) ? savedCurrency : options.includes(weddingCurrency) ? weddingCurrency : options.includes(config?.currency) ? config.currency : "USD";
+      const currency = options.includes(savedCurrency) ? savedCurrency : options.includes(weddingCurrency) ? weddingCurrency : options.includes(config?.currency) ? config.currency : platformDefault || "USD";
       return { currency, config };
     } catch {
-      return { currency: "USD", config: null };
+      return { currency: platformDefault || "USD", config: null };
     }
   }
   function currency() { return readSettings().currency; }
@@ -152,6 +154,16 @@
       notifyChange();
     }
   });
+  // Opt-in public pages only: the Owner default (if currently supported) replaces the USD fallback.
+  // Amounts stay USD-canonical; conversion still needs a fresh rate.
+  async function loadPlatformDefault() {
+    try {
+      const response = await fetch("/api/guest?action=platform-currency");
+      const code = response.ok ? (await response.json())?.currency : null;
+      if (typeof code === "string" && options.includes(code)) { platformDefault = code; notifyChange(); }
+    } catch {}
+  }
   notifyChange();
+  if (usePlatformDefault) loadPlatformDefault();
   refresh();
 })();

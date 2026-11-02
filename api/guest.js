@@ -10,6 +10,8 @@ import { isShowcase, showcase, showcaseBids, showcaseLedger, showcaseFundraising
 import { contentError } from "../server/content-policy.js";
 import "../social-links.js";
 import { publicWeddingStyle } from "../server/wedding-style.js";
+import { collectionCapabilities } from "../server/collection-capabilities.js";
+import { readPlatformDefaultCurrency } from "../server/platform-currency.js";
 
 const BRAND = "Join Our Wedding";
 const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -108,6 +110,18 @@ export default async function handler(req, res) {
       if (!style) return sendJson(res, 404, { error: "This wedding is not available for public design reuse." });
       return sendJson(res, 200, { style });
     }
+    if (action === "platform-currency") {
+      if (!methodOnly(req, res, "GET")) return;
+      // Display preference only: exposed solely while it has a ready guest-payment option.
+      let currency = null, failed = false;
+      try {
+        const code = await readPlatformDefaultCurrency();
+        if (code && (await collectionCapabilities()).some(item => item.code === code)) currency = code;
+      } catch (error) { failed = true; console.error("Public platform currency unavailable:", error.message); }
+      res.status(200).setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", failed ? "no-store" : "public, max-age=0, s-maxage=300");
+      return res.end(JSON.stringify({ currency }));
+    }
     if (sample && action === "site") return sendJson(res, 200, { wedding: showcase });
     if (sample && action === "leaderboard") return sendJson(res, 200, { bids: showcaseBids });
     if (sample && action === "ledger") return sendJson(res, 200, { ledger: showcaseLedger });
@@ -130,7 +144,7 @@ export default async function handler(req, res) {
       if (host.kind === "root") {
         res.statusCode = 200;
         res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.setHeader("Cache-Control", "public, max-age=0, s-maxage=300");
+        res.setHeader("Cache-Control", failed ? "no-store" : "public, max-age=0, s-maxage=300");
         return res.end(await readFile(join(process.cwd(), "index.html"), "utf8"));
       }
       if (host.kind === "reserved") {

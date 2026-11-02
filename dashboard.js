@@ -82,6 +82,56 @@
   let requestKey = createRequestKey();
   const starterKey = "ws-starter-choice";
   let selectedStarter = null, pendingStarter = null, starterLoading = false, starterFailed = false;
+  let capabilitiesRequest = null, platformCurrency = null, draftCurrencies = [], draftCurrencyCheck = Promise.resolve();
+  function fetchCapabilities(force = false) {
+    if (force || !capabilitiesRequest) capabilitiesRequest = (async () => {
+      const response = await WS.api("/api/weddings?action=collection-capabilities");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not check collection support.");
+      if (!Array.isArray(data.currencies) || data.currencies.some(item =>
+        !item || !WSCurrencies.supportsAccounting(item.code) || typeof item.name !== "string" ||
+        !Array.isArray(item.methods) || !item.methods.length)) throw new Error("Collection currency support could not be verified.");
+      return data;
+    })();
+    capabilitiesRequest.catch(() => { capabilitiesRequest = null; });
+    return capabilitiesRequest;
+  }
+  // Owner default currency only preselects names-only drafts; no setting keeps the legacy USD draft.
+  function renderDraftCurrency() {
+    const status = platformCurrency, note = $("create-currency-note");
+    const choose = !selectedStarter && status?.configured === true && !status.supported;
+    $("draft-currency-choice").hidden = !choose;
+    $("draft-currency-retry").hidden = !(choose && !draftCurrencies.length) && !status?.unavailable;
+    if (status?.configured === true && status.supported) {
+      note.textContent = `New drafts start in ${status.currency}, the platform default currency, and have no offers or prices. You can choose another currency that has a ready guest-payment option in your guide. Existing saved currencies and paid amounts are never converted automatically.`;
+    } else if (status?.configured === true) {
+      note.textContent = draftCurrencies.length
+        ? `The platform default currency (${status.currency}) does not currently have a ready guest-payment option. Choose a supported currency for this draft; it has no offers or prices yet.`
+        : `The platform default currency (${status.currency}) does not currently have a ready guest-payment option, and no other collection currency is ready. Creating a names-only draft is paused; your answers are kept.`;
+    } else if (status?.unavailable) {
+      note.textContent = "We could not check the platform default currency right now. Check again, or continue: this draft will start in USD with no offers or prices, and you can choose a supported currency in your guide.";
+    } else note.textContent = "New drafts start in USD and have no offers or prices. Before adding fundraising, choose a currency that currently has a ready guest-payment option. Existing saved currencies and paid amounts are never converted automatically.";
+  }
+  async function checkDraftCurrency(force = false) {
+    const selected = $("draft-currency").value;
+    try {
+      const data = await fetchCapabilities(force);
+      draftCurrencies = data.currencies;
+      platformCurrency = data.defaultCurrency && typeof data.defaultCurrency === "object" ? data.defaultCurrency : { currency: null, configured: false, supported: false };
+    } catch (error) {
+      console.error("Could not check the platform default currency:", error);
+      draftCurrencies = [];
+      platformCurrency = { currency: null, configured: null, supported: false, unavailable: true };
+    }
+    $("draft-currency").replaceChildren(new Option("Choose a supported currency", ""),
+      ...draftCurrencies.map(item => new Option(`${item.code} - ${item.name}`, item.code)));
+    if (draftCurrencies.some(item => item.code === selected)) $("draft-currency").value = selected;
+    renderDraftCurrency();
+  }
+  function draftCurrency() {
+    if (platformCurrency?.configured === true) return platformCurrency.supported ? platformCurrency.currency : $("draft-currency").value;
+    return "USD";
+  }
   function rememberStarter() {
     try { sessionStorage.setItem(starterKey, JSON.stringify({
       source: selectedStarter?.source, snapshot: selectedStarter,
@@ -177,6 +227,7 @@
   }
   $("apply-inspiration").addEventListener("click", () => chooseStarter(pendingStarter));
   $("keep-current-answers").addEventListener("click", () => { pendingStarter = null; renderStarterReview(); });
+  $("draft-currency-retry").addEventListener("click", () => { draftCurrencyCheck = checkDraftCurrency(true); });
   $("couple-names").addEventListener("input", () => { if (selectedStarter) rememberStarter(); });
 
   async function loadReferralDisclosure() {
@@ -277,7 +328,7 @@
       weddingDate: fields.date || null,
       timeZone: fields.timeZone || window.WSTime.browserZone(),
       location: String(fields.location || "").trim(),
-      currency: fields.currency || "USD",
+      currency: fields.currency || draftCurrency(),
       maxCapacity: Number(fields.capacity || 150),
       palette: saved ? [...saved.palette] : [...DEFAULT_PALETTE],
       venues
@@ -306,6 +357,13 @@
       return setNotice("Please keep the names within 120 characters.", "bad", $("couple-names"));
     }
     if (!window.WS.token()) return setNotice("Your sign-in has expired. Sign in again; your answers have not been sent.", "bad");
+    if (!selectedStarter && !($("include-legacy-answers")?.checked && legacyAnswers?.fields?.currency)) {
+      await draftCurrencyCheck;
+      if (platformCurrency?.configured === true && !draftCurrencies.some(item => item.code === draftCurrency())) {
+        $("draft-currency").focus();
+        return setNotice("Choose a currency that currently has a ready guest-payment option before creating this draft. Your answers are kept.", "bad", $("draft-currency"));
+      }
+    }
     state.submitting = true;
     renderSubmit();
     try {
@@ -435,6 +493,7 @@
       .catch(error => { $("client-referral-dismiss").hidden = false; setNotice(error.message, "bad"); });
   } else {
     prepareLegacyAnswerChoice();
+    draftCurrencyCheck = checkDraftCurrency();
     loadWeddings();
     Promise.all([initializeStarter(), loadReferralDisclosure()]).then(() => {
       const sourceRequested = new URLSearchParams(location.search).has("style") || new URLSearchParams(location.search).has("inspiration");
