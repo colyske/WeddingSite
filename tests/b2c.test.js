@@ -1,50 +1,115 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { b2cReadiness, capabilityHash, dispatchB2c, receiveB2cCallback, resultEvidence, runB2cWorker } from "../server/b2c.js";
-
+import { b2cReadiness, capabilityHash, callbackEvidence, dispatchB2c, receiveB2cCallback, runB2cWorker } from "../server/b2c.js";
 const id = "10000000-0000-4000-8000-000000000001";
-const mustNotCall = () => { throw new Error("Unexpected external or database call"); };
-test("unimplemented contract and ownership process cannot be activated by environment flags", async () => {
-  const env = {
-    WEDDINGSITE_PAYMENT_MODE:"live",DARAJA_ENVIRONMENT:"production",DARAJA_B2C_ENABLED:"true",
-    DARAJA_B2C_CONTRACT_VERIFIED:"true",DARAJA_B2C_CAPABILITY_CONFIRMED:"true",DARAJA_B2C_AUTO_APPROVAL_ENABLED:"true"
-  };
-  for (const candidate of [{},env]) {
-    const ready=b2cReadiness(candidate);
-    assert.equal(ready.ready,false);
-    assert.equal(ready.checks.implementedContract,false);
-    assert.equal(ready.checks.destinationOwnershipProcess,false);
-    await assert.rejects(dispatchB2c(id,id,"staff",{env:candidate,rpc:mustNotCall,fetcher:mustNotCall}),/prerequisites/);
-  }
-  assert.equal(b2cReadiness({}).autoApprovalGate,false);
+const env = {
+  WEDDINGSITE_PAYMENT_MODE: "live", DARAJA_ENVIRONMENT: "production",
+  DARAJA_B2C_ENABLED: "true", DARAJA_B2C_API_VERSION: "v1",
+  DARAJA_B2C_CONTRACT_VERIFIED: "true", DARAJA_B2C_CAPABILITY_CONFIRMED: "true",
+  DARAJA_B2C_SHORTCODE: "123456", DARAJA_B2C_SHORTCODE_CONFIRMED: "123456",
+  DARAJA_B2C_COMMAND_ID: "BusinessPayment", DARAJA_CONSUMER_KEY: "synthetic",
+  DARAJA_CONSUMER_SECRET: "synthetic", DARAJA_B2C_INITIATOR_NAME: "synthetic",
+  DARAJA_B2C_INITIATOR_PASSWORD: "synthetic", DARAJA_B2C_CERTIFICATE_PEM: "synthetic",
+  DARAJA_B2C_CERTIFICATE_SHA256: "a".repeat(64), WEDDINGSITE_PUBLIC_ORIGIN: "https://example.test"
+};
+const never = () => { throw new Error("Unintended call"); };
+const snapshot = { id, claimed: true, payout_id: id, amount_minor: 1200, msisdn: "254700000001",
+  shortcode: "123456", command_id: "BusinessPayment" };
+const provider = async url => new Response(JSON.stringify(url.includes("oauth") ? { access_token: "synthetic" }
+  : { ResponseCode: 0, ConversationID: "CONV", OriginatorConversationID: "ORIGIN" }));
+
+test("default deployment gates deny before reservation/provider work; worker only maintains holds", async () => {
+  assert.equal(b2cReadiness({}).ready, false);
+  assert.equal(b2cReadiness({}).autoApprovalGate, false);
+  await assert.rejects(dispatchB2c(id, id, { env: {}, rpc: never, fetcher: never }), /prerequisites/);
+  const calls = [];
+  assert.deepEqual(await runB2cWorker({ env: {}, rpc: async name => { calls.push(name); }, fetcher: never }),
+    { held: true, reason: "deployment_prerequisites" });
+  assert.deepEqual(calls, ["b2c_mark_stale"]);
 });
-test("worker only marks stale reservations and never retries or queries the provider",async () => {
-  const calls=[];
-  const result=await runB2cWorker({rpc:async name=>{calls.push(name);return 0;},fetcher:mustNotCall});
-  assert.deepEqual(calls,["b2c_mark_stale"]);
-  assert.equal(result.held,true);
-});
-test("no guessed callback payload or environment mapping can settle a payout",()=> {
-  const evidence=resultEvidence({ResultCode:0,ResultParameters:{}},{amount_minor:1200},
-    {DARAJA_B2C_CONTRACT_VERIFIED:"true",DARAJA_B2C_RESULT_MAPPING:'{"amountParameter":"amount"}'});
-  assert.deepEqual(evidence,{outcome:"inconclusive",verified_contract:false});
-});
-test("callback capability is checked before a rejected-contract audit, without interpreting provider fields",async()=>{
-  const token="b".repeat(64),calls=[];
-  await assert.rejects(receiveB2cCallback(id,"","result",{}, {rpc:mustNotCall}),/capability/);
-  const rpc=async(name,body)=> {
+test("durable common claim precedes all provider calls and repeated claim cannot resend", async () => {
+  const calls = [];
+  let claims = 0;
+  const rpc = async (name, body) => {
     calls.push(name);
-    if(name==="b2c_callback_context") {
-      assert.equal(body.p_hash,capabilityHash(token));
-      return {id};
+    if (name === "b2c_claim") {
+      assert.equal(body.p_auto, false);
+      assert.match(body.p_callback_hash, /^[a-f0-9]{64}$/);
+      return ++claims === 1 ? snapshot : { claimed: false, state: "executing" };
     }
-    assert.equal(body.p_kind,"rejected");
-    assert.equal(body.p_evidence.callback_hash,capabilityHash(token));
+    assert.equal(body.p_kind, "accepted");
+    return "executing";
+  };
+  const options = { env, rpc, encryptCredential: () => "synthetic-encrypted",
+    fetcher: async (...args) => { calls.push("provider"); return provider(...args); } };
+  const result = await dispatchB2c(id, id, options);
+  assert.equal(calls[0], "b2c_claim");
+  assert.equal(result.accepted, true);
+  assert.equal(result.settled, false);
+  const before = calls.filter(v => v === "provider").length;
+  assert.equal((await dispatchB2c(id, id, options)).alreadyClaimed, true);
+  assert.equal(calls.filter(v => v === "provider").length, before);
+});
+test("timeout, malformed acceptance and lost acceptance journal all retain uncertain claim without retry", async () => {
+  for (const failure of ["transport", "acceptance", "journal"]) {
+    let payments = 0;
+    const kinds = [];
+    const rpc = async (name, body) => {
+      if (name === "b2c_claim") return snapshot;
+      kinds.push(body.p_kind);
+      if (failure === "journal" && body.p_kind === "accepted") throw new Error("Lost DB response");
+      return "uncertain";
+    };
+    const fetcher = async url => {
+      if (url.includes("oauth")) return provider(url);
+      payments++;
+      if (failure === "transport") throw new Error("synthetic transport loss");
+      return failure === "acceptance" ? new Response("{}") : provider(url);
+    };
+    const result = await dispatchB2c(id, id, { env, rpc, fetcher, encryptCredential: () => "synthetic" });
+    assert.equal(payments, 1);
+    assert.equal(result.state, "uncertain");
+    assert.equal(result.reconciliationRequired, true);
+    assert.equal(kinds.at(-1), "uncertain");
+  }
+});
+test("forged capabilities fail before audit; bound duplicates share digest and no callback settles", async () => {
+  const token = "b".repeat(64), calls = [];
+  const body = { Result: { ConversationID: "CONV", OriginatorConversationID: "ORIGIN",
+    ResultCode: 0, TransactionID: "SYNRECEIPT", ResultParameters: { ResultParameter: [{ Key: "Unknown", Value: "ignored" }] } } };
+  const rpc = async (name, fields) => {
+    calls.push({ name, fields });
+    if (name === "b2c_callback_context") {
+      assert.equal(fields.p_hash, capabilityHash(token));
+      return { id, conversation_id: "CONV", originator_id: "ORIGIN" };
+    }
+    assert.equal(fields.p_kind, "result");
+    assert.equal(fields.p_evidence.result_code, "0");
+    assert.equal("amount_minor" in fields.p_evidence, false);
+    assert.equal("msisdn" in fields.p_evidence, false);
     return "uncertain";
   };
-  await assert.rejects(receiveB2cCallback(id,token,"result",{arbitrary:"unverified"},{rpc}),/contract is not implemented/);
-  assert.deepEqual(calls,["b2c_callback_context","b2c_record_event"]);
-  calls.length=0;
-  await assert.rejects(receiveB2cCallback(id,token,"timeout",{}, {rpc:async()=>{throw new Error("Invalid capability");}}),/Invalid capability/);
-  assert.equal(calls.length,0);
+  await assert.rejects(receiveB2cCallback(id, "", "result", body, { rpc: never }), /capability/);
+  const first = await receiveB2cCallback(id, token, "result", body, { rpc });
+  const second = await receiveB2cCallback(id, token, "result", body, { rpc });
+  assert.equal(first.settled, false);
+  assert.equal(first.reconciliationRequired, true);
+  assert.deepEqual(first, second);
+  assert.equal(calls[1].fields.p_key, calls[3].fields.p_key);
+  assert.equal(callbackEvidence({ Result: { ResultCode: 0 } }), null);
+});
+test("callback-before-acceptance and unverified timeout body are audited holds, never guessed settlement", async () => {
+  for (const kind of ["result", "timeout"]) {
+    let evidence;
+    const result = await receiveB2cCallback(id, "b".repeat(64), kind, { Arbitrary: "not an official schema" }, {
+      rpc: async (name, body) => {
+        if (name === "b2c_callback_context") return { id, conversation_id: null, originator_id: null };
+        evidence = body;
+        return "uncertain";
+      }
+    });
+    assert.equal(result.settled, false);
+    assert.equal(evidence.p_kind, kind === "timeout" ? "timeout" : "uncertain");
+    assert.equal(evidence.p_evidence.reason, "unverified_callback_schema");
+  }
 });

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import handler from "../api/b2c.js";
+import handler from "../server/b2c-api.js";
 
 function response() {
   return { code: 0, body: null, status(code) { this.code = code; return this; },
@@ -21,6 +21,7 @@ test("B2C API authenticates scheduler/callbacks and never contacts Daraja with d
     calls.push(String(url));
     assert.ok(String(url).startsWith("https://synthetic.supabase.test/"), "No provider call permitted");
     if (String(url).endsWith("/auth/v1/user")) return { ok: true, json: async () => ({ id }) };
+    if (String(url).endsWith("/rpc/b2c_status")) return { ok: true, text: async () => "[]" };
     assert.ok(String(url).endsWith("/rpc/b2c_mark_stale"));
     assert.equal(options.headers.Authorization, "Bearer synthetic-service");
     return { ok: true, text: async () => "0" };
@@ -43,7 +44,7 @@ test("B2C API authenticates scheduler/callbacks and never contacts Daraja with d
     await handler({ method: "POST", query: { action: "dispatch" }, headers: { authorization: "Bearer synthetic-staff" },
       body: { payoutId: id, idempotencyKey: id, confirmed: true } }, res);
     assert.equal(res.code, 409);
-    assert.equal(calls.length, 2); // Authentication only; no reservation or provider calls.
+    assert.equal(calls.length, 3); // Authentication/role only; no reservation or provider calls.
     res = response();
     await handler({ method: "POST", query: { action: "policy-save" }, headers: { authorization: "Bearer synthetic-staff" },
       body: { confirmed: true, changes: { require_four_eyes: false } } }, res);

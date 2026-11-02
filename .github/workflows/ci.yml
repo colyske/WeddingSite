@@ -51,10 +51,12 @@ jobs:
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/live-daraja.sql
       - name: Test paid custom sponsorship without retaining fixtures
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/custom-sponsorship.sql
-      - name: Test default-deny B2C reservations and verified reconciliation
+      - name: Test shared-ledger default-off B2C automation
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/b2c.sql
-      - name: Test unimplemented ownership prerequisite and distinct B2C reviewers
-        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/b2c-prerequisites.sql
+      - name: Race actual manual and automatic payout reservations and claims
+        env:
+          B2C_TEST_DB_CONTAINER: supabase_db_weddingsite
+        run: node tests/db/b2c-concurrency.mjs
       - name: Test live Paystack split and publication guards without retaining fixtures
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/paystack-live.sql
       - name: Test standard Paystack collection and immutable Owner settlement modes without retaining fixtures

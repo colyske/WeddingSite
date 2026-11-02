@@ -1,102 +1,109 @@
 (function () {
+  const esc = value => WS.esc(String(value ?? ""));
   async function request(action, body) {
     const response = await WS.api("/api/b2c?action=" + action, body ? {
       method: "POST", body: JSON.stringify({ ...body, confirmed: true })
     } : undefined);
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "B2C request failed.");
+    if (!response.ok) throw new Error(data.error || "B2C action failed.");
     return data;
   }
-  const esc = value => WS.esc(String(value ?? ""));
   async function mount(el, owner = true) {
-    const [{ policy, readiness }, { dispatches }] = await Promise.all([request(owner ? "readiness" : "controls"), request("status")]);
-    el.innerHTML = `<h2>M-Pesa B2C payouts</h2>
-      <p><strong>Default OFF.</strong> Collection approval does not approve payouts. KYC completeness is not identity verification.
-      Documented account-review evidence does not prove partner identity or destination ownership.
-      Dispatch is hard-blocked pending a suitable verified destination-ownership process and verified official provider contract.</p>
-      <p>Dispatch policy: <strong>${policy.dispatch_enabled ? "enabled" : "OFF"}</strong>.
-      Approval: <strong>${policy.require_four_eyes ? "four-eyes required" : "explicit limited auto-approval"}</strong>.
-      Deployment: <strong>${readiness.ready ? "prerequisites configured" : "held"}</strong>. Policy revision: ${esc(policy.revision)}.</p>
-      <p>Missing deployment checks: ${esc(Object.entries(readiness.checks).filter(([, ready]) => !ready).map(([key]) => key).join(", ") || "none")}.
-      Auto-approval deployment gate: ${readiness.autoApprovalGate ? "on" : "OFF"}.</p>
-      <p><a href="docs/B2C-PAYOUTS.md">Activation prerequisites and official-document limitations</a>.
-      No provider is contacted by this screen's readiness check. API contract confirmation is an independent deployment prerequisite.</p>
-      <form id="b2c-policy"><h3>Owner-only approval policy</h3>
-        <p>No scope or financial limits are preselected. Editing approval policy does not activate dispatch.</p>
-        <label>Approval mode<select name="mode"><option value="human">Require four-eyes</option><option value="limited">Limited automatic approval (explicit scope required)</option></select></label>
-        <label>Explicit limits JSON (minor KES units; per_payout_minor, daily_minor, wedding_ids)
-          <textarea name="limits" rows="3" placeholder="No default limits"></textarea></label>
+    const [{ policy, readiness }, { dispatches }] = await Promise.all([
+      request(owner ? "readiness" : "controls"), request("status")
+    ]);
+    el.innerHTML = `<h2>M-Pesa automated payouts</h2>
+      <p><strong>Default OFF.</strong> Uses the same custody, reservations and execution claim as manual payouts.
+      KYC completeness is not identity verification. Phone OTP proves control, not registered name.
+      Independently checked identity/name evidence and current disbursable collected funds are required.</p>
+      <p>Policy: <strong>${policy.enabled ? "enabled" : "OFF"}</strong>.
+      Approval: <strong>${policy.require_four_eyes ? "two-person review" : "Owner-configured automated approval"}</strong>.
+      Deployment: <strong>${readiness.ready ? "configured (not a provider health check)" : "held"}</strong>.
+      Revision: ${esc(policy.revision)}.</p>
+      <p>Missing deployment checks: ${esc(Object.entries(readiness.checks).filter(([, v]) => !v).map(([k]) => k).join(", ") || "none")}.
+      Auto-approval gate: ${readiness.autoApprovalGate ? "on" : "OFF"}.</p>
+      <p><a href="docs/B2C-PAYOUTS.md">Contract evidence and operator guide</a> ·
+      <a href="b2c-recipient.html">Couple destination-control and payout request</a>.
+      No readiness provider probe is made.</p>
+      <form id="b2c-policy"><h3>Owner-only audited policy</h3>
+        <p>No financial thresholds, recipients or custody are preselected. Use explicit UUID allowlists and minor KES units.
+        Disabling admission never releases an existing claim. Saving policy cannot enable deployment flags.</p>
+        <label>Approval mode<select name="mode"><option value="human">Two-person review</option>
+          <option value="automatic">Automated approval within explicit policy</option></select></label>
+        <label>Policy fields JSON<textarea name="fields" rows="8" required
+          placeholder="No default limits or eligible recipients"></textarea></label>
+        <p>Fields: enabled, custody_ids, recipient_ids, per_payout_minor, daily_minor, payout_fee_minor,
+        statement_max_age_minutes, shortcode, command_id, contract_reference, funding_reference.
+        References are independently checked policy-evidence UUIDs; never secrets.</p>
         <label>Audit reason<input name="reason" minlength="10" maxlength="240" required></label>
-        <button type="submit">Save approval policy</button>
-        <button type="button" id="b2c-stop">Stop new dispatch</button></form>
-      <form id="b2c-recipient"><h3>Documented account-review evidence</h3>
-        <p>Match an authorized inbound statement to its receipt and documented payer account.
-        This does not verify partner identity or destination ownership and cannot authorize payouts.
-        A different SuperAdmin user must confirm the Owner review. Never paste ID documents or credentials here.</p>
-        <label>Wedding UUID<input name="weddingId" required></label>
-        <label>Verified inbound contribution UUID<input name="contributionId" required></label>
-        <label>Statement-proven MSISDN (254...)<input name="msisdn" pattern="254[17][0-9]{8}" required></label>
-        <label>Secure statement evidence reference<input name="statementReference" minlength="10" maxlength="240" required></label>
-        <label><input type="checkbox" name="reviewed" required> I checked the documented account evidence, not verified ownership.</label>
-        <button type="submit">Record account-review evidence</button></form>
-      <form id="b2c-account-confirm"><h3>Different-person account review</h3>
-        <label>Wedding UUID<input name="weddingId" required></label>
-        <label>Exact Owner account-evidence reference<input name="statementReference" required></label>
-        <button type="submit">SuperAdmin: confirm documented account review</button></form>
-      <h3>Reserved dispatches</h3><p>Timeouts and inconclusive evidence retain funds. Never retry an uncertain payout.
-      Use an independent official statement to reconcile; transaction-status observations alone cannot prove recipient or amount.</p>
-      <form id="b2c-dispatch"><label>Approved payout UUID<input name="payoutId" required></label>
-        <label><input type="checkbox" required> I confirm dispatch of this approved payout, not a retry of an uncertain transfer.</label>
-        <button type="submit"${policy.dispatch_enabled && readiness.ready ? "" : " disabled"}>Dispatch approved payout</button></form>
-      <div class="table-wrap"><table><thead><tr><th>Payout</th><th>Dispatch</th><th>Amount</th><th>Status</th></tr></thead><tbody>
-      ${dispatches.map(d => `<tr><td>${esc(d.payout_id)}</td><td>${esc(d.id)}</td><td>${esc(WS.money(Number(d.amount_minor), "KES", false))}</td><td>${esc(d.state)}</td></tr>`).join("")}
+        <button type="submit">Save revision-checked policy</button>
+        <button type="button" id="b2c-stop">Stop new automated dispatch</button>
+      </form>
+      <form id="b2c-intake"><h3>Shared evidence and collected-funds onboarding (no transfer)</h3>
+        <p>Only opaque secure-evidence UUIDs and SHA-256 digests. Never paste names, ID documents,
+        statements, OTP codes or credentials. A different leader checks each evidence record.</p>
+        <label>Operation<select name="kind"><option>evidence</option><option>check</option>
+          <option>recipient</option><option>custody</option><option>settlement</option></select></label>
+        <label>Structured metadata JSON<textarea name="data" rows="5" required></textarea></label>
+        <p>See operator guide for each exact shape. Custody/settlement are Owner-only.
+        A Paybill collection receipt is not evidence that the balance is currently disbursable.</p>
+        <button type="submit">Record evidence metadata</button>
+      </form>
+      <form id="b2c-approve"><h3>Human approval</h3>
+        <label>Payout request UUID<input name="payoutId" required></label>
+        <button type="submit">Approve as a different reviewer</button></form>
+      <form id="b2c-dispatch"><h3>Dispatch</h3>
+        <label>Payout request UUID<input name="payoutId" required></label>
+        <label><input type="checkbox" required> Not a resend of a claimed or uncertain transfer.</label>
+        <button type="submit"${policy.enabled && readiness.ready ? "" : " disabled"}>Dispatch once</button></form>
+      <h3>Execution journal</h3><p>Acceptance is not payment. Callbacks retain reservations until independent
+      official-statement reconciliation. Timeouts and errors never authorize retry.</p>
+      <div class="table-wrap"><table><thead><tr><th>Payout</th><th>Dispatch</th><th>State</th></tr></thead><tbody>
+      ${dispatches.map(d => `<tr><td>${esc(d.payout_id)}</td><td>${esc(d.id)}</td><td>${esc(d.state)}</td></tr>`).join("")}
       </tbody></table></div>
-      <form id="b2c-reconcile"><h3>Official statement reconciliation</h3>
+      <form id="b2c-reconcile"><h3>Independent final statement reconciliation</h3>
         <label>Dispatch UUID<input name="dispatchId" required></label>
-        <label>Statement evidence reference<input name="statementReference" minlength="10" maxlength="240" required></label>
-        <label>Official outcome<select name="outcome"><option value="inconclusive">Inconclusive (retain funds)</option><option value="succeeded">Confirmed paid</option><option value="failed">Confirmed not paid</option></select></label>
-        <label>Official transaction reference<input name="transactionId"></label>
-        <label>Statement recipient MSISDN<input name="msisdn"></label>
-        <label>Statement amount (minor KES units)<input name="amountMinor" type="number" min="1" step="1"></label>
-        <button type="submit">Record independent reconciliation</button></form>
+        <label>Independently checked receipt-evidence UUID<input name="evidenceId" required></label>
+        <label>Official transaction reference<input name="transactionId" required></label>
+        <label>Exact destination MSISDN<input name="msisdn" pattern="254[17][0-9]{8}" required></label>
+        <label>Exact principal (minor KES)<input name="amountMinor" type="number" min="100" step="100" required></label>
+        <label>Exact fee (minor KES)<input name="feeMinor" type="number" min="0" step="1" required></label>
+        <label>Official transfer timestamp (ISO 8601 with timezone)<input name="transferredAt" required></label>
+        <button type="submit">Reconcile exact paid receipt</button></form>
       <p id="b2c-notice" class="notice" role="status" aria-live="polite"></p>`;
-    const notice = message => { el.querySelector("#b2c-notice").textContent = message; };
     el.querySelector("#b2c-policy").hidden = !owner;
-    el.querySelector("#b2c-recipient").hidden = !owner;
-    el.querySelector("#b2c-account-confirm").hidden = owner;
     if (owner) {
-      el.querySelector('#b2c-policy [name="mode"]').value = policy.require_four_eyes ? "human" : "limited";
-      el.querySelector('#b2c-policy [name="limits"]').value = policy.auto_approval_limits ? JSON.stringify(policy.auto_approval_limits) : "";
+      el.querySelector('[name="mode"]').value = policy.require_four_eyes ? "human" : "automatic";
+      const { revision, require_four_eyes, singleton, updated_at, updated_by, ...fields } = policy;
+      el.querySelector('[name="fields"]').value = JSON.stringify(fields, null, 2);
     }
+    const notice = message => { el.querySelector("#b2c-notice").textContent = message; };
     const submit = (selector, action, fields) => {
       el.querySelector(selector).addEventListener("submit", async event => {
         event.preventDefault();
         const button = event.target.querySelector('button[type="submit"]');
         button.disabled = true;
         try {
-          const values = Object.fromEntries(new FormData(event.target));
-          const result = await request(action, fields(values));
+          const result = await request(action, fields(Object.fromEntries(new FormData(event.target))));
           await mount(el, owner);
-          notice(result.state === "uncertain" ? "Outcome uncertain. Funds remain reserved; independent reconciliation is required. Do not retry."
-            : result.state === "accepted" ? "Provider accepted the request. Funds remain reserved until verified final evidence."
-              : "Saved and audited.");
+          notice(result.accepted ? "Accepted, not settled. Funds remain reserved."
+            : result.reconciliationRequired ? "Uncertain: funds held. Do not retry."
+              : result.id ? `Recorded: ${result.id}` : "Saved and audited.");
         } catch (error) { notice(error.message); button.disabled = false; }
       });
     };
-    submit("#b2c-policy", "policy-save", values => {
-      const changes = { require_four_eyes: values.mode === "human" };
-      if (values.mode === "limited") changes.auto_approval_limits = JSON.parse(values.limits);
-      return { revision: policy.revision, changes, reason: values.reason };
-    });
-    submit("#b2c-recipient", "recipient-review", values => values);
-    submit("#b2c-account-confirm", "account-review-confirm", values => values);
-    submit("#b2c-dispatch", "dispatch", values => ({ ...values, idempotencyKey: crypto.randomUUID() }));
-    submit("#b2c-reconcile", "reconcile", values => ({ ...values, amountMinor: values.amountMinor ? Number(values.amountMinor) : null }));
+    submit("#b2c-policy", "policy-save", v => ({ revision: policy.revision,
+      changes: { ...JSON.parse(v.fields), require_four_eyes: v.mode === "human" }, reason: v.reason }));
+    submit("#b2c-intake", "intake", v => ({ kind: v.kind, data: JSON.parse(v.data) }));
+    submit("#b2c-approve", "approve", v => v);
+    submit("#b2c-dispatch", "dispatch", v => ({ ...v, idempotencyKey: crypto.randomUUID() }));
+    submit("#b2c-reconcile", "reconcile", v => ({ ...v, amountMinor: Number(v.amountMinor), feeMinor: Number(v.feeMinor) }));
     el.querySelector("#b2c-stop").addEventListener("click", async () => {
       try {
-        await request("policy-save", { revision: policy.revision, changes: { dispatch_enabled: false }, reason: "Owner emergency stop of new B2C dispatch" });
+        await request("policy-save", { revision: policy.revision, changes: { enabled: false },
+          reason: "Owner emergency stop of new automated B2C dispatch" });
         await mount(el, owner);
-        notice("New dispatch stopped. Existing reservations remain held and callbacks can still reconcile.");
+        notice("New dispatch stopped. Existing claims and reconciliation remain active.");
       } catch (error) { notice(error.message); }
     });
   }
