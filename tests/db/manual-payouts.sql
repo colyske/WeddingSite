@@ -168,7 +168,7 @@ begin
   select id into p from mp_ids where key='payout';
   perform pg_temp.actor('sender');
   perform public.manual_payout_transition(p,'executing',claim);
-  perform public.manual_payout_transition(p,'executing',claim);
+  perform pg_temp.reject(format('select public.manual_payout_transition(%L,''executing'',%L)',p,claim),'already claimed');
   perform pg_temp.reject(format('select public.manual_payout_transition(%L,''executing'',extensions.gen_random_uuid())',p),'already claimed');
   perform pg_temp.reject(format('select public.manual_payout_transition(%L,''cancelled'')',p),'Invalid');
   perform public.manual_payout_transition(p,'uncertain');
@@ -176,10 +176,17 @@ begin
   perform pg_temp.actor('maker');
   perform pg_temp.reject(format('select public.manual_payout_request(extensions.gen_random_uuid(),%L,%L,%L,4001,0,''KES'')',
     (select id from mp_ids where key='wedding'),(select id from mp_ids where key='custody'),
-    (select id from mp_ids where key='recipient')),'Insufficient');
+    (select id from mp_ids where key='recipient')),'Uncertain');
   e:=pg_temp.evidence('receipt','sender');
   perform pg_temp.actor('sender');
-  perform pg_temp.reject(format('select public.manual_payout_report(%L,''RECEIPT-ONE'',6001,0,''KES'',now(),%L)',p,e),'mismatch');
+  begin
+    if public.manual_payout_report(p,'RECEIPT-ONE',6001,0,'KES',now(),e) then
+      raise exception 'Mismatched receipt was accepted as paid evidence'; end if;
+    if not exists(select 1 from public.manual_payout_account_holds where payout_id=p and actual_minor=6001)
+      or public.manual_payout_state(p)<>'uncertain' then raise exception 'Mismatch did not retain an explicit account incident'; end if;
+    raise exception using errcode='P9999',message='Rollback isolated mismatch regression';
+  exception when sqlstate 'P9999' then null;
+  end;
   perform public.manual_payout_report(p,'receipt-one',6000,0,'KES',now(),e);
   perform pg_temp.reject(format('select public.manual_payout_transition(%L,''paid'',null,%L)',p,e),'statement reconciliation');
   perform pg_temp.reject(format('select pg_temp.reconcile(%L,%L,''RECEIPT-ONE'',6000)',p,e),'Independent');
@@ -204,7 +211,14 @@ begin
   perform pg_temp.actor('checker'); perform public.manual_payout_transition(p,'approved');
   perform pg_temp.actor('sender'); perform public.manual_payout_transition(p,'executing',extensions.gen_random_uuid());
   e:=pg_temp.evidence('receipt','sender'); perform pg_temp.actor('sender');
-  perform pg_temp.reject(format('select public.manual_payout_report(%L,''RECEIPT-ONE'',1000,0,''KES'',now(),%L)',p,e),'unique');
+  begin
+    if public.manual_payout_report(p,'RECEIPT-ONE',1000,0,'KES',now(),e) then
+      raise exception 'Duplicate receipt was accepted'; end if;
+    if not exists(select 1 from public.manual_payout_account_holds where payout_id=p) then
+      raise exception 'Duplicate receipt did not freeze the shared custody account'; end if;
+    raise exception using errcode='P9999',message='Rollback isolated receipt-collision regression';
+  exception when sqlstate 'P9999' then null;
+  end;
   if public.manual_payout_state(p)<>'executing' then raise exception 'Receipt collision released reservation'; end if;
   e:=pg_temp.evidence('no_transfer','sender'); perform pg_temp.actor('sender');
   perform public.manual_payout_transition(p,'resolution_proposed',null,e);
@@ -308,16 +322,30 @@ begin
     values(expense,w,'Fixture','Historical paid expense',500,'KES','paid',now()-interval '2 days');
   perform public.manual_payout_map_source('expense',expense,a,original_batch,pg_temp.evidence('commitment'),
     extensions.gen_random_uuid(),now()-interval '2 days');
-  -- A changed source invalidates that mapping; the affected increment remains held.
-  update public.expenses set amount_minor=600 where id=expense;
-  perform pg_temp.reject(format('select public.manual_payout_request(extensions.gen_random_uuid(),%L,%L,%L,6500,0,''KES'')',w,a,r),'Insufficient');
-  update public.expenses set amount_minor=500 where id=expense;
+  -- Paid financial history cannot be edited to erase its obligation. Even a
+  -- nonfinancial revision invalidates the mapping until its evidence is checked.
+  perform pg_temp.reject(format('update public.expenses set amount_minor=600 where id=%L',expense),'Recorded paid commitment');
+  update public.expenses set description='Changed historical snapshot' where id=expense;
+  perform pg_temp.reject(format('select public.manual_payout_request(extensions.gen_random_uuid(),%L,%L,%L,6501,0,''KES'')',w,a,r),'Insufficient');
+  update public.expenses set description='Historical paid expense' where id=expense;
   -- Fresh, smaller paid debit is included only in the subsequent statement period.
   expense:=extensions.gen_random_uuid(); at_expense:=clock_timestamp();
   insert into public.expenses(id,wedding_id,category,description,amount_minor,currency,status,paid_at)
     values(expense,w,'Fixture','New paid expense',100,'KES','paid',at_expense);
   b2:=public.manual_payout_append_statement(a,b,extensions.gen_random_uuid(),clock_timestamp(),9000,0,100,8900,0,pg_temp.evidence('statement'));
   perform public.manual_payout_map_source('expense',expense,a,b2,pg_temp.evidence('commitment'),extensions.gen_random_uuid(),at_expense);
+  -- A newer source snapshot must never free an old statement's consumed capacity.
+  begin
+    update public.expenses set description='Changed mapped snapshot' where id=expense;
+    perform public.manual_payout_map_source('expense',expense,a,null,pg_temp.evidence('commitment'));
+    expense:=extensions.gen_random_uuid();
+    insert into public.expenses(id,wedding_id,category,description,amount_minor,currency,status,paid_at)
+      values(expense,w,'Fixture','Cannot reuse consumed debit capacity',100,'KES','paid',at_expense);
+    perform pg_temp.reject(format('select public.manual_payout_map_source(''expense'',%L,%L,%L,%L,extensions.gen_random_uuid(),%L)',
+      expense,a,b2,pg_temp.evidence('commitment'),at_expense),'capacity');
+    raise exception using errcode='P9999',message='Rollback isolated capacity regression';
+  exception when sqlstate 'P9999' then null;
+  end;
   p:=public.manual_payout_request(extensions.gen_random_uuid(),w,a,r,6400,0,'KES');
   perform pg_temp.actor('checker'); perform public.manual_payout_transition(p,'approved');
   perform pg_temp.actor('maker'); perform public.manual_payout_transition(p,'cancelled');
@@ -349,9 +377,86 @@ begin
     values(adjustment,w,c,'dispute_reversal',200,'KES','paystack','isolated-unbacked-positive');
   perform pg_temp.reject(format('select public.manual_payout_request(extensions.gen_random_uuid(),%L,%L,%L,6500,0,''KES'')',w,a,r),'Insufficient');
 end $$;
+-- Opening balances may already be net of paid history and include bank-held
+-- funds. Record verified gross entitlement without inventing spendable capital.
+savepoint net_opening;
+do $$
+declare a uuid; w uuid; c uuid:=extensions.gen_random_uuid(); expense uuid:=extensions.gen_random_uuid(); b uuid; p uuid; r uuid;
+begin
+  select id into w from mp_ids where key='wedding';
+  perform pg_temp.actor('maker');
+  a:=public.manual_payout_register_custody('daraja',pg_temp.account(),'KES',7000,now()-interval '1 day',pg_temp.evidence('custody'),1000);
+  select id into b from public.manual_payout_statement_batches where custody_id=a;
+  insert into public.contributions(id,wedding_id,stream_name,pledged_amount_minor,paid_amount_minor,
+    platform_fee_minor,net_paid_minor,currency,payment_status,verified_provider_payment,provider_fee_pending,
+    provider_fee_minor,payment_environment,provider_name,paid_at)
+    values(c,w,'Verified gross before historical debit',10000,10000,0,10000,'KES',
+      'paid',true,false,0,'live','daraja',now()-interval '2 days');
+  insert into public.expenses(id,wedding_id,category,description,amount_minor,currency,status,paid_at)
+    values(expense,w,'Fixture','Debit already in net opening balance',2000,'KES','paid',now()-interval '2 days');
+  perform public.manual_payout_map_source('expense',expense,a,b,pg_temp.evidence('commitment'),extensions.gen_random_uuid(),now()-interval '2 days');
+  perform public.manual_payout_register_settlement(c,a,extensions.gen_random_uuid(),10000,pg_temp.evidence('settlement'),b,now()-interval '36 hours');
+  select id into r from public.manual_payout_recipients where wedding_id=w order by revision desc limit 1;
+  perform pg_temp.reject(format('select public.manual_payout_request(extensions.gen_random_uuid(),%L,%L,%L,7001,0,''KES'')',w,a,r),'Insufficient');
+  p:=public.manual_payout_request(extensions.gen_random_uuid(),w,a,r,7000,0,'KES');
+  perform public.manual_payout_transition(p,'cancelled');
+  perform public.manual_payout_append_statement(a,b,extensions.gen_random_uuid(),clock_timestamp(),8000,0,0,8000,0,pg_temp.evidence('statement'));
+  p:=public.manual_payout_request(extensions.gen_random_uuid(),w,a,r,8000,0,'KES');
+  perform public.manual_payout_transition(p,'cancelled');
+end $$;
+rollback to net_opening;
+-- Contradictory late evidence cannot resurrect or rewrite terminal history.
+savepoint late_outcome;
+do $$
+declare p uuid; e uuid; a uuid; w uuid; at_report timestamptz:=clock_timestamp();
+begin
+  select id,custody_id,wedding_id into strict p,a,w from public.manual_payout_requests
+    where public.manual_payout_state(id)='not_transferred';
+  e:=pg_temp.evidence('receipt','sender'); perform pg_temp.actor('sender');
+  if public.manual_payout_report(p,'LATE-TRANSFER',1000,0,'KES',at_report,e) then
+    raise exception 'Late transfer incorrectly accepted as a normal receipt'; end if;
+  if public.manual_payout_state(p)<>'not_transferred'
+    or (select count(*) from public.manual_payout_account_holds where payout_id=p)<>1 then
+    raise exception 'Late receipt did not preserve terminal history and shared account hold'; end if;
+  if public.manual_payout_report(p,'LATE-TRANSFER',1000,0,'KES',at_report,e) then
+    raise exception 'Incident replay cannot become successful payment'; end if;
+  if (select count(*) from public.manual_payout_account_holds where payout_id=p)<>1 then
+    raise exception 'Incident replay duplicated its safety record'; end if;
+  perform pg_temp.actor('owner');
+  perform pg_temp.reject(format('select public.manual_payout_request(extensions.gen_random_uuid(),%L,%L,%L,1000,0,''KES'',true)',
+    w,a,(select id from mp_ids where key='recipient')),'Held custody account');
+  perform pg_temp.reject(format('delete from public.manual_payout_account_holds where payout_id=%L',p),'append-only');
+end $$;
+rollback to late_outcome;
+-- A trusted automatic wrapper can carry a real journal ID/digest, not invented
+-- manual evidence. Its own journal-correlation proof is tested in the B2C PR.
+savepoint automatic_observation;
+do $$
+declare p uuid; a uuid; w uuid; journal uuid:=extensions.gen_random_uuid(); held uuid; principal uuid;
+begin
+  select id into a from mp_ids where key='custody';
+  select id into w from mp_ids where key='wedding';
+  select id into principal from mp_ids where key='maker';
+  perform pg_temp.actor('maker');
+  p:=public.manual_payout_request(extensions.gen_random_uuid(),w,a,
+    (select id from public.manual_payout_recipients where wedding_id=w order by revision desc limit 1),1000,0,'KES');
+  insert into public.manual_payout_claims(payout_id,execution_channel,claim_key,sender_id)
+    values(p,'automatic_b2c',extensions.gen_random_uuid(),principal);
+  update public.profiles set platform_role='client' where id=principal;
+  perform set_config('request.jwt.claim.sub','',true);
+  held:=public.manual_payout_hold_account(p,null,'automatic_b2c',principal,
+    p_journal=>journal,p_journal_sha256=>repeat('a',64));
+  if not exists(select 1 from public.manual_payout_account_holds where id=held and evidence_id is null
+    and journal_reference=journal and authority_role_at_observation='client') then
+    raise exception 'Service observation misrepresented manual evidence or discarded revoked-authority incident'; end if;
+  perform pg_temp.reject(format('select public.manual_payout_eligible(%L,%L,%L,''KES'',1)',w,a,
+    (select id from mp_ids where key='recipient')),'Held custody account');
+end $$;
+rollback to automatic_observation;
 set local role authenticated;
 select pg_temp.actor('client');
 select pg_temp.reject('select public.manual_payout_overview()','Staff');
 select pg_temp.reject('select public.manual_payout_request(extensions.gen_random_uuid(),extensions.gen_random_uuid(),extensions.gen_random_uuid(),extensions.gen_random_uuid(),1,0,''KES'')','Staff');
+select pg_temp.reject('select public.manual_payout_hold_account(extensions.gen_random_uuid(),null,''automatic_b2c'',extensions.gen_random_uuid())','permission denied');
 reset role;
 rollback;

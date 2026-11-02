@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { chromium } from "playwright";
 
-test("manual payout leadership UI is explicitly OFF, no legacy sent or accidental operations", { timeout: 120000 }, async () => {
+test("manual payout leadership UI is explicitly OFF, no legacy sent or accidental operations", { timeout: 180000 }, async () => {
   const server = http.createServer(async (req, res) => {
     try {
       const path = new URL(req.url, "http://localhost").pathname;
@@ -22,12 +22,18 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
     page.setDefaultTimeout(10000);
     await page.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "fixture", r: "superadmin" })));
     await page.route("https://**", route => route.fulfill({ body: "" }));
-    let role = "superadmin", writes = 0;
+    let role = "superadmin", writes = 0, payoutState = "requested";
     await page.route("**/api/**", route => {
       if (route.request().method() === "POST") writes++;
       const action = new URL(route.request().url()).searchParams.get("action");
-      const data = action === "role" ? { role } : action === "manual-payouts" ? {
+      const data = action === "balance" ? { currency: "KES", available_minor: 0, manual: {
+        statement_backed_minor: 5000, reserved_minor: payoutState === "paid" ? 0 : 1000,
+        spent_minor: payoutState === "paid" ? 1000 : 0, known_obligations_minor: 100, unknown_or_held_minor: 200
+      } } : action === "withdrawals" ? { manualWithdrawals: [{
+        id: "shared-payout", amount_minor: 1000, currency: "KES", status: payoutState, requested_at: "2026-01-01"
+      }], withdrawals: [] } : action === "role" ? { role } : action === "manual-payouts" ? {
         enabled: false, verification: "Manual evidence attestation; not automatic provider verification",
+        heldAccounts: [{ id: "incident-1", custody_id: "custody-1", payout_id: "request-1", recorded_at: "2026-01-01" }],
         blockers: ["Separate activation required"], requests: [{
           id: "request-1", state: "uncertain", amount_minor: 1000, currency: "KES", recipient_revision: "opaque-revision",
           events: [{ state: "executing", actor_id: "sender-1", evidence_id: null }]
@@ -43,6 +49,7 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
     await page.locator("#manual-payout-control").waitFor();
     assert.match(await page.locator("#manual-payout-control").innerText(), /OFF/);
     assert.match(await page.locator("#manual-payout-control").innerText(), /uncertain/);
+    assert.match(await page.locator("#manual-payout-control [role=alert]").innerText(), /held across both payout channels.*no release or resend/);
     assert.equal(await page.locator('[data-ps="sent"], [data-ps="approved"]').count(), 0);
     assert.equal(await page.locator('[data-manual-action="request"] button').isDisabled(), true);
     assert.equal(await page.locator('[data-manual-action="transition"] button').isDisabled(), true);
@@ -56,6 +63,22 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
     assert.match(wedding, /<fieldset id="withdrawal-form" disabled/);
     assert.match(wedding, /Independently statement-reconciled payment/);
     assert.match(wedding, /Outcome uncertain; funds held; do not resend/);
+    // Exercise the real editor loader/render function with its real DOM targets;
+    // no fabricated provider calls or a second implementation of balance logic.
+    const loader = wedding.slice(wedding.indexOf("async function loadWithdrawals()"), wedding.indexOf("// Request withdrawal"));
+    await page.setContent('<span id="balance-display"></span><span id="settling-display"></span><span id="held-display"></span><p id="manual-balance-detail"></p><table><tbody id="withdrawals-body"></tbody></table><p id="no-withdrawals"></p>');
+    for (payoutState of ["requested", "uncertain", "paid"]) {
+      await page.evaluate(async code => {
+        const run = new Function("WS", "$", "weddingId", code + ";return loadWithdrawals();");
+        await run(WS, id => document.getElementById(id), "wedding-fixture");
+      }, loader);
+      const detail = await page.locator("#manual-balance-detail").innerText();
+      assert.match(detail, /OFF: estimates are not spendable/);
+      const amount = await page.evaluate(() => WS.money(1000, "KES"));
+      assert.ok(detail.includes(`${payoutState === "paid" ? "reconciled spent" : "reserved (including uncertain)"}: ${amount}`));
+      assert.match(await page.locator("#withdrawals-body").innerText(),
+        payoutState === "paid" ? /Independently statement-reconciled/ : payoutState === "uncertain" ? /Outcome uncertain; funds held/ : /awaiting independent review/);
+    }
   } finally {
     if (browser) await browser.close();
     await new Promise(resolve => server.close(resolve));

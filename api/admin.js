@@ -104,6 +104,8 @@ const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save", "daraja-re
 function safeMessage(error) {
   const m = String(error?.message || "");
   if (/MANUAL_PAYOUT_BLOCKED:/.test(m)) return [409, "Manual payouts are OFF. Separate operational approval and activation are required; legacy Mark sent is unavailable."];
+  if (/authority revoked|current authorized intake actor/i.test(m)) return [403, "Your current role no longer authorizes this action."];
+  if (/already claimed|receipt|statement|insufficient|canonical|idempotency|held custody|uncertain outcome|incident/i.test(m)) return [409, "Manual payout remains held or blocked. Review the current state and evidence; never resend an uncertain transfer."];
   if (/REFERRAL_CONFLICT:/.test(m)) return referralError(error);
   const moderation = m.match(/MODERATION:\s*([^\n]{1,300})/);
   if (moderation) return [409, moderation[1].trim()];
@@ -148,7 +150,11 @@ export default async function handler(req, res) {
     if (action.startsWith("manual-payout-")) {
       const command = manualPayoutCommand(action.slice("manual-payout-".length), body, role);
       if (command.error) return sendJson(res, command.status, { error: command.error });
-      return sendJson(res, 200, { result: await rpc(command.rpc, token, command.args) });
+      const result = await rpc(command.rpc, token, command.args);
+      if (command.rpc === "manual_payout_report" && result === false) {
+       return sendJson(res, 409, { held: true, error: "Outcome evidence recorded as a custody-account incident. Both payout channels are held; do not resend or treat this as paid." });
+      }
+      return sendJson(res, 200, { result });
     }
     if (action === "referral-policy-save") {
       if (typeof body.enabled !== "boolean" || !Number.isInteger(body.rateBasisPoints) ||

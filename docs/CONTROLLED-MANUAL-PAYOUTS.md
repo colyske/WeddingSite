@@ -66,10 +66,33 @@ designed exception process; do not mutate history or create a blind resend.
 kinds and appends the immutable debit reconciliation before the terminal event.
 Receipt attestation alone never declares payment.
 
-Claims have no expiry. Claim replay returns the same recorded claim, not permission to
-transfer again. Duplicate receipt errors retain the current reservation. A mismatch in
-amount, currency, fee or date is rejected and must be investigated while funds remain
-held. There is no operator override that makes a mismatched transfer paid.
+Claims have no expiry. Claim replay is rejected with a conflict; inspect the original
+recorded claim and external outcome rather than treating a retry as transfer permission.
+Duplicate receipts and mismatches in amount, currency, fee or date atomically preserve
+the reported actual fields/evidence in an append-only **custody-account incident**,
+not a successful receipt. The report RPC returns `false`; the API explicitly returns
+HTTP 409 with `held: true`, after the safety record commits. Do not raise an exception
+after writing an incident: that would roll its account freeze back.
+Uncertain/resolution-proposed outcomes additionally block other reservations
+or executions on that custody account until an exact receipt or evidenced no-transfer
+resolution is recorded. There is no override that makes a mismatched transfer paid.
+
+Late contradictory evidence after `not_transferred` (or any other terminal outcome)
+never rewrites its history or silently becomes spendable: `manual_payout_account_holds`
+freezes the entire custody account across **both** channels. The revoked internal
+`manual_payout_hold_account(id,evidence,channel,authority_actor,reference DEFAULT NULL,
+actual DEFAULT NULL,fee DEFAULT NULL,currency DEFAULT NULL,at DEFAULT NULL,
+journal DEFAULT NULL,journal_sha256 DEFAULT NULL) -> uuid` takes advisory `71110001`
+and the shared row locks. Manual observations bind real receipt evidence. Automatic
+observations may instead bind an opaque durable journal UUID and SHA-256 digest,
+never a fabricated manual-evidence repository reference or human verification.
+The trusted automatic wrapper must first verify immutable journal-to-dispatch/claim
+correlation. Its configured policy authority and current role are recorded honestly;
+a safety-only service observation can freeze even after that authority is revoked.
+No authenticated/service-role caller can invoke the helper directly. There is no
+incident-release RPC in this release, including for protected Owner solo mode.
+Resolving an actual contradictory transfer requires a separately reviewed incident
+procedure, not deleting records, resending, or changing the old terminal decision.
 
 Custody accounts are segregated by provider, canonical registry ID and currency.
 One opening statement is followed by a linear append-only chain: unique predecessor,
@@ -137,8 +160,8 @@ independently reconciled manual payments.
    uncertain outcomes, contradictory late evidence and independently proven no-transfer.
 5. Separately approve and implement an Owner-controlled activation mechanism with its
    own reviewed migration, policy bindings and operational tests. Do not drop the OFF
-   constraint or substitute the test gate in Production. Expanded statement replenishment
-   or exception accounting is separate work.
+   constraint or substitute the test gate in Production. New exception-resolution
+   procedures beyond the evidenced no-transfer path require separate review.
 
 ## Validation and release boundary
 

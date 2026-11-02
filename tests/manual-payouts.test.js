@@ -36,7 +36,7 @@ test("manual payout API rejects nonleaders, preserves token, surfaces OFF and re
   const oldFetch = globalThis.fetch;
   const saved = { SUPABASE_URL: process.env.SUPABASE_URL, SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY };
   Object.assign(process.env, { SUPABASE_URL: "https://db.example.test", SUPABASE_ANON_KEY: "fixture" });
-  let role = "admin", blocked = true, calls = [];
+  let role = "admin", blocked = true, calls = [], payoutState = "requested";
   globalThis.fetch = async (input, init = {}) => {
     const url = new URL(input);
     if (url.pathname === "/auth/v1/user") return Response.json({ id });
@@ -48,7 +48,14 @@ test("manual payout API rejects nonleaders, preserves token, surfaces OFF and re
       return Response.json(id);
     }
     if (url.pathname === "/rest/v1/rpc/manual_payout_overview") return Response.json({ enabled: false, requests: [] });
+    if (url.pathname === "/rest/v1/rpc/manual_payout_report") return Response.json(false);
     if (url.pathname === "/rest/v1/rpc/manual_payout_history") return Response.json([{ id, status: "reported", amount_minor: 1000, currency: "KES" }]);
+    if (url.pathname === "/rest/v1/rpc/withdrawable_balance") return Response.json([{ available_minor: 9000, held_minor: 100 }]);
+    if (url.pathname === "/rest/v1/rpc/manual_payout_balance") return Response.json({
+      enabled: false, available_minor: 0, statement_backed_minor: 5000,
+      reserved_minor: payoutState === "paid" ? 0 : 1000, spent_minor: payoutState === "paid" ? 1000 : 0,
+      known_obligations_minor: 100, unknown_or_held_minor: 200
+    });
     if (url.pathname === "/rest/v1/payout_records") return Response.json([]);
     throw new Error("Unexpected RPC: " + url.pathname);
   };
@@ -69,6 +76,13 @@ test("manual payout API rejects nonleaders, preserves token, surfaces OFF and re
     blocked = false;
     assert.equal((await invoke("manual-payout-request", request)).statusCode, 200);
     assert.equal(calls[0].body.p_fee, 0);
+    const incident = await invoke("manual-payout-receipt", {
+      id, reference: "CONFLICTING-RECEIPT", actual: 1000, fee: 0, currency: "KES",
+      at: "2026-01-01T00:00:00Z", evidence: id, confirmed: true
+    });
+    assert.equal(incident.statusCode, 409);
+    assert.equal(incident.data.held, true);
+    assert.match(incident.data.error, /evidence recorded.*Both payout channels are held/);
     for (const status of ["approved", "sent"]) {
       assert.equal((await invoke("payout-status", { payout_id: id, status })).statusCode, 409);
       assert.equal(calls.length, 0);
@@ -80,6 +94,14 @@ test("manual payout API rejects nonleaders, preserves token, surfaces OFF and re
     assert.equal(history.data.manualEnabled, false);
     assert.equal(history.data.manualWithdrawals[0].status, "reported");
     assert.equal(calls.find(c => c.path.endsWith("manual_payout_history")).body.p_wedding, id);
+    for (payoutState of ["requested", "uncertain", "paid"]) {
+      const balance = await invoke("balance", {}, "GET", weddings);
+      assert.equal(balance.statusCode, 200);
+      assert.equal(balance.data.available_minor, 0);
+      assert.equal(balance.data.legacy_nonwithdrawable_estimate_minor, 9000);
+      assert.equal(balance.data.manual.reserved_minor, payoutState === "paid" ? 0 : 1000);
+      assert.equal(balance.data.manual.spent_minor, payoutState === "paid" ? 1000 : 0);
+    }
   } finally {
     globalThis.fetch = oldFetch;
     for (const [key, value] of Object.entries(saved)) {

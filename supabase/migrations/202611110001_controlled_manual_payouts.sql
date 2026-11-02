@@ -115,6 +115,7 @@ create table public.manual_payout_source_allocations (
   booked_at timestamptz,
   debit_minor bigint not null check (debit_minor>=0),
   hold_minor bigint not null check (hold_minor>=0),
+  paid_debit boolean not null,
   evidence_id uuid not null unique references public.manual_payout_evidence(id),
   recorded_by uuid not null references public.profiles(id),
   unique(source_kind,source_id,snapshot_hash)
@@ -189,6 +190,30 @@ create table public.manual_payout_statement_debits (
   recorded_by uuid not null references public.profiles(id),
   unique(batch_id,line_reference)
 );
+-- An observation is not a paid decision. Contradictory/late evidence freezes both
+-- rails; this release deliberately has no incident-release or history-edit RPC.
+create table public.manual_payout_account_holds (
+  id uuid primary key default extensions.gen_random_uuid(),
+  custody_id uuid not null references public.manual_payout_custody(id),
+  payout_id uuid not null references public.manual_payout_requests(id),
+  evidence_id uuid references public.manual_payout_evidence(id),
+  execution_channel text not null check (execution_channel in ('manual_external','automatic_b2c')),
+  authority_actor_id uuid not null references public.profiles(id),
+  authority_role_at_observation public.platform_role not null,
+  journal_reference uuid,
+  journal_sha256 text,
+  transaction_reference text check (transaction_reference ~ '^[A-Z0-9][A-Z0-9._:-]{0,119}$'),
+  actual_minor bigint check (actual_minor>0),
+  actual_fee_minor bigint check (actual_fee_minor>=0),
+  currency text check (currency ~ '^[A-Z]{3}$'),
+  observed_at timestamptz,
+  recorded_at timestamptz not null default now(),
+  unique(payout_id,evidence_id),
+  unique(payout_id,journal_reference),
+  check ((evidence_id is not null and journal_reference is null and journal_sha256 is null)
+    or (execution_channel='automatic_b2c' and evidence_id is null and journal_reference is not null
+      and journal_sha256 is not null and journal_sha256 ~ '^[0-9a-f]{64}$'))
+);
 
 create function public.manual_payout_immutable() returns trigger
 language plpgsql set search_path = '' as $$
@@ -200,7 +225,8 @@ begin
   foreach t in array array['manual_payout_policy','manual_payout_evidence','manual_payout_evidence_checks','manual_payout_accounts',
     'manual_payout_recipients','manual_payout_custody','manual_payout_settlements','manual_payout_requests',
     'manual_payout_events','manual_payout_claims','manual_payout_receipts','manual_payout_reconciliations',
-    'manual_payout_statement_batches','manual_payout_statement_lines','manual_payout_source_allocations','manual_payout_statement_debits'] loop
+    'manual_payout_statement_batches','manual_payout_statement_lines','manual_payout_source_allocations','manual_payout_statement_debits',
+    'manual_payout_account_holds'] loop
     execute format('alter table public.%I enable row level security',t);
     execute format('revoke all on public.%I from public, anon, authenticated, service_role',t);
     execute format('create trigger manual_payout_immutable before update or delete on public.%I
@@ -403,15 +429,21 @@ begin
   if not exists(select 1 from public.manual_payout_custody where id=p_custody and currency=s.currency) then
     raise exception 'Commitment currency/account binding conflict.';
   end if;
+  if exists(select 1 from public.manual_payout_source_allocations where source_kind=p_kind
+    and source_id=p_source and custody_id<>p_custody) or (p_kind='adjustment' and not exists(
+      select 1 from public.payment_adjustments adjustment join public.manual_payout_custody custody
+        on custody.provider=adjustment.provider where adjustment.id=p_source and custody.id=p_custody)) then
+    raise exception 'Commitment provider/account binding conflict.';
+  end if;
   if p_batch is not null then
     select * into strict b from public.manual_payout_statement_batches where id=p_batch and custody_id=p_custody;
     if p_line is null or p_at is null or p_at>b.statement_at or exists(select 1 from public.manual_payout_statement_batches
       where id=b.previous_batch and p_at<=statement_at) then raise exception 'Exact statement line/date watermark required.'; end if;
     if s.debit_minor>0 and not s.paid then raise exception 'Unpaid commitments cannot be declared statement-reflected debits.'; end if;
     select coalesce(sum(x.debit_minor),0),coalesce(sum(x.hold_minor),0) into v_debits,v_holds
-      from (select distinct on (source_kind,source_id) * from public.manual_payout_source_allocations
-        order by source_kind,source_id,id desc) x
-      where x.reflected_batch=p_batch and (x.source_kind,x.source_id) is distinct from (p_kind,p_source);
+      from (select line_reference,max(debit_minor) as debit_minor,max(hold_minor) as hold_minor
+        from public.manual_payout_source_allocations where reflected_batch=p_batch and line_reference<>p_line
+        group by line_reference) x;
     v_debits:=v_debits+coalesce((select sum(r.actual_minor::numeric+r.actual_fee_minor)
       from public.manual_payout_statement_debits d join public.manual_payout_reconciliations r on r.payout_id=d.payout_id
       where d.batch_id=p_batch),0);
@@ -424,8 +456,8 @@ begin
       (s.debit_minor::numeric+s.hold_minor)::bigint,case when s.debit_minor>0 then 'debit' else 'hold' end,p_evidence);
   end if;
   insert into public.manual_payout_source_allocations(source_kind,source_id,snapshot_hash,custody_id,
-    reflected_batch,line_reference,booked_at,debit_minor,hold_minor,evidence_id,recorded_by)
-    values(p_kind,p_source,s.snapshot_hash,p_custody,p_batch,p_line,p_at,s.debit_minor,s.hold_minor,p_evidence,auth.uid()) returning id into v_id;
+    reflected_batch,line_reference,booked_at,debit_minor,hold_minor,paid_debit,evidence_id,recorded_by)
+    values(p_kind,p_source,s.snapshot_hash,p_custody,p_batch,p_line,p_at,s.debit_minor,s.hold_minor,s.paid,p_evidence,auth.uid()) returning id into v_id;
   return v_id;
 end $$;
 
@@ -440,15 +472,20 @@ begin
   perform public.manual_payout_evidence_require(p_evidence,'statement',p_allow_owner_solo);
   select * into strict b from public.manual_payout_statement_batches where id=p_batch and custody_id=r.custody_id;
   select * into strict receipt from public.manual_payout_reconciliations where payout_id=p_id;
+  if exists(select 1 from public.manual_payout_statement_debits where payout_id=p_id) then
+    raise exception 'Reconciled debit must be unique; already included in a statement.';
+  end if;
   if public.manual_payout_state(p_id)<>'paid' or receipt.statement_reference<>b.statement_reference
-    or receipt.line_reference<>p_line or receipt.booked_at>b.statement_at then
+    or receipt.line_reference<>p_line or receipt.booked_at>b.statement_at
+    or exists(select 1 from public.manual_payout_statement_batches prior
+      where prior.id=b.previous_batch and receipt.booked_at<=prior.statement_at) then
     raise exception 'Only the exact reconciled statement debit may be included once.';
   end if;
   select coalesce(sum(x.actual_minor::numeric+x.actual_fee_minor),0) into used from public.manual_payout_statement_debits d
     join public.manual_payout_reconciliations x on x.payout_id=d.payout_id where d.batch_id=p_batch;
   used:=used+coalesce((select sum(a.debit_minor) from (
-    select distinct on (source_kind,source_id) * from public.manual_payout_source_allocations
-      order by source_kind,source_id,id desc) a where reflected_batch=p_batch),0);
+    select line_reference,max(debit_minor) as debit_minor from public.manual_payout_source_allocations
+      where reflected_batch=p_batch group by line_reference) a),0);
   if used+receipt.actual_minor+receipt.actual_fee_minor>b.debit_minor then raise exception 'Statement debit capacity exceeded.'; end if;
   perform public.manual_payout_record_line(p_batch,p_line,'manual_payout',p_id,
     (receipt.actual_minor::numeric+receipt.actual_fee_minor)::bigint,'debit',p_evidence);
@@ -500,7 +537,11 @@ begin
     raise exception 'Only provider-verified, fee-known, statement-backed custody entitlements qualify.';
   end if;
   if p_settled + coalesce((select sum(settled_minor) from public.manual_payout_settlements
-      where batch_id=b.id),0)>(case when b.previous_batch is null then b.closing_minor-b.held_minor else b.credit_minor end) then
+      where batch_id=b.id),0)>(case when b.previous_batch is null then b.closing_minor::numeric+
+        coalesce((select sum(prior.debit_minor) from (
+          select line_reference,max(debit_minor) as debit_minor from public.manual_payout_source_allocations
+            where reflected_batch=b.id and paid_debit group by line_reference) prior),0)
+        else b.credit_minor end) then
     raise exception 'Statement envelope cannot be credited twice or overallocated.';
   end if;
   perform public.manual_payout_record_line(b.id,p_line,'contribution',p_contribution,p_settled,'credit',p_evidence);
@@ -530,6 +571,50 @@ language sql stable security definer set search_path = '' as $$
   select state from public.manual_payout_events where payout_id=p_id order by id desc limit 1
 $$;
 
+create function public.manual_payout_hold_account(p_id uuid,p_evidence uuid,p_channel text,p_actor uuid,
+  p_reference text default null,p_actual bigint default null,p_fee bigint default null,
+  p_currency text default null,p_at timestamptz default null,
+  p_journal uuid default null,p_journal_sha256 text default null) returns uuid
+language plpgsql security definer set search_path = '' as $$
+declare r public.manual_payout_requests; actor_role public.platform_role; held uuid; original public.manual_payout_account_holds;
+begin
+  perform pg_advisory_xact_lock(71110001);
+  select platform_role into actor_role from public.profiles where id=p_actor for share;
+  -- A correlated service observation may freeze even a revoked policy actor's
+  -- account. It cannot authorize money movement or pretend to be a human review.
+  if actor_role is null or (auth.uid() is not null and
+      (actor_role not in ('owner','superadmin') or auth.uid()<>p_actor))
+    or (auth.uid() is null and (p_channel is distinct from 'automatic_b2c' or p_journal is null)) then
+    raise exception 'Current authorized incident authority required.';
+  end if;
+  select * into strict r from public.manual_payout_requests where id=p_id;
+  perform public.manual_payout_lock(r.custody_id,r.wedding_id);
+  if not exists(select 1 from public.manual_payout_claims where payout_id=p_id and execution_channel=p_channel)
+    or not ((p_evidence is not null and p_journal is null and p_journal_sha256 is null
+      and exists(select 1 from public.manual_payout_evidence where id=p_evidence and kind in ('receipt','reconciliation')))
+      or (p_channel='automatic_b2c' and p_evidence is null and p_journal is not null
+        and p_journal_sha256 is not null and p_journal_sha256 ~ '^[0-9a-f]{64}$')) then
+    raise exception 'Claim channel and immutable outcome evidence required for custody hold.';
+  end if;
+  select * into original from public.manual_payout_account_holds where payout_id=p_id
+    and (evidence_id=p_evidence or journal_reference=p_journal);
+  if found then
+    if (original.execution_channel,original.authority_actor_id,original.transaction_reference,original.actual_minor,
+      original.actual_fee_minor,original.currency,original.observed_at,original.journal_sha256)
+      is distinct from (p_channel,p_actor,upper(btrim(p_reference)),p_actual,p_fee,p_currency,p_at,p_journal_sha256) then
+      raise exception 'Incident evidence replay input conflict; original hold remains.';
+    end if;
+    return original.id;
+  end if;
+  insert into public.manual_payout_account_holds(custody_id,payout_id,evidence_id,execution_channel,authority_actor_id,
+    authority_role_at_observation,journal_reference,journal_sha256,
+    transaction_reference,actual_minor,actual_fee_minor,currency,observed_at)
+    values(r.custody_id,p_id,p_evidence,p_channel,p_actor,actor_role,p_journal,p_journal_sha256,
+      upper(btrim(p_reference)),p_actual,p_fee,p_currency,p_at)
+    returning id into held;
+  return held;
+end $$;
+
 create function public.manual_payout_check_amount(p_wedding uuid,p_currency text,p_amount bigint) returns void
 language plpgsql security definer set search_path = '' as $$
 declare minimum bigint; maximum bigint;
@@ -558,6 +643,13 @@ begin
     'account',p_owner_solo);
   snapshot:=public.manual_payout_custody_snapshot(p_custody,p_owner_solo);
   if snapshot is null then raise exception 'Accepted current custody statement required.'; end if;
+  if exists(select 1 from public.manual_payout_account_holds where custody_id=p_custody) then
+    raise exception 'Held custody account: contradictory outcome evidence requires separate incident review.';
+  end if;
+  if exists(select 1 from public.manual_payout_requests pending where pending.custody_id=p_custody
+      and pending.id is distinct from p_excluding and public.manual_payout_state(pending.id) in ('uncertain','resolution_proposed')) then
+    raise exception 'Uncertain outcome holds this custody account until evidenced resolution or exact receipt.';
+  end if;
   perform public.manual_payout_evidence_require(a.evidence_id,'custody',p_owner_solo);
   perform public.manual_payout_evidence_require((select evidence_id from public.manual_payout_recipients where id=p_recipient),
     'recipient',p_owner_solo);
@@ -635,6 +727,14 @@ begin
   if not pg_try_advisory_xact_lock(71110001) then
     raise exception 'Payout accounting is busy; retry the commitment after review.';
   end if;
+  if tg_op='UPDATE' and tg_table_name in ('expenses','payout_records') then
+    if (new.amount_minor,new.currency,new.status) is distinct from (old.amount_minor,old.currency,old.status)
+      and exists(select 1 from public.manual_payout_source_allocations
+        where source_kind=case tg_table_name when 'expenses' then 'expense' else 'payout' end
+          and source_id=old.id and paid_debit) then
+      raise exception 'Recorded paid commitment is immutable; separate incident review required.';
+    end if;
+  end if;
   perform 1 from public.weddings where id=new.wedding_id for update;
   return new;
 end $$;
@@ -703,9 +803,7 @@ begin
       (r.amount_minor::numeric+r.fee_minor)::bigint,r.id,v_solo);
   elsif p_action='executing' then
     if exists(select 1 from public.manual_payout_claims where payout_id=p_id) then
-      if v_sender=auth.uid() and exists(select 1 from public.manual_payout_claims
-          where payout_id=p_id and claim_key=p_key and execution_channel='manual_external') then return true; end if;
-      raise exception 'Transfer already claimed. Never resend.';
+      raise exception 'Transfer already claimed. Inspect recorded outcome; replay is never permission to resend.';
     end if;
     if v_state<>'approved' or (auth.uid()=v_checker and not v_solo) or p_key is null then
       raise exception 'Independent sender and approved request required.';
@@ -776,7 +874,7 @@ end $$;
 create function public.manual_payout_report(p_id uuid, p_reference text, p_actual bigint,
   p_fee bigint, p_currency text, p_at timestamptz, p_evidence uuid) returns boolean
 language plpgsql security definer set search_path = '' as $$
-declare r public.manual_payout_requests; a public.manual_payout_custody;
+declare r public.manual_payout_requests; a public.manual_payout_custody; v_state text;
 begin
   perform public.manual_payout_require_enabled();
   select * into strict r from public.manual_payout_requests where id=p_id;
@@ -784,16 +882,30 @@ begin
     raise exception 'Protected Owner owns this explicitly solo manual request.';
   end if;
   perform public.manual_payout_lock(r.custody_id,r.wedding_id);
-  if public.manual_payout_state(p_id) not in ('executing','uncertain','resolution_proposed') or not exists(
+  if not exists(
     select 1 from public.manual_payout_claims where payout_id=p_id and sender_id=auth.uid() and execution_channel='manual_external'
   ) then raise exception 'Only the claimed sender can report an existing transfer.'; end if;
-  -- Mismatches remain uncertain, never coerced into a success-shaped receipt.
-  if p_actual is distinct from r.amount_minor or p_fee is distinct from r.fee_minor or p_currency is distinct from r.currency
-    or p_at is null or p_at>clock_timestamp() or p_at<(select claimed_at from public.manual_payout_claims where payout_id=p_id)
-    then raise exception 'Receipt mismatch: retain reservation and investigate; do not resend.'; end if;
   if not exists(select 1 from public.manual_payout_evidence where id=p_evidence and kind='receipt'
       and submitted_by=auth.uid()) then raise exception 'Sender receipt/statement evidence required.'; end if;
+  if p_actual is null or p_actual<=0 or p_fee is null or p_fee<0 or p_currency is null or p_currency !~ '^[A-Z]{3}$'
+    or p_reference is null or upper(btrim(p_reference)) !~ '^[A-Z0-9][A-Z0-9._:-]{0,119}$' or p_at is null then
+    raise exception 'Explicit valid actual receipt fields required.';
+  end if;
   select * into strict a from public.manual_payout_custody where id=r.custody_id;
+  v_state:=public.manual_payout_state(p_id);
+  if exists(select 1 from public.manual_payout_receipts old where old.payout_id=p_id
+    and (old.transaction_reference,old.actual_minor,old.actual_fee_minor,old.currency,old.transferred_at,old.evidence_id)
+      is not distinct from (upper(btrim(p_reference)),p_actual,p_fee,p_currency,p_at,p_evidence)) then return true; end if;
+  -- Commit the hold instead of throwing (which would roll the safety record back).
+  if p_actual is distinct from r.amount_minor or p_fee is distinct from r.fee_minor or p_currency is distinct from r.currency
+    or p_at>clock_timestamp() or p_at<(select claimed_at from public.manual_payout_claims where payout_id=p_id)
+    or v_state not in ('executing','uncertain','resolution_proposed')
+    or exists(select 1 from public.manual_payout_receipts old where old.provider=a.provider
+      and old.account_reference=a.account_reference and old.transaction_reference=upper(btrim(p_reference))) then
+    perform public.manual_payout_hold_account(p_id,p_evidence,'manual_external',auth.uid(),
+      p_reference,p_actual,p_fee,p_currency,p_at);
+    return false;
+  end if;
   insert into public.manual_payout_receipts values(p_id,a.provider,a.account_reference,
     upper(btrim(p_reference)),p_actual,p_fee,p_currency,p_at,p_evidence);
   insert into public.manual_payout_events(payout_id,state,actor_id,evidence_id,owner_solo)
@@ -806,6 +918,8 @@ language plpgsql stable security definer set search_path = '' as $$
 begin
   perform public.require_staff('superadmin');
   return jsonb_build_object('enabled',public.manual_payouts_enabled(),'automaticEnabled',public.live_payouts_enabled(),
+    'heldAccounts',coalesce((select jsonb_agg(jsonb_build_object('id',id,'custody_id',custody_id,
+      'payout_id',payout_id,'recorded_at',recorded_at)) from public.manual_payout_account_holds),'[]'::jsonb),
     'verification','Manual evidence attestation; not automatic provider verification',
     'blockers',jsonb_build_array('Separate live activation approval required','Approved secure evidence custody required',
       'Funded merchant-rail entitlement unconfirmed','Operational limits and fee/refund/hold policy unapproved'),
