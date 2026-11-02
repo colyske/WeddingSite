@@ -144,6 +144,8 @@ do $$
 declare
   sponsor_payload jsonb;
   sponsor_names text[];
+  high_sponsor jsonb;
+  foreign_sponsor jsonb;
   auction jsonb;
   song_count integer;
 begin
@@ -154,10 +156,15 @@ begin
   if sponsor_names <> array['High sponsor', 'In-kind sponsor', 'Foreign sponsor'] then
     raise exception 'Refunded, open-dispute and lost-dispute sponsors must not buy display placement: %', sponsor_names;
   end if;
-  if (sponsor_payload->'sponsors'->0->>'amount_minor')::bigint <> 40000
-      or sponsor_payload->'sponsors'->0->>'currency' <> 'KES'
-      or (sponsor_payload->'sponsors'->4->>'amount_minor')::bigint <> 1000000
-      or sponsor_payload->'sponsors'->4->>'currency' <> 'EUR' then
+  select item into high_sponsor from jsonb_array_elements(sponsor_payload->'sponsors') rows(item)
+    where item->>'company_name' = 'High sponsor';
+  select item into foreign_sponsor from jsonb_array_elements(sponsor_payload->'sponsors') rows(item)
+    where item->>'company_name' = 'Foreign sponsor';
+  if high_sponsor is null or foreign_sponsor is null
+      or (high_sponsor->>'amount_minor')::bigint <> 40000
+      or high_sponsor->>'currency' <> 'KES'
+      or (foreign_sponsor->>'amount_minor')::bigint <> 1000000
+      or foreign_sponsor->>'currency' <> 'EUR' then
     raise exception 'Sponsor card amount/currency must come from the verified contribution.';
   end if;
   if sponsor_payload->'tiers'->0->>'name' <> 'Gold package' then
