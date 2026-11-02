@@ -11,7 +11,7 @@ import "../starter-setup.js";
 const WEDDING_ID = "550e8400-e29b-41d4-a716-446655440000";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-test("the currency step reviews pending style amounts inline without blocking personalization", { timeout: 240000 }, async () => {
+test("the currency step reviews pending style amounts inline without blocking personalization", { timeout: 600000 }, async () => {
   const server = http.createServer(async (req, res) => {
     try {
       const path = new URL(req.url, "http://localhost").pathname;
@@ -53,6 +53,7 @@ test("the currency step reviews pending style amounts inline without blocking pe
       if (action === "starter-review") {
         reviews.push(request.postDataJSON());
         const next = reviewResponses.shift() || { status: 200, body: { ok: true } };
+        if (next.lost) { state = { ...state, pending: null }; return route.abort("failed"); }
         status = next.status; data = next.body;
         if (status === 200) state = { ...state, pending: null };
       }
@@ -98,6 +99,39 @@ test("the currency step reviews pending style amounts inline without blocking pe
     await page.goto(`${base}/wedding.html?id=${WEDDING_ID}#step=couple`);
     await page.locator("#couple-names").fill("Amani & Wanjiru");
     assert.equal(await page.locator("#couple-names").inputValue(), "Amani & Wanjiru");
+
+    // Unsaved answers elsewhere: deciding is refused calmly, nothing is posted or reloaded.
+    const before = reviews.length;
+    await page.evaluate(() => { location.hash = "#step=money"; });
+    await page.locator("#guide-heading-money").waitFor();
+    await omit.click();
+    await status.filter({ hasText: /Save your changes first/ }).waitFor();
+    assert.equal(reviews.length, before, "no review is sent while answers are unsaved");
+    await page.evaluate(() => { location.hash = "#step=couple"; });
+    assert.equal(await page.locator("#couple-names").inputValue(), "Amani & Wanjiru", "unsaved answers are kept");
+
+    // An unsaved currency change disables both choices.
+    state = { currency: "KES", pending, capabilities: { status: 200, currencies: [{ code: "KES", name: "Kenyan shilling", methods: [{ name: "M-Pesa", markets: ["KE"] }] }, { code: "USD", name: "US dollar", methods: [{ name: "Card", markets: ["US"] }] }] } };
+    await page.goto("about:blank");
+    await page.goto(`${base}/wedding.html?id=${WEDDING_ID}#step=money`);
+    await page.waitForFunction(() => !document.getElementById("starter-pending-apply").hidden);
+    await page.locator("#currency").selectOption("USD");
+    await page.locator("#starter-pending-hint").filter({ hasText: /Save your currency change first/ }).waitFor();
+    assert.equal(await apply.isDisabled(), true);
+    assert.equal(await omit.isDisabled(), true);
+
+    // The response to an omit is lost after the server applied it: the retry replays the same key.
+    await page.goto("about:blank");
+    await page.goto(`${base}/wedding.html?id=${WEDDING_ID}#step=money`);
+    await page.waitForFunction(() => !document.getElementById("starter-pending-apply").hidden);
+    reviewResponses = [{ lost: true }];
+    await omit.click();
+    await status.filter({ hasText: /Your draft and answers are safe\./ }).waitFor();
+    assert.equal(await omit.isDisabled(), false);
+    await Promise.all([page.waitForEvent("load"), omit.click()]);
+    assert.deepEqual(reviews.at(-1), reviews.at(-2), "a lost response is retried with an identical payload and key");
+    await page.locator("#guide-heading-money").waitFor();
+    assert.equal(await panel.isHidden(), true);
 
     // Different saved currency: amounts are never converted; only an explicit omit is offered.
     state = { currency: "USD", pending, capabilities: { status: 200, currencies: [{ code: "USD", name: "US dollar", methods: [{ name: "Card", markets: ["US"] }] }] } };

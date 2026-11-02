@@ -1184,13 +1184,19 @@
       else if (!supported) hint = `Guest payments in ${pending.currency} aren't confirmed for your account right now. Keep personalizing; you can add these amounts later or leave them out.`;
       else hint = "You can still edit or remove any amount afterwards.";
       $("starter-pending-hint").textContent = hint;
-      $("starter-pending-omit").disabled = Boolean(selected && selected !== saved);
+      const unsavedCurrency = Boolean(selected && selected !== saved);
+      $("starter-pending-omit").disabled = unsavedCurrency;
+      apply.disabled = unsavedCurrency;
     }
 
     async function reviewStarter(decision) {
       const w = window.__wedding || {};
       const status = $("starter-pending-status");
       const buttons = [$("starter-pending-apply"), $("starter-pending-omit")];
+      if (weddingGuide?.dirty() || weddingGuide?.isSaving()) {
+        status.textContent = "Save your changes first, then decide about these amounts. Your answers are still on this page.";
+        return;
+      }
       buttons.forEach(button => { button.disabled = true; });
       status.textContent = decision === "apply" ? "Adding the amounts…" : "Leaving the amounts out…";
       try {
