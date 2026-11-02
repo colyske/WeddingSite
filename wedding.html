@@ -62,6 +62,18 @@
     <p id="notice" class="notice" role="status" hidden></p>
 
     <!-- Wedding details form -->
+    <div id="moderation-box" class="card notice" role="region" aria-labelledby="moderation-title" hidden>
+      <h2 id="moderation-title">Platform moderation review</h2>
+      <p class="fine">Only you and platform staff can see these details.</p>
+      <div id="moderation-details"></div>
+      <details><summary>Case history</summary><ol id="moderation-history" class="fine"></ol></details>
+      <form id="moderation-form" hidden>
+        <label for="moderation-note">Describe what you corrected</label>
+        <textarea id="moderation-note" rows="4" minlength="10" maxlength="2000" required></textarea>
+        <button type="submit" id="moderation-submit" class="btn">Submit correction for Admin review</button>
+      </form>
+      <p id="moderation-status" role="status" aria-live="polite"></p>
+    </div>
     <div id="edit-section" class="card" hidden>
       <form id="edit-form" novalidate>
         <section data-guide-step="couple" data-guide-title="Couple & welcome">
@@ -77,7 +89,7 @@
           <button type="button" class="link" id="ai-story-btn" style="margin-left: 0.5rem; font-weight: normal;">Explore story starters</button>
         </label>
         <textarea id="welcome-story" maxlength="500" rows="4" placeholder="Tell guests what makes this day special, in a few sentences…" data-publish-required></textarea>
-        <label for="cover-image-url">Cover photo URL <span class="fine">(needed before publishing)</span></label>
+        <label for="cover-image-url">Cover photo URL <span class="fine">(optional)</span></label>
         <input id="cover-image-url" type="url" maxlength="2048" placeholder="https://…">
         <p class="fine">Use a public HTTPS link to a photo you have permission to share. Your photo host may have its own access settings.</p>
         <div id="ai-story-suggestions" class="fine" style="display: none; border-left: 3px solid var(--gold); padding: 0.75rem; margin: 1rem 0; background: #fefcf7;">
@@ -106,8 +118,8 @@
         <label for="max-capacity">Maximum guests <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="max-capacity" type="number" min="1" required aria-required="true">
 
-        <label for="guest-instructions">What should guests know before they RSVP? <span class="fine">(needed before publishing)</span></label>
-        <textarea id="guest-instructions" maxlength="1000" rows="3" placeholder="For example: Please RSVP by 1 June and include any dietary needs." data-publish-required></textarea>
+        <label for="guest-instructions">What should guests know before they RSVP? <span class="fine">(optional)</span></label>
+        <textarea id="guest-instructions" maxlength="1000" rows="3" placeholder="For example: Please RSVP by 1 June and include any dietary needs."></textarea>
 
         <fieldset id="rsvp-fees-fieldset" style="border:1px solid #d0d5cc; border-radius:8px; padding:1rem; margin:1rem 0;">
           <legend>RSVP fees (<span data-currency-code>your wedding currency</span>)</legend>
@@ -186,42 +198,23 @@
 
         </section>
         <section data-guide-step="giving" data-guide-title="Fundraising & celebration features">
-        <p class="fine">Give guests more ways to support your celebration. A complete wedding page, clear goals and fundraising options can help you work towards your wedding budget.</p>
-        <fieldset>
-          <legend>Choose what guests can see</legend>
-          <p class="fine">These features start on for every new wedding. Turn one off here to hide it from guests and stop new payments for it. This does not create prices, packages, campaigns or payment methods.</p>
-          <label><input id="feature-giving" type="checkbox" checked> Gift registry and fundraising campaigns</label>
-          <label><input id="feature-sponsors" type="checkbox" checked> Sponsor packages and sponsor cards</label>
-          <label><input id="feature-featured-sponsors" type="checkbox" checked> Featured sponsor bidding (still requires a separately configured campaign)</label>
-          <label><input id="feature-song-requests" type="checkbox" checked> DJ song requests and bids</label>
-          <label><input id="feature-vip-seating" type="checkbox" checked> VIP seating (still requires a separately configured offer)</label>
+        <p class="fine">Each feature below is ready to set up. Fill in only the ones you want; empty forms are not saved and nothing is priced for you.</p>
+        <fieldset class="setup-block" id="registry-block">
+          <legend>Gift registry &amp; crowdfunding</legend>
+          <label class="feature-switch"><input id="feature-giving" type="checkbox" checked> <span>Show the gift registry and fundraising campaigns to guests</span></label>
+          <p class="fine feature-off-hint" data-feature-hint="feature-giving" hidden>Hidden from guests. Guests cannot start new gifts here until you show it again and save.</p>
+          <p class="fine">Add a gift or goal with a target amount in your wedding currency.</p>
+          <div id="registry-list"></div>
+          <button type="button" class="ghost" id="add-registry-btn">+ Add another gift</button>
         </fieldset>
-        <label>Registry & Crowdfunding Milestones
-          <button type="button" class="link" id="add-registry-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add item</button>
-        </label>
-        <div id="registry-list" style="margin-bottom: 1.5rem;"></div>
 
-          <p class="fine">Offer sponsor packages, highlight a campaign, or reserve VIP seating. Add the dates, prices and details that fit your plans.</p>
-
-          <label>Sponsorship Tiers
-            <button type="button" class="link" id="add-tier-btn" style="margin-left: 0.5rem; font-weight: normal;">+ Add tier</button>
-          </label>
-          <div id="tiers-list" style="margin-bottom: 1.5rem;"></div>
-          <fieldset style="border:1px solid #d0d5cc;border-radius:6px;padding:1rem;margin:0 0 1.5rem;">
-            <legend>Featured sponsor campaign</legend>
-            <p class="fine">Set your campaign dates, number of featured places and starting bid. Paid bids support the wedding fund; placement is confirmed only after verified payment and campaign close. Enter dates in your local time.</p>
-            <label style="display:flex;align-items:flex-start;gap:.6rem;">
-              <input id="featured-sponsor-enabled" type="checkbox">
-              <span>Enable featured sponsor bidding</span>
-            </label>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;">
-              <label>Starts<input id="featured-sponsor-starts" type="datetime-local"></label>
-              <label>Closes<input id="featured-sponsor-closes" type="datetime-local"></label>
-              <label>Featured slots<input id="featured-sponsor-slots" type="number" min="1" max="20" value="3"></label>
-              <label>Minimum bid (<span data-currency-code>your wedding currency</span>)<input id="featured-sponsor-minimum" type="number" min="0.01" step="0.01" value="25"></label>
-              <label>Minimum increment (<span data-currency-code>your wedding currency</span>)<input id="featured-sponsor-increment" type="number" min="0.01" step="0.01" value="5"></label>
-            </div>
-          </fieldset>
+        <fieldset class="setup-block" id="tiers-block">
+          <legend>Sponsor packages</legend>
+          <label class="feature-switch"><input id="feature-sponsors" type="checkbox" checked> <span>Show sponsor packages and sponsor cards to guests</span></label>
+          <p class="fine feature-off-hint" data-feature-hint="feature-sponsors" hidden>Hidden from guests. New sponsor payments stay closed until you show it again and save.</p>
+          <p class="fine">Name a package and choose its minimum contribution.</p>
+          <div id="tiers-list"></div>
+          <button type="button" class="ghost" id="add-tier-btn">+ Add another package</button>
           <details class="context-help"><summary>About sponsor cards and contacts</summary><p>Paid sponsors enter their website and social profiles at checkout. Phone and email appear publicly only with their explicit contact-sharing consent. Keep contact details out of free-text descriptions.</p></details>
           <div id="sponsor-records" class="card" hidden></div>
           <div id="sponsor-enquiries-panel" class="card" hidden>
@@ -229,30 +222,44 @@
             <p class="fine">Retained for your records. New free or in-kind sponsorship is no longer accepted; pending historical enquiries may be declined.</p>
             <div id="sponsor-enquiries-list"></div>
           </div>
+        </fieldset>
 
-          <label>VIP Seating Offer</label>
-          <div id="vip-offer" style="padding: 1rem; background: #fafbf9; border: 1px solid #d0d5cc; border-radius: 6px; margin-bottom: 1.5rem;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-              <div>
-                <label style="font-size: 0.9rem;">VIP Seating Title</label>
-                <input type="text" id="vip-title" maxlength="80" placeholder="e.g. VIP Table Sponsorship" value="VIP Seating">
-              </div>
-              <div>
-                <label style="font-size: 0.9rem;">Price per seat (<span data-currency-code>your wedding currency</span>)</label>
-                <input type="number" id="vip-price" min="0" step="0.01" placeholder="0.00" value="0">
-              </div>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-              <div>
-                <label style="font-size: 0.9rem;">Total VIP seats available</label>
-                <input type="number" id="vip-seats" min="1" max="500" placeholder="20" value="20">
-              </div>
-              <div>
-                <label style="font-size: 0.9rem;">Description (optional)</label>
-                <input type="text" id="vip-description" maxlength="240" placeholder="e.g. Front row, reserved table, premium catering">
-              </div>
-            </div>
+        <fieldset class="setup-block" id="featured-sponsor-block">
+          <legend>Featured sponsor bidding</legend>
+          <label class="feature-switch"><input id="feature-featured-sponsors" type="checkbox" checked> <span>Show featured sponsor placements to guests</span></label>
+          <p class="fine feature-off-hint" data-feature-hint="feature-featured-sponsors" hidden>Hidden from guests. New featured sponsor bids stay closed until you show it again and save.</p>
+          <p class="fine">Set your campaign dates, number of featured places and starting bid. Paid bids support the wedding fund; placement is confirmed only after verified payment and campaign close. Enter dates in your local time.</p>
+          <label class="feature-switch">
+            <input id="featured-sponsor-enabled" type="checkbox">
+            <span>Open a featured sponsor bidding campaign with these settings</span>
+          </label>
+          <div class="setup-grid">
+            <label>Starts<input id="featured-sponsor-starts" type="datetime-local"></label>
+            <label>Closes<input id="featured-sponsor-closes" type="datetime-local"></label>
+            <label>Featured slots<input id="featured-sponsor-slots" type="number" min="1" max="20" value="3"></label>
+            <label>Minimum bid (<span data-currency-code>your wedding currency</span>)<input id="featured-sponsor-minimum" type="number" min="0.01" step="0.01" value="25"></label>
+            <label>Minimum increment (<span data-currency-code>your wedding currency</span>)<input id="featured-sponsor-increment" type="number" min="0.01" step="0.01" value="5"></label>
           </div>
+        </fieldset>
+
+        <fieldset class="setup-block" id="song-requests-block">
+          <legend>DJ song requests</legend>
+          <label class="feature-switch"><input id="feature-song-requests" type="checkbox" checked> <span>Let guests request songs and place song bids</span></label>
+          <p class="fine feature-off-hint" data-feature-hint="feature-song-requests" hidden>Hidden from guests. New song requests and bids stay closed until you show it again and save.</p>
+          <p class="fine">Requests and bids appear in your wedding workspace. A DJ helper you invite sees the paid playlist only.</p>
+        </fieldset>
+
+        <fieldset class="setup-block" id="vip-block">
+          <legend>VIP seating</legend>
+          <label class="feature-switch"><input id="feature-vip-seating" type="checkbox" checked> <span>Show the VIP seating offer to guests</span></label>
+          <p class="fine feature-off-hint" data-feature-hint="feature-vip-seating" hidden>Hidden from guests. New VIP seat payments stay closed until you show it again and save.</p>
+          <div id="vip-offer" class="setup-grid">
+            <label>VIP seating title<input type="text" id="vip-title" maxlength="80" placeholder="e.g. VIP Table Sponsorship" value="VIP Seating"></label>
+            <label>Price per seat (<span data-currency-code>your wedding currency</span>)<input type="number" id="vip-price" min="0" step="0.01" placeholder="0.00" value="0"></label>
+            <label>Total VIP seats available<input type="number" id="vip-seats" min="1" max="500" placeholder="20" value="20"></label>
+            <label>Description (optional)<input type="text" id="vip-description" maxlength="240" placeholder="e.g. Front row, reserved table, premium catering"></label>
+          </div>
+        </fieldset>
 
         </section>
         <section data-guide-step="extras" data-guide-title="Travel and guest questions" data-guide-optional>
@@ -268,13 +275,56 @@
         </section>
         <section data-guide-step="campaigns" data-guide-title="Fundraising campaigns" data-guide-optional>
           <p class="fine">Create a campaign for a goal that matters to you, such as a home or honeymoon. Add a goal and milestones in your wedding currency. Guests choose the amount they wish to give; existing offers and minimums stay as set.</p>
+          <p class="notice feature-off-hint" data-feature-hint="feature-giving" hidden>Campaigns are hidden from guests because the gift registry and fundraising feature is off.
+            <button type="button" class="ghost" data-feature-enable="feature-giving">Show registry &amp; campaigns to guests</button></p>
           <div id="campaign-list"></div>
-          <div class="row"><button type="button" class="ghost" id="add-campaign">+ Add campaign</button> <span id="campaign-status" class="fine" role="status"></span></div>
+          <div class="row"><button type="button" class="ghost" id="add-campaign">+ Add another campaign</button> <span id="campaign-status" class="fine" role="status"></span></div>
         </section>
-        <section data-guide-step="team" data-guide-title="Wedding helpers">
+        <section data-guide-step="team" data-guide-title="Wedding helpers" data-guide-optional>
           <p>Invite trusted people to help with guest check-in, seating, RSVP support, coordination or the DJ playlist. Each helper receives access only to the task you assign, and never to payouts or financial totals.</p>
-          <a id="team-setup-link" class="btn ghost" href="#">Invite wedding helpers</a>
-          <p class="fine"><a href="#seating-section">Manage your guest list and seating</a></p>
+          <fieldset class="setup-block" id="helper-invite" data-guide-ignore>
+            <legend>Invite a helper</legend>
+            <p class="fine">Nothing is sent automatically. Creating a link does not email anyone; share it directly. Links expire in 7 days.</p>
+            <label for="helper-invite-email">Helper&rsquo;s sign-in email</label>
+            <input id="helper-invite-email" type="email" autocomplete="off" maxlength="254" data-guide-ignore>
+            <label for="helper-invite-role">What should they help with?</label>
+            <select id="helper-invite-role" data-guide-ignore>
+              <option value="checkin">Entrance check-in — scan passes and check guests in</option>
+              <option value="usher">Usher — see guest names, assigned tables and check-in status</option>
+              <option value="coordinator">Committee coordinator — see the guest roster and check-in guests</option>
+              <option value="rsvp_support">RSVP support — see guest contact details and RSVP status</option>
+              <option value="dj">DJ — see the paid song playlist only</option>
+            </select>
+            <label for="helper-invite-expiry">When should their access end?</label>
+            <select id="helper-invite-expiry" data-guide-ignore>
+              <option value="event">After the wedding (30 days if no date is set)</option>
+              <option value="custom">Choose a date and time</option>
+              <option value="none">No expiry (until revoked)</option>
+            </select>
+            <label for="helper-invite-until" id="helper-invite-until-label" hidden>Access expiry (your local time)</label>
+            <input id="helper-invite-until" type="datetime-local" hidden data-guide-ignore>
+            <div class="row"><button type="button" class="ghost" id="helper-invite-create">Create secure invite link</button></div>
+            <p id="helper-invite-status" class="fine" role="status" aria-live="polite"></p>
+            <div id="helper-invite-result" hidden>
+              <label for="helper-invite-link">Invite link</label>
+              <input id="helper-invite-link" type="url" readonly data-guide-ignore>
+            </div>
+          </fieldset>
+          <p class="fine"><a id="team-setup-link" href="#">Manage helpers, pending invitations and access</a> · <a href="#seating-section">Manage your guest list and seating</a></p>
+        </section>
+        <section data-guide-step="publication" data-guide-title="Status & publication" data-guide-optional>
+          <div id="ops-section" hidden>
+            <p>Current status: <span id="status-badge" class="tag"></span></p>
+            <p id="past-note" class="fine" hidden>The wedding date has passed. The guest site now shows a thank-you / memories page; RSVPs, bids and new contributions are closed.</p>
+            <div id="fee-box" class="fine"></div>
+            <div class="row">
+              <button type="button" id="pay-fee-btn" class="ghost" hidden>Review publication fee &amp; payment</button>
+              <button type="button" id="unpublish-btn" class="ghost" hidden>Unpublish (reversible)</button>
+              <button type="button" id="archive-btn" class="ghost">Archive</button>
+            </div>
+            <p class="fine">Weddings are never deleted. Unpublishing hides the guest site. Staff restrictions require Admin review before publishing again.</p>
+            <p class="fine">Guest responses, gifts, seating, private identity details and payouts are in <a href="#wedding-workspace">your wedding workspace</a> below the guide.</p>
+          </div>
         </section>
         <section data-guide-step="review" data-guide-title="Does everything look right?">
           <p>Take a final look at your saved answers. You can return to any section whenever your plans change. A ready guest-payment option does not mean payouts are ready.</p>
@@ -282,7 +332,7 @@
           <div data-guide-review></div>
           <div id="share-panel" class="card" hidden></div>
           <div id="setup-progress" class="card" aria-live="polite" aria-atomic="false"></div>
-          <p class="fine">Your guest RSVPs, song requests, campaign ledger, guestbook, moderation and payout tools stay in their own workspace sections.</p>
+          <p class="fine">Your guest RSVPs, song requests, campaign ledger, guestbook and payout tools stay in <a href="#wedding-workspace">your wedding workspace</a>.</p>
         </section>
           <div class="row">
             <button type="button" id="publish-btn" class="ghost">Publish wedding site</button>
@@ -301,32 +351,18 @@
       </div>
     </div>
 
-    <!-- Status, fee, unpublish/archive -->
-    <div id="ops-section" class="card" hidden>
-      <h2>Status &amp; publication</h2>
-      <p><span id="status-badge" class="tag"></span></p>
-      <div id="moderation-box" class="notice" role="region" aria-labelledby="moderation-title" hidden>
-        <h3 id="moderation-title">Platform moderation review</h3>
-        <p class="fine">Only you and platform staff can see these details.</p>
-        <div id="moderation-details"></div>
-        <details><summary>Case history</summary><ol id="moderation-history" class="fine"></ol></details>
-        <form id="moderation-form" hidden>
-          <label for="moderation-note">Describe what you corrected</label>
-          <textarea id="moderation-note" rows="4" minlength="10" maxlength="2000" required></textarea>
-          <button type="submit" id="moderation-submit" class="btn">Submit correction for Admin review</button>
-        </form>
-        <p id="moderation-status" role="status" aria-live="polite"></p>
-      </div>
-      <p id="past-note" class="fine" hidden>The wedding date has passed. The guest site now shows a thank-you / memories page; RSVPs, bids and new contributions are closed.</p>
-      <div id="fee-box" class="fine"></div>
+    <!-- Published section -->
+    <div id="published-section" class="card" hidden>
+      <h2>Published</h2>
+      <p id="guest-site-url" class="fine"></p>
+      <p id="guest-qr-code" class="fine">Guests can scan QR code or click the link to RSVP.</p>
       <div class="row">
-        <button type="button" id="pay-fee-btn" class="ghost" hidden>Review publication fee &amp; payment</button>
-        <button type="button" id="unpublish-btn" class="ghost" hidden>Unpublish (reversible)</button>
-        <button type="button" id="archive-btn" class="ghost">Archive</button>
+        <a id="view-guest-site" class="btn" target="_blank" rel="noopener noreferrer">View guest site</a>
       </div>
-      <p class="fine">Weddings are never deleted. Unpublishing hides the guest site. Staff restrictions require Admin review before publishing again.</p>
     </div>
 
+    <details id="wedding-workspace" class="wedding-workspace">
+      <summary><span>Your wedding workspace</span> <small>Guest responses, gifts, seating, identity &amp; payouts</small></summary>
     <!-- KYC -->
     <div id="kyc-section" class="card" hidden data-guide-step="kyc" data-guide-title="Private identity details">
       <h3>Couple identity &mdash; private</h3>
@@ -371,15 +407,6 @@
       <div id="wish-list" class="fine">No wishes yet.</div>
     </div>
 
-    <!-- Published section -->
-    <div id="published-section" class="card" hidden>
-      <h2>Published</h2>
-      <p id="guest-site-url" class="fine"></p>
-      <p id="guest-qr-code" class="fine">Guests can scan QR code or click the link to RSVP.</p>
-      <div class="row">
-        <a id="view-guest-site" class="btn" target="_blank" rel="noopener noreferrer">View guest site</a>
-      </div>
-    </div>
 
     <!-- RSVPs section -->
     <div id="rsvps-section" class="card" hidden>
@@ -496,6 +523,7 @@
         <p id="no-withdrawals" class="fine">No withdrawal requests yet.</p>
       </div>
     </div>
+    </details>
   </div>
 
   <script src="site-urls.js"></script>
@@ -833,6 +861,81 @@
         : '<span class="fine">No wedding theme colours selected.</span>';
     });
 
+    function syncFeatureHints() {
+      document.querySelectorAll("[data-feature-hint]").forEach(hint => {
+        hint.hidden = !!$(hint.dataset.featureHint)?.checked;
+      });
+    }
+    document.querySelectorAll('[id^="feature-"]').forEach(input => input.addEventListener("change", syncFeatureHints));
+    document.querySelectorAll("[data-feature-enable]").forEach(button => button.addEventListener("click", () => {
+      const input = $(button.dataset.featureEnable);
+      input.checked = true;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      notice("Shown to guests after you save. No prices, campaigns or payment options were created.");
+    }));
+
+    const meaningfulRegistry = () => [...$("registry-list").querySelectorAll(".registry-item")]
+      .filter(item => item.querySelector(".registry-name").value.trim() && Number(item.querySelector(".registry-target").value) > 0);
+    const meaningfulTiers = () => [...$("tiers-list").querySelectorAll(".tier-item")]
+      .filter(item => item.querySelector(".tier-name").value.trim() && Number(item.querySelector(".tier-min-amount").value) > 0);
+
+    let helperInviteCreated = false;
+    $("helper-invite-expiry").addEventListener("change", () => {
+      const custom = $("helper-invite-expiry").value === "custom";
+      $("helper-invite-until").hidden = !custom;
+      $("helper-invite-until-label").hidden = !custom;
+    });
+    $("helper-invite").addEventListener("keydown", event => {
+      if (event.key === "Enter" && event.target.matches("input")) {
+        event.preventDefault();
+        if (event.target.id !== "helper-invite-link") $("helper-invite-create").click();
+      }
+    });
+    $("helper-invite-create").addEventListener("click", async () => {
+      const button = $("helper-invite-create"), status = $("helper-invite-status"), email = $("helper-invite-email");
+      if (button.dataset.submitting) return;
+      email.required = true;
+      const valid = email.checkValidity();
+      email.required = false;
+      if (!valid) {
+        status.textContent = "Enter the helper’s sign-in email address to create their invite link.";
+        email.setAttribute("aria-invalid", "true");
+        email.focus();
+        return;
+      }
+      email.removeAttribute("aria-invalid");
+      const expiryMode = $("helper-invite-expiry").value;
+      const body = { weddingId, role: $("helper-invite-role").value, email: email.value.trim(), expiryMode };
+      if (expiryMode === "custom") {
+        const until = $("helper-invite-until").value;
+        if (!until) {
+          status.textContent = "Choose when this helper’s access should end.";
+          $("helper-invite-until").focus();
+          return;
+        }
+        body.grantExpiresAt = new Date(until).toISOString();
+      }
+      button.dataset.submitting = "true";
+      button.disabled = true;
+      status.textContent = "Creating a secure invite link…";
+      try {
+        const res = await WS.api("/api/team?action=invite", { method: "POST", body: JSON.stringify(body) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.inviteLink) throw new Error(data.error || "Could not create the invite link.");
+        $("helper-invite-link").value = new URL(data.inviteLink, location.origin).toString();
+        $("helper-invite-result").hidden = false;
+        helperInviteCreated = true;
+        status.textContent = "Secure link created, not sent. Copy it and share it directly with your helper.";
+        $("helper-invite-link").select();
+        weddingGuide?.refresh();
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        delete button.dataset.submitting;
+        button.disabled = false;
+      }
+    });
+
     // Registry management
     let registryCount = 0;
     function addRegistryEditor() {
@@ -1139,6 +1242,7 @@
         $("feature-featured-sponsors").checked = features.featured_sponsors !== false;
         $("feature-song-requests").checked = features.song_requests !== false;
         $("feature-vip-seating").checked = features.vip_seating !== false;
+        syncFeatureHints();
         $("wedding-date").value = w.wedding_date ? w.wedding_date.split("T")[0] : "";
         WSTime.fillSelect($("wedding-timezone"), w.time_zone || WSTime.DEFAULT_ZONE);
         setGuestSiteLink(w.slug, !!w.published_at);
@@ -1290,6 +1394,10 @@
           tierCount = w.tiers.length;
         }
 
+        // Empty setup forms are shown ready to answer; blank rows are never submitted.
+        if (!$("registry-list").querySelector(".registry-item")) addRegistryEditor();
+        if (!$("tiers-list").querySelector(".tier-item")) addTierEditor();
+
         // Load VIP offer
         if (w.vip) {
           const v = w.vip;
@@ -1336,19 +1444,47 @@
         if (!weddingGuide) {
           weddingGuide = WSGuidedSetup.create($("edit-form"), {
             mode: "edit",
-            stepOrder: ["couple", "date", "money", "venues", "guests", "theme", "giving", "campaigns", "extras", "team", "review"],
+            stepOrder: ["couple", "date", "money", "venues", "guests", "theme", "giving", "campaigns", "extras", "team", "publication", "review"],
+            states: {
+              money: () => $("currency").value ? "complete" : "notstarted",
+              giving: () => {
+                const rows = [...document.querySelectorAll("#registry-list .registry-item, #tiers-list .tier-item")];
+                const ready = meaningfulRegistry().length ||
+                  meaningfulTiers().length || $("featured-sponsor-enabled").checked || Number($("vip-price").value) > 0;
+                if (ready) return "complete";
+                return rows.some(row => [...row.querySelectorAll("input:not([type=hidden]), textarea")].some(input => input.value.trim()))
+                  ? "progress" : "notstarted";
+              },
+              campaigns: () => {
+                const cards = [...$("campaign-list").querySelectorAll(".campaign-card")];
+                if (cards.some(card => card.querySelector(".cp-name").value.trim() && Number(card.querySelector(".cp-goal").value) > 0)) return "complete";
+                return cards.some(card => !blankCampaign(card)) ? "progress" : "notstarted";
+              },
+              team: () => helperInviteCreated ? "complete" : "optional",
+              publication: () => {
+                const w = window.__wedding || {};
+                return w.published_at ? "complete" : w.archived_at || w.unpublished_at ? "progress" : "notstarted";
+              }
+            },
             summaries: {
               couple: () => `${$("couple-names").value || "Names not answered yet"}; site address ${$("wedding-slug").value || "not answered yet"}\n${$("welcome-story").value || "Welcome message can wait"}`,
               date: () => `${$("wedding-date").value || "Date not answered yet"}; ${$("wedding-timezone").value}; ${$("location").value || "Location not answered yet"}`,
               guests: () => `Capacity ${$("max-capacity").value || "not answered yet"}; base RSVP fee ${$("rsvp-fee").value}; extra-guest fee ${$("extra-guest-fee").value}`,
-              money: () => `${$("currency").value}; ${$("payout-method").selectedOptions[0]?.textContent || "No receiving option selected"}`,
+              money: () => `${$("currency").value || "Currency not chosen yet"}; ${$("payout-method").value ? $("payout-method").selectedOptions[0].textContent : "No receiving preference yet (optional)"}`,
               venues: () => [...$("venues-list").querySelectorAll(".venue-item")].map(item =>
                 `${item.querySelector(".venue-kind").value === "pre" ? "Pre-wedding" : "Wedding day"}: ${item.querySelector(".venue-name").value || "Event not named"}: ${item.querySelector(".venue-date").value} ${item.querySelector(".venue-time").value}; ${item.querySelector(".venue-addr").value}`).join("\n") || "Add a wedding-day event before publishing",
               theme: () => `${JSON.parse($("palette-preview").dataset.palette || "[]").join(", ") || "No palette selected"}\n${$("attire-notes").value || "Attire guidance can wait"}`,
-              giving: () => `${$("registry-list").children.length} gift item(s); ${$("tiers-list").children.length} sponsor packages`,
-              campaigns: () => `${$("campaign-list").children.length} fundraising campaign(s)`,
-              extras: () => `${$("faq-rows").children.length} guest question(s); ${$("travel-info").value ? "travel information added" : "travel information can wait"}`,
-              team: () => "Invite helpers for RSVP support, guest seating, check-in, coordination or the DJ playlist.",
+              giving: () => {
+                const hidden = [["feature-giving", "registry & campaigns"], ["feature-sponsors", "sponsor packages"],
+                  ["feature-featured-sponsors", "featured sponsors"], ["feature-song-requests", "song requests"],
+                  ["feature-vip-seating", "VIP seating"]].filter(([id]) => !$(id).checked).map(([, name]) => name);
+                return `${meaningfulRegistry().length} gift item(s); ${meaningfulTiers().length} sponsor package(s)` +
+                  (hidden.length ? `\nHidden from guests: ${hidden.join(", ")}` : "");
+              },
+              campaigns: () => `${[...$("campaign-list").querySelectorAll(".campaign-card")].filter(card => !blankCampaign(card)).length} fundraising campaign(s)`,
+              extras: () => `${[...$("faq-rows").querySelectorAll(".faq-row")].filter(row => row.querySelector(".faq-q").value.trim() || row.querySelector(".faq-a").value.trim()).length} guest question(s); ${$("travel-info").value ? "travel information added" : "travel information can wait"}`,
+              team: () => helperInviteCreated ? "A secure helper invite link was created in this visit." : "Invite helpers for RSVP support, guest seating, check-in, coordination or the DJ playlist.",
+              publication: () => `Status: ${$("status-badge").textContent || "Draft"}`,
               review: () => "Save your answers before publishing."
             }
           });
@@ -1412,12 +1548,13 @@
       const currencyBeforeSave = window.__wedding?.currency || "";
       try {
         // Collect venues
-        const venues = [];
+        const venues = [], submittedVenueItems = [], submittedRegistryItems = [], submittedTierItems = [];
         $("venues-list").querySelectorAll(".venue-item").forEach(item => {
           const name = item.querySelector(".venue-name").value.trim();
           if (name || item.querySelector(".venue-time").value || item.querySelector(".venue-date").value ||
               item.querySelector(".venue-addr").value || item.querySelector(".venue-address").value ||
               item.querySelector(".venue-notes").value || item.querySelector(".venue-id")?.value) {
+            submittedVenueItems.push(item);
             venues.push({
               id: item.querySelector(".venue-id")?.value || null,
               name: name,
@@ -1467,6 +1604,7 @@
           const name = item.querySelector(".registry-name").value.trim();
           const target = parseFloat(item.querySelector(".registry-target").value || 0);
           if (name && target > 0) {
+            submittedRegistryItems.push(item);
             registry.push({
               id: item.querySelector(".registry-id").value || null,
               name: name,
@@ -1484,6 +1622,7 @@
           const name = item.querySelector(".tier-name").value.trim();
           const minAmount = parseFloat(item.querySelector(".tier-min-amount").value || 0);
           if (name && minAmount > 0) {
+            submittedTierItems.push(item);
             tiers.push({
               id: item.querySelector(".tier-id").value || null,
               name: name,
@@ -1562,11 +1701,12 @@
         if (data.wedding?.slug) setGuestSiteLink(data.wedding.slug, !!data.wedding.published_at);
         if (data.wedding) {
           if (answersUnchanged) {
-            [["venues-list", ".venue-id", data.wedding.venues],
-              ["registry-list", ".registry-id", data.wedding.registry],
-              ["tiers-list", ".tier-id", data.wedding.tiers]].forEach(([container, selector, rows]) => {
-              $(container).querySelectorAll(selector).forEach((input, index) => {
-                if (rows?.[index]?.id) input.value = rows[index].id;
+            [[submittedVenueItems, ".venue-id", data.wedding.venues],
+              [submittedRegistryItems, ".registry-id", data.wedding.registry],
+              [submittedTierItems, ".tier-id", data.wedding.tiers]].forEach(([items, selector, rows]) => {
+              items.forEach((item, index) => {
+                const input = item.querySelector(selector);
+                if (input && rows?.[index]?.id) input.value = rows[index].id;
               });
             });
           }
@@ -1654,7 +1794,11 @@
             $("edit-section").hidden = false;
             notice(data.paymentRequired ? (data.error + " Complete the verified publication checkout below. The site remains unpublished until you confirm publishing.") : data.error, true);
             refreshOps(window.__wedding || {});
-            (data.kycRequired ? $("kyc-section") : $("ops-section")).scrollIntoView({ behavior: "smooth" });
+            if (data.kycRequired) {
+              $("wedding-workspace").open = true;
+              $("kyc-section").scrollIntoView({ behavior: "smooth" });
+            } else if (weddingGuide) weddingGuide.reveal($("ops-section"));
+            else $("ops-section").scrollIntoView({ behavior: "smooth" });
           }
           return;
         }
@@ -1716,6 +1860,7 @@
       const restricted = !!w.lifecycle_admin_restricted || ["open", "returned", "submitted"].includes(w.moderation?.status);
       $("ops-section").hidden = false;
       $("kyc-section").hidden = false;
+      queueMicrotask(() => weddingGuide?.refresh());
       const badge = $("status-badge");
       const past = w.wedding_date && w.wedding_date.slice(0, 10) < ISO_TODAY();
       let label = "Draft";
@@ -1874,6 +2019,7 @@
         campaignCurrency = d.currency || "USD";
         $("campaign-list").innerHTML = "";
         (d.campaigns || []).forEach(c => $("campaign-list").appendChild(campaignCard(c)));
+        if (!d.campaigns?.length) $("campaign-list").appendChild(campaignCard());
         campaignsDirty = false;
         const sum = d.summary || [];
         $("campaign-summary").innerHTML = sum.length ? sum.map(s => `<strong>${WS.esc(s.name)}</strong>: ${WS.money(s.raised_minor, campaignCurrency, true)} of ${WS.money(s.goal_minor, campaignCurrency, true)} · ${s.pledges} gift${s.pledges === 1 ? "" : "s"}${s.enabled ? "" : " (hidden)"}`).join("<br>") : "No campaigns yet.";
@@ -1906,9 +2052,13 @@
     });
     $("campaign-list").addEventListener("input", () => { campaignsDirty = true; });
     $("campaign-list").addEventListener("change", () => { campaignsDirty = true; });
+    function blankCampaign(card) {
+      return !card.dataset.id && !card.querySelector(".ms-row") &&
+        [".cp-name", ".cp-goal", ".cp-purpose"].every(selector => !card.querySelector(selector).value.trim());
+    }
     async function saveCampaigns() {
       if (!campaignsLoaded) throw new Error("Campaigns could not be loaded. Reload the page before saving this section.");
-      const campaigns = [...$("campaign-list").querySelectorAll(".campaign-card")].map(c => ({
+      const campaigns = [...$("campaign-list").querySelectorAll(".campaign-card")].filter(card => !blankCampaign(card)).map(c => ({
         id: c.dataset.id || null, name: c.querySelector(".cp-name").value, goal: c.querySelector(".cp-goal").value,
         purpose: c.querySelector(".cp-purpose").value, enabled: c.querySelector(".cp-enabled").checked,
         milestones: [...c.querySelectorAll(".ms-row")].map(m => ({ id: m.dataset.id || null, name: m.querySelector(".ms-name").value, target: m.querySelector(".ms-target").value, description: m.querySelector(".ms-desc").value }))
@@ -1940,6 +2090,7 @@
         $("travel-info").value = d.travel || "";
         $("faq-rows").innerHTML = "";
         (d.faq || []).forEach(f => faqRow(f.q, f.a));
+        if (!d.faq?.length) faqRow();
         extrasLoaded = true;
         extrasDirty = false;
         $("extras-status").textContent = "";
@@ -1963,7 +2114,8 @@
     });
     async function saveExtras() {
       if (!extrasLoaded) throw new Error("Travel details and questions could not be loaded. Reload the page before saving this section.");
-      const faq = [...document.querySelectorAll(".faq-row")].map(r => ({ q: r.querySelector(".faq-q").value, a: r.querySelector(".faq-a").value }));
+      const faq = [...document.querySelectorAll(".faq-row")].map(r => ({ q: r.querySelector(".faq-q").value, a: r.querySelector(".faq-a").value }))
+        .filter(item => item.q.trim() || item.a.trim());
       const res = await WS.api("/api/weddings?action=extras-save", { method: "POST", body: JSON.stringify({ weddingId, faq, travel: $("travel-info").value }) });
       const result = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(result.error || "Could not save travel details and questions.");

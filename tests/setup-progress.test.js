@@ -33,9 +33,12 @@ test("the named checklist follows the approved publication minimum without a per
   assert.equal(result.items.some(item => item.id === "location"), false);
   assert.equal(result.items.find(item => item.id === "palette-preview").complete, false);
   assert.deepEqual([...result.items].filter(item => item.required).map(item => item.id), [
-    "couple-names", "wedding-date", "venues-section", "welcome-story",
-    "cover-image-url", "guest-instructions", "fundraising-route"
+    "couple-names", "wedding-date", "venues-section", "welcome-story", "fundraising-route"
   ]);
+  const optional = calculate({ ...completeWedding(), cover_image_url: "", guest_instructions: "" });
+  assert.equal(optional.requiredReady, true, "cover photo and guest instructions are optional");
+  assert.equal(optional.items.find(item => item.id === "cover-image-url").required, false);
+  assert.equal(optional.items.find(item => item.id === "guest-instructions").required, false);
 
   const partial = calculate({ ...completeWedding(), couple_names: "" });
   assert.equal(partial.requiredReady, false);

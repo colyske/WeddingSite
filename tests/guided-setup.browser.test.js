@@ -34,7 +34,7 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
       await page.route("**/api/**", route => {
         const action = new URL(route.request().url()).searchParams.get("action");
         const body = route.request().postData() ? route.request().postDataJSON() : null;
-        calls.push({ action, body });
+        calls.push({ action, body, path: new URL(route.request().url()).pathname });
         let data = {};
         if (action === "collection-capabilities") data = { currencies: [
           { code: "USD", name: "US Dollar", methods: [{ name: "Card", markets: ["United States"] }] },
@@ -49,6 +49,10 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
             max_guest_capacity: body.maxCapacity, time_zone: body.timeZone, palette: body.palette,
             palette_names: [], venues: [], registry: [], tiers: [], published_at: null };
           data = { weddingId: id, slug: wedding.slug };
+        }
+        if (action === "invite") {
+          assert.equal(route.request().method(), "POST");
+          data = { inviteLink: "/team-invite.html?token=synthetic-token" };
         }
         if (action === "get") data = { wedding, amountPresetMaxMinor: 100000000 };
         if (action === "quote") data = { quote: wedding?.wedding_date
@@ -146,12 +150,25 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     await page.click("[data-guide-skip]");
     assert.match(page.url(), /#step=date$/);
     assert.equal(await page.locator("#guide-heading-date").evaluate(el => el === document.activeElement), true);
-    assert.match(await page.locator("[data-guide-announcement]").innerText(), /Step 2 of 11/);
+    assert.match(await page.locator("[data-guide-announcement]").innerText(), /Step 2 of 12/);
     await page.click("[data-guide-save]");
     await page.waitForFunction(() => document.getElementById("notice").textContent === "Your wedding details and setup answers are saved.");
     await page.reload();
     await page.locator("#guide-heading-date").waitFor({ state: "visible" });
     assert.equal(await page.locator("#couple-names").inputValue(), "Amina & Joseph");
+    const coupleChip = page.locator(".guide-nav button").nth(0), dateChip = page.locator(".guide-nav button").nth(1);
+    assert.equal(await coupleChip.getAttribute("data-state"), "complete", "answered sections are marked complete");
+    assert.match(await coupleChip.locator("small").textContent(), /✓\s*Complete/, "state uses text and an icon as well as colour");
+    assert.ok(["notstarted", "progress"].includes(await dateChip.getAttribute("data-state")));
+    assert.match(await dateChip.locator("small").textContent(), /needs answers/i);
+    assert.notEqual(await coupleChip.evaluate(el => getComputedStyle(el).backgroundColor),
+      await dateChip.evaluate(el => getComputedStyle(el).backgroundColor), "complete and unanswered sections look different");
+    const meter = page.locator(".guide-meter [role=progressbar]");
+    assert.match(await meter.getAttribute("aria-valuetext"), /sections complete/);
+    assert.equal(await meter.getAttribute("aria-valuemax"), "11", "progress counts the 11 setup sections, not the review page");
+    assert.match(await page.locator("[data-guide-meter]").innerText(), /Step 2 of 12 · \d+ of 11 sections complete/);
+    assert.equal(await page.locator("#cover-image-url").evaluate(el => el.required), false, "cover photo is optional");
+    assert.equal(await page.locator("#guest-instructions").evaluate(el => el.required), false, "pre-RSVP guest instructions are optional");
     assert.equal(await page.locator("[data-guide-step=date]").isVisible(), true);
     assert.equal(await page.locator("#wedding-date").inputValue(), "", "no date is fabricated");
     await page.click("[data-guide-back]");
@@ -163,7 +180,18 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     await page.click("[data-guide-skip]");
     assert.match(page.url(), /#step=venues$/);
     await openSection(page, 10);
-    assert.match(await page.locator("[data-guide-review]").innerText(), /Needs answers/);
+    assert.equal(await page.locator("[data-guide-step=publication] #status-badge").isVisible(), true,
+      "status and publication controls live in their own setup step");
+    assert.equal(await page.locator("[data-guide-step=publication] #pay-fee-btn").count(), 1);
+    assert.equal(await page.locator("#wedding-workspace").evaluate(el => el.open), false,
+      "operational workspace panels stay collapsed below the active step");
+    await openSection(page, 0);
+    assert.equal(await page.locator("#status-badge").isVisible(), false, "status panel does not repeat below every step");
+    await openSection(page, 11);
+    assert.match(await page.locator("[data-guide-review] .guide-review-item.is-notstarted").first().innerText(), /needs answers/i, "skipped required sections ask for answers");
+    assert.ok(await page.locator("[data-guide-review] .guide-review-item.is-complete").count() >= 1, "review marks completed sections");
+    assert.ok(await page.locator("[data-guide-review] .guide-review-item.is-notstarted, [data-guide-review] .guide-review-item.is-progress").count() >= 1,
+      "review marks sections that still need answers");
     assert.equal(await page.evaluate(() => sessionStorage.getItem("ws-create-answers")), null);
     assert.equal(calls.filter(call => call.action === "create").length, 1);
     assert.equal(wedding.welcome_story, "We are making plans together.");
@@ -208,6 +236,11 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     assert.equal(await resume.locator("#preset-song, #preset-gift, #preset-reset").count(), 0,
       "organizers no longer configure suggested contribution amounts");
     assert.equal(await resume.locator("#feature-giving").isVisible(), true, "fundraising feature controls are visible");
+    assert.equal(await resume.getByText("Choose what guests can see").count(), 0, "the master feature panel is gone");
+    assert.equal(await resume.locator(".registry-item").count(), 1, "a registry form is ready without clicking Add");
+    assert.equal(await resume.locator(".registry-item .registry-name").isVisible(), true);
+    assert.ok(await resume.locator(".tier-item").count() >= 1, "a sponsor package form is ready without clicking Add");
+    assert.equal(await resume.locator(".tier-item .tier-name").first().isVisible(), true);
     await resume.click("#add-registry-btn");
     const registryItem = resume.locator(".registry-item").last();
     assert.equal(await registryItem.isVisible(), true, "registry inputs are visible in the active setup step");
@@ -218,16 +251,23 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     for (const selector of featureToggles) {
       assert.equal(await resume.locator(selector).isChecked(), true, `${selector} is visible by default`);
     }
+    assert.equal(await resume.locator("[data-feature-hint=feature-song-requests]").isVisible(), false);
     await resume.uncheck("#feature-song-requests");
+    assert.equal(await resume.locator("[data-feature-hint=feature-song-requests]").isVisible(), true,
+      "a hidden feature explains its effect in context");
     await resume.click("[data-guide-save]");
     await resume.waitForFunction(() => document.getElementById("notice").textContent === "Your wedding details and setup answers are saved.");
     const currencySave = calls.filter(call => call.action === "update").at(-1).body;
     assert.equal(currencySave.currency, "KES");
     assert.equal("amountPresets" in currencySave, false, "save does not submit suggested amounts");
+    assert.equal(currencySave.registry.length, 1, "an untouched starter registry form is not saved");
+    if ("tiers" in currencySave) assert.equal(currencySave.tiers.length, 0, "an untouched starter sponsor package is not saved");
     await openSection(resume, 7);
     assert.equal(await resume.locator("#campaign-list").isVisible(), true, "campaign setup is in the guide");
     await openSection(resume, 8);
     assert.equal(await resume.locator("#faq-add").isVisible(), true, "FAQ setup is in the guide");
+    assert.equal(await resume.locator(".faq-row").count(), 1, "a FAQ form is ready without clicking Add");
+    assert.equal(await resume.locator(".faq-row .faq-q").isVisible(), true);
     assert.equal(currencySave.revenueFeatures.song_requests, false, "an opt-out is included in the persisted save");
     assert.deepEqual(wedding.revenue_features, {
       giving: true, sponsors: true, featured_sponsors: true, song_requests: false, vip_seating: true
@@ -240,12 +280,36 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     await resume.waitForFunction(() => document.getElementById("notice").textContent === "Your wedding details and setup answers are saved.");
     assert.deepEqual(wedding.palette, [], "an optional palette can be removed and saved");
     await openSection(resume, 9);
+    const updatesBeforeInvite = calls.filter(call => call.action === "update").length;
+    assert.equal(await resume.locator("#helper-invite-email").isVisible(), true, "the helper invite form is visible by default");
+    assert.equal(calls.filter(call => call.path === "/api/team").length, 0, "an empty helper form creates nothing");
+    await resume.click("#helper-invite-create");
+    assert.match(await resume.locator("#helper-invite-status").innerText(), /sign-in email/);
+    assert.equal(calls.filter(call => call.path === "/api/team").length, 0, "an invalid invite is not submitted");
+    await resume.fill("#helper-invite-email", "helper@example.test");
+    await resume.selectOption("#helper-invite-role", { index: 1 });
+    await resume.click("#helper-invite-create");
+    await resume.locator("#helper-invite-result").waitFor({ state: "visible" });
+    const invite = calls.filter(call => call.path === "/api/team");
+    assert.equal(invite.length, 1);
+    assert.equal(invite[0].body.weddingId, id);
+    assert.equal(invite[0].body.email, "helper@example.test");
+    assert.match(await resume.locator("#helper-invite-link").inputValue(), /\/team-invite\.html\?token=synthetic-token$/);
+    assert.match(await resume.locator("#helper-invite-status").innerText(), /not sent/);
+    assert.equal(calls.filter(call => call.action === "update").length, updatesBeforeInvite, "creating an invite does not save the wedding form");
     for (const width of [320, 375, 414, 768, 1280]) {
       await resume.setViewportSize({ width, height: 900 });
-      for (const index of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+      for (const index of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) {
         const navSize = await openSection(resume, index);
         assert.ok(await resume.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `step ${index} fits ${width}`);
         assert.ok(navSize >= 44, `step ${index} has a comfortable touch target at ${width}`);
+        const controls = await resume.locator(".guide-buttons button:visible").evaluateAll(buttons =>
+          buttons.map(button => { const box = button.getBoundingClientRect(); return { left: box.left, right: box.right, height: box.height, text: button.textContent.trim() }; }));
+        assert.ok(controls.length >= 3, `footer controls are present at ${width}`);
+        for (const control of controls) {
+          assert.ok(control.height >= 44, `${control.text} has a touch target at ${width}: ${control.height}`);
+          assert.ok(control.left >= 0 && control.right <= width, `${control.text} fits at ${width}`);
+        }
       }
     }
     assert.equal(await resume.locator("#campaign-list .campaign-card").count(), 1, "hidden campaigns remain available to manage");
@@ -277,21 +341,22 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     await resume.locator("#kyc-section").waitFor({ state: "visible" });
     assert.equal(await resume.locator("#kyc-section").isVisible(), true);
     assert.equal(await resume.locator("#guide-heading-kyc").count(), 0, "private identity details stay separate from wedding completion");
+    assert.equal(await resume.locator("#wedding-workspace").evaluate(el => el.open), true, "the KYC deep link opens the workspace");
     await resume.fill("#kyc-p1", "Synthetic QA Partner");
     await openSection(resume, 0);
-    await resume.fill("#cover-image-url", "https://example.test/celebration.jpg");
-    await openSection(resume, 4);
-    await resume.fill("#guest-instructions", "Please RSVP by June 1.");
-    await resume.click("[data-guide-save]");
-    await resume.waitForFunction(() => document.getElementById("notice").textContent === "Your wedding details and setup answers are saved.");
     await openSection(resume, 5);
     await openSection(resume, 4);
     assert.equal(await resume.locator("#kyc-p1").inputValue(), "Synthetic QA Partner", "KYC remains on the page while moving between setup steps");
-    await openSection(resume, 10);
+    await openSection(resume, 11);
     await resume.click("#publish-btn");
     await resume.click("#confirm-publish");
     await resume.locator("#published-section").waitFor({ state: "visible" });
     assert.equal(calls.filter(call => call.action === "publish").length, 1);
+    assert.ok(!wedding.cover_image_url && !wedding.guest_instructions, "publishing does not require a cover photo or guest instructions");
+    for (const call of calls.filter(call => call.action === "campaigns-save"))
+      assert.ok(call.body.campaigns.every(campaign => campaign.name.trim()), "blank starter campaigns are never saved");
+    for (const call of calls.filter(call => call.action === "extras-save"))
+      assert.ok(call.body.faq.every(row => Object.values(row).some(value => String(value ?? "").trim())), "blank FAQ forms are never saved");
     assert.deepEqual(errors, []);
     await first.context.close();
     await second.context.close();
