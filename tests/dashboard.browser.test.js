@@ -97,6 +97,24 @@ test("create entry makes one idempotent draft request and continues to the share
   await close();
 });
 
+test("supported platform default preselects only a new names-only draft currency", { skip }, async () => {
+  const id = "33333333-3333-3333-3333-333333333333";
+  const { page, calls, close } = await openDashboard({
+    "collection-capabilities": json(200, {
+      currencies: [{ code: "KES", name: "Kenyan Shilling", methods: [{ name: "M-Pesa", markets: ["Kenya"] }] }],
+      defaultCurrency: { currency: "KES", configured: true, supported: true }
+    }),
+    create: json(201, { weddingId: id, slug: "default-currency" })
+  });
+  await page.fill("#couple-names", "Amina & Joseph");
+  await page.click("#create-submit");
+  await page.waitForURL(`**/wedding.html?id=${id}&slug=default-currency#step=couple`);
+  const create = calls.find(call => call.action === "create");
+  assert.equal(create.body.currency, "KES");
+  assert.equal(create.body.starterSetup, undefined, "a default does not fabricate a priced starter");
+  await close();
+});
+
 for (const [label, handler, pattern] of [
   ["API 400 error", json(400, { error: "Check the couple names." }), /Check the couple names/],
   ["API 500 error", json(500, {}), /HTTP 500/],

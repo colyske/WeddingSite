@@ -357,6 +357,9 @@
       return setNotice("Please keep the names within 120 characters.", "bad", $("couple-names"));
     }
     if (!window.WS.token()) return setNotice("Your sign-in has expired. Sign in again; your answers have not been sent.", "bad");
+    state.submitting = true;
+    renderSubmit();
+    try {
     if (!selectedStarter && !($("include-legacy-answers")?.checked && legacyAnswers?.fields?.currency)) {
       await draftCurrencyCheck;
       if (platformCurrency?.configured === true && !draftCurrencies.some(item => item.code === draftCurrency())) {
@@ -364,9 +367,6 @@
         return setNotice("Choose a currency that currently has a ready guest-payment option before creating this draft. Your answers are kept.", "bad", $("draft-currency"));
       }
     }
-    state.submitting = true;
-    renderSubmit();
-    try {
     if (!referralReady) {
       try { await loadReferralDisclosure(); }
       catch (error) { return setNotice(`${error.message} Your answers are still on this page.`, "bad"); }

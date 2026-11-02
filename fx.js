@@ -32,7 +32,11 @@
     const updated = Date.parse(rateDate);
     return Number.isFinite(updated) ? Math.max(0, (Date.now() - updated) / 3600000) : Infinity;
   }
-  function isFresh() { return Boolean(rates.USD === 1 && rateDate && rateAgeHours() <= maxAgeHours); }
+  function isFresh() {
+    const updated = Date.parse(rateDate);
+    return Boolean(rates.USD === 1 && Number.isFinite(updated) &&
+      updated <= Date.now() + 300000 && rateAgeHours() <= maxAgeHours);
+  }
   function hasRate(code) { return code === "USD" || Number.isFinite(rates[code]); }
   function convertBetween(amount, from, to) {
     if (!isFresh() || !Number.isFinite(amount) || !hasRate(from) || !hasRate(to)) return null;
@@ -67,7 +71,7 @@
   function formatPrimaryUsd(amount, code = currency(), locale = readSettings().config?.locale || "en-US") {
     const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(amount);
     if (code === "USD") return `${usd} USD`;
-    const converted = convertUsd(amount, code);
+    const converted = isFresh() ? convertUsd(amount, code) : null;
     if (converted === null) return `${usd} USD [${code} equivalent unavailable]`;
     const formatted = formatUsd(amount, code, locale);
     return `${formatted}${formatted.includes(code) ? "" : ` ${code}`} [≈ ${usd} USD]`;
