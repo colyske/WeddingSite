@@ -40,7 +40,8 @@ const friendlyColorName = hex => {
   return closest[0];
 };
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
-const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,amount_presets,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted";
+const FIELDS = "id,slug,couple_names,welcome_story,wedding_date,time_zone,public_location,currency,amount_presets,revenue_features,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted";
+const REVENUE_FEATURES = ["giving", "sponsors", "featured_sponsors", "song_requests", "vip_seating"];
 const canonicalJson = value => Array.isArray(value) ? `[${value.map(canonicalJson).join(",")}]`
   : value && typeof value === "object" ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`
     : JSON.stringify(value);
@@ -424,6 +425,16 @@ export default async function handler(req, res) {
       if (body.backgroundMusicUrl !== undefined) {
         const url = String(body.backgroundMusicUrl).trim();
         patch.background_music_url = url ? url.slice(0, 500) : null;
+      }
+      let revenueFeatures;
+      if (body.revenueFeatures !== undefined) {
+        revenueFeatures = body.revenueFeatures;
+        if (!revenueFeatures || typeof revenueFeatures !== "object" || Array.isArray(revenueFeatures) ||
+            Object.keys(revenueFeatures).length !== REVENUE_FEATURES.length ||
+            REVENUE_FEATURES.some(key => typeof revenueFeatures[key] !== "boolean")) {
+          return sendJson(res, 400, { error: "Choose whether each guest feature is shown." });
+        }
+        patch.revenue_features = revenueFeatures;
       }
       if (!Object.keys(patch).length && normalizedVenues === null) return sendJson(res, 400, { error: "Nothing valid to update." });
       const updated = await supabaseRequest("/rest/v1/rpc/save_wedding_content", { ...opts, method: "POST", body: {
@@ -832,8 +843,9 @@ export default async function handler(req, res) {
     if (action === "bids") {
       if (!methodOnly(req, res, "GET")) return;
       if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
-      const rows = await supabaseRequest(
-        `/rest/v1/dj_song_bids?wedding_id=eq.${req.query.weddingId}&select=id,song_title,artist_name,bid_amount_minor,bidder_name,currency,rank_position,created_at&order=bid_amount_minor.desc,created_at.asc&limit=200`, opts);
+      const rows = await supabaseRequest("/rest/v1/rpc/get_dj_bid_ledger", {
+        ...opts, method: "POST", body: { p_wedding_id: req.query.weddingId }
+      });
       return sendJson(res, 200, { bids: rows || [] });
     }
 

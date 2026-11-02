@@ -235,10 +235,20 @@ export default async function handler(req, res) {
         if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
       }
       
+      const settings = (await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=revenue_features`, { service: true }))?.[0];
+      if (!settings) return sendJson(res, 404, { error: "Wedding not found." });
       const offset = Math.max(0, parseInt(req.query.offset || "0"));
       const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || "50")));
-      const ledger = await rpc("get_published_contributions_page", { p_wedding_id: weddingId, p_offset: offset, p_limit: limit });
-      return sendJson(res, 200, { ledger: ledger || [] });
+      const rows = await rpc("get_published_contributions_page", { p_wedding_id: weddingId, p_offset: offset, p_limit: limit });
+      const features = settings.revenue_features || {};
+      const featureForType = {
+        "Song bid": "song_requests", "Sponsorship": "sponsors", "Featured sponsorship": "featured_sponsors",
+        "VIP reservation": "vip_seating", "Registry gift": "giving"
+      };
+      return sendJson(res, 200, { ledger: (rows || []).filter(row => {
+        const feature = featureForType[row.contribution_type];
+        return !feature || features[feature] !== false;
+      }) });
     }
 
     if (action === "rsvp" || action === "bid") {
@@ -253,8 +263,11 @@ export default async function handler(req, res) {
         if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
       }
       
-      const wd = await supabaseRequest(`/rest/v1/weddings?id=eq.${weddingId}&published_at=not.is.null&archived_at=is.null&select=wedding_date,time_zone`, { service: true });
+      const wd = await supabaseRequest(`/rest/v1/weddings?id=eq.${weddingId}&published_at=not.is.null&archived_at=is.null&select=wedding_date,time_zone,revenue_features`, { service: true });
       if (!wd?.length) return sendJson(res, 404, { error: "Wedding not found." });
+      if (action === "bid" && wd[0].revenue_features?.song_requests === false) {
+        return sendJson(res, 409, { error: "DJ song requests are not currently available for this wedding." });
+      }
       if (isPastWedding(wd[0].wedding_date, wd[0].time_zone)) {
         return sendJson(res, 410, { error: "This wedding has taken place, so RSVPs and bids are closed. Thank you for celebrating with us!" });
       }
@@ -351,14 +364,17 @@ export default async function handler(req, res) {
       const weddingId = await resolveWeddingId(slug, rpc);
       if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
       
-      const [result, campaigns, sponsorAuction] = await Promise.all([
+      const [result, campaigns, sponsorAuction, settings] = await Promise.all([
         rpc("get_public_fundraising", { p_slug: slug }),
         rpc("get_public_campaigns", { p_slug: slug }).catch(() => []),
-        rpc("get_public_sponsor_auction", { p_slug: slug }).catch(() => ({ enabled: false }))
+        rpc("get_public_sponsor_auction", { p_slug: slug }).catch(() => ({ enabled: false })),
+        supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=revenue_features`, { service: true })
       ]);
+      const features = settings?.[0]?.revenue_features || {};
       return sendJson(res, 200, {
         ...(result || { tiers: [], vip: null, sponsors: [] }),
-        campaigns: campaigns || [], sponsorAuction: sponsorAuction || { enabled: false }
+        campaigns: features.giving === false ? [] : campaigns || [],
+        sponsorAuction: features.featured_sponsors === false ? { enabled: false } : sponsorAuction || { enabled: false }
       });
     }
 

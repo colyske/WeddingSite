@@ -222,7 +222,15 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(data) });
     });
     await editor.goto(`${base}/wedding.html?id=${weddingId}`);
-    await editor.waitForFunction(() => !document.querySelector("#edit-section").hidden);
+    await editor.waitForFunction(() => !document.querySelector("#edit-section").hidden, null, { timeout: 5000 })
+      .catch(async error => {
+        const state = await editor.evaluate(() => ({
+          notice: document.querySelector("#notice")?.textContent,
+          title: document.title,
+          errors: document.querySelector(".guide-errors")?.innerText
+        }));
+        throw new Error(`${error.message}; editor load state: ${JSON.stringify(state)}`);
+      });
     await editor.locator("[data-guide-all]").click();
     await editor.click("#account-menu-btn");
     assert.equal(await editor.locator('a[href="/account.html"]').isVisible(), true);
@@ -233,10 +241,20 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     await editor.locator(".palette-color-hex").first().dispatchEvent("change");
     await editor.click("#apply-colors-btn");
     await editor.click('#edit-form button[type="submit"]');
-    await editor.waitForFunction(() => document.querySelector("#notice").textContent.includes("Changes saved"));
+    await editor.waitForFunction(() => document.querySelector("#notice").textContent.trim().length > 0, null, { timeout: 5000 })
+      .catch(async error => {
+        const state = await editor.evaluate(() => ({
+          notice: document.querySelector("#notice")?.textContent,
+          guideErrors: document.querySelector(".guide-errors")?.innerText,
+          invalid: [...document.querySelectorAll("#edit-form input, #edit-form select, #edit-form textarea")]
+            .filter(input => input.willValidate && !input.validity.valid).map(input => input.id || input.name)
+        }));
+        throw new Error(`${error.message}; save state: ${JSON.stringify(state)}`);
+      });
+    assert.match(await editor.locator("#notice").textContent(), /Changes saved/);
     assert.deepEqual(savedBody.palette, ["#123abc", "#a9b5a2"]);
     assert.deepEqual(storedWedding.palette, ["#123abc", "#a9b5a2"]);
-    assert.equal(savedBody.venues[0].name, "Garden & Hall");
+    assert.deepEqual(savedBody.venues.map(venue => venue.name).sort(), ["Garden & Hall", "Welcome gathering"].sort());
     assert.equal(savedBody.welcomeStory, "Atieno & Otieno <forever>.");
     assert.equal(savedBody.attireNotes, "Formal African elegance");
     assert.equal(savedBody.registry[0].name, "Home & Honeymoon");
@@ -247,7 +265,8 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     await editor.waitForFunction(() => !document.querySelector("#edit-section").hidden);
     await editor.locator("[data-guide-all]").click();
     assert.equal(await editor.locator("#welcome-story").inputValue(), "Atieno & Otieno <forever>.");
-    assert.equal(await editor.locator(".venue-name").first().inputValue(), "Garden & Hall");
+    assert.deepEqual((await editor.locator(".venue-name").evaluateAll(inputs => inputs.map(input => input.value))).sort(),
+      ["Garden & Hall", "Welcome gathering"].sort());
     assert.equal(await editor.locator("#attire-notes").inputValue(), "Formal African elegance");
     assert.equal(await editor.locator(".registry-name").first().inputValue(), "Home & Honeymoon");
     assert.equal(await editor.locator(".tier-name").first().inputValue(), "Gold & Friends");

@@ -1,14 +1,25 @@
 (function (global) {
   "use strict";
 
-  function create(form, { mode, onKeep, summaries = {} } = {}) {
-    const steps = [...form.querySelectorAll("[data-guide-step]")];
+  function create(form, { mode, onKeep, summaries = {}, externalSteps = [], externalStepsAfter } = {}) {
+    const formSteps = [...form.querySelectorAll("[data-guide-step]")];
+    const reviewStep = formSteps.find(step => step.dataset.guideStep === "review");
+    const steps = [];
+    for (const step of formSteps) {
+      if (step === reviewStep) continue;
+      steps.push(step);
+      if (step.dataset.guideStep === externalStepsAfter) steps.push(...externalSteps);
+    }
+    if (!externalStepsAfter || !steps.some(step => externalSteps.includes(step))) steps.push(...externalSteps);
+    if (reviewStep) steps.push(reviewStep);
     const review = form.querySelector("[data-guide-review]");
     const header = document.createElement("div");
     header.className = "guide-header";
-    header.innerHTML = `<p class="fine">One question group at a time. Back, Next and Skip never submit or discard answers.</p>
+    header.innerHTML = `<p class="fine">Next and Skip navigate. Save separately.</p>
       <p class="guide-state" role="status" aria-live="polite" data-guide-state></p>
-      <nav class="guide-nav" aria-label="Wedding setup sections"></nav>
+      <details class="guide-jump"><summary>Jump to section <span data-guide-progress></span></summary>
+        <nav class="guide-nav" aria-label="Wedding setup sections"></nav>
+      </details>
       <button type="button" class="link" data-guide-all>Show all questions</button>
       <div class="guide-errors" role="alert" hidden></div>
       <p class="guide-sr" aria-live="polite" aria-atomic="true" data-guide-announcement></p>`;
@@ -17,6 +28,8 @@
     const announcement = header.querySelector("[data-guide-announcement]");
     const errors = header.querySelector(".guide-errors");
     const nav = header.querySelector("nav");
+    const jump = header.querySelector(".guide-jump");
+    const progress = header.querySelector("[data-guide-progress]");
     const actions = document.createElement("div");
     actions.className = "guide-actions";
     actions.innerHTML = `<button type="button" class="ghost" data-guide-back>Back</button>
@@ -29,6 +42,14 @@
     let savingControls = [];
     let nextAnswerId = 0;
     const skipped = new Set();
+    const externalSaved = new Map(externalSteps.map(step => [step.dataset.guideStep, externalFingerprint(step)]));
+    function externalFingerprint(step) {
+      return JSON.stringify([...step.querySelectorAll("input, select, textarea")].map(input =>
+        [input.id, input.name, input.value, input.checked]));
+    }
+    const externalDirty = step => externalSaved.has(step.dataset.guideStep) &&
+      externalSaved.get(step.dataset.guideStep) !== externalFingerprint(step);
+    const hasExternalChanges = () => externalSteps.some(externalDirty);
     const fingerprint = () => JSON.stringify([
       [...form.querySelectorAll("input, select, textarea")].map(input =>
         [input.id, input.name, input.value, input.checked]),
@@ -40,11 +61,16 @@
     const updateState = () => {
       if (pendingCreate) return;
       if (mode === "create") {
-        setState("Before creation, answers stay in this tab only. Create your draft to save to your account and resume on another device.");
+        setState("Draft answers stay in this tab until you create it.");
       } else {
-        setState(saving ? "Saving changes..." : dirty()
-          ? "Unsaved changes. Next and Skip keep answers on this page; use Save changes before leaving or reloading."
-          : "Saved wedding details. You can return to any section.");
+        const weddingChanges = dirty(), privateChanges = hasExternalChanges();
+        setState(saving ? "Saving changes..." : weddingChanges && privateChanges
+          ? "Wedding and private identity changes are unsaved. Save each in its section before leaving or reloading."
+          : privateChanges
+            ? "Private identity details are unsaved. Save them in that section before leaving or reloading."
+            : weddingChanges
+              ? "Unsaved changes. Next and Skip keep answers on this page; use Save changes before leaving or reloading."
+              : "Saved wedding details. You can return to any section.");
       }
     };
     function label(input) {
@@ -55,6 +81,7 @@
       .filter(input => input.willValidate && !input.validity.valid);
     function sectionStatus(step) {
       if (step.dataset.guideStep === "review") return "Review before publishing";
+      if (externalDirty(step)) return "Unsaved details";
       const invalid = [...step.querySelectorAll("input, select, textarea")]
         .some(input => input.willValidate && (!input.validity.valid || input.dataset.publishRequired && !input.value.trim()));
       if (invalid) return "Needs answers";
@@ -65,7 +92,7 @@
       review.replaceChildren();
       const list = document.createElement("ol");
       list.className = "guide-review-list";
-      steps.slice(0, -1).forEach(step => {
+      steps.filter(step => step.dataset.guideStep !== "review").forEach(step => {
         const item = document.createElement("li");
         const link = document.createElement("a");
         link.href = `#step=${step.dataset.guideStep}`;
@@ -94,6 +121,10 @@
       nav.append(button);
     });
     const navButtons = [...nav.children];
+    const mobileNavigation = global.matchMedia("(max-width: 600px)");
+    const syncNavigationMode = () => { jump.open = !mobileNavigation.matches; };
+    syncNavigationMode();
+    mobileNavigation.addEventListener("change", syncNavigationMode);
     function refresh() {
       navButtons.forEach((button, index) => {
         button.querySelector("small").textContent = sectionStatus(steps[index]);
@@ -112,11 +143,13 @@
       actions.querySelector("[data-guide-next]").hidden = index === steps.length - 1;
       actions.querySelector("[data-guide-skip]").hidden = index === steps.length - 1;
       announcement.textContent = `Step ${index + 1} of ${steps.length}: ${steps[index].dataset.guideTitle}`;
+      progress.textContent = ` · Step ${index + 1} of ${steps.length}`;
       refresh();
       if (focus) steps[index].querySelector("h2").focus({ preventScroll: false });
     }
     function go(index) {
       all = false;
+      if (mobileNavigation.matches) jump.open = false;
       header.querySelector("[data-guide-all]").textContent = "Show all questions";
       const hash = `#step=${steps[index].dataset.guideStep}`;
       if (location.hash !== hash) history.pushState(null, "", hash);
@@ -261,9 +294,17 @@
     });
     form.addEventListener("change", refresh);
     form.addEventListener("click", () => queueMicrotask(refresh));
+    externalSteps.forEach(step => {
+      step.addEventListener("input", event => {
+        event.target.removeAttribute("aria-invalid");
+        skipped.delete(step.dataset.guideStep);
+        refresh();
+      });
+      step.addEventListener("change", refresh);
+    });
     global.addEventListener("hashchange", () => fromHash());
     global.addEventListener("beforeunload", event => {
-      if (mode === "edit" && dirty()) {
+      if (mode === "edit" && (dirty() || hasExternalChanges())) {
         event.preventDefault();
         event.returnValue = "";
       }
@@ -272,6 +313,11 @@
     fromHash();
     return {
       reveal, validate, dirty, refresh, setState, blockPublication,
+      markExternalSaved(name) {
+        const step = externalSteps.find(item => item.dataset.guideStep === name);
+        if (step) externalSaved.set(name, externalFingerprint(step));
+        refresh();
+      },
       reviewBeforePublish() {
         if (all || current === steps.length - 1) return true;
         go(steps.length - 1);

@@ -55,12 +55,13 @@ test("live Paystack guest, publication and onboarding UI use honest live labels 
     await page.fill("#song-request-amount","1.01");
     await page.click('#song-request-form button[type="submit"]');
     await page.waitForFunction(()=>!document.getElementById("pay-submit").disabled);
-    assert.match(await page.locator("#pay-submit").innerText(),/real money/i);
-    assert.match(await page.locator("#pay-mode-note").innerText(),/LIVE/);
+    assert.match(await page.locator("#pay-submit").innerText(),/pay securely/i);
+    assert.match(await page.locator("#pay-mode-note").innerText(),/Real payment: money will be collected/);
     await page.selectOption("#pay-provider","daraja|KE");
-    assert.ok(await page.locator("#pay-mode-note").isHidden(),"Daraja keeps the incident patch's uncluttered live dialog");
+    assert.match(await page.locator("#pay-mode-note").innerText(),/Real payment: money will be collected/,
+      "live M-Pesa checkout keeps its plain-language payment notice");
     assert.ok(await page.locator("#pay-daraja-note").isHidden());
-    assert.equal(await page.locator("#pay-submit").textContent(),"Send M-Pesa prompt");
+    assert.equal(await page.locator("#pay-submit").textContent(),"Continue with M-Pesa");
     await page.selectOption("#pay-provider","paystack|KE");
     assert.ok(await page.locator("#pay-daraja-fields").isHidden());
     assert.ok(await page.locator("#pay-email").evaluate(el=>el.required));
@@ -92,20 +93,20 @@ test("live Paystack guest, publication and onboarding UI use honest live labels 
     await onboarding.goto(`${base}/onboarding-fixture.html?id=${wid}`);
     await onboarding.waitForFunction(()=>!document.getElementById("paystack-destination-consent").disabled);
     assert.ok(await onboarding.locator("#paystack-consent-submit").isDisabled());
-    assert.match(await onboarding.locator("#paystack-settlement-rows").innerText(),/Withdrawable here: zero/);
+    assert.match(await onboarding.locator("#paystack-settlement-rows").innerText(),/Available to withdraw here: zero/);
     assert.doesNotMatch(await onboarding.locator("#paystack-settlement-rows").innerText(),/Provider settlement verified/);
     await onboarding.locator("#paystack-destination-consent").check();
     await onboarding.click("#paystack-consent-submit");
     await onboarding.waitForFunction(()=>window.consentWrites===1 && document.getElementById("paystack-destination-consent").disabled);
     await onboarding.evaluate(()=>{window.onboarded=false;window.consented=false;});
     await onboarding.click("#paystack-onboarding-reload");
-    await onboarding.waitForFunction(()=>document.getElementById("paystack-onboarding-status").textContent.startsWith("Not onboarded"));
+    await onboarding.waitForFunction(()=>document.getElementById("paystack-onboarding-status").textContent.startsWith("The receiving account is not verified yet."));
     assert.ok(await onboarding.locator("#paystack-consent-submit").isDisabled());
     await onboarding.evaluate(()=>{window.settlementMode="standard";});
     await onboarding.click("#paystack-onboarding-reload");
-    await onboarding.waitForFunction(()=>document.getElementById("paystack-onboarding-status").textContent.startsWith("Standard platform-collected"));
+    await onboarding.waitForFunction(()=>document.getElementById("paystack-onboarding-status").textContent.startsWith("Guest payments are collected through the platform."));
     assert.ok(await onboarding.locator("#paystack-destination-consent").isDisabled());
-    assert.match(await onboarding.locator("#paystack-onboarding-status").innerText(),/No split subaccount/i);
+    assert.match(await onboarding.locator("#paystack-onboarding-status").innerText(),/No separate receiving-account consent/i);
     await onboarding.close();
 
     const publication=await browser.newPage({viewport:{width:375,height:900}});
