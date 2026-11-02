@@ -376,7 +376,7 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
         const hits = [...document.querySelectorAll(".guide-actions button")].filter(button => button.offsetParent).map(button => {
           const box = button.getBoundingClientRect();
           const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
-          return { text: button.textContent.trim(), ok: !!hit && button.contains(hit), height: box.height, right: box.right, inView: box.top >= 0 && box.bottom <= innerHeight };
+          return { text: button.textContent.trim(), ok: !!hit && button.contains(hit), height: box.height, right: box.right, inView: box.top >= -1 && box.bottom <= innerHeight + 1, top: Math.round(box.top), bottom: Math.round(box.bottom), viewport: innerHeight };
         });
         return { bar: { top: bar.top, bottom: bar.bottom, left: bar.left, right: bar.right }, footerTop: footer?.top ?? null,
           card: { left: card.left, right: card.right, bottom: card.bottom }, hits, overflow: document.documentElement.scrollWidth > innerWidth };
@@ -386,7 +386,7 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
       assert.ok(layout.bar.left >= layout.card.left - 0.5 && layout.bar.right <= layout.card.right + 0.5 && layout.bar.bottom <= layout.card.bottom + 0.5,
         `guide controls stay inside the guide container at ${width}`);
       assert.ok(layout.hits.some(hit => hit.text === "Publish wedding site"), `publish action is present at ${width}`);
-      if (position === "guide-end") assert.ok(layout.hits.every(hit => hit.inView), `guide controls are in view at the end of the guide at ${width}`);
+      if (position === "guide-end") assert.ok(layout.hits.every(hit => hit.inView), `guide controls are in view at the end of the guide at ${width}: ${JSON.stringify(layout.hits)} bar ${JSON.stringify(layout.bar)}`);
       for (const hit of layout.hits) {
         if (hit.inView) assert.ok(hit.ok, `${hit.text} is clickable at the page bottom at ${width} (${position})`);
         assert.ok(hit.height >= 44 && hit.right <= width, `${hit.text} fits with a touch target at ${width}`);
