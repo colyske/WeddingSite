@@ -98,11 +98,10 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
       return { context, page };
     }
     async function openSection(page, index) {
-      if (await page.evaluate(() => matchMedia("(max-width: 600px)").matches) &&
-          !(await page.locator(".guide-jump").evaluate(el => el.open))) {
-        await page.locator(".guide-jump > summary").click();
-      }
+      if (await page.evaluate(() => matchMedia("(max-width: 600px)").matches))
+        await page.locator(".guide-jump").evaluate(el => { el.open = true; });
       const button = page.locator(".guide-nav button").nth(index);
+      await button.waitFor({ state: "visible" });
       const navSize = await button.evaluate(el => el.getBoundingClientRect().height);
       await button.click();
       return navSize;
