@@ -148,6 +148,20 @@ select pg_temp.actor('sender');
 select pg_temp.reject(format('select public.manual_payout_transition(%L,''executing'',extensions.gen_random_uuid())',
   (select id from mp_ids where key='payout')),'revoked');
 rollback to revoked_authority;
+savepoint changed_policy;
+select pg_temp.actor('owner');
+update public.platform_policies set min_payout_minor=7000 where id;
+select pg_temp.actor('sender');
+select pg_temp.reject(format('select public.manual_payout_transition(%L,''executing'',extensions.gen_random_uuid())',
+  (select id from mp_ids where key='payout')),'configured minimum');
+rollback to changed_policy;
+savepoint held_funds;
+update public.contributions set funds_available_at=now()+interval '1 day'
+  where id=(select id from mp_ids where key='contribution');
+select pg_temp.actor('sender');
+select pg_temp.reject(format('select public.manual_payout_transition(%L,''executing'',extensions.gen_random_uuid())',
+  (select id from mp_ids where key='payout')),'Insufficient');
+rollback to held_funds;
 do $$
 declare p uuid; claim uuid:=extensions.gen_random_uuid(); e uuid;
 begin
@@ -258,6 +272,82 @@ begin
     raise exception 'Owner solo mode must explicitly audit the actual single actor on every transition'; end if;
   perform pg_temp.actor('checker');
   perform pg_temp.reject(format('select public.manual_payout_transition(%L,''cancelled'')',p),'Protected Owner');
+end $$;
+-- Replenishment, exact paid-debit inclusion and legacy opening allocations.
+do $$
+declare a uuid; p uuid; w uuid; r uuid; e uuid; b uuid; b2 uuid; original_batch uuid; c uuid; expense uuid;
+  line uuid; statement uuid; at_expense timestamptz; balance jsonb; adjustment uuid;
+begin
+  select id into a from mp_ids where key='custody';
+  select id into w from mp_ids where key='wedding';
+  select id into p from mp_ids where key='payout';
+  select id into original_batch from public.manual_payout_statement_batches where custody_id=a;
+  select statement_reference,line_reference into statement,line from public.manual_payout_reconciliations where payout_id=p;
+  e:=pg_temp.evidence('statement');
+  b:=public.manual_payout_append_statement(a,original_batch,statement,clock_timestamp(),10000,5000,6000,9000,0,e);
+  perform pg_temp.reject(format('select public.manual_payout_append_statement(%L,%L,extensions.gen_random_uuid(),clock_timestamp(),10000,1,0,10001,0,%L)',
+    a,original_batch,pg_temp.evidence('statement')),'chain');
+  perform public.manual_payout_include_debit(p,b,line,e);
+  perform pg_temp.reject(format('select public.manual_payout_include_debit(%L,%L,%L,%L)',p,b,line,e),'unique');
+  c:=extensions.gen_random_uuid();
+  insert into public.contributions(id,wedding_id,stream_name,pledged_amount_minor,paid_amount_minor,
+    platform_fee_minor,net_paid_minor,currency,payment_status,verified_provider_payment,provider_fee_pending,
+    provider_fee_minor,payment_environment,provider_name,paid_at)
+    values(c,w,'Additional verified statement credit',5000,5000,0,5000,'KES','paid',true,false,0,'live','daraja',now()-interval '12 hours');
+  perform public.manual_payout_register_settlement(c,a,extensions.gen_random_uuid(),5000,pg_temp.evidence('settlement'),b,now()-interval '6 hours');
+  perform pg_temp.reject(format('select public.manual_payout_register_settlement(%L,%L,extensions.gen_random_uuid(),5000,%L,%L,now()-interval ''6 hours'')',
+    c,a,pg_temp.evidence('settlement'),b),'envelope');
+  perform pg_temp.actor('client'); balance:=public.manual_payout_balance(w);
+  if (balance->>'statement_backed_minor')::bigint<>15000 or (balance->>'spent_minor')::bigint<>8000
+    or (balance->>'reserved_minor')::bigint<>0 or (balance->>'available_minor')::bigint<>0 then
+    raise exception 'Shared nonwithdrawable balance disagrees with requests/spending: %',balance; end if;
+  e:=pg_temp.evidence('recipient'); r:=public.manual_payout_recipient(w,e,'daraja','KES');
+  -- Existing paid expense before opening: deduct entitlement once, not bank balance twice.
+  expense:=extensions.gen_random_uuid();
+  insert into public.expenses(id,wedding_id,category,description,amount_minor,currency,status,paid_at)
+    values(expense,w,'Fixture','Historical paid expense',500,'KES','paid',now()-interval '2 days');
+  perform public.manual_payout_map_source('expense',expense,a,original_batch,pg_temp.evidence('commitment'),
+    extensions.gen_random_uuid(),now()-interval '2 days');
+  -- A changed source invalidates that mapping; the affected increment remains held.
+  update public.expenses set amount_minor=600 where id=expense;
+  perform pg_temp.reject(format('select public.manual_payout_request(extensions.gen_random_uuid(),%L,%L,%L,6500,0,''KES'')',w,a,r),'Insufficient');
+  update public.expenses set amount_minor=500 where id=expense;
+  -- Fresh, smaller paid debit is included only in the subsequent statement period.
+  expense:=extensions.gen_random_uuid(); at_expense:=clock_timestamp();
+  insert into public.expenses(id,wedding_id,category,description,amount_minor,currency,status,paid_at)
+    values(expense,w,'Fixture','New paid expense',100,'KES','paid',at_expense);
+  b2:=public.manual_payout_append_statement(a,b,extensions.gen_random_uuid(),clock_timestamp(),9000,0,100,8900,0,pg_temp.evidence('statement'));
+  perform public.manual_payout_map_source('expense',expense,a,b2,pg_temp.evidence('commitment'),extensions.gen_random_uuid(),at_expense);
+  p:=public.manual_payout_request(extensions.gen_random_uuid(),w,a,r,6400,0,'KES');
+  perform pg_temp.actor('checker'); perform public.manual_payout_transition(p,'approved');
+  perform pg_temp.actor('maker'); perform public.manual_payout_transition(p,'cancelled');
+  perform pg_temp.actor('client'); balance:=public.manual_payout_balance(w);
+  if (balance->>'known_obligations_minor')::bigint<>600 or (balance->>'reserved_minor')::bigint<>0 then
+    raise exception 'Source/reflected amounts double-counted: %',balance; end if;
+  perform pg_temp.actor('maker');
+  adjustment:=extensions.gen_random_uuid();
+  insert into public.payment_adjustments(id,provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
+    amount_minor,currency,status,hold_minor)
+    values(adjustment,'paystack','dispute','isolated-bounded-reversal',c,w,200,'KES','lost',0);
+  insert into public.financial_adjustment_ledger(adjustment_id,wedding_id,contribution_id,entry_type,couple_net_delta_minor,
+    currency,provider,provider_adjustment_id)
+    values(adjustment,w,c,'dispute_debit',-200,'KES','paystack','isolated-bounded-reversal');
+  perform pg_temp.reject(format('select public.manual_payout_request(extensions.gen_random_uuid(),%L,%L,%L,6400,0,''KES'')',w,a,r),'Insufficient');
+  insert into public.financial_adjustment_ledger(adjustment_id,wedding_id,contribution_id,entry_type,couple_net_delta_minor,
+    currency,provider,provider_adjustment_id)
+    values(adjustment,w,c,'dispute_reversal',200,'KES','paystack','isolated-bounded-reversal');
+  update public.payment_adjustments set status='won' where id=adjustment;
+  p:=public.manual_payout_request(extensions.gen_random_uuid(),w,a,r,6400,0,'KES');
+  perform public.manual_payout_transition(p,'cancelled');
+  -- An unbacked positive entry cannot create entitlement above collected principal.
+  adjustment:=extensions.gen_random_uuid();
+  insert into public.payment_adjustments(id,provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
+    amount_minor,currency,status,hold_minor)
+    values(adjustment,'paystack','dispute','isolated-unbacked-positive',c,w,200,'KES','won',0);
+  insert into public.financial_adjustment_ledger(adjustment_id,wedding_id,contribution_id,entry_type,couple_net_delta_minor,
+    currency,provider,provider_adjustment_id)
+    values(adjustment,w,c,'dispute_reversal',200,'KES','paystack','isolated-unbacked-positive');
+  perform pg_temp.reject(format('select public.manual_payout_request(extensions.gen_random_uuid(),%L,%L,%L,6500,0,''KES'')',w,a,r),'Insufficient');
 end $$;
 set local role authenticated;
 select pg_temp.actor('client');

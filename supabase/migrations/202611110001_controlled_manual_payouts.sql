@@ -274,12 +274,25 @@ begin
   return true;
 end $$;
 
-create function public.manual_payout_recipient(p_wedding uuid, p_evidence uuid, p_provider text, p_currency text) returns uuid
+create function public.manual_payout_intake_authority(p_allow_owner_solo boolean) returns void
+language plpgsql security definer set search_path = '' as $$
+declare actual_role public.platform_role;
+begin
+  perform pg_advisory_xact_lock(71110001);
+  select platform_role into actual_role from public.profiles where id=auth.uid() for share;
+  if auth.uid() is null or actual_role is null or actual_role not in ('owner','superadmin')
+    or p_allow_owner_solo is null or (p_allow_owner_solo and actual_role<>'owner') then
+    raise exception 'Current authorized intake actor required.';
+  end if;
+end $$;
+
+create function public.manual_payout_recipient_internal(p_wedding uuid, p_evidence uuid, p_provider text, p_currency text,
+  p_allow_owner_solo boolean default false) returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare v_id uuid; v_hash text;
 begin
-  perform public.manual_payout_require_enabled();
-  perform public.manual_payout_evidence_require(p_evidence,'recipient',public.current_platform_role()='owner');
+  perform public.manual_payout_intake_authority(p_allow_owner_solo);
+  perform public.manual_payout_evidence_require(p_evidence,'recipient',p_allow_owner_solo);
   perform 1 from public.weddings where id=p_wedding for update;
   perform 1 from public.wedding_kyc where wedding_id=p_wedding for share;
   if not public.kyc_is_complete(p_wedding) then raise exception 'PAYOUT_KYC_REQUIRED: Complete KYC and consent.'; end if;
@@ -290,11 +303,12 @@ begin
   return v_id;
 end $$;
 
-create function public.manual_payout_register_account(p_account uuid,p_provider text,p_registry uuid,p_evidence uuid) returns uuid
+create function public.manual_payout_register_account_internal(p_account uuid,p_provider text,p_registry uuid,p_evidence uuid,
+  p_allow_owner_solo boolean default false) returns uuid
 language plpgsql security definer set search_path = '' as $$
 begin
-  perform public.manual_payout_require_enabled();
-  perform public.manual_payout_evidence_require(p_evidence,'account',public.current_platform_role()='owner');
+  perform public.manual_payout_intake_authority(p_allow_owner_solo);
+  perform public.manual_payout_evidence_require(p_evidence,'account',p_allow_owner_solo);
   insert into public.manual_payout_accounts(id,provider,canonical_registry_reference,evidence_id,recorded_by)
     values(p_account,p_provider,p_registry,p_evidence,auth.uid());
   return p_account;
@@ -312,17 +326,18 @@ language sql stable security definer set search_path = '' as $$
   order by b.sequence desc limit 1
 $$;
 
-create function public.manual_payout_append_statement(p_custody uuid,p_previous uuid,p_statement uuid,p_at timestamptz,
-  p_opening bigint,p_credit bigint,p_debit bigint,p_closing bigint,p_held bigint,p_evidence uuid) returns uuid
+create function public.manual_payout_append_statement_internal(p_custody uuid,p_previous uuid,p_statement uuid,p_at timestamptz,
+  p_opening bigint,p_credit bigint,p_debit bigint,p_closing bigint,p_held bigint,p_evidence uuid,
+  p_allow_owner_solo boolean default false) returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare prior public.manual_payout_statement_batches; v_id uuid;
 begin
-  perform public.manual_payout_require_enabled();
-  perform public.manual_payout_evidence_require(p_evidence,'statement',public.current_platform_role()='owner');
+  perform public.manual_payout_intake_authority(p_allow_owner_solo);
+  perform public.manual_payout_evidence_require(p_evidence,'statement',p_allow_owner_solo);
   perform 1 from public.manual_payout_custody where id=p_custody for update;
   select * into strict prior from public.manual_payout_statement_batches where custody_id=p_custody order by sequence desc limit 1;
   if p_previous is distinct from prior.id or p_opening is distinct from prior.closing_minor
-    or p_at is null or p_at<=prior.statement_at or p_at>now() then
+    or p_at is null or p_at<=prior.statement_at or p_at>clock_timestamp() then
     raise exception 'Statement chain, opening balance or time watermark conflict.';
   end if;
   insert into public.manual_payout_statement_batches(custody_id,previous_batch,statement_reference,statement_at,
@@ -374,13 +389,13 @@ begin
   insert into public.manual_payout_statement_lines values(custody,p_batch,p_line,p_kind,p_source,p_amount,p_direction,p_evidence,auth.uid());
 end $$;
 
-create function public.manual_payout_map_source(p_kind text,p_source uuid,p_custody uuid,p_batch uuid,p_evidence uuid,
-  p_line uuid default null,p_at timestamptz default null)
+create function public.manual_payout_map_source_internal(p_kind text,p_source uuid,p_custody uuid,p_batch uuid,p_evidence uuid,
+  p_line uuid default null,p_at timestamptz default null,p_allow_owner_solo boolean default false)
 returns bigint language plpgsql security definer set search_path = '' as $$
 declare s record; b public.manual_payout_statement_batches; v_id bigint; v_debits numeric; v_holds numeric;
 begin
-  perform public.manual_payout_require_enabled();
-  perform public.manual_payout_evidence_require(p_evidence,'commitment',public.current_platform_role()='owner');
+  perform public.manual_payout_intake_authority(p_allow_owner_solo);
+  perform public.manual_payout_evidence_require(p_evidence,'commitment',p_allow_owner_solo);
   select * into strict s from public.manual_payout_sources() where kind=p_kind and id=p_source;
   perform public.manual_payout_lock(p_custody,s.wedding_id);
   -- Read after locking: a concurrent refund/status change must not bind an old snapshot.
@@ -400,7 +415,9 @@ begin
     v_debits:=v_debits+coalesce((select sum(r.actual_minor::numeric+r.actual_fee_minor)
       from public.manual_payout_statement_debits d join public.manual_payout_reconciliations r on r.payout_id=d.payout_id
       where d.batch_id=p_batch),0);
-    if v_debits+s.debit_minor>b.debit_minor or v_holds+s.hold_minor>b.held_minor then
+    -- Historical paid debits before the opening watermark are already reflected
+    -- in the opening available balance; subsequent periods consume debit capacity.
+    if (b.previous_batch is not null and v_debits+s.debit_minor>b.debit_minor) or v_holds+s.hold_minor>b.held_minor then
       raise exception 'Statement debit/hold capacity already allocated.';
     end if;
     perform public.manual_payout_record_line(p_batch,p_line,p_kind,p_source,
@@ -412,14 +429,15 @@ begin
   return v_id;
 end $$;
 
-create function public.manual_payout_include_debit(p_id uuid,p_batch uuid,p_line uuid,p_evidence uuid) returns boolean
+create function public.manual_payout_include_debit_internal(p_id uuid,p_batch uuid,p_line uuid,p_evidence uuid,
+  p_allow_owner_solo boolean default false) returns boolean
 language plpgsql security definer set search_path = '' as $$
 declare r public.manual_payout_requests; b public.manual_payout_statement_batches; receipt public.manual_payout_reconciliations; used numeric;
 begin
-  perform public.manual_payout_require_enabled();
+  perform public.manual_payout_intake_authority(p_allow_owner_solo);
   select * into strict r from public.manual_payout_requests where id=p_id;
   perform public.manual_payout_lock(r.custody_id,r.wedding_id);
-  perform public.manual_payout_evidence_require(p_evidence,'statement',r.owner_solo and public.current_platform_role()='owner');
+  perform public.manual_payout_evidence_require(p_evidence,'statement',p_allow_owner_solo);
   select * into strict b from public.manual_payout_statement_batches where id=p_batch and custody_id=r.custody_id;
   select * into strict receipt from public.manual_payout_reconciliations where payout_id=p_id;
   if public.manual_payout_state(p_id)<>'paid' or receipt.statement_reference<>b.statement_reference
@@ -438,16 +456,17 @@ begin
   return true;
 end $$;
 
-create function public.manual_payout_register_custody(p_provider text, p_account uuid, p_currency text,
-  p_available bigint, p_statement_at timestamptz, p_evidence uuid,p_held bigint default null) returns uuid
+create function public.manual_payout_register_custody_internal(p_provider text, p_account uuid, p_currency text,
+  p_available bigint, p_statement_at timestamptz, p_evidence uuid,p_held bigint default null,
+  p_allow_owner_solo boolean default false) returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare v_id uuid;
 begin
-  perform public.manual_payout_require_enabled();
-  perform public.manual_payout_evidence_require(p_evidence,'custody',public.current_platform_role()='owner');
+  perform public.manual_payout_intake_authority(p_allow_owner_solo);
+  perform public.manual_payout_evidence_require(p_evidence,'custody',p_allow_owner_solo);
   perform public.manual_payout_evidence_require((select evidence_id from public.manual_payout_accounts
-    where id=p_account and provider=p_provider),'account',public.current_platform_role()='owner');
-  if p_statement_at > now() or p_held is null or p_held<0 then raise exception 'Explicit available/held statement funds and valid date required.'; end if;
+    where id=p_account and provider=p_provider),'account',p_allow_owner_solo);
+  if p_statement_at > clock_timestamp() or p_held is null or p_held<0 then raise exception 'Explicit available/held statement funds and valid date required.'; end if;
   insert into public.manual_payout_custody(provider,account_reference,currency,available_minor,statement_at,evidence_id)
     values(p_provider,p_account,p_currency,p_available,p_statement_at,p_evidence) returning id into v_id;
   insert into public.manual_payout_statement_batches(custody_id,statement_reference,statement_at,opening_minor,
@@ -458,13 +477,14 @@ begin
   return v_id;
 end $$;
 
-create function public.manual_payout_register_settlement(p_contribution uuid, p_custody uuid,
-  p_line uuid, p_settled bigint, p_evidence uuid,p_batch uuid default null,p_at timestamptz default null) returns boolean
+create function public.manual_payout_register_settlement_internal(p_contribution uuid, p_custody uuid,
+  p_line uuid, p_settled bigint, p_evidence uuid,p_batch uuid default null,p_at timestamptz default null,
+  p_allow_owner_solo boolean default false) returns boolean
 language plpgsql security definer set search_path = '' as $$
 declare c public.contributions; a public.manual_payout_custody; b public.manual_payout_statement_batches; prior_at timestamptz;
 begin
-  perform public.manual_payout_require_enabled();
-  perform public.manual_payout_evidence_require(p_evidence,'settlement',public.current_platform_role()='owner');
+  perform public.manual_payout_intake_authority(p_allow_owner_solo);
+  perform public.manual_payout_evidence_require(p_evidence,'settlement',p_allow_owner_solo);
   select * into strict a from public.manual_payout_custody where id=p_custody for update;
   select * into strict b from public.manual_payout_statement_batches
     where custody_id=p_custody and (p_batch is null or id=p_batch) order by sequence desc limit 1;
@@ -742,7 +762,7 @@ begin
   perform public.manual_payout_evidence_require(p_evidence,'reconciliation',solo);
   if (p_provider,p_account,upper(btrim(p_reference)),p_actual,p_fee,p_currency) is distinct from
       (receipt.provider,receipt.account_reference,receipt.transaction_reference,receipt.actual_minor,receipt.actual_fee_minor,receipt.currency)
-      or p_at is null or p_at<receipt.transferred_at or p_at>now() then
+      or p_at is null or p_at<receipt.transferred_at or p_at>clock_timestamp() then
     raise exception 'Statement debit/account/reference/amount/fee/currency/date mismatch; retain reservation.';
   end if;
   insert into public.manual_payout_reconciliations(payout_id,provider,account_reference,statement_reference,line_reference,
@@ -769,7 +789,7 @@ begin
   ) then raise exception 'Only the claimed sender can report an existing transfer.'; end if;
   -- Mismatches remain uncertain, never coerced into a success-shaped receipt.
   if p_actual is distinct from r.amount_minor or p_fee is distinct from r.fee_minor or p_currency is distinct from r.currency
-    or p_at is null or p_at>now() or p_at<(select claimed_at from public.manual_payout_claims where payout_id=p_id)
+    or p_at is null or p_at>clock_timestamp() or p_at<(select claimed_at from public.manual_payout_claims where payout_id=p_id)
     then raise exception 'Receipt mismatch: retain reservation and investigate; do not resend.'; end if;
   if not exists(select 1 from public.manual_payout_evidence where id=p_evidence and kind='receipt'
       and submitted_by=auth.uid()) then raise exception 'Sender receipt/statement evidence required.'; end if;
@@ -842,6 +862,31 @@ begin
 end $$;
 
 -- No direct table access, even service_role. Only explicitly audited RPCs are callable.
+-- Channel-neutral intake validators remain private. Public manual wrappers retain
+-- their own OFF gate; a separately reviewed rail may reuse validators, never tables.
+do $$
+declare f record; arguments text; names text;
+begin
+  for f in select p.oid,p.proname,p.proargnames,p.pronargs from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.proname in ('manual_payout_recipient_internal','manual_payout_register_account_internal',
+      'manual_payout_append_statement_internal','manual_payout_map_source_internal','manual_payout_include_debit_internal',
+      'manual_payout_register_custody_internal','manual_payout_register_settlement_internal') loop
+    arguments:=regexp_replace(pg_get_function_arguments(f.oid),', p_allow_owner_solo boolean DEFAULT false$','');
+    if arguments=pg_get_function_arguments(f.oid) or f.proargnames[f.pronargs]<>'p_allow_owner_solo' then
+      raise exception 'Unexpected shared intake signature: %',f.proname;
+    end if;
+    select string_agg(quote_ident(x),',' order by i) into names
+      from unnest(f.proargnames[1:f.pronargs-1]) with ordinality a(x,i);
+    execute format($wrapper$
+      create function public.%I(%s) returns %s language plpgsql security definer set search_path = '' as $body$
+      begin
+        perform public.manual_payout_require_enabled();
+        return public.%I(%s,public.current_platform_role()='owner');
+      end $body$;
+    $wrapper$,regexp_replace(f.proname,'_internal$',''),arguments,pg_get_function_result(f.oid),f.proname,names);
+  end loop;
+end $$;
+
 do $$
 declare f record;
 begin
