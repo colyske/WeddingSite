@@ -54,6 +54,12 @@
     <div id="create-section" class="card">
       <h2>✨ Plan a new wedding</h2>
       <p>Answer a few questions at your own pace. You can skip and return later.</p>
+      <p><a href="/inspiration.html">Explore fictional wedding inspiration</a> and start with a style you can customize.</p>
+      <aside id="inspiration-selection" class="notice" hidden>
+        <p id="inspiration-selection-copy"></p>
+        <button type="button" id="apply-inspiration" hidden>Replace this tab's unsaved answers with this style</button>
+        <button type="button" id="keep-current-answers" class="link" hidden>Keep my current answers</button>
+      </aside>
       <form id="create-form" novalidate onsubmit="return false">
         <section data-guide-step="couple" data-guide-title="Meet the couple">
         <p class="fine">Only the couple names are needed to create your server-saved draft. The date can wait until you are ready to publish.</p>
@@ -158,6 +164,7 @@
   <script src="setup-progress.js"></script>
   <script src="referral-client.js"></script>
   <script src="guided-setup.js"></script>
+  <script src="inspiration-fixtures.js"></script>
   <script src="dashboard.js"></script>
   <script src="footer.js"></script>
 <script src="/feedback.js"></script>

@@ -64,7 +64,35 @@ the existing approved daily feed only while fresh (36 hours); FX never changes
 the organizer's selected amounts. The read-only showcase keeps KES song
 100/500/1000 and gift 500/1000/5000.
 
-### Guided wedding drafts
+### Wedding inspiration and public design reuse
+
+`/inspiration.html` offers three author-owned, explicitly fictional examples,
+classified by the static `author-owned-fictional-inspiration` allowlist in
+`inspiration-fixtures.js`. Previewing or selecting a style makes no server writes.
+Only colours, event titles and clearly labelled editable sample event notes enter
+the shared creation wizard. Fictional names, dates, times and venues never fill
+required answers. Welcome, attire, travel and FAQ examples are reference copy only.
+These fixtures have no checkout, guests, sponsors, donations or activity.
+
+Eligible public wedding pages also offer **Use this style**, for past, current
+and future celebrations alike. This separate design-only path reads only the
+public wedding's platform palette (the current layout is shared), with generic
+ceremony/reception prompts. `server/wedding-style.js` requires a published,
+unarchived, unrestricted source and rechecks eligibility at draft creation.
+Public visibility is not permission to reproduce personal content: no stories,
+photos, identities, precise event details, FAQ/contact data, financial settings,
+revenue-feature opt-outs or activity are copied. Source records are never edited.
+
+Both paths require the couple's own names and an explicit supported accounting
+currency choice, preserve normal guest-capacity/time-zone and feature defaults,
+and use the existing authenticated, referral-aware, idempotent
+`create_wedding_draft` transaction. No provider, publication state or source price
+is transferred. A pre-existing tab draft requires an explicit replacement choice;
+sign-in retains the selected source. No additional schema/content migration or
+live-record classification/editing is involved. The existing guided-draft
+migration below remains a deployment prerequisite.
+
+### Guided setup behaviour
 
 Creation and the wedding editor use question-led sections with Back/Next, Skip,
 direct section links, review, keyboard focus and live step announcements. The

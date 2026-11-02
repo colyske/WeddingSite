@@ -55,6 +55,9 @@
     } catch (error) { setNotice(error.message, "bad"); }
   });
   state.requestKey = crypto.randomUUID();
+  state.inspirationId = null;
+  state.styleSlug = null;
+  let pendingInspiration = null;
   const draftKey = "ws-create-answers";
   let guide;
 
@@ -63,6 +66,12 @@
       const text = sessionStorage.getItem(draftKey);
       if (!text) return;
       const draft = JSON.parse(text);
+      if (draft.styleSlug && !/^[a-z0-9-]{3,80}$/.test(draft.styleSlug)) {
+        throw new Error("The saved public style is unavailable.");
+      }
+      if (draft.inspirationId && !window.WSInspiration.get(draft.inspirationId)) {
+        throw new Error("The saved inspiration style is unavailable.");
+      }
       if (!draft.fields || !Object.keys(DEFAULT_FIELDS).every(key => typeof draft.fields[key] === "string") ||
           !Array.isArray(draft.palette) || draft.palette.length !== 4 || !draft.palette.every(color => HEX.test(color)) ||
           !Array.isArray(draft.venues) || !draft.venues.length || draft.venues.some(venue =>
@@ -71,14 +80,18 @@
         throw new Error("The saved answers could not be read.");
       }
       state.fields = { ...draft.fields };
+      state.inspirationId = draft.inspirationId || null;
+      state.styleSlug = draft.styleSlug || null;
       if (/^[0-9a-f-]{36}$/i.test(draft.requestKey || "")) state.requestKey = draft.requestKey;
       state.palette = [...draft.palette];
       state.venues = draft.venues;
       nextVenueId = Math.max(...state.venues.map(venue => venue.id)) + 1;
       state.mainVenueId = state.venues.some(venue => venue.id === draft.mainVenueId) ? draft.mainVenueId : state.venues[0].id;
+      return true;
     } catch (error) {
       console.error("Restore wedding answers failed:", error);
       setNotice("Could not restore the answers saved in this tab. Do not close it if you still have unsaved details on another page.", "bad");
+      return true;
     }
   }
 
@@ -88,7 +101,8 @@
     readVenuesFromDom();
     try {
       sessionStorage.setItem(draftKey, JSON.stringify({
-        fields: state.fields, palette: state.palette, venues: state.venues, mainVenueId: state.mainVenueId, requestKey: state.requestKey
+        fields: state.fields, palette: state.palette, venues: state.venues, mainVenueId: state.mainVenueId, requestKey: state.requestKey,
+        inspirationId: state.inspirationId, styleSlug: state.styleSlug
       }));
       guide?.setState("Before creation, answers are kept in this tab only. Create your draft to save to your account and resume on another device.");
     } catch (error) {
@@ -96,6 +110,100 @@
       guide?.setState("This browser could not keep your answers. Leave this page open until you can create your wedding.");
     }
   }
+
+  function clearInspirationQuery() {
+    const url = new URL(location.href);
+    url.searchParams.delete("inspiration");
+    url.searchParams.delete("style");
+    history.replaceState(null, "", url);
+  }
+
+  function showInspiration() {
+    const item = pendingInspiration || window.WSInspiration.get(state.inspirationId) ||
+      (state.styleSlug ? { title: "Public wedding design", slug: state.styleSlug } : null);
+    $("inspiration-selection").hidden = !item;
+    $("apply-inspiration").hidden = !pendingInspiration;
+    $("keep-current-answers").hidden = !pendingInspiration;
+    if (item) $("inspiration-selection-copy").textContent = pendingInspiration
+      ? `${item.title}: your existing answers in this tab have been kept. You can explicitly replace them with this ${item.slug ? "design-only starter" : "fictional style"}, or keep them. No saved wedding will be changed.`
+      : item.slug
+        ? "Public wedding design only: colours with generic editable ceremony and reception prompts. Public visibility is not permission to copy personal content. No story, photos, identities, exact event details, money settings or activity are copied. Enter your own names, dates, places and currency."
+        : `${item.title} - fictional inspiration. Colours and event outlines are ready to customize. Enter your own names, dates, places and currency. Sample event notes are editable; no payments or publication are activated.`;
+  }
+
+  function applyInspiration(item) {
+    if (!item || state.submitting || state.created) return;
+    const starter = item.slug ? item.starter : window.WSInspiration.starter(item.id);
+    state.fields = { ...DEFAULT_FIELDS, currency: "" };
+    state.palette = starter.palette;
+    state.venues = starter.venues.map(venue => ({ ...venue, id: nextVenueId++ }));
+    state.mainVenueId = state.venues.find(venue => venue.isMain).id;
+    state.requestKey = crypto.randomUUID();
+    state.inspirationId = item.id || null;
+    state.styleSlug = item.slug || null;
+    pendingInspiration = null;
+    clearInspirationQuery();
+    const select = $("currency");
+    if (!select.querySelector('option[value=""]')) select.prepend(new Option("Choose your own accounting currency", ""));
+    renderAll();
+    showInspiration();
+    keepAnswers();
+    guide?.reveal($("couple-names"));
+  }
+
+  async function initializeInspiration(restored) {
+    const fingerprint = () => JSON.stringify([...$("create-form").querySelectorAll("input, select, textarea")]
+      .map(input => [input.value, input.checked]));
+    const initialAnswers = fingerprint();
+    const params = new URLSearchParams(location.search);
+    const id = params.get("inspiration");
+    const slug = params.get("style");
+    if (slug) {
+      try {
+        if (id) throw new Error("Choose one inspiration source at a time.");
+        const res = await fetch(`/api/guest?action=style&slug=${encodeURIComponent(slug)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not load this public wedding design.");
+        const item = { title: "Public wedding design", slug, starter: data.style };
+        // Answers entered while the design loaded must not be overwritten.
+        if (state.submitting || state.created) { clearInspirationQuery(); return; }
+        if (!restored && fingerprint() === initialAnswers) applyInspiration(item);
+        else pendingInspiration = item;
+      } catch (error) {
+        setNotice(error.message + " Your current answers have not been changed.", "bad");
+        clearInspirationQuery();
+        return;
+      }
+    }
+    const item = window.WSInspiration.get(id);
+    if (id && !item) {
+      setNotice("That inspiration style is unavailable. Your current answers have not been changed.", "bad");
+      clearInspirationQuery();
+    } else if (item) {
+      if (!restored) applyInspiration(item);
+      else pendingInspiration = item;
+    }
+    showInspiration();
+    if (state.inspirationId || state.styleSlug) {
+      const select = $("currency");
+      if (!select.querySelector('option[value=""]')) select.prepend(new Option("Choose your own accounting currency", ""));
+      select.value = state.fields.currency;
+    }
+  }
+
+  $("apply-inspiration").addEventListener("click", () => applyInspiration(pendingInspiration));
+  $("keep-current-answers").addEventListener("click", () => {
+    pendingInspiration = null;
+    clearInspirationQuery();
+    showInspiration();
+  });
+  document.addEventListener("DOMContentLoaded", () => {
+    if (state.inspirationId || state.styleSlug) {
+      const select = $("currency");
+      if (!select.querySelector('option[value=""]')) select.prepend(new Option("Choose your own accounting currency", ""));
+      select.value = state.fields.currency;
+    }
+  });
 
   const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const safeColor = (c) => (HEX.test(c) ? c : "#cccccc");
@@ -131,8 +239,8 @@
     $("venues-container").innerHTML = state.venues.map((v, i) => `
       <div class="venue-item" data-venue-id="${v.id}">
         <label class="venue-main-label">
-          <input type="radio" name="main-venue" data-action="set-main" data-id="${v.id}" ${v.id === state.mainVenueId ? "checked" : ""}>
-          <span>Main venue</span>
+          <input type="radio" name="main-venue" data-action="set-main" data-id="${v.id}" ${v.id === state.mainVenueId ? "checked" : ""} ${v.kind === "pre" ? "disabled" : ""}>
+          <span>${v.kind === "pre" ? "Pre-wedding event" : "Main venue"}</span>
         </label>
         <input type="text" data-venue-field="name" data-id="${v.id}" placeholder="${i === 0 ? "e.g. Church service" : "e.g. Reception, photo shoot, procession meeting point"}" maxlength="100" value="${esc(v.name)}" aria-label="Venue ${i + 1} name" required>
         <input type="date" data-venue-field="eventDate" data-id="${v.id}" value="${esc(v.eventDate || state.fields.date)}" aria-label="Event ${i + 1} date" required>
@@ -147,6 +255,8 @@
   function renderSubmit() {
     const btn = $("create-submit");
     btn.disabled = state.submitting || !!state.created;
+    $("apply-inspiration").disabled = btn.disabled;
+    $("keep-current-answers").disabled = btn.disabled;
     btn.textContent = state.created ? "Wedding created" : state.submitting ? "⏳ Creating..." : "✨ Create wedding";
   }
 
@@ -273,10 +383,13 @@
       .map((v) => ({
         name: v.name.trim(), time: v.time, eventDate: v.eventDate || state.fields.date,
         address: v.address.trim(), map: v.map.trim(), description: v.description.trim(),
+        kind: v.kind === "pre" ? "pre" : "main",
         isMain: v.id === state.mainVenueId
       }));
     return {
       requestKey: state.requestKey,
+      ...(state.inspirationId ? { inspirationId: state.inspirationId } : {}),
+      ...(state.styleSlug ? { styleSlug: state.styleSlug } : {}),
       coupleNames: f.names.trim(),
       weddingDate: f.date || null,
       timeZone: f.timeZone,
@@ -339,6 +452,9 @@
       catch (error) { console.error("Clear created wedding answers failed:", error); }
       guide?.created();
       state.fields = { ...DEFAULT_FIELDS };
+      state.inspirationId = null;
+      state.styleSlug = null;
+      showInspiration();
       state.palette = [...DEFAULT_PALETTE];
       state.paletteOpen = false;
       state.venues = [newVenue()];
@@ -470,12 +586,13 @@
   window.addEventListener("unhandledrejection", (e) => { console.error(e.reason); setNotice("Something went wrong. Your entries are kept; please try again.", "bad"); });
 
   if (!window.WS.token()) {
-    WSReferrals.prepare().then(() => location.replace("/signin.html"))
+    WSReferrals.prepare().then(() => location.replace("/signin.html?next=" + encodeURIComponent(location.pathname + location.search + location.hash)))
       .catch(error => { $("client-referral-dismiss").hidden = false; setNotice(error.message, "bad"); });
   } else {
-    restoreAnswers();
+    const restored = restoreAnswers();
     window.WSTime.fillSelect($("wedding-timezone"), state.fields.timeZone);
     renderAll();
+    initializeInspiration(restored);
     guide = window.WSGuidedSetup.create($("create-form"), {
       mode: "create", onKeep: keepAnswers,
       summaries: {

@@ -46,6 +46,8 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     assert.match(await page.locator("#ledger-body").innerText(), /Song bid[\s\S]*2,500[\s\S]*Sample Guest A/);
     assert.doesNotMatch(await page.locator("#ledger-body").innerText(), /NaN|\$/);
     assert.ok(await page.locator(".showcase-banner").isVisible());
+    await page.locator("#reuse-wedding-style a").waitFor();
+    assert.equal(await page.locator("#reuse-wedding-style a").getAttribute("href"), "/dashboard.html?style=showcase-wedding#step=couple");
     assert.ok(await page.locator("#pay-submit").isDisabled());
     const contrast = await page.evaluate(() => {
       function luminance(rgb) {

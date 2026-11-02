@@ -11,6 +11,8 @@ import { handlePublicationPayment } from "../server/publication-payments.js";
 import { publicationQuote } from "../server/publication-fx.js";
 import "../currencies.js";
 import "../amount-presets.js";
+import "../inspiration-fixtures.js";
+import { publicWeddingStyle } from "../server/wedding-style.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
@@ -191,6 +193,19 @@ export default async function handler(req, res) {
     }
 
     if (action === "create") {
+      if (!methodOnly(req, res, "POST")) return;
+      if (body.styleSlug !== undefined) {
+        if (body.inspirationId !== undefined || !globalThis.WSCurrencies.supportsAccounting(body.currency)) {
+          return sendJson(res, 400, { error: "Choose one style source and your own supported accounting currency." });
+        }
+        if (!await publicWeddingStyle(body.styleSlug)) {
+          return sendJson(res, 400, { error: "This wedding is no longer available for public design reuse. Choose another style." });
+        }
+      }
+      if (body.inspirationId !== undefined && (!globalThis.WSInspiration.get(body.inspirationId) ||
+          !globalThis.WSCurrencies.supportsAccounting(body.currency))) {
+        return sendJson(res, 400, { error: "Choose a listed fictional inspiration style and your own supported accounting currency." });
+      }
       if (body.referral !== undefined && body.referral !== null &&
           (typeof body.referral !== "object" || Array.isArray(body.referral) ||
             !UUID.test(String(body.referral.intentId || "")) ||
@@ -199,7 +214,6 @@ export default async function handler(req, res) {
             body.referral.termsVersion !== "client-referrals-v1")) {
         return sendJson(res, 400, { error: "Review the referral disclosure and choose accept or decline." });
       }
-      if (!methodOnly(req, res, "POST")) return;
       if (!UUID.test(String(body.requestKey || ""))) return sendJson(res, 400, { error: "A stable create request key is required." });
       if (body.referral !== undefined && body.referral !== null &&
           (!UUID.test(String(body.referral.intentId || "")) || !UUID.test(String(body.referral.revision || "")) ||
