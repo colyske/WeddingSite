@@ -2,7 +2,7 @@
 (function () {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => WS.esc(s);
-  const SEC = { overview: "Overview", operations: "Operations", weddings: "Weddings", users: "Users & roles", fees: "Fees & settings", ledger: "Ledger", payouts: "Payouts", b2c: "M-Pesa B2C", audit: "Audit log", security: "Security" };
+  const SEC = { overview: "Overview", operations: "Operations", weddings: "Weddings", users: "Users & roles", fees: "Fees & settings", referrals: "Client referrals", ledger: "Ledger", payouts: "Payouts", b2c: "M-Pesa B2C", audit: "Audit log", security: "Security" };
   let role = "";
   let cache = {};
 
@@ -102,6 +102,34 @@
       <h3>Guests who invited others</h3>${list(m.top_inviters, [["Guest", (r) => esc(r.guest_name)], ["Visits", (r) => r.visits], ["RSVPs brought in", (r) => r.rsvps_brought]])}`;
   }
   const panels = {
+    async referrals(el) {
+      const [{ policy }, { history }, ledger] = await Promise.all([
+        get("referral-policy"), get("referral-history"), get("referral-ledger")
+      ]);
+      const owner = role === "owner";
+      const format = (minor, currency) => {
+        const value = BigInt(minor), absolute = value < 0n ? -value : value;
+        return `${currency} ${value < 0n ? "-" : ""}${(absolute / 100n).toLocaleString()}.${String(absolute % 100n).padStart(2, "0")}`;
+      };
+      el.innerHTML = `<h2>Client referrals: HELD estimates</h2>
+        <p><strong>Payable: zero. No operational earnings, funding unlock, withdrawals or transfers.</strong>
+        Verified platform settlement, full cost inventory and other commitments are not established.
+        Commissions would be funded only from available platform revenue, never from couple net or provider amounts.</p>
+        <form id="referral-policy-form" data-revision="${esc(policy.revision)}"><fieldset${owner ? "" : " disabled"}>
+          <legend>Owner-controlled prospective policy</legend>
+          <label><input type="checkbox" name="enabled"${policy.enabled ? " checked" : ""}> Enable held referral estimates</label>
+          <label>Referral percentage (%)<input name="percent" type="number" min="0" max="100" step="0.01" value="${(policy.rate_basis_points / 100).toFixed(2)}" required></label>
+          <p>Default OFF/0. A change affects newly admitted contributions only, including new contributions to eligible existing referred weddings. Old contributions are not repriced.
+          Weddings created before first activation are permanently ineligible.</p>
+          <label><input name="confirmed" type="checkbox" required> Confirm this revision-checked policy change; it does not enable payouts.</label>
+          <button type="submit">${owner ? "Save referral policy" : "Owner access required"}</button></fieldset></form>
+        <p>First effective time: ${esc(policy.first_effective_at || "Not activated")}. Terms ${esc(policy.terms_version)}.</p>
+        <h3>Append-only policy history</h3>${table(["Time", "Old rate (basis points)", "New rate (basis points)", "Enabled"], history.map(h => `<tr><td>${esc(h.created_at)}</td><td>${esc(h.old_values.rate_basis_points)}</td><td>${esc(h.new_values.rate_basis_points)}</td><td>${esc(h.new_values.enabled)}</td></tr>`))}
+        <h3>Signed estimate journal (latest 100)</h3>${table(["ID", "Wedding reference", "Currency", "Estimate adjustment", "Net verified basis", "Hold reasons"], ledger.entries.map(l => `<tr><td>${esc(l.id)}</td><td>${esc(l.wedding_id)}</td><td>${esc(l.currency)}</td><td>${esc(format(l.estimate_delta_minor, l.currency))}</td><td>${esc(format(l.basis_minor, l.currency))}</td><td>${esc(l.hold_reasons.join(", "))}</td></tr>`))}
+        ${ledger.entries.length === 100 ? `<button type="button" id="referral-older" data-before="${esc(ledger.entries.at(-1).id)}">Load older journal entries</button><pre id="referral-older-entries"></pre>` : ""}
+        <p>Partner accounts are not explicitly linked on this schema. Self-referral checks use creator, owner and client-authority account IDs only, not email. Ordinary helper grants do not invalidate a referral.
+        Future payout blockers: verified platform revenue, commitments, eligibility/fraud controls, identity/KYC, tax review and separately approved payout authorization.</p>`;
+    },
     async overview(el) {
       const o = cache.overview || (cache.overview = await get("overview"));
       el.innerHTML = `<h2>Platform overview</h2><div class="stats">
@@ -390,7 +418,7 @@
     }
     if (opts.ownerOnly && role !== "owner") return location.replace("/account.html");
     $("role-badge").textContent = "Role: " + role;
-    const tabs = role === "admin" ? ["operations", "weddings", "users"] : ["overview", "operations", "weddings", "users", "fees", "ledger", "payouts", "audit", "security"];
+    const tabs = role === "admin" ? ["operations", "weddings", "users"] : ["overview", "operations", "weddings", "users", "fees", "referrals", "ledger", "payouts", "audit", "security"];
     if (["owner", "superadmin"].includes(role) && window.B2CBackoffice) tabs.splice(tabs.indexOf("audit"), 0, "b2c");
     $("admin-nav").innerHTML = tabs.map((t, i) => `<button type="button" class="tab-btn${i ? "" : " active"}" role="tab" aria-selected="${i ? "false" : "true"}" data-tab="${t}">${SEC[t]}</button>`).join("");
     $("admin-nav").addEventListener("click", (e) => { const b = e.target.closest(".tab-btn"); if (b) { delete $("panel").dataset.wedding; show(b.dataset.tab); } });
@@ -398,6 +426,16 @@
 
     const panel = $("panel");
     panel.addEventListener("click", async (e) => {
+      if (e.target.closest("#referral-older")) {
+        const button = e.target.closest("#referral-older");
+        button.disabled = true;
+        try {
+          const ledger = await get("referral-ledger", "&before=" + encodeURIComponent(button.dataset.before));
+          $("referral-older-entries").textContent += JSON.stringify(ledger.entries, null, 2) + "\n";
+          if (ledger.entries.length === 100) { button.dataset.before = ledger.entries.at(-1).id; button.disabled = false; }
+        } catch (error) { toast(error.message, true); button.disabled = false; }
+        return;
+      }
       if (e.target.closest("#paystack-revoke")) {
         if (!confirm("Revoke Paystack live approval? New guest and publication payments stop. Existing payments still reconcile unless the independent reconciliation switch is off.")) return;
         try { await post("paystack-policy", { approved: false, confirmed: true, policyRevision: $("paystack-mode-form").elements.policyRevision.value }); await show("fees"); }
@@ -464,6 +502,21 @@
       } catch (err) { toast(err.message, true); }
     });
     panel.addEventListener("submit", async (e) => {
+      if (e.target.id === "referral-policy-form") {
+        e.preventDefault();
+        const form = e.target, button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        try {
+          const enabled = form.elements.enabled.checked;
+          await post("referral-policy-save", {
+            enabled, rateBasisPoints: enabled ? Math.round(Number(form.elements.percent.value) * 100) : 0,
+            revision: form.dataset.revision, confirmed: form.elements.confirmed.checked
+          });
+          await show("referrals");
+          toast("Referral policy saved. All estimates remain held and unpayable.");
+        } catch (error) { toast(error.message, true); button.disabled = false; }
+        return;
+      }
       e.preventDefault();
       if (["paystack-policy-form","paystack-mode-form","paystack-destination-form","paystack-settlement-form"].includes(e.target.id) ||
           e.target.classList.contains("paystack-publication-resolution")) {

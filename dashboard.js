@@ -1,284 +1,407 @@
-// Dashboard front-end: one state object, render functions, delegated events.
-// The create form is never submitted natively; values live in `state` and are only
-// cleared after the API confirms success.
+// Wedding drafts are created here; the shared editor guide handles all setup.
 (() => {
   "use strict";
 
-  const $ = (id) => document.getElementById(id);
-  const HEX = /^#[0-9a-f]{6}$/i;
+  const $ = id => document.getElementById(id);
   const DEFAULT_PALETTE = ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"];
-  const DEFAULT_FIELDS = { names: "", date: "", timeZone: window.WSTime ? window.WSTime.browserZone() : "Africa/Nairobi", location: "", currency: "USD", capacity: "150" };
+  const legacyAnswersKey = "ws-create-answers";
+  const createKey = "ws-create-request-key";
+  const state = { submitting: false, created: null, weddings: null, weddingsError: "", notice: null };
+  let referralDisclosure = null;
+  let referralReady = false;
+  let legacyAnswers = null;
 
-  let nextVenueId = 1;
-  const newVenue = () => ({ id: nextVenueId++, name: "", time: "", eventDate: "", address: "", map: "", description: "" });
-
-  const state = {
-    fields: { ...DEFAULT_FIELDS },
-    palette: [...DEFAULT_PALETTE],
-    paletteOpen: false,
-    venues: [newVenue()],
-    mainVenueId: 1,
-    submitting: false,
-    notice: null,
-    created: null,
-    weddings: null,
-    weddingsError: ""
+  const esc = value => String(value ?? "").replace(/[&<>"']/g, char =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+  const setNotice = (text, kind, target) => {
+    state.notice = text ? { text, bad: kind === "bad" } : null;
+    renderNotice();
+    if (text && window.WSFeedback) WSFeedback.toast(text, kind === "bad");
+    if (text && window.WSFeedback) WSFeedback.scrollTo(target || (kind === "bad" ? "notice" : "created"));
   };
-
-  const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const safeColor = (c) => (HEX.test(c) ? c : "#cccccc");
-  const setNotice = (text, kind, target) => { state.notice = text ? { text, bad: kind === "bad" } : null; renderNotice(); if (text && window.WSFeedback) { WSFeedback.toast(text, kind === "bad"); WSFeedback.scrollTo(target || (kind === "bad" ? "notice" : "created")); } };
-
   function renderNotice() {
-    const el = $("notice");
-    el.hidden = !state.notice;
-    el.textContent = state.notice ? state.notice.text : "";
-    el.className = "notice" + (state.notice && state.notice.bad ? " bad" : "");
+    const element = $("notice");
+    element.hidden = !state.notice;
+    element.textContent = state.notice?.text || "";
+    element.className = "notice" + (state.notice?.bad ? " bad" : "");
   }
 
-  function renderFields() {
-    const map = { "couple-names": "names", "wedding-date": "date", "wedding-timezone": "timeZone", location: "location", currency: "currency", "max-capacity": "capacity" };
-    for (const [id, key] of Object.entries(map)) {
-      const el = $(id);
-      if (el.value !== state.fields[key]) el.value = state.fields[key];
+  function readLegacyAnswers() {
+    try {
+      const saved = sessionStorage.getItem(legacyAnswersKey);
+      if (!saved) return null;
+      const draft = JSON.parse(saved);
+      if (!draft.fields || !["names", "date", "timeZone", "location", "currency", "capacity"]
+        .every(key => typeof draft.fields[key] === "string") ||
+          !Array.isArray(draft.palette) || draft.palette.length !== 4 ||
+          !draft.palette.every(color => /^#[0-9a-f]{6}$/i.test(color)) ||
+          !Array.isArray(draft.venues) || !draft.venues.length ||
+          draft.venues.some(venue => !venue || !["name", "time", "eventDate", "address", "map", "description"]
+            .every(key => typeof venue[key] === "string"))) {
+        throw new Error("The earlier saved answers have an unexpected format.");
+      }
+      return draft;
+    } catch (error) {
+      console.error("Could not read earlier wedding answers:", error);
+      $("legacy-answer-notice").hidden = false;
+      $("legacy-answer-notice").textContent =
+        "This tab contains older setup answers that could not be read. They have not been deleted; keep this tab open while you decide how to continue.";
+      return null;
     }
   }
 
-  function renderPalette() {
-    state.palette.forEach((color, i) => {
-      $(`swatch-${i + 1}`).style.background = safeColor(color);
-      const input = $(`color-${i + 1}`);
-      if (input.value !== color) input.value = color;
-    });
-    $("palette-editor").hidden = !state.paletteOpen;
-    $("edit-palette").setAttribute("aria-expanded", String(state.paletteOpen));
-    $("edit-palette").textContent = state.paletteOpen ? "✕ Close colours" : "✎ Edit colours";
+  function prepareLegacyAnswerChoice() {
+    legacyAnswers = readLegacyAnswers();
+    if (!legacyAnswers) return;
+    if (!$("couple-names").value && legacyAnswers.fields.names) $("couple-names").value = legacyAnswers.fields.names;
+    const notice = $("legacy-answer-notice");
+    notice.hidden = false;
+    const venueCount = legacyAnswers.venues.filter(venue =>
+      venue.name || venue.time || venue.eventDate || venue.address || venue.map || venue.description).length;
+    notice.innerHTML = `We found setup answers saved in this tab: ${esc(legacyAnswers.fields.date || "no date yet")}, ` +
+      `${esc(legacyAnswers.fields.location || "no location yet")}, and ${venueCount} event(s). ` +
+      `They stay here unless you choose to carry them into this wedding draft.`;
+    const label = document.createElement("label");
+    label.className = "legacy-answer-choice";
+    label.innerHTML = '<input id="include-legacy-answers" type="checkbox" checked> Carry these saved answers into the new draft';
+    notice.after(label);
   }
 
-  function renderVenues() {
-    $("venues-container").innerHTML = state.venues.map((v, i) => `
-      <div class="venue-item" data-venue-id="${v.id}">
-        <label class="venue-main-label">
-          <input type="radio" name="main-venue" data-action="set-main" data-id="${v.id}" ${v.id === state.mainVenueId ? "checked" : ""}>
-          <span>Main venue</span>
-        </label>
-        <input type="text" data-venue-field="name" data-id="${v.id}" placeholder="${i === 0 ? "e.g. Church service" : "e.g. Reception, photo shoot, procession meeting point"}" maxlength="100" value="${esc(v.name)}" aria-label="Venue ${i + 1} name" required>
-        <input type="date" data-venue-field="eventDate" data-id="${v.id}" value="${esc(v.eventDate || state.fields.date)}" aria-label="Event ${i + 1} date" required>
-        <input type="time" data-venue-field="time" data-id="${v.id}" value="${esc(v.time)}" aria-label="Venue ${i + 1} time" required>
-        <input type="text" data-venue-field="address" data-id="${v.id}" placeholder="Street address" maxlength="200" value="${esc(v.address)}" aria-label="Venue ${i + 1} address" required>
-        <input type="url" data-venue-field="map" data-id="${v.id}" placeholder="Map link (Google Maps, Apple Maps, etc.)" maxlength="500" value="${esc(v.map)}" aria-label="Venue ${i + 1} map link">
-        <textarea data-venue-field="description" data-id="${v.id}" placeholder="Notes (address, parking, dress code)" maxlength="500" aria-label="Venue ${i + 1} notes">${esc(v.description)}</textarea>
-        <button type="button" class="remove-venue" data-action="remove-venue" data-id="${v.id}">✕ Remove venue</button>
-      </div>`).join("");
+  function createRequestKey() {
+    try {
+      const existing = sessionStorage.getItem(createKey);
+      if (existing && /^[0-9a-f-]{36}$/i.test(existing)) return existing;
+      const created = crypto.randomUUID();
+      sessionStorage.setItem(createKey, created);
+      return created;
+    } catch (error) {
+      console.error("Create request key could not be saved:", error);
+      return crypto.randomUUID();
+    }
   }
+  let requestKey = createRequestKey();
+  const starterKey = "ws-starter-choice";
+  let selectedStarter = null, pendingStarter = null, starterLoading = false, currencies = [];
+  function rememberStarter() {
+    try { sessionStorage.setItem(starterKey, JSON.stringify({
+      source: selectedStarter?.source, snapshot: selectedStarter,
+      currency: $("starter-currency").value, names: $("couple-names").value, requestKey
+    })); }
+    catch (error) { setNotice(`Could not keep your starter choice in this tab: ${error.message}`, "bad"); }
+  }
+  function starterConfig() {
+    if (!selectedStarter) return null;
+    const currency = $("starter-currency").value;
+    let setup = selectedStarter.inspirationId
+      ? WSStarterSetup.fictional(selectedStarter.inspirationId, currency)
+      : WSStarterSetup.clone(selectedStarter.setup);
+    const retain = selectedStarter.inspirationId ? WSStarterSetup.hasSamples(currency) : setup.currency === currency;
+    if (!retain) {
+      setup.reviewNote = `At creation, source prices were NOT copied into ${currency || "the new currency"}: ` +
+        `${setup.tiers.length} sponsor packages, ${setup.registry.length} registry goals, ${setup.campaigns.length} fundraising goals and their milestones, ` +
+        `${setup.vip ? "the VIP offer" : "no VIP offer"}, ${setup.featured ? "the featured sponsor structure" : "no featured sponsor structure"}, and RSVP/extra-guest/premium-meal fees. ` +
+        "Priced offerings/goals were omitted, not converted. Add your own offerings, goals and fees using the guide links below. Event outlines, meal options, feature preferences and guest prompts still need personalization.";
+      // These schemas require actual prices/targets. Do not invent nominal prices or
+      // relabel another currency; the shared editor can add new offerings later.
+      setup = WSStarterSetup.clearMoney(setup, currency);
+      setup.tiers = []; setup.campaigns = []; setup.registry = []; setup.vip = null; setup.featured = null;
+      setup.rsvp.fee = setup.rsvp.extraGuestFee = setup.rsvp.premiumDietFee = "0";
+    }
+    setup.currency = currency;
+    setup.reviewed = $("starter-reviewed").checked;
+    return setup;
+  }
+  function renderStarterReview() {
+    $("inspiration-selection").hidden = !selectedStarter && !pendingStarter;
+    $("apply-inspiration").hidden = !pendingStarter;
+    $("keep-current-answers").hidden = !pendingStarter;
+    $("starter-review").hidden = !selectedStarter;
+    const item = pendingStarter || selectedStarter;
+    if (!item) return;
+    $("inspiration-selection-copy").textContent = pendingStarter
+      ? "Your existing names and saved answers have not been replaced. Choose explicitly whether to use this new starting point."
+      : selectedStarter.inspirationId
+        ? "Author-owned fictional inspiration, not customers, donations or paid sponsorships. Examples are illustrative and editable."
+        : "Public reusable configuration only. Public visibility is not permission to copy personal content: neutral prompts replace personal stories, photos, event details and original writing.";
+    if (!selectedStarter) return;
+    const config = starterConfig(), code = $("starter-currency").value;
+    const retained = selectedStarter.inspirationId ? WSStarterSetup.hasSamples(code) : selectedStarter.setup.currency === code;
+    $("starter-money-disclosure").textContent = !code
+      ? "Choose a currently supported currency before accepting any numeric money configuration."
+      : retained
+        ? `${code}: ${selectedStarter.inspirationId ? "hand-authored illustrative prices and goals (not an FX conversion)" : "same-currency public prices and goals"}. Review below; all settings remain editable in your private guide. No received amounts or activity are copied.`
+        : `${code}: all source prices/goals were omitted, not converted or relabelled. Priced offerings and goals are not created; add your own amounts in the shared guide. Free RSVP defaults and generic guidance remain.`;
+    const price = value => `${esc(code || "currency not chosen")} ${esc(value || "not set")}`;
+    $("starter-summary").innerHTML = `<p>${selectedStarter.venues.length} event outlines (dates, times, addresses and maps blank). Attire, travel and FAQ ${selectedStarter.inspirationId ? "illustrative examples" : "neutral prompts"}.</p>` +
+      `<p>RSVP fees: ${price(config.rsvp.fee)}; extra guest: ${price(config.rsvp.extraGuestFee)}; premium meal: ${price(config.rsvp.premiumDietFee)}. ${config.rsvp.premiumDietOptions.length} editable meal choices.</p>` +
+      `<ul>${config.tiers.map(tier => `<li>Package: ${esc(tier.name)} — ${price(tier.minAmount)}; ${esc(tier.perks)}</li>`).join("")}` +
+      `${config.registry.map(item => `<li>Registry: ${esc(item.name)} — target ${price(item.target)}</li>`).join("")}` +
+      `${config.campaigns.map(goal => `<li>Goal: ${esc(goal.name)} — ${price(goal.goal)}; ${goal.milestones.map(m => `${esc(m.name)}: ${price(m.target)}`).join("; ")}</li>`).join("")}` +
+      `${config.vip ? `<li>Seating: ${esc(config.vip.seats)} seats at ${price(config.vip.price)}; none sold.</li>` : ""}</ul>` +
+      (config.featured ? `<p>Featured sponsorship structure: ${esc(config.featured.slots)} slots, minimum ${price(config.featured.minimum)}, increment ${price(config.featured.increment)}. Disabled with blank dates until you configure your own campaign window.</p>` : "") +
+      "<p>No guests, responses, helpers, purchased packages, transactions, bids, received funds, payment/provider settings, referral settings or publication state are copied. No suggested contribution or bid amounts are added.</p>";
+  }
+  async function checkStarterCurrencies(savedCurrency = $("starter-currency").value) {
+    currencies = [];
+    $("starter-currency").replaceChildren(new Option("Checking supported currencies…", ""));
+    $("starter-reviewed").checked = false;
+    try {
+      const response = await WS.api("/api/weddings?action=collection-capabilities");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not check collection support.");
+      if (!Array.isArray(data.currencies) || data.currencies.some(item =>
+        !item || !WSCurrencies.supportsAccounting(item.code) || typeof item.name !== "string" ||
+        !Array.isArray(item.methods) || !item.methods.length)) throw new Error("Collection currency support could not be verified.");
+      currencies = data.currencies;
+      if (!currencies.length) throw new Error("No collection currencies are currently ready. Your answers are kept; starter creation is paused.");
+    } catch (error) { setNotice(error.message, "bad"); }
+    $("starter-currency").replaceChildren(new Option("Choose a supported currency", ""),
+      ...currencies.map(item => new Option(`${item.code} - ${item.name}`, item.code)));
+    if (currencies.some(item => item.code === savedCurrency)) $("starter-currency").value = savedCurrency;
+    renderStarterReview();
+  }
+  async function chooseStarter(item, { restore = false, currency = "" } = {}) {
+    selectedStarter = item; pendingStarter = null;
+    if (!restore) {
+      requestKey = crypto.randomUUID();
+      try { sessionStorage.setItem(createKey, requestKey); } catch (error) { setNotice(error.message, "bad"); }
+    }
+    if ($("include-legacy-answers")) $("include-legacy-answers").checked = false;
+    $("starter-reviewed").checked = false;
+    renderStarterReview();
+    await checkStarterCurrencies(currency);
+    rememberStarter();
+  }
+  async function loadStarter(source) {
+    if (source.inspirationId) {
+      if (!WSInspiration.get(source.inspirationId)) throw new Error("That fictional inspiration style is unavailable.");
+      return { source, inspirationId: source.inspirationId, ...WSInspiration.starter(source.inspirationId) };
+    }
+    if (typeof source.styleSlug !== "string" || !/^[a-z0-9-]{3,80}$/.test(source.styleSlug)) throw new Error("Choose an eligible public wedding.");
+    const response = await fetch(`/api/guest?action=style&slug=${encodeURIComponent(source.styleSlug)}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "This public wedding is unavailable for reuse.");
+    return { source, ...data.style, setup: WSStarterSetup.restoreEditable(data.style.setup) };
+  }
+  async function initializeStarter() {
+    starterLoading = true; renderSubmit();
+    try {
+      let saved = null;
+      try {
+        const text = sessionStorage.getItem(starterKey);
+        if (text) saved = JSON.parse(text);
+      } catch (error) { throw new Error(`Could not restore this tab's starter selection: ${error.message}`); }
+      if (saved?.source) {
+        if (!$("couple-names").value && typeof saved.names === "string") $("couple-names").value = saved.names;
+        if (/^[0-9a-f-]{36}$/i.test(saved.requestKey || "")) requestKey = saved.requestKey;
+        const snapshot = saved.snapshot;
+        if (snapshot && Array.isArray(snapshot.palette) && snapshot.palette.length === 4 &&
+            snapshot.palette.every(color => /^#[0-9a-f]{6}$/i.test(color)) &&
+            Array.isArray(snapshot.venues) && snapshot.venues.length <= 30) {
+          if (snapshot.setup) snapshot.setup = WSStarterSetup.restoreEditable(snapshot.setup);
+          await chooseStarter(snapshot, { restore: true, currency: saved.currency });
+        } else await chooseStarter(await loadStarter(saved.source), { restore: true, currency: saved.currency });
+      }
+      const params = new URLSearchParams(location.search);
+      const inspirationId = params.get("inspiration"), styleSlug = params.get("style");
+      if (inspirationId && styleSlug) throw new Error("Choose one starter source at a time.");
+      if (inspirationId || styleSlug) {
+        const initialNames = $("couple-names").value;
+        const item = await loadStarter(inspirationId ? { inspirationId } : { styleSlug });
+        if (saved || legacyAnswers || initialNames || $("couple-names").value !== initialNames) {
+          pendingStarter = item; renderStarterReview();
+        } else await chooseStarter(item);
+        const url = new URL(location.href);
+        url.searchParams.delete("inspiration"); url.searchParams.delete("style");
+        history.replaceState(null, "", url);
+      }
+    } catch (error) { setNotice(`${error.message} Your existing answers are kept.`, "bad"); }
+    finally { starterLoading = false; renderSubmit(); }
+  }
+  $("apply-inspiration").addEventListener("click", () => chooseStarter(pendingStarter));
+  $("keep-current-answers").addEventListener("click", () => { pendingStarter = null; renderStarterReview(); });
+  $("starter-currency").addEventListener("change", () => { $("starter-reviewed").checked = false; renderStarterReview(); rememberStarter(); });
+  $("starter-capabilities-retry").addEventListener("click", () => checkStarterCurrencies());
+  $("couple-names").addEventListener("input", () => { if (selectedStarter) rememberStarter(); });
+
+  async function loadReferralDisclosure() {
+    referralReady = false;
+    try { await WSReferrals.prepare(); }
+    catch (error) { $("client-referral-dismiss").hidden = false; throw error; }
+    referralDisclosure = await WSReferrals.request("disclosure");
+    $("client-referral-disclosure").hidden = !referralDisclosure.intent_id;
+    if (referralDisclosure.intent_id) {
+      const d = referralDisclosure;
+      $("client-referral-details").textContent = `A referrer introduced you to Join Our Wedding. ` +
+        `The current Owner referral rate is ${d.enabled ? (d.rate_basis_points / 100).toFixed(2) : "0.00"}% of verified live money raised. ` +
+        `The configured platform percentage fee is ${(d.platform_fee_basis_points / 100).toFixed(2)}%` +
+        (BigInt(d.platform_fixed_fee_minor) > 0n ? ` plus the applicable quoted fixed fee (${d.platform_fixed_fee_currency}). ` : ". ") +
+        `Any future commission is capped by available platform revenue after costs and commitments, never deducted from your net or provider amounts. ` +
+        `All estimates are held and unpayable; there are no referral payouts. Owner rate changes affect new contributions only. ` +
+        `Attribution is fixed when you create this wedding; you can decline it now. Terms: ${d.terms_version}.`;
+    }
+    referralReady = true;
+    $("client-referral-dismiss").hidden = true;
+  }
+
+  $("client-referral-dismiss").addEventListener("click", async () => {
+    WSReferrals.clear();
+    if (!window.WS.token()) return location.replace("/signin.html");
+    try {
+      await loadReferralDisclosure();
+      if (!window.WS.token()) location.replace("/signin.html?next=" + encodeURIComponent("/dashboard.html"));
+      else setNotice("The unvalidated link was discarded. Any referral already captured still needs your accept-or-decline choice.", "good");
+    } catch (error) { setNotice(error.message, "bad"); }
+  });
 
   function renderSubmit() {
-    const btn = $("create-submit");
-    btn.disabled = state.submitting;
-    btn.textContent = state.submitting ? "⏳ Creating..." : "✨ Create wedding";
+    $("create-submit").disabled = state.submitting || !!state.created || starterLoading;
+    $("create-submit").textContent = state.created
+      ? "Draft created" : state.submitting ? "Creating your draft…" : "Create draft and continue setup";
   }
 
   function renderCreated() {
-    const el = $("created");
-    const c = state.created;
-    el.hidden = !c;
-    el.innerHTML = c
-      ? `<h3>🎉 Wedding created</h3><p><strong>${esc(c.names)}</strong>${c.location ? " · 📍 " + esc(c.location) : ""}</p>` +
-        window.WSShare.panelHTML(window.WSShare.guestUrl(c.slug), { title: c.names, published: false }) +
-        `<a class="btn" href="/wedding.html?id=${encodeURIComponent(c.weddingId)}&slug=${encodeURIComponent(c.slug)}">Open ${esc(c.names)} →</a>`
-      : "";
+    const element = $("created");
+    if (!state.created) { element.hidden = true; element.replaceChildren(); return; }
+    element.hidden = false;
+    element.innerHTML = `<h2>Your draft is ready</h2><p><strong>${esc(state.created.names)}</strong></p>` +
+      `<p>Your answers are saved to your account. Continue in your wedding guide to add the date, venues, guest details and fundraising options.</p>` +
+      `<a class="btn" href="/wedding.html?id=${encodeURIComponent(state.created.weddingId)}&slug=${encodeURIComponent(state.created.slug)}#step=couple">Open your wedding guide</a>`;
   }
 
   function renderWeddings() {
     const list = state.weddings;
     $("empty").hidden = list !== null && list.length > 0;
-    $("empty").textContent = state.weddingsError || (list === null ? "Loading your weddings…" : "No weddings yet. Create your first one above.");
+    $("empty").textContent = state.weddingsError ||
+      (list === null ? "Loading your weddings…" : "No weddings yet. Start your first draft above.");
     $("weddings-container").hidden = !list || list.length === 0;
     if (!list) return;
-    $("weddings-grid").innerHTML = list.map((w) => `
+    $("weddings-grid").innerHTML = list.map(wedding => `
       <div class="card">
-        <div class="top" style="margin-bottom: .5rem;">
-          <span class="tag ${w.published_at && !w.archived_at ? "live" : ""}">${statusLabel(w)}</span>
-          <span class="fine">${esc(new Date(w.created_at).toLocaleDateString())}</span>
+        <div class="top" style="margin-bottom:.5rem">
+          <span class="tag ${wedding.published_at && !wedding.archived_at ? "live" : ""}">${statusLabel(wedding)}</span>
+          <span class="fine">${esc(new Date(wedding.created_at).toLocaleDateString())}</span>
         </div>
-        <h3>${esc(w.couple_names)}</h3>
-        <p class="fine" style="margin: .5rem 0;">
-          ${w.wedding_date ? "📅 " + esc(new Date(w.wedding_date).toLocaleDateString()) : "(Date required - open to set)"}
-          ${w.public_location ? " • 📍 " + esc(w.public_location) : ""}
-        </p>
-        <p class="fine" style="margin: .5rem 0;">👥 Max ${esc(w.max_guest_capacity)} guests • ${esc(w.currency)}</p>
-        <div class="swatches">${(w.palette || []).map((c) => `<span style="background: ${esc(safeColor(c))};"></span>`).join("")}</div>
-        <div class="card" data-setup-progress="${esc(w.id)}" style="margin-top:1rem;padding:1rem;"></div>
-        ${window.WSShare.panelHTML(window.WSShare.guestUrl(w.slug), { title: w.couple_names, published: !!w.published_at })}
-        <div class="row" style="margin-top: 1.5rem;">
-          <a class="btn" href="/wedding.html?id=${encodeURIComponent(w.id)}&slug=${encodeURIComponent(w.slug)}">✎ Edit</a>
-          ${w.published_at ? `<a class="btn" href="${window.WSShare.guestUrl(w.slug)}" target="_blank" rel="noopener">👁 View</a>` : ""}
+        <h3>${esc(wedding.couple_names)}</h3>
+        <p class="fine" style="margin:.5rem 0">${wedding.wedding_date ? "📅 " + esc(new Date(wedding.wedding_date).toLocaleDateString()) : "Date can be added in your wedding guide"}
+          ${wedding.public_location ? " · 📍 " + esc(wedding.public_location) : ""}</p>
+        <p class="fine" style="margin:.5rem 0">👥 Up to ${esc(wedding.max_guest_capacity)} guests · ${esc(wedding.currency)}</p>
+        <div class="swatches">${(wedding.palette || []).map(color =>
+          `<span style="background:${esc(color)}"></span>`).join("")}</div>
+        <div class="card" data-setup-progress="${esc(wedding.id)}" style="margin-top:1rem;padding:1rem"></div>
+        ${WSShare.panelHTML(WSShare.guestUrl(wedding.slug), { title: wedding.couple_names, published: !!wedding.published_at })}
+        <div class="row" style="margin-top:1.5rem">
+          <a class="btn" href="/wedding.html?id=${encodeURIComponent(wedding.id)}&slug=${encodeURIComponent(wedding.slug)}#step=couple">Open wedding guide</a>
+          ${wedding.published_at ? `<a class="btn" href="${WSShare.guestUrl(wedding.slug)}" target="_blank" rel="noopener">View guest site</a>` : ""}
         </div>
       </div>`).join("");
-    for (const w of list) {
-      const target = document.querySelector(`[data-setup-progress="${CSS.escape(String(w.id))}"]`);
+    for (const wedding of list) {
+      const target = document.querySelector(`[data-setup-progress="${CSS.escape(String(wedding.id))}"]`);
       if (target && window.WSSetupProgress) {
-        window.WSSetupProgress.render(target, w, {
+        window.WSSetupProgress.render(target, wedding, {
           compact: true,
-          editorUrl: `/wedding.html?id=${encodeURIComponent(w.id)}&slug=${encodeURIComponent(w.slug)}`
+          editorUrl: `/wedding.html?id=${encodeURIComponent(wedding.id)}&slug=${encodeURIComponent(wedding.slug)}`
         });
       }
     }
   }
 
-  const renderAll = () => { renderNotice(); renderFields(); renderPalette(); renderVenues(); renderSubmit(); renderCreated(); renderWeddings(); };
-
-  function readFieldsFromDom() {
-    state.fields = {
-      names: $("couple-names").value,
-      date: $("wedding-date").value,
-      timeZone: $("wedding-timezone").value,
-      location: $("location").value,
-      currency: $("currency").value,
-      capacity: $("max-capacity").value
-    };
-  }
-
-  function validate() {
-    const f = state.fields;
-    const errors = [];
-    const errorFields = [];
-    
-    if (!f.names.trim()) {
-      errors.push("Couple names (required)");
-      $("couple-names").setAttribute("aria-invalid", "true");
-      errorFields.push($("couple-names"));
-    } else {
-      $("couple-names").removeAttribute("aria-invalid");
-    }
-
-    if (!f.date || !/^\d{4}-\d{2}-\d{2}$/.test(f.date)) {
-      errors.push("Wedding date (required)");
-      $("wedding-date").setAttribute("aria-invalid", "true");
-      errorFields.push($("wedding-date"));
-    } else {
-      $("wedding-date").removeAttribute("aria-invalid");
-    }
-    
-    if (!f.location.trim()) {
-      errors.push("Location (required)");
-      $("location").setAttribute("aria-invalid", "true");
-      errorFields.push($("location"));
-    } else {
-      $("location").removeAttribute("aria-invalid");
-    }
-    
-    if (!f.currency || !/^[A-Z]{3}$/.test(f.currency)) {
-      errors.push("Currency (required)");
-      $("currency").setAttribute("aria-invalid", "true");
-      errorFields.push($("currency"));
-    } else {
-      $("currency").removeAttribute("aria-invalid");
-    }
-    
-    const cap = Number(f.capacity);
-    if (!f.capacity.trim() || !Number.isInteger(cap) || cap < 1) {
-      errors.push("Guest capacity (required, must be 1 or more)");
-      $("max-capacity").setAttribute("aria-invalid", "true");
-      errorFields.push($("max-capacity"));
-    } else {
-      $("max-capacity").removeAttribute("aria-invalid");
-    }
-    
-    if (!state.palette.every((c) => HEX.test(c))) errors.push("Each colour must be valid");
-    
-    for (const [index, v] of state.venues.entries()) {
-      const requiredVenueFields = [
-        ["name", v.name.trim()], ["eventDate", v.eventDate || f.date],
-        ["time", v.time], ["address", v.address.trim()]
-      ];
-      for (const [field, value] of requiredVenueFields) {
-        const input = document.querySelector(`[data-venue-field="${field}"][data-id="${v.id}"]`);
-        if (!value) {
-          input?.setAttribute("aria-invalid", "true");
-          errorFields.push(input);
-        } else {
-          input?.removeAttribute("aria-invalid");
-        }
-      }
-      if (requiredVenueFields.some(([, value]) => !value)) {
-        errors.push(`Event ${index + 1} needs a name, date, start time and street address`);
-      }
-      if (v.map.trim() && !/^https?:\/\//i.test(v.map.trim())) errors.push("Venue map links must start with http:// or https://");
-    }
-    
-    if (errors.length) {
-      const firstErrorField = errorFields[0] || $("couple-names");
-      firstErrorField?.focus?.();
-      return { message: "Please fix these required fields: " + errors.join(", "), field: firstErrorField };
-    }
-    return null;
-  }
-
-  function buildPayload() {
-    const f = state.fields;
-    const venues = state.venues
-      .filter((v) => v.name.trim() || v.time || v.map.trim() || v.address.trim() || v.description.trim())
-      .map((v) => ({
-        name: v.name.trim(), time: v.time, eventDate: v.eventDate || state.fields.date,
-        address: v.address.trim(), map: v.map.trim(), description: v.description.trim(),
-        isMain: v.id === state.mainVenueId
+  function makeCreatePayload(names, includeSavedAnswers) {
+    const saved = includeSavedAnswers ? legacyAnswers : null;
+    const fields = saved?.fields || {};
+    const venues = (saved?.venues || []).filter(venue =>
+      venue.name.trim() || venue.time || venue.eventDate || venue.address.trim() || venue.map.trim() || venue.description.trim())
+      .map(venue => ({
+        name: venue.name.trim(), time: venue.time, eventDate: venue.eventDate || fields.date || null,
+        address: venue.address.trim(), map: venue.map.trim(), description: venue.description.trim(),
+        isMain: venue.id === saved.mainVenueId, kind: venue.kind === "pre" ? "pre" : "main"
       }));
-    return {
-      coupleNames: f.names.trim(),
-      weddingDate: f.date || null,
-      timeZone: f.timeZone,
-      location: f.location.trim(),
-      currency: f.currency,
-      maxCapacity: Number(f.capacity),
-      palette: [...state.palette],
+    const payload = {
+      requestKey,
+      coupleNames: names.trim(),
+      weddingDate: fields.date || null,
+      timeZone: fields.timeZone || window.WSTime.browserZone(),
+      location: String(fields.location || "").trim(),
+      currency: fields.currency || "USD",
+      maxCapacity: Number(fields.capacity || 150),
+      palette: saved ? [...saved.palette] : [...DEFAULT_PALETTE],
       venues
     };
+    if (selectedStarter) Object.assign(payload, selectedStarter.source, {
+      currency: $("starter-currency").value, palette: [...selectedStarter.palette],
+      weddingDate: null, location: "", venues: WSStarterSetup.clone(selectedStarter.venues),
+      starterSetup: starterConfig()
+    });
+    return payload;
   }
 
-  async function submitCreate() {
-    if (state.submitting) return;
-    readFieldsFromDom();
-    setNotice("");
-    state.created = null;
-    renderCreated();
-
-    const problem = validate();
-    if (problem) return setNotice(problem.message, "bad", problem.field);
-    if (!window.WS.token()) return setNotice("Your session has expired. Please sign in again; what you entered will be kept until you leave this page.", "bad");
-
+  async function submitCreate(event) {
+    event.preventDefault();
+    if (state.submitting || state.created || starterLoading) return;
+    const names = $("couple-names").value.trim();
+    $("couple-names").removeAttribute("aria-invalid");
+    if (!names) {
+      $("couple-names").setAttribute("aria-invalid", "true");
+      $("couple-names").focus();
+      return setNotice("What names should appear on your wedding site? You can change them later.", "bad", $("couple-names"));
+    }
+    if (names.length > 120) {
+      $("couple-names").setAttribute("aria-invalid", "true");
+      $("couple-names").focus();
+      return setNotice("Please keep the names within 120 characters.", "bad", $("couple-names"));
+    }
+    if (!window.WS.token()) return setNotice("Your sign-in has expired. Sign in again; your answers have not been sent.", "bad");
+    if (selectedStarter) {
+      const code = $("starter-currency").value;
+      if (!currencies.some(item => item.code === code)) return setNotice("Choose a currently supported currency before creating this starter.", "bad");
+      try { WSStarterSetup.normalize(starterConfig(), code); }
+      catch (error) { return setNotice(error.message, "bad", $("starter-reviewed")); }
+    }
     state.submitting = true;
     renderSubmit();
-    setNotice("✨ Creating your wedding...");
-    const payload = buildPayload();
     try {
-      const res = await window.WS.api("/api/weddings?action=create", { method: "POST", body: JSON.stringify(payload) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        console.error("Create wedding failed:", res.status, data);
-        const msg = res.status === 401
-          ? "Your session has expired. Please sign in again; what you entered is kept on this page."
-          : data.error || `The server could not create the wedding (HTTP ${res.status}). Your details are kept; please try again.`;
-        return setNotice(msg, "bad");
+    if (!referralReady) {
+      try { await loadReferralDisclosure(); }
+      catch (error) { return setNotice(`${error.message} Your answers are still on this page.`, "bad"); }
+    }
+    if (referralDisclosure?.intent_id && !["accept", "decline"].includes($("client-referral-decision").value)) {
+      $("client-referral-decision").focus();
+      return setNotice("Please review the referral details and choose whether to accept or decline.", "bad", $("client-referral-decision"));
+    }
+    const payload = makeCreatePayload(names, $("include-legacy-answers")?.checked === true);
+    if (referralDisclosure?.intent_id) payload.referral = {
+      intentId: referralDisclosure.intent_id, decision: $("client-referral-decision").value,
+      revision: referralDisclosure.revision, termsVersion: referralDisclosure.terms_version
+    };
+    setNotice("Creating your private wedding draft…");
+      const response = await WS.api("/api/weddings?action=create", {
+        method: "POST", body: JSON.stringify(payload)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        if (response.status === 409) {
+          $("client-referral-decision").value = "";
+          await loadReferralDisclosure();
+        }
+        throw new Error(data.error || `We could not create your draft (HTTP ${response.status}). Your answers are still here.`);
       }
-      if (!data.weddingId) return setNotice("The server replied without a wedding id. Your details are kept; please try again.", "bad");
-
-      state.created = { weddingId: data.weddingId, slug: data.slug, names: payload.coupleNames, location: payload.location };
-      state.fields = { ...DEFAULT_FIELDS };
-      state.palette = [...DEFAULT_PALETTE];
-      state.paletteOpen = false;
-      state.venues = [newVenue()];
-      state.mainVenueId = state.venues[0].id;
-      setNotice(`✨ ${payload.coupleNames} created successfully! Redirecting...`, "good");
-      renderAll();
-      
-      // Auto-navigate to the newly created wedding after a brief delay
-      setTimeout(() => {
-        location.href = `/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}`;
-      }, 2500);
-    } catch (err) {
-      console.error("Create wedding error:", err);
-      setNotice(`Could not reach the server (${err.message}). Your details are kept; please check your connection and try again.`, "bad");
+      if (!data.weddingId || !data.slug) throw new Error("The server did not return a wedding address. Your answers are still here; please retry.");
+      state.created = { weddingId: data.weddingId, slug: data.slug, names };
+      WSReferrals.clear();
+      referralDisclosure = null;
+      $("client-referral-disclosure").hidden = true;
+      try {
+        sessionStorage.removeItem(createKey);
+        sessionStorage.removeItem(starterKey);
+        if ($("include-legacy-answers")?.checked) sessionStorage.removeItem(legacyAnswersKey);
+      } catch (error) { console.error("Could not clear saved create answers:", error); }
+      setNotice("Your draft is saved. Opening the wedding guide…", "good");
+      renderCreated();
+      renderSubmit();
+      location.assign(`/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}#step=couple`);
+    } catch (error) {
+      console.error("Create wedding failed:", error);
+      setNotice(`${error.message || "We could not reach the server."} Please try again; your answers are kept.`, "bad");
     } finally {
       state.submitting = false;
       renderSubmit();
@@ -287,130 +410,84 @@
 
   async function loadWeddings() {
     try {
-      const res = await window.WS.api("/api/weddings?action=list");
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        state.weddingsError = data.error || "Could not load your weddings.";
-        state.weddings = null;
-      } else {
-        state.weddingsError = "";
-        state.weddings = data.weddings || [];
-      }
-    } catch (err) {
-      state.weddingsError = "Could not load your weddings (network error).";
+      const response = await WS.api("/api/weddings?action=list");
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Could not load your weddings.");
+      state.weddings = data.weddings || [];
+      state.weddingsError = "";
+    } catch (error) {
+      state.weddings = null;
+      state.weddingsError = error.message || "Could not load your weddings (network error).";
     }
     renderWeddings();
   }
 
-  const findVenue = (id) => state.venues.find((v) => v.id === Number(id));
-
-  document.addEventListener("click", (e) => {
-    const el = e.target.closest("[data-action]");
-    if (!el) return;
-    const action = el.dataset.action;
-    if (action === "sign-out") { window.WS.clear(); location.replace("/signin.html"); }
-    else if (action === "toggle-palette") { state.paletteOpen = !state.paletteOpen; renderPalette(); }
-    else if (action === "save-palette") { state.paletteOpen = false; renderPalette(); }
-    else if (action === "reset-palette") { state.palette = [...DEFAULT_PALETTE]; renderPalette(); }
-    else if (action === "add-venue") { const v = newVenue(); state.venues.push(v); renderVenues(); }
-    else if (action === "remove-venue") {
-      readVenuesFromDom();
-      state.venues = state.venues.filter((v) => v.id !== Number(el.dataset.id));
-      if (state.venues.length === 0) state.venues = [newVenue()];
-      if (!findVenue(state.mainVenueId)) state.mainVenueId = state.venues[0].id;
-      renderVenues();
-    }
-  });
-
-  function readVenuesFromDom() {
-    document.querySelectorAll("[data-venue-field]").forEach((el) => {
-      const v = findVenue(el.dataset.id);
-      if (v) v[el.dataset.venueField] = el.value;
-    });
-  }
-
-  document.addEventListener("change", (e) => {
-    if (e.target.dataset && e.target.dataset.action === "set-main") state.mainVenueId = Number(e.target.dataset.id);
-  });
-
-  $("create-form").addEventListener("input", (e) => {
-    const t = e.target;
-    if (t.dataset.venueField) { const v = findVenue(t.dataset.id); if (v) v[t.dataset.venueField] = t.value; return; }
-    if (t.dataset.colorIndex !== undefined) { state.palette[Number(t.dataset.colorIndex)] = t.value; renderPalette(); return; }
-    readFieldsFromDom();
-    if (t.id === "wedding-date") {
-      state.venues.forEach(v => { if (!v.eventDate) v.eventDate = t.value; });
-      renderVenues();
-    }
-  });
-
-  $("create-form").addEventListener("submit", (e) => { e.preventDefault(); submitCreate(); });
-
-  // Account menu
-  $("account-menu-btn").addEventListener("click", (e) => {
-    const menu = $("account-menu");
-    menu.style.display = menu.style.display === "none" ? "block" : "none";
-    e.stopPropagation();
-  });
-
-  document.addEventListener("click", () => {
-    $("account-menu").style.display = "none";
-  });
-
-  const handleSignOut = (e) => {
-    if (e && e.preventDefault) e.preventDefault();
-    window.WS.clear();
+  $("create-form").addEventListener("submit", submitCreate);
+  $("create-form").addEventListener("input", event => event.target.removeAttribute("aria-invalid"));
+  $("sign-out").addEventListener("click", event => {
+    event.preventDefault();
+    WS.clear();
     location.replace("/signin.html");
-  };
-
-  $("sign-out").addEventListener("click", handleSignOut);
-  $("account-sign-out").addEventListener("click", handleSignOut);
-
-  $("change-password").addEventListener("click", async (e) => {
-    e.preventDefault();
-    // For now, show a placeholder message
-    alert("Password change feature coming soon. Contact support to reset your password.");
+  });
+  $("account-sign-out").addEventListener("click", event => {
+    event.preventDefault();
+    WS.clear();
+    location.replace("/signin.html");
+  });
+  $("account-menu-btn").addEventListener("click", event => {
+    const menu = $("account-menu");
+    const open = menu.style.display === "none";
+    menu.style.display = open ? "block" : "none";
+    $("account-menu-btn").setAttribute("aria-expanded", String(open));
+    event.stopPropagation();
+  });
+  document.addEventListener("click", event => {
+    if (!$("account-menu").contains(event.target) && event.target !== $("account-menu-btn")) {
+      $("account-menu").style.display = "none";
+      $("account-menu-btn").setAttribute("aria-expanded", "false");
+    }
+  });
+  $("change-password").addEventListener("click", event => {
+    event.preventDefault();
+    location.href = "/account.html#password";
   });
 
-  // Set up role-based navigation
-  const role = window.WS.role();
+  const role = WS.role();
   if (role) {
     $("role-display").textContent = `Role: ${role.charAt(0).toUpperCase() + role.slice(1)}`;
-    
-    // Show admin dashboard if user is admin or superadmin or owner
-    if (role === "admin" || role === "superadmin" || role === "owner") {
-      $("admin-dashboard").style.display = "block";
-    }
-    
-    // Show owner profile only if user is owner (never show owner to other roles)
+    if (["admin", "superadmin", "owner"].includes(role)) $("admin-dashboard").style.display = "block";
     if (role === "owner") {
       $("owner-profile").style.display = "block";
-      $("owner-profile").textContent = "Owner Profile (You)";
-      $("owner-profile").href = "#"; // TODO: create owner profile page
-      $("owner-profile").addEventListener("click", (e) => {
-        e.preventDefault();
-        alert("Owner profile coming soon");
-      });
+      $("owner-profile").textContent = "Owner profile";
+      $("owner-profile").href = "/account.html";
     }
   }
+  window.addEventListener("error", event => {
+    console.error(event.error || event.message);
+    setNotice("Something went wrong. Your answers are still here; please try again.", "bad");
+  });
+  window.addEventListener("unhandledrejection", event => {
+    console.error(event.reason);
+    setNotice("Something went wrong. Your answers are still here; please try again.", "bad");
+  });
 
-  // Error boundaries: surface anything unexpected instead of failing silently.
-  window.addEventListener("error", (e) => { console.error(e.error || e.message); setNotice("Something went wrong on this page. Your entries are kept; please try again.", "bad"); });
-  window.addEventListener("unhandledrejection", (e) => { console.error(e.reason); setNotice("Something went wrong. Your entries are kept; please try again.", "bad"); });
-
-  if (!window.WS.token()) {
-    location.replace("/signin.html");
+  if (!WS.token()) {
+    const next = "/dashboard.html" + location.search + location.hash;
+    WSReferrals.prepare().then(() => location.replace(next === "/dashboard.html" ? "/signin.html" : "/signin.html?next=" + encodeURIComponent(next)))
+      .catch(error => { $("client-referral-dismiss").hidden = false; setNotice(error.message, "bad"); });
   } else {
-    window.WSTime.fillSelect($("wedding-timezone"), state.fields.timeZone);
-    renderAll();
+    prepareLegacyAnswerChoice();
+    initializeStarter();
     loadWeddings();
+    loadReferralDisclosure().catch(error => setNotice(`${error.message} Your draft details are kept.`, "bad"));
   }
 })();
-function statusLabel(w) {
-  const past = w.wedding_date && String(w.wedding_date).slice(0, 10) < new Date().toISOString().slice(0, 10);
-  if (w.lifecycle_admin_restricted) return "Action needed (restricted by staff)";
-  if (w.archived_at) return "Archived";
-  if (w.published_at) return past ? "Completed / Past" : "Published";
-  if (w.unpublished_at) return "Unpublished";
+
+function statusLabel(wedding) {
+  const past = wedding.wedding_date && String(wedding.wedding_date).slice(0, 10) < new Date().toISOString().slice(0, 10);
+  if (wedding.lifecycle_admin_restricted) return "Action needed (restricted by staff)";
+  if (wedding.archived_at) return "Archived";
+  if (wedding.published_at) return past ? "Completed / Past" : "Published";
+  if (wedding.unpublished_at) return "Unpublished";
   return past ? "Past (draft)" : "Draft";
 }

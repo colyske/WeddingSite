@@ -16,10 +16,16 @@ begin
   end loop;
   select id into cid from moderation_actors where kind='client';
   insert into moderation_actors values('wedding',wid);
-  insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date,slug,published_at,first_published_at)
-    values(wid,cid,'Local moderation sample','KES',current_date+30,'local-moderation',now(),now());
+  insert into public.weddings(id,client_owner_id,couple_names,welcome_story,cover_image_url,
+      guest_instructions,currency,wedding_date,slug,public_location)
+    values(wid,cid,'Local moderation sample','A local celebration sample.',
+      'https://example.test/cover.jpg','Please reply before the celebration.',
+      'KES',current_date+30,'local-moderation','Local city');
   insert into public.wedding_memberships(wedding_id,user_id,role) values(wid,cid,'client');
-  insert into public.venues(wedding_id,name,event_date,event_time) values(wid,'Local venue',current_date+30,'12:00');
+  insert into public.venues(wedding_id,name,event_date,event_time,address) values(wid,'Local venue',current_date+30,'12:00','Local street');
+  insert into public.wedding_collection_capabilities(wedding_id,provider,currency,market)
+    values(wid,'daraja','KES','KE');
+  update public.weddings set published_at=now(),first_published_at=now() where id=wid;
   wid := extensions.gen_random_uuid();
   insert into moderation_actors values('draft',wid);
   insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date)

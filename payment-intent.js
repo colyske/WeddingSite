@@ -57,11 +57,11 @@
     };
   };
   const payLabel = (provider, mode) => provider === "daraja"
-    ? (mode === "live" ? "Send M-Pesa prompt" : "Send M-Pesa prompt (sandbox)")
-    : (mode === "live" ? "Pay (real money)" : "Pay (test mode)");
+    ? "Continue with M-Pesa"
+    : mode === "live" ? "Pay securely" : "Continue to payment";
   const darajaNote = mode => mode === "live"
     ? ""
-    : "Sandbox test: use only a Safaricom test number. A real phone can still be prompted and charged even in sandbox, so do not enter a real personal number. The action stays pending until payment is confirmed.";
+    : "This is a test payment. Use only a designated test phone number; a real phone may still be charged. The contribution stays pending until we confirm the payment.";
   root.WSPaymentIntent = Object.freeze({ create, payLabel, darajaNote });
   if (typeof module !== "undefined" && module.exports) module.exports = root.WSPaymentIntent;
 })(globalThis);

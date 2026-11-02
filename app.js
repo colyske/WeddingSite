@@ -53,6 +53,7 @@ try {
   publicPreviewReadError = true;
 }
 window.WeddingSiteFX.choose(weddingSettings.currency);
+document.querySelector("#demo-contribution-currency").textContent = window.WeddingSiteFX.currency();
 let demoMarketLabel = "Global · English (US)";
 try {
   const feeConfig = JSON.parse(localStorage.getItem("weddingsite-demo-fee-config") || "null");
@@ -206,7 +207,8 @@ soundToggle.addEventListener("click", async () => {
   soundToggle.querySelector(".sound-label").textContent = "SOUND ON";
 });
 
-let selectedAmount = 25;
+let selectedAmount = 0;
+let selectedAmountLocal = 0;
 let selectedStreamIndex = 0;
 let confirmedAttendees = weddingSettings.confirmedGuests;
 const publicLedgerKey = "weddingsite-demo-public-ledger";
@@ -318,10 +320,11 @@ function renderFundraisingStreams() {
   document.querySelector(".progress-amount>span").textContent = `Illustrative progress toward ${formatWeddingAmount(primary.goalUsd)} goal`;
 }
 function renderContributionBreakdown() {
-  document.querySelector("#contribution-gross").textContent = `Your optional pledge: ${formatWeddingAmount(selectedAmount)} toward ${weddingSettings.streams[selectedStreamIndex]?.name || "the wedding fund"}`;
-  document.querySelectorAll("[data-amount]").forEach(button => {
-    if (Number(button.dataset.amount) > 0) button.textContent = formatWeddingAmount(Number(button.dataset.amount));
-  });
+  document.querySelector("#contribution-gross").textContent = selectedAmount > 0
+    ? `Your optional pledge: ${formatWeddingAmount(selectedAmount)} toward ${weddingSettings.streams[selectedStreamIndex]?.name || "the wedding fund"}`
+    : selectedAmountLocal > 0
+      ? "An indicative currency conversion is unavailable, so this demo cannot show the amount."
+      : "Enter an amount to see your optional pledge.";
 }
 function renderAttendanceCapacity() {
   const capacity = weddingSettings.capacity;
@@ -407,6 +410,7 @@ window.addEventListener("storage", event => {
           !stored.streams.every(stream => typeof stream.name === "string" && typeof stream.purpose === "string" && Number.isFinite(stream.goalUsd) && stream.goalUsd > 0)) throw new Error("Invalid wedding settings.");
       weddingSettings = stored;
       window.WeddingSiteFX.choose(weddingSettings.currency);
+      document.querySelector("#demo-contribution-currency").textContent = window.WeddingSiteFX.currency();
       renderFundraisingStreams();
       renderContributionBreakdown();
       renderAttendanceCapacity();
@@ -428,14 +432,10 @@ window.addEventListener("storage", event => {
     notify("The platform fee policy could not be refreshed. The displayed estimate remains unchanged.");
   }
 });
-document.querySelectorAll("[data-amount]").forEach(button => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll("[data-amount]").forEach(option => option.classList.remove("selected"));
-    button.classList.add("selected");
-    selectedAmount = Number(button.dataset.amount);
-    if (selectedAmount === 0) openDialog("Other contribution", "Choose an amount to contribute", "amount");
-    else renderContributionBreakdown();
-  });
+document.querySelector("#demo-contribution-amount").addEventListener("input", event => {
+  selectedAmountLocal = Number(event.target.value);
+  selectedAmount = window.WeddingSiteFX.convertToUsd(selectedAmountLocal, window.WeddingSiteFX.currency()) || 0;
+  renderContributionBreakdown();
 });
 document.querySelector("#fundraising-stream-select").addEventListener("change", event => {
   selectedStreamIndex = Number(event.target.value);
@@ -475,7 +475,7 @@ function openDialog(title, description, kind = "message", context = null) {
   } else if (kind === "task" || kind === "vendor" || kind === "announcement") {
     form.innerHTML = `<input name="title" required maxlength="100" placeholder="${kind === "task" ? "Task and owner" : kind === "vendor" ? "Vendor and next step" : "Announcement subject"}"><textarea name="details" maxlength="400" placeholder="${kind === "announcement" ? "Review draft text before sending" : "Notes or due date"}"></textarea>`;
   } else if (kind === "amount") {
-    form.innerHTML = `<input name="amount" required type="number" min="0.01" step="0.01" placeholder="Amount in ${window.WeddingSiteFX.currency()}"><input name="note" maxlength="120" placeholder="Optional note">`;
+    form.innerHTML = `<label>Amount in ${window.WeddingSiteFX.currency()}<input name="amount" required type="number" min="0.01" step="0.01"></label><input name="note" maxlength="120" placeholder="Optional note">`;
   } else if (kind === "budget") {
     form.innerHTML = '<p class="fine-print">A connected planner can track estimates, actuals, due dates and reconciled contributions. No financial data is saved in this demo.</p>';
   } else if (kind === "ecard") {
@@ -660,7 +660,14 @@ document.querySelectorAll("[data-action]").forEach(button => {
   button.addEventListener("click", () => {
     const action = button.dataset.action;
     const actions = {
-      payment: () => openDialog("Demo contribution", "Your generosity means so much. No payment details should be entered here.", "payment"),
+      payment: () => {
+        if (!Number.isFinite(selectedAmountLocal) || selectedAmountLocal < 1 || selectedAmount <= 0) {
+          notify("Enter the amount you wish to pledge first.");
+          document.querySelector("#demo-contribution-amount").focus();
+          return;
+        }
+        openDialog("Demo contribution", "Your generosity means so much. No payment details should be entered here.", "payment");
+      },
       "suggest-song": () => openDialog("Suggest a song", "Share a track for the couple to review. The sample leaderboard changes only in this browser.", "song"),
       ecard: () => openDialog("Sample invitation pass", "A safe preview of a possible guest pass. This demo has no guest-specific invitation or check-in verification.", "ecard"),
       organizer: () => document.querySelector("#organizer").scrollIntoView({ behavior: "smooth" }),

@@ -27,12 +27,14 @@ test("minor-unit presets validate precision, positive finite values, count, curr
   assert.deepEqual(presets.amounts({ currency: "USD", amount_presets: { currency: "KES", song: [10000] } }, "song"), []);
 });
 
-test("organizer API persists canonical choices, preserves omitted presets and rejects unsafe currency changes", async () => {
+test("organizer API rejects suggested-amount edits while preserving explicit feature controls", async () => {
   const env = { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "test-anon", SUPABASE_SERVICE_ROLE_KEY: "test-service" };
   const oldEnv = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]));
   Object.assign(process.env, env);
   const oldFetch = globalThis.fetch;
-  let wedding = { id: weddingId, currency: "KES", amount_presets: null };
+  const legacyPresets = { currency: "KES", song: [10000, 50000], gift: [50000, 500000] };
+  let wedding = { id: weddingId, currency: "KES", amount_presets: legacyPresets,
+    revenue_features: { giving: true, sponsors: true, featured_sponsors: true, song_requests: true, vip_seating: true } };
   const patches = [];
   let cap = 500000;
   let owned = true;
@@ -40,16 +42,18 @@ test("organizer API persists canonical choices, preserves omitted presets and re
     const url = new URL(input);
     if (url.pathname === "/auth/v1/user") return json({ id: ownerId });
     if (url.pathname === "/rest/v1/platform_policies") return json([{ max_contribution_minor: cap }]);
+    if (url.pathname === "/rest/v1/rpc/save_wedding_content") {
+      const data = JSON.parse(init.body);
+      if (data.p_expected_currency !== null) assert.equal(data.p_expected_currency, wedding.currency);
+      const patch = data.p_patch;
+      if (patch.amount_presets !== undefined) assert.deepEqual(data.p_expected_presets, wedding.amount_presets);
+      patches.push(patch);
+      if (patch.currency && patch.currency !== wedding.currency) wedding = { ...wedding, amount_presets: null };
+      wedding = { ...wedding, ...patch };
+      return json(wedding);
+    }
     if (url.pathname === "/rest/v1/weddings") {
       if (!owned) return json([]);
-      if (init.method === "PATCH") {
-        assert.equal(url.searchParams.get("currency"), `eq.${wedding.currency}`);
-        const patch = JSON.parse(init.body);
-        if (patch.amount_presets !== undefined) assert.ok(url.searchParams.get("amount_presets") === "is.null" ||
-          url.searchParams.get("amount_presets").startsWith("eq."));
-        patches.push(patch);
-        wedding = { ...wedding, ...patch };
-      }
       return json([wedding]);
     }
     if (url.pathname.startsWith("/rest/v1/")) return json([]);
@@ -67,29 +71,25 @@ test("organizer API persists canonical choices, preserves omitted presets and re
     assert.equal("amount_presets" in patches[0], false);
     const valid = { currency: "KES", song: [50000, 10000, 50000], gift: [500000, 50000] };
     res = await run({ amountPresets: valid });
-    assert.equal(res.statusCode, 409);
+    assert.equal(res.statusCode, 400);
     res = await run({ amountPresets: valid, amountPresetsReviewed: true, amountPresetsBaseCurrency: "KES" });
-    assert.equal(res.statusCode, 200);
-    assert.deepEqual(res.body.wedding.amount_presets, { currency: "KES", song: [10000, 50000], gift: [50000, 500000] });
+    assert.equal(res.statusCode, 400);
+    assert.deepEqual(wedding.amount_presets, legacyPresets, "suggested amounts are no longer editable through the organizer API");
     res = await run({ currency: "USD" });
-    assert.equal(res.statusCode, 400);
-    res = await run({ currency: "USD", amountPresets: valid, amountPresetsReviewed: true, amountPresetsBaseCurrency: "KES" });
-    assert.equal(res.statusCode, 400);
-    const usd = { currency: "USD", song: [500, 1000], gift: [1000, 2500] };
-    res = await run({ currency: "USD", amountPresets: usd, amountPresetsReviewed: true, amountPresetsBaseCurrency: "KES" });
     assert.equal(res.statusCode, 200);
-    assert.deepEqual(wedding.amount_presets, usd);
-    res = await run({ amountPresets: usd, amountPresetsReviewed: true, amountPresetsBaseCurrency: "KES",
-      amountPresetsBase: { currency: "KES", song: [10000, 50000], gift: [50000, 500000] } });
-    assert.equal(res.statusCode, 409, "stale editor must review against current currency");
-    cap = 100;
-    res = await run({ amountPresets: usd, amountPresetsReviewed: true, amountPresetsBaseCurrency: "USD" });
+    assert.equal(wedding.currency, "USD");
+    assert.equal(wedding.amount_presets, null, "obsolete suggested amounts are cleared when the currency changes");
+    const disabledFeatures = { giving: false, sponsors: true, featured_sponsors: true, song_requests: false, vip_seating: true };
+    res = await run({ revenueFeatures: disabledFeatures });
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    assert.deepEqual(patches.at(-1).revenue_features, disabledFeatures);
+    assert.deepEqual(res.body.wedding.revenue_features, disabledFeatures);
+    const savedCount = patches.length;
+    res = await run({ revenueFeatures: { ...disabledFeatures, unexpected: true } });
     assert.equal(res.statusCode, 400);
-    res = await run({ currency: "KES", amountPresets: null, amountPresetsReviewed: true, amountPresetsBaseCurrency: "USD" });
-    assert.equal(res.statusCode, 200, "explicit reviewed reset may change currency");
-    assert.equal(wedding.amount_presets, null);
+    assert.equal(patches.length, savedCount, "invalid feature controls are rejected before saving any wedding content");
     owned = false;
-    res = await run({ amountPresets: valid, amountPresetsReviewed: true, amountPresetsBaseCurrency: "KES" });
+    res = await run({ currency: "USD" });
     assert.equal(res.statusCode, 404);
   } finally {
     globalThis.fetch = oldFetch;
@@ -99,7 +99,7 @@ test("organizer API persists canonical choices, preserves omitted presets and re
   }
 });
 
-test("organizer wedding read returns both reviewed presets and moderation status", async () => {
+test("organizer wedding read does not expose suggested amounts and retains moderation status", async () => {
   const env = { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "test-anon", SUPABASE_SERVICE_ROLE_KEY: "test-service" };
   const oldEnv = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]));
   Object.assign(process.env, env);
@@ -111,8 +111,7 @@ test("organizer wedding read returns both reviewed presets and moderation status
     if (url.pathname === "/auth/v1/user") return json({ id: ownerId });
     if (url.pathname === "/rest/v1/platform_policies") return json([{ max_contribution_minor: 500000 }]);
     if (url.pathname === "/rest/v1/weddings") return json([{
-      id: weddingId, slug: "qa-couple", currency: "KES",
-      amount_presets: { currency: "KES", song: [10000, 50000], gift: [50000, 100000] }
+      id: weddingId, slug: "qa-couple", currency: "KES"
     }]);
     if (url.pathname === "/rest/v1/rpc/wedding_moderation_status") {
       moderationCalls++;
@@ -125,8 +124,8 @@ test("organizer wedding read returns both reviewed presets and moderation status
     const res = { statusCode: 200, status(n) { this.statusCode = n; return this; }, setHeader() {}, end(text) { this.body = JSON.parse(text); } };
     await weddings({ method: "GET", query: { action: "get", weddingId }, headers: { authorization: "Bearer fixture" } }, res);
     assert.equal(res.statusCode, 200);
-    assert.equal(res.body.amountPresetMaxMinor, 500000);
-    assert.deepEqual(res.body.wedding.amount_presets, { currency: "KES", song: [10000, 50000], gift: [50000, 100000] });
+    assert.equal(Object.hasOwn(res.body, "amountPresetMaxMinor"), false);
+    assert.equal(Object.hasOwn(res.body.wedding, "amount_presets"), false);
     assert.deepEqual(res.body.wedding.moderation, moderation);
     assert.equal(moderationCalls, 1);
   } finally {

@@ -23,11 +23,19 @@ begin
   perform set_config('request.jwt.claim.role','authenticated',true);
   perform public.assign_platform_role(admin_id,'admin');
   perform public.assign_platform_role(leadership_id,'superadmin');
-  insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date,published_at,slug)
-    values(wid,client_id,'Standard fixture','KES',current_date+800,now(),'synthetic-standard');
+  insert into public.weddings(id,client_owner_id,couple_names,welcome_story,cover_image_url,
+      guest_instructions,currency,wedding_date,slug)
+    values(wid,client_id,'Standard fixture','A local celebration sample.',
+      'https://example.test/cover.jpg','Please reply before the celebration.',
+      'KES',current_date+800,'synthetic-standard');
+  insert into public.venues(wedding_id,name,event_date,event_time,address)
+    values(wid,'Local event',current_date+800,'12:00','Local street');
   insert into public.wedding_memberships(wedding_id,user_id,role) values(wid,client_id,'client') on conflict do nothing;
   update public.platform_policies set enabled_payment_providers=array['paystack','daraja'],
     contribution_fee_basis_points=500,contribution_fixed_fee_minor=1,contribution_fixed_fee_currency='USD';
+  insert into public.wedding_collection_capabilities(wedding_id,provider,currency,market)
+    values(wid,'paystack','KES','KE');
+  update public.weddings set published_at=now() where id=wid;
   insert into public.publication_fx_snapshots(id,source,published_at,rates)
     values(fx_id,'https://open.er-api.com/v6/latest/USD',now(),'{"USD":1,"KES":130.01}');
   select p.revision into revision from public.paystack_live_policy p where singleton;

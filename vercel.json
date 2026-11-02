@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/api/referrals", "destination": "/api/weddings?client_referrals=1" },
     { "source": "/", "has": [{ "type": "host", "value": "(?<label>[a-z0-9-]+)\\.joinourwedding\\.site" }], "destination": "/api/guest?action=page" },
     { "source": "/w/:slug", "destination": "/api/guest?action=og&slug=:slug" }
   ],

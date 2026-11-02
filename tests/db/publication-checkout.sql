@@ -10,10 +10,16 @@ begin
   insert into auth.users(id) values(client_id),(stranger_id);
   update public.platform_policies set publication_fee_minor=2500,far_future_fee_minor=5000,
     far_future_months=18,free_publications_per_client=1,enabled_payment_providers=array['daraja','paystack'];
-  insert into public.weddings(id,client_owner_id,slug,couple_names,wedding_date,currency)
-    values(wedding_id,client_id,'publication-local-check','Local publication sample',current_date+800,'KES');
-  insert into public.venues(wedding_id,name,event_date,event_time)
-    values(wedding_id,'Sample venue',current_date+800,'12:00');
+  insert into public.weddings(id,client_owner_id,slug,couple_names,welcome_story,cover_image_url,
+      guest_instructions,wedding_date,currency,public_location,revenue_features)
+    values(wedding_id,client_id,'publication-local-check','Local publication sample',
+      'A local celebration sample.','https://example.test/cover.jpg','Please reply before the celebration.',
+      current_date+800,'KES','Local city',
+      '{"giving":true,"sponsors":true,"featured_sponsors":true,"song_requests":true,"vip_seating":true}'::jsonb);
+  insert into public.venues(wedding_id,name,event_date,event_time,address)
+    values(wedding_id,'Sample venue',current_date+800,'12:00','Local street');
+  insert into public.wedding_collection_capabilities(wedding_id,provider,currency,market)
+    values(wedding_id,'daraja','KES','KE');
   perform set_config('request.jwt.claim.sub',client_id::text,true);
   q := public.publication_quote(wedding_id);
   if (q->>'fee_minor')::bigint <> 5000 or q->>'code' <> 'far_future' then
@@ -62,6 +68,10 @@ begin
   if not exists(select 1 from public.publication_fees pf where pf.wedding_id=checkout.wedding_id
     and status='test_paid' and amount_minor=5000 and provider='daraja-test') then
     raise exception 'Test settlement must not be marked real paid revenue'; end if;
+  update public.platform_policies set enabled_payment_providers=array['daraja'];
+  update public.wedding_collection_capabilities as capability set checked_at=now()
+    where capability.wedding_id=(select id from public.weddings where slug='publication-local-check')
+      and capability.provider='daraja' and capability.currency='KES';
   perform public.publish_wedding_with_fee(wedding_id,true);
   if not exists(select 1 from public.weddings where id=wedding_id and published_at is not null) then
     raise exception 'Verified fee must permit explicit publishing without KYC'; end if;

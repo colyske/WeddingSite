@@ -87,7 +87,10 @@ test("options and stale-tab checkout creation respect independent switches; exis
     const url = new URL(input);
     paths.push(url.pathname);
     if (url.pathname === "/rest/v1/platform_policies") return response([{ enabled_payment_providers: enabled }]);
-    if (url.pathname === "/rest/v1/weddings") return response([{ id: weddingId, currency: "KES" }]);
+    if (url.pathname === "/rest/v1/weddings") return response([{
+      id: weddingId, currency: "KES", wedding_date: "2099-01-01",
+      revenue_features: { giving: true, sponsors: true, featured_sponsors: true, song_requests: true, vip_seating: true }
+    }]);
     if (url.pathname === "/integration/payment_session_timeout") return response({ status: true });
     if (url.pathname === "/oauth/v1/generate") return response({ access_token: "fixture-token", expires_in: 3600 });
     if (url.pathname === "/rest/v1/contributions") return response([{
@@ -115,7 +118,8 @@ test("options and stale-tab checkout creation respect independent switches; exis
         amountMinor: 1000, visibility: "hidden", publicConsent: false } }, stale);
     assert.equal(stale.statusCode, 409);
     assert.match(stale.data.error, /disabled/);
-    assert.deepEqual(paths, ["/rest/v1/platform_policies"], "no provider, anti-bot or pending intent started");
+    assert.deepEqual(paths, ["/rest/v1/weddings", "/rest/v1/platform_policies"],
+      "the enabled wedding feature and provider policy are checked before anti-bot or pending intent creation");
     enabled = [];
     paths.length = 0;
     const existing = res();

@@ -198,6 +198,38 @@ body { overflow-wrap: break-word; }
 .fine, .muted { color: #555b53 !important; }
 small, .empty, .palette-label, .sec-label { color: #555b53; }
 a { color: var(--green); text-underline-offset: .18em; }
+
+@media (max-width: 640px) {
+  .wrap { width: 100%; min-width: 0; padding: 1rem .75rem; }
+  body:not(.guest-page) .card { min-width: 0; padding: 1.15rem; }
+  .top { align-items: flex-start; gap: .75rem; margin-bottom: 1.25rem; }
+  .top > *, .row > * { min-width: 0; max-width: 100%; }
+  .row { align-items: stretch; gap: .65rem; }
+  .row > button, .row > .btn, .row > a { flex: 1 1 11rem; }
+  button, .btn, input:not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea {
+    min-height: 44px;
+  }
+  button, .btn { max-width: 100%; padding-left: .9rem !important; padding-right: .9rem !important; overflow-wrap: anywhere; }
+  button.link { min-height: 44px; padding: .5rem .3rem !important; }
+  input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; flex: 0 0 20px; }
+  input[type="file"] { min-height: 44px; }
+  input, select, textarea { max-width: 100%; font-size: 16px; }
+  textarea { resize: vertical; }
+  table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .grid, #weddings-grid { grid-template-columns: minmax(0, 1fr); gap: 1rem; }
+  .card:hover { transform: none; }
+  dialog { max-width: calc(100vw - 1rem); max-height: calc(100dvh - 1rem); overflow-y: auto; }
+  .guide-actions { position: sticky; bottom: 0; z-index: 4; background: var(--paper, #fcfbf8); padding: .75rem 0 calc(.75rem + env(safe-area-inset-bottom)); }
+  .event-group { min-width: 0; padding: .85rem; }
+}
+
+@media (max-width: 380px) {
+  .wrap { padding: .75rem .5rem; }
+  body:not(.guest-page) .card { padding: .9rem; }
+  .guide-actions button { flex-basis: 100%; }
+  .guide-nav button { flex-basis: 78vw; }
+  .color-grid { grid-template-columns: minmax(0, 1fr); }
+}
 input::placeholder, textarea::placeholder { color: #62685f; opacity: 1; }
 input:disabled, select:disabled, textarea:disabled { color: #555b53; opacity: 1; }
 button:disabled, .btn[aria-disabled="true"] { background: #e0e2db !important; color: #4b5148 !important; opacity: 1; }
@@ -287,8 +319,11 @@ body.guest-page #bids .link-btn { background: transparent !important; color: var
   #pay-dialog { max-height: 90dvh; overflow-y: auto; width: calc(100vw - 24px); }
 }
 
+body:not(.guest-page) .top > div > #sign-out { display: none !important; }
+
 /* Shared celebration surfaces. */
 body.guest-page #details, body.guest-page #campaigns, body.guest-page #sponsors { background: #e2e9df !important; }
+.sponsor-currency-group { grid-column: 1 / -1; margin: .5rem 0 0; }
 .sponsor-sample { padding: 1.4rem; border-radius: 12px; text-align: center; color: #fffaf0; background: radial-gradient(ellipse at top, #49684f, #183d30); border: 1px solid #ac925a; }
 .sponsor-sample h3, .sponsor-sample .fine, .sponsor-sample .eyebrow { color: #fffaf0 !important; }
 .sponsor-emblem { font-size: 2rem; color: #e5c986; }

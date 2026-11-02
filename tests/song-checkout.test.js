@@ -29,6 +29,7 @@ test("new and existing song requests create pending verified checkouts, never di
   let prior = [];
   let challengeValid = true;
   let leaderboard = [];
+  let songRequestsEnabled = true;
   const entries = [];
   const calls = [];
   globalThis.fetch = async (input, init = {}) => {
@@ -39,7 +40,10 @@ test("new and existing song requests create pending verified checkouts, never di
     if (url.pathname === "/transaction/initialize") return response({
       status: true, data: { authorization_url: "https://checkout.paystack.com/test", reference: idempotencyKey }
     });
-    if (url.pathname === "/rest/v1/weddings") return response([{ id: weddingId, slug: "qa-couple", currency: "KES", wedding_date: "2099-01-01" }]);
+    if (url.pathname === "/rest/v1/weddings") return response([{
+      id: weddingId, slug: "qa-couple", currency: "KES", wedding_date: "2099-01-01",
+      revenue_features: { giving: true, sponsors: true, featured_sponsors: true, song_requests: songRequestsEnabled, vip_seating: true }
+    }]);
     if (url.pathname === "/rest/v1/platform_policies") return response([{ contribution_fee_basis_points: 500, max_contribution_minor: 10000000 }]);
     if (url.pathname === "/rest/v1/rpc/get_dj_leaderboard") return response(leaderboard);
     if (url.pathname === "/rest/v1/contributions") {
@@ -75,6 +79,15 @@ test("new and existing song requests create pending verified checkouts, never di
     assert.deepEqual(entries[1].purchase_data, entries[0].purchase_data);
     assert.equal(entries[1].pledged_amount_minor, 2500);
     assert.ok(!calls.some(path => /place_dj_bid|record_verified_payment|dj_song_bids/.test(path)));
+
+    songRequestsEnabled = false;
+    calls.length = 0;
+    res = await run({});
+    assert.equal(res.statusCode, 409);
+    assert.match(res.body.error, /not currently available/);
+    assert.equal(entries.length, 2);
+    assert.deepEqual(calls, ["/rest/v1/weddings"], "disabled feature is rejected before challenge, provider checks or checkout creation");
+    songRequestsEnabled = true;
 
     for (const invalid of [{ songTitle: "" }, { artist: "" }, { songTitle: "x".repeat(161) }, { amountMinor: -1 }]) {
       res = await run(invalid);

@@ -13,11 +13,22 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: supabase/setup-cli@v1
         with:
           version: latest
+          github-token: ${{ github.token }}
       - name: Start isolated local database
         run: supabase start --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - name: Prepare the predecessor schema for populated upgrade regression
+        run: supabase db reset --local --version 202611040002 --no-seed
+      - name: Test publication migration with existing published weddings and drafts
+        run: node tests/db/guided-publication-upgrade.mjs
+      - name: Apply optional-content predecessor on populated database
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < supabase/migrations/202611080001_optional_cover_and_guest_instructions.sql
+      - name: Commit starter migration on populated predecessor without changing existing weddings
+        run: node tests/db/wedding-starter-upgrade.mjs
       - name: Apply all migrations to a fresh database
         run: supabase db reset --local --no-seed
       - name: Lint the migrated schema
@@ -48,6 +59,20 @@ jobs:
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/paystack-live.sql
       - name: Test standard Paystack collection and immutable Owner settlement modes without retaining fixtures
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/paystack-standard.sql
+      - name: Test wedding helper role boundaries without retaining fixtures
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/wedding-team.sql
+      - name: Test held client referrals without retaining fixtures
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/referral-commissions.sql
+      - name: Test amount-ranked sponsor and verified song placement without retaining fixtures
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/amount-ranked-sponsors.sql
+      - name: Test concurrent first-valid client referral capture
+        env:
+          REFERRAL_TEST_DB_CONTAINER: supabase_db_weddingsite
+        run: node tests/db/referral-concurrency.mjs
+      - name: Test incomplete guided drafts, idempotency and publication invariants without retaining fixtures
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/guided-wedding-drafts.sql
+      - name: Test starter proof gates, atomic rollback and idempotent configuration copying
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/wedding-starter-drafts.sql
       - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup
@@ -62,4 +87,17 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run check
+      - run: npm run check:referrals
       - run: npm test
+      - name: Capture exact-head starter mobile evidence
+        if: github.event_name == 'push'
+        env:
+          STARTER_EVIDENCE_DIR: ${{ runner.temp }}/starter-mobile-evidence
+        run: node --test tests/wedding-inspiration.browser.test.js
+      - name: Upload starter mobile screenshots and asset hashes
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: starter-mobile-evidence
+          path: ${{ runner.temp }}/starter-mobile-evidence
+          if-no-files-found: error

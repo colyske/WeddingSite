@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#203a31"><link rel="icon" type="image/png" sizes="120x120" href="/assets/brand/icon-120.png"><link rel="apple-touch-icon" sizes="120x120" href="/assets/brand/icon-120.png">
   <title>Join Our Wedding — Workspace</title>
   <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><script src="ornaments.js" defer></script>
+  <link rel="stylesheet" href="guided-setup.css">
   <style>
     .color-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin: 1.5rem 0; }
     .color-grid small { color: #7a8580; }
@@ -32,6 +33,7 @@
             <div style="padding: 0.75rem 1rem;">
               <div class="fine" style="margin-bottom: 0.5rem;" id="role-display"></div>
               <a href="/account.html" class="link" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer; text-decoration: none; color: #0066cc;">Account Settings</a>
+              <a href="/referrals.html" class="link">Client referrals</a>
               <button type="button" class="link" id="change-password" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer;">Change password</button>
               <a href="/admin.html" class="link" style="display: none;" id="admin-dashboard" title="Admin Dashboard">Admin Dashboard</a>
               <a href="#" class="link" style="display: none;" id="owner-profile" title="Owner Profile">Owner Profile</a>
@@ -46,62 +48,45 @@
 
     <h1>My Weddings</h1>
     <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
+    <button id="client-referral-dismiss" type="button" hidden>Discard the unvalidated referral link and retry</button>
     <div id="created" role="status" hidden></div>
 
     <div id="create-section" class="card">
-      <h2>✨ Plan a new wedding</h2>
-      <p style="color: #7a8580; margin: 0 0 2rem;">Start your wedding journey with us</p>
+      <h2>Start your wedding guide</h2>
+      <p>Create a private draft with the couple&rsquo;s names, then continue setup in the same step-by-step guide used to edit it. Nothing is published until you review and publish.</p>
+      <p class="fine">New drafts start in USD and have no offers or prices. Before adding fundraising, choose a currency that currently has a ready guest-payment option. Existing saved currencies and paid amounts are never converted automatically.</p>
+      <p><a href="/inspiration.html">Explore fictional wedding inspiration</a> or use the reusable setup from an eligible public wedding.</p>
       <form id="create-form" novalidate onsubmit="return false">
-        <label for="couple-names">👰 Couple names <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
-        <input id="couple-names" type="text" maxlength="120" placeholder="e.g. Sarah &amp; John" autocomplete="off" required aria-required="true">
-
-        <label for="wedding-date">📅 Wedding date <span class="required-mark" aria-hidden="true">*</span></label>
-        <input id="wedding-date" type="date" required>
-        <label for="wedding-timezone">🌍 Time zone <span class="fine">(venue times, countdown and calendar use this zone)</span></label>
-        <select id="wedding-timezone"></select>
-
-        <label for="location">📍 Location <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
-        <input id="location" type="text" maxlength="120" placeholder="City, venue, or coordinates" autocomplete="off" required aria-required="true">
-
-        <label for="currency">💵 Primary currency <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
-        <select id="currency" data-wedding-currency required aria-required="true">
-          <option value="USD">USD - US Dollar</option>
-          <option value="KES">KES - Kenyan Shilling</option>
-          <option value="EUR">EUR - Euro</option>
-          <option value="GBP">GBP - British Pound</option>
-          <option value="NGN">NGN - Nigerian Naira</option>
-          <option value="UGX">UGX - Ugandan Shilling</option>
-          <option value="ZAR">ZAR - South African Rand</option>
-        </select>
-
-        <label for="max-capacity">👥 Maximum guest capacity <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
-        <input id="max-capacity" type="number" min="1" step="1" value="150" required aria-required="true">
-
-        <label>🎨 Wedding colour palette (4 colours)</label>
-        <div class="swatches" id="palette-preview">
-          <span id="swatch-1" style="background: #244b3a;" title="Colour 1"></span>
-          <span id="swatch-2" style="background: #a9b5a2;" title="Colour 2"></span>
-          <span id="swatch-3" style="background: #be9b52;" title="Colour 3"></span>
-          <span id="swatch-4" style="background: #eee8d9;" title="Colour 4"></span>
-        </div>
-        <button type="button" class="link" id="edit-palette" data-action="toggle-palette" aria-expanded="false">✎ Edit colours</button>
-
-        <div id="palette-editor" hidden>
-          <div class="color-grid">
-            <div><label for="color-1">Colour 1</label><input id="color-1" type="color" value="#244b3a" data-color-index="0"><small>Forest Green</small></div>
-            <div><label for="color-2">Colour 2</label><input id="color-2" type="color" value="#a9b5a2" data-color-index="1"><small>Eucalyptus Sage</small></div>
-            <div><label for="color-3">Colour 3</label><input id="color-3" type="color" value="#be9b52" data-color-index="2"><small>Royal Gold</small></div>
-            <div><label for="color-4">Colour 4</label><input id="color-4" type="color" value="#eee8d9" data-color-index="3"><small>Ivory</small></div>
+        <label for="couple-names">Couple names</label>
+        <input id="couple-names" type="text" maxlength="120" placeholder="For example, Amina &amp; David" autocomplete="off" required aria-required="true">
+        <p id="legacy-answer-notice" class="fine" hidden></p>
+        <aside id="inspiration-selection" class="notice" hidden>
+          <h3>Use this setup as a starting point</h3>
+          <p id="inspiration-selection-copy"></p>
+          <button type="button" id="apply-inspiration" hidden>Use this setup instead of this tab's saved answers</button>
+          <button type="button" id="keep-current-answers" class="link" hidden>Keep my current answers</button>
+          <div id="starter-review" hidden>
+            <p>Only a new private draft is created. Personalize the prefilled sections in the shared wedding guide after creation. Your own names, story, dates and venue details are still needed; photos and guest instructions remain optional.</p>
+            <label for="starter-currency">Choose your supported collection currency</label>
+            <select id="starter-currency"><option value="">Check current collection support first</option></select>
+            <button type="button" class="link" id="starter-capabilities-retry">Check currency support again</button>
+            <p id="starter-money-disclosure" role="status"></p>
+            <div id="starter-summary"></div>
+            <label><input id="starter-reviewed" type="checkbox"> I reviewed the currency, illustrative/generic copy, package promises, RSVP settings and goal structures. I will personalize them in my private wedding guide before publishing.</label>
           </div>
-          <button type="button" id="save-palette" data-action="save-palette">✓ Save colours</button>
-          <button type="button" class="link" id="reset-palette" data-action="reset-palette">Reset to defaults</button>
-        </div>
-
-        <label>📍 Venues (optional) — choose one as the main venue</label>
-        <div id="venues-container"></div>
-        <button type="button" id="add-venue" data-action="add-venue">+ Add another venue</button>
-
-        <button type="submit" id="create-submit">✨ Create wedding</button>
+        </aside>
+        <fieldset id="client-referral-disclosure" hidden>
+          <legend>Client referral disclosure</legend>
+          <p id="client-referral-details"></p>
+          <label for="client-referral-decision">Your choice</label>
+          <select id="client-referral-decision">
+            <option value="">Choose accept or decline</option>
+            <option value="accept">Accept this referral attribution</option>
+            <option value="decline">Decline this referral (no attribution)</option>
+          </select>
+          <p><a href="/terms.html#client-referrals">Client referral terms</a></p>
+        </fieldset>
+        <button type="submit" id="create-submit">Create draft and continue setup</button>
       </form>
     </div>
 
@@ -118,6 +103,10 @@
   <script src="tz.js"></script>
   <script src="share.js"></script>
   <script src="setup-progress.js"></script>
+  <script src="referral-client.js"></script>
+  <script src="guided-setup.js"></script>
+  <script src="inspiration-fixtures.js"></script>
+  <script src="starter-setup.js"></script>
   <script src="dashboard.js"></script>
   <script src="footer.js"></script>
 <script src="/feedback.js"></script>

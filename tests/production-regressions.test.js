@@ -38,6 +38,8 @@ const wedding = {
   slug: "atieno-and-otieno",
   couple_names: couple,
   welcome_story: "Love, family & friendship <together>.",
+  cover_image_url: "https://example.test/cover.jpg",
+  guest_instructions: "Please RSVP by 1 November and include any dietary needs.",
   wedding_date: futureDate,
   public_location: "Nairobi",
   currency: "KES",
@@ -143,7 +145,6 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     assert.equal(await page.locator("#qrcode").getAttribute("data-qr-text"), `${base}/verify.html?code=${rsvpId}`);
     assert.equal(await page.locator("#standalone-pass-link").getAttribute("href"), `${base}/ecard.html?slug=${wedding.slug}&guest_id=${rsvpId}`);
     assert.match(await page.locator("#notice").textContent(), /RSVP received/);
-    await page.click('#leaderboard-body summary');
     await page.locator('#leaderboard-body [data-song-bid]').first().click();
     await page.waitForFunction(() => !document.querySelector("#pay-error").hidden);
     assert.match(await page.locator("#pay-error").textContent(), /Payments are not available yet/);
@@ -194,6 +195,9 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
         loadedPalettes.push([...storedWedding.palette]);
         data = { wedding: storedWedding };
       }
+      if (action === "collection-capabilities") data = { currencies: [
+        { code: "KES", name: "Kenyan shilling", methods: [{ name: "M-Pesa", markets: ["Kenya"] }] }
+      ] };
       if (action === "payout-methods") data = { methods: [{ id: "mpesa", name: "M-Pesa" }] };
       if (action === "update") {
         savedBody = route.request().postDataJSON();
@@ -201,6 +205,8 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
           ...storedWedding,
           couple_names: savedBody.coupleNames,
           welcome_story: savedBody.welcomeStory,
+          cover_image_url: savedBody.coverImageUrl,
+          guest_instructions: savedBody.guestInstructions,
           public_location: savedBody.location,
           wedding_date: savedBody.weddingDate,
           currency: savedBody.currency,
@@ -222,20 +228,39 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(data) });
     });
     await editor.goto(`${base}/wedding.html?id=${weddingId}`);
-    await editor.waitForFunction(() => !document.querySelector("#edit-section").hidden);
+    await editor.waitForFunction(() => !document.querySelector("#edit-section").hidden, null, { timeout: 5000 })
+      .catch(async error => {
+        const state = await editor.evaluate(() => ({
+          notice: document.querySelector("#notice")?.textContent,
+          title: document.title,
+          errors: document.querySelector(".guide-errors")?.innerText
+        }));
+        throw new Error(`${error.message}; editor load state: ${JSON.stringify(state)}`);
+      });
     await editor.click("#account-menu-btn");
     assert.equal(await editor.locator('a[href="/account.html"]').isVisible(), true);
     assert.equal(await editor.locator("#payment-mpesa").count(), 0);
     await editor.fill("#welcome-story", "Atieno & Otieno <forever>.");
-    await editor.click("#edit-colors-btn");
+    await editor.locator(".guide-nav button").filter({ hasText: "Wedding theme & attire" }).click();
+    await editor.locator("#color-inputs").waitFor({ state: "visible" });
     await editor.locator(".palette-color-hex").first().fill("#123abc");
     await editor.locator(".palette-color-hex").first().dispatchEvent("change");
     await editor.click("#apply-colors-btn");
-    await editor.click('#edit-form button[type="submit"]');
-    await editor.waitForFunction(() => document.querySelector("#notice").textContent.includes("Changes saved"));
+    await editor.click("#edit-form [data-guide-save]");
+    await editor.waitForFunction(() => document.querySelector("#notice").textContent.trim().length > 0, null, { timeout: 5000 })
+      .catch(async error => {
+        const state = await editor.evaluate(() => ({
+          notice: document.querySelector("#notice")?.textContent,
+          guideErrors: document.querySelector(".guide-errors")?.innerText,
+          invalid: [...document.querySelectorAll("#edit-form input, #edit-form select, #edit-form textarea")]
+            .filter(input => input.willValidate && !input.validity.valid).map(input => input.id || input.name)
+        }));
+        throw new Error(`${error.message}; save state: ${JSON.stringify(state)}`);
+      });
+    assert.equal(await editor.locator("#notice").textContent(), "Your wedding details and setup answers are saved.");
     assert.deepEqual(savedBody.palette, ["#123abc", "#a9b5a2"]);
     assert.deepEqual(storedWedding.palette, ["#123abc", "#a9b5a2"]);
-    assert.equal(savedBody.venues[0].name, "Garden & Hall");
+    assert.deepEqual(savedBody.venues.map(venue => venue.name).sort(), ["Garden & Hall", "Welcome gathering"].sort());
     assert.equal(savedBody.welcomeStory, "Atieno & Otieno <forever>.");
     assert.equal(savedBody.attireNotes, "Formal African elegance");
     assert.equal(savedBody.registry[0].name, "Home & Honeymoon");
@@ -245,7 +270,8 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     await editor.reload();
     await editor.waitForFunction(() => !document.querySelector("#edit-section").hidden);
     assert.equal(await editor.locator("#welcome-story").inputValue(), "Atieno & Otieno <forever>.");
-    assert.equal(await editor.locator(".venue-name").first().inputValue(), "Garden & Hall");
+    assert.deepEqual((await editor.locator(".venue-name").evaluateAll(inputs => inputs.map(input => input.value))).sort(),
+      ["Garden & Hall", "Welcome gathering"].sort());
     assert.equal(await editor.locator("#attire-notes").inputValue(), "Formal African elegance");
     assert.equal(await editor.locator(".registry-name").first().inputValue(), "Home & Honeymoon");
     assert.equal(await editor.locator(".tier-name").first().inputValue(), "Gold & Friends");
@@ -254,6 +280,16 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     assert.deepEqual(loadedPalettes.at(-1), ["#123abc", "#a9b5a2"], JSON.stringify(loadedPalettes));
     assert.deepEqual(await editor.locator("#palette-preview").evaluate(el => JSON.parse(el.dataset.palette)), ["#123abc", "#a9b5a2"]);
     await editor.click("#publish-btn");
+    assert.equal(await editor.locator('[data-guide-step="review"]').isVisible(), true,
+      "publishing first moves the couple to the review step");
+    await editor.click("#publish-btn");
+    assert.equal(await editor.locator("#publish-section").isVisible(), true, JSON.stringify(await editor.evaluate(() => ({
+      notice: document.getElementById("notice").textContent,
+      state: document.querySelector("[data-guide-state]").textContent,
+      errors: document.querySelector(".guide-errors").textContent,
+      invalid: [...document.querySelectorAll("#edit-form input, #edit-form select, #edit-form textarea")]
+        .filter(input => input.willValidate && !input.validity.valid).map(input => [input.id, input.validationMessage])
+    }))));
     await editor.click("#confirm-publish");
     await editor.waitForFunction(() => !document.querySelector("#published-section").hidden);
     assert.equal(await editor.locator("#view-guest-site").getAttribute("target"), "_blank");

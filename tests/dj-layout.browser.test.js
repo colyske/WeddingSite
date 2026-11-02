@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { chromium } from "playwright";
 
-test("DJ song list precedes the request form, fits 320/375px and highlights a paid song", async () => {
+test("DJ song list precedes the request form, fits 320/375px and exposes manual bids", async () => {
   const server = http.createServer(async (req, res) => {
     try {
       const path = new URL(req.url, "http://localhost").pathname;
@@ -52,9 +52,7 @@ test("DJ song list precedes the request form, fits 320/375px and highlights a pa
         listTop: document.getElementById("leaderboard-table").getBoundingClientRect().top + scrollY,
         formTop: document.getElementById("song-request-form").getBoundingClientRect().top + scrollY,
         navLinks: [...document.querySelectorAll(".sticky-nav .nav-links a")].map(a => { const r = a.getBoundingClientRect(); return { l:r.left, r:r.right }; }),
-        buttons: [...document.querySelectorAll("#leaderboard-body summary")].map(b => { const r = b.getBoundingClientRect(); return { l: r.left, r: r.right, h: r.height, t: r.top }; }),
-        songTop: document.querySelector("#leaderboard-body .lb-song").getBoundingClientRect().top,
-        songBottom: document.querySelector("#leaderboard-body .lb-song").getBoundingClientRect().bottom
+        buttons: [...document.querySelectorAll("#leaderboard-body [data-song-bid]")].map(b => { const r = b.getBoundingClientRect(); return { l: r.left, r: r.right, h: r.height }; })
       }));
       assert.ok(metrics.scrollW <= metrics.clientW, `no horizontal page overflow at ${width}px`);
       assert.ok(metrics.navH < 125, `compact nav at ${width}px (${metrics.navH})`);
@@ -62,26 +60,26 @@ test("DJ song list precedes the request form, fits 320/375px and highlights a pa
       for (const b of metrics.buttons) {
         assert.ok(b.l >= 0 && b.r <= width, "bid buttons stay inside the viewport");
         assert.ok(b.h >= 44, "bid buttons keep a 44px tap target");
-        assert.ok(b.t < metrics.songBottom && b.t >= metrics.songTop - 16, `bid button shares the song row at ${width}px`);
       }
       for (const link of metrics.navLinks) assert.ok(link.l >= 0 && link.r <= width, `all nav links visible at ${width}`);
-      assert.equal(await page.locator("#leaderboard-body [data-song-bid]").first().isVisible(), false);
-      await page.locator("#leaderboard-body summary").focus();
-      await page.keyboard.press("Enter");
-      assert.equal(await page.locator("#leaderboard-body [data-song-bid]").first().isVisible(), true);
-      const amountsFit = await page.locator("#leaderboard-body .song-bid-amounts").evaluate(el => el.scrollWidth <= el.clientWidth);
-      assert.ok(amountsFit);
       const expandedControls = await page.locator("#leaderboard-body summary, #leaderboard-body button").evaluateAll(els =>
         els.map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, width: innerWidth }; }));
-      assert.ok(expandedControls.every(r => r.left >= 0 && r.right <= r.width), `expanded controls fit at ${width}: ${JSON.stringify(expandedControls)}`);
+      assert.ok(expandedControls.every(r => r.left >= 0 && r.right <= r.width), `song controls fit at ${width}: ${JSON.stringify(expandedControls)}`);
       if (process.env.WEDDING_SCREENSHOTS && [320, 375, 1280].includes(width)) {
-        await page.locator("#bids").screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `refinement-bids-open-${width}.png`) });
+        await page.locator("#bids").screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `refinement-bids-${width}.png`) });
       }
-      await page.keyboard.press("Space");
       if (process.env.WEDDING_SCREENSHOTS && [320, 375, 1280].includes(width)) {
         await page.screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `refinement-guest-${width}.png`), fullPage: true });
       }
     }
+    const bidButton = page.locator("#leaderboard-body [data-song-bid]").first();
+    assert.equal(await bidButton.isVisible(), true, "guests can open the manual bid form directly");
+    await bidButton.focus();
+    await page.keyboard.press("Enter");
+    await page.locator("#pay-dialog[open]").waitFor();
+    assert.equal(await page.locator("#pay-amount").inputValue(), "", "the guest enters their own bid");
+    assert.equal(await page.locator("#pay-amount").getAttribute("min"), "1");
+    await page.locator("#pay-cancel").click();
     assert.equal(await page.locator("#palette-preview figure").count(), 3);
     assert.equal(await page.locator("#attire-palette-preview").count(), 0, "one shared palette, no duplicate attire section");
     assert.match(await page.locator("#attire-notes-display").textContent(), /Traditional or casual/);

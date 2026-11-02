@@ -22,9 +22,10 @@ test("sponsor CTA without packages opens a paid-only custom sponsorship with the
     await page.route("https://**", route => route.fulfill({ body: "" }));
     const wedding = { id: "550e8400-e29b-41d4-a716-446655440000", slug: "qa-couple", couple_names: "QA Couple",
       wedding_date: "2099-01-01", currency: "KES", palette: ["#244b3a"] };
+    let tiers = [];
     await page.route("**/api/guest**", route => {
       const action = new URL(route.request().url()).searchParams.get("action");
-      const body = action === "site" ? { wedding } : action === "fundraising" ? { campaigns: [], tiers: [], sponsors: [] } : {};
+      const body = action === "site" ? { wedding } : action === "fundraising" ? { campaigns: [], tiers, sponsors: [] } : {};
       return route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
     });
     const checkoutActions = [];
@@ -45,7 +46,8 @@ test("sponsor CTA without packages opens a paid-only custom sponsorship with the
     assert.equal(await page.locator("#pay-amount").getAttribute("min"), "5000");
     assert.equal(await page.locator("#pay-amount").getAttribute("readonly"), null, "sponsor chooses the amount");
     assert.equal(await page.locator("#pay-sponsor-fields").isHidden(), false);
-    assert.match(await page.locator("#pay-summary").textContent(), /not a package and does not guarantee featured placement/);
+    assert.match(await page.locator("#pay-summary").textContent(), /larger contributions appear higher/i);
+    assert.match(await page.locator("#pay-summary").textContent(), /not a package or a featured-bid placement/);
     await page.waitForFunction(() => document.getElementById("pay-submit").classList.contains("pay-mpesa"));
     await page.waitForFunction(() => ["rgb(0, 112, 60)", "rgb(63, 125, 92)"].includes(getComputedStyle(document.getElementById("pay-submit")).backgroundColor));
     const style = await page.locator("#pay-submit").evaluate(el => ({ disabled: el.disabled, bg: getComputedStyle(el).backgroundColor, color: getComputedStyle(el).color, h: el.getBoundingClientRect().height }));
@@ -57,6 +59,15 @@ test("sponsor CTA without packages opens a paid-only custom sponsorship with the
     assert.equal(await page.locator("#pay-amount").evaluate(el => el.validity.rangeUnderflow), true, "browser blocks amounts below the floor");
     await page.locator("#pay-submit").click({ force: true }).catch(() => {});
     assert.deepEqual(checkoutActions.filter(a => !["custom-sponsor", "options"].includes(a)), [], "no payment initiated below the floor");
+
+    tiers = [{ id: "gold", name: "Gold package", min_amount_minor: 750000, perks: "Acknowledgement and thanks" }];
+    await page.goto(`http://127.0.0.1:${server.address().port}/guest.html?slug=qa-couple`);
+    await page.locator("#sponsor-cta").waitFor();
+    await page.locator("#sponsor-cta").click();
+    assert.match(await page.locator("#sponsor-tiers").innerText(), /larger contributions appear higher/i);
+    await page.locator('#tiers-display [data-buy="sponsor"]').click();
+    await page.locator("#pay-dialog[open]").waitFor();
+    assert.match(await page.locator("#pay-summary").textContent(), /package level does not set list order/i);
   } finally {
     await browser?.close();
     server.close();

@@ -80,7 +80,7 @@ test("empty and populated DJ lists open verified checkout and preserve requests 
     await page.waitForFunction(() => document.getElementById("pay-submit").textContent.includes("Waiting"));
     assert.equal(await page.locator("#leaderboard-body tr").count(), 0, "pending STK acceptance creates no leaderboard entry");
     status = "cancelled";
-    await page.waitForFunction(() => document.getElementById("pay-error").textContent.includes("unsuccessful M-Pesa"));
+    await page.waitForFunction(() => document.getElementById("pay-error").textContent.includes("M-Pesa request could not be confirmed"));
     assert.equal(await page.locator("#leaderboard-body tr").count(), 0, "declined payments create no entry");
     bids = [{ song_title: "QA Song", artist_name: "QA Artist", bid_amount_minor: 1000, bid_count: 1 }];
     status = "paid";
@@ -91,11 +91,11 @@ test("empty and populated DJ lists open verified checkout and preserve requests 
     assert.equal(await page.locator("#leaderboard-body tr.song-highlight").count(), 1, "new paid song is highlighted");
     assert.equal(payload.songTitle, "QA Song");
     await page.reload();
-    await page.locator("#leaderboard-body summary").first().click();
-    await page.locator("#leaderboard-body").getByRole("button", { name: "Custom amount", exact: true }).click();
+    const manualBid = page.locator("#leaderboard-body [data-song-bid]").first();
+    await manualBid.click();
     await page.click("#pay-cancel");
-    assert.equal(await page.locator("#leaderboard-body summary").evaluate(el => el === document.activeElement), true);
-    await page.locator("#leaderboard-body").getByRole("button", { name: "Custom amount", exact: true }).click();
+    assert.equal(await manualBid.evaluate(el => el === document.activeElement), true);
+    await manualBid.click();
     assert.match(await page.locator("#pay-summary").textContent(), /QA Song/);
     assert.equal(await page.locator("#pay-amount").getAttribute("readonly"), null);
     await page.fill("#pay-amount", "25");

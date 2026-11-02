@@ -50,6 +50,7 @@ async function openDashboard(handlers = {}) {
     sessionStorage.setItem("seeded", "1");
     sessionStorage.setItem("ws-session", JSON.stringify({ a: "test-token", r: "client", n: "Test User", e: "test@example.com" }));
   });
+  await page.route("**/api/referrals*", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ intent_id: null }) }));
   
   await page.route("**/api/weddings*", async (route) => {
     const url = new URL(route.request().url());
@@ -87,7 +88,7 @@ test("Account Settings link is accessible from dashboard", { skip }, async () =>
   // Click Account menu
   await page.click("#account-menu-btn");
   // Check if Account Settings link exists
-  const accountSettingsLink = await page.locator('a[href="/account.html"]');
+  const accountSettingsLink = await   page.locator('a[href="/account.html"]:not(#owner-profile)');
   assert.ok(await accountSettingsLink.isVisible(), "Account Settings link should be visible in menu");
   
   // Click it and verify navigation
@@ -160,8 +161,10 @@ test("Account Settings link is accessible from wedding editor", { skip }, async 
 });
 
 test("Create wedding auto-navigates after success", { skip }, async () => {
+  const createRequests = [];
   const { page, close } = await openDashboard({
     create: async (route, body) => {
+      createRequests.push(body);
       return route.fulfill({ 
         status: 201, 
         contentType: "application/json", 
@@ -173,33 +176,16 @@ test("Create wedding auto-navigates after success", { skip }, async () => {
     }
   });
   
-  // Fill in the form
+  // Draft creation collects only the couple names; the shared guide handles the rest.
   await page.fill("#couple-names", "Sarah & John");
-  await page.fill("#location", "Nairobi");
-  await page.fill("#wedding-date", "2027-06-12");
-  await page.waitForFunction(() => [...document.querySelectorAll('[data-venue-field="eventDate"]')].every(input => input.value === "2027-06-12"));
-  await page.locator("[data-venue-field=name]").first().fill("Church");
-  await page.locator("[data-venue-field=time]").first().fill("10:00");
-  await page.locator("[data-venue-field=address]").first().fill("Nairobi Cathedral");
-  
-  // Wait for the create button to be ready
-  await page.waitForSelector("#create-submit");
-  
-  // Submit the form
-  const navigationPromise = page.waitForURL("**/wedding.html?*");
+  const navigationPromise = page.waitForURL(url =>
+    url.pathname === "/wedding.html" && url.searchParams.get("id") === "550e8400-e29b-41d4-a716-446655440001"
+  );
   await page.click("#create-submit");
-  
-  try {
-    await navigationPromise;
-    assert.ok(page.url().includes("wedding.html"), "Should navigate to wedding.html after creating");
-    assert.ok(page.url().includes("550e8400-e29b-41d4-a716-446655440001"), "URL should contain wedding ID");
-  } catch (e) {
-    // Navigation might not happen if there's an error; just verify success message shows
-    const createdElement = await page.locator("#created");
-    const isVisible = await createdElement.isVisible();
-    assert.ok(isVisible, "Created message should be visible");
-  }
-  
+  await navigationPromise;
+  assert.equal(createRequests.length, 1, "one private draft should be created");
+  assert.equal(createRequests[0].coupleNames, "Sarah & John");
+  assert.equal(new URL(page.url()).searchParams.get("slug"), "sarah-john");
   await close();
 });
 

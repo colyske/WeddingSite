@@ -1,8 +1,12 @@
 (function (root) {
   const displayCodes = Object.freeze(Intl.supportedValuesOf("currency"));
+  const exponents = new Map();
   const exponent = code => {
+    if (exponents.has(code)) return exponents.get(code);
     if (!displayCodes.includes(code)) throw new Error("Choose a supported ISO currency.");
-    return new Intl.NumberFormat("en", { style: "currency", currency: code }).resolvedOptions().maximumFractionDigits;
+    const digits = new Intl.NumberFormat("en", { style: "currency", currency: code }).resolvedOptions().maximumFractionDigits;
+    exponents.set(code, digits);
+    return digits;
   };
   // Existing wedding accounting and purchase forms store hundredths throughout.
   const accountingCodes = Object.freeze(displayCodes.filter(code => exponent(code) === 2));

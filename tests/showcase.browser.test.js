@@ -40,12 +40,15 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     assert.equal(await page.locator("#sponsor-enquiry-link").count(), 0);
     assert.equal(await page.locator(".sponsor-ad .sponsor-socials a").count(), 2);
     assert.match(await page.locator(".sponsor-ad").innerText(), /studio@example\.com/);
-    assert.deepEqual(await page.locator('#campaigns-display [data-preset][data-min]').evaluateAll(nodes => nodes.map(n => n.dataset.min)), ["50000", "100000", "500000"]);
-    assert.deepEqual(await page.locator("#leaderboard-body tr:first-child [data-amount]").evaluateAll(nodes => nodes.map(n => n.dataset.amount)), ["10000", "50000", "100000", "0"]);
+    assert.equal(await page.locator("#campaigns-display [data-preset], #leaderboard-body [data-amount]").count(), 0);
+    assert.equal(await page.locator("#song-request-presets").count(), 0);
+    assert.equal(await page.locator("#demo-contribution-amount").count(), 0, "the public wedding site has no organizer demo controls");
     assert.equal(await page.locator("#venues-display > *").count(), 2);
     assert.match(await page.locator("#ledger-body").innerText(), /Song bid[\s\S]*2,500[\s\S]*Sample Guest A/);
     assert.doesNotMatch(await page.locator("#ledger-body").innerText(), /NaN|\$/);
     assert.ok(await page.locator(".showcase-banner").isVisible());
+    await page.locator("#reuse-wedding-style a").waitFor();
+    assert.equal(await page.locator("#reuse-wedding-style a").getAttribute("href"), "/dashboard.html?style=showcase-wedding#step=couple");
     assert.ok(await page.locator("#pay-submit").isDisabled());
     const contrast = await page.evaluate(() => {
       function luminance(rgb) {

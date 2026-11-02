@@ -1,0 +1,140 @@
+.guide-header { margin-bottom: 1.25rem; }
+.guide-jump { display: contents; }
+.guide-jump > summary { display: none; }
+.guide-nav {
+  position: relative; display: flex; gap: .4rem; margin: .75rem 0; padding: .2rem .15rem .55rem;
+  overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scrollbar-width: thin;
+}
+.guide-nav button {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-start; justify-content: center;
+  min-width: 0; max-width: 14rem; min-height: 44px; margin: 0; padding: .35rem .7rem; scroll-snap-align: start;
+  border: 1px solid #9aa5b1; border-radius: 10px; background: #fff; color: #1f2a24;
+  font-size: .8rem; line-height: 1.2; text-align: left; box-shadow: none; text-transform: none; letter-spacing: 0;
+}
+.guide-nav button > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.guide-nav small { display: block; margin-top: .15rem; color: inherit; font-size: .72rem; font-weight: 500; opacity: 1; white-space: nowrap; }
+/* Chips override the site-wide solid button style (editorial.css uses !important) so states stay distinguishable. */
+.guide-jump .guide-nav button:not([disabled]) {
+  padding: .35rem .7rem !important; border: 1px solid #9aa5b1 !important; border-radius: 10px !important;
+  background: #fff !important; color: #1f2a24 !important; box-shadow: none !important;
+}
+.guide-jump .guide-nav button[data-state="complete"]:not([disabled]), .guide-review-item.is-complete { background: #e8f6ed !important; border-color: #2f8a55 !important; color: #14532d !important; }
+.guide-jump .guide-nav button[data-state="progress"]:not([disabled]), .guide-review-item.is-progress { background: #fff5d9 !important; border-color: #c98a0b !important; color: #5c3a00 !important; }
+.guide-jump .guide-nav button[data-state="notstarted"]:not([disabled]), .guide-review-item.is-notstarted { background: #fdedf1 !important; border-color: #d0708a !important; color: #74203a !important; }
+.guide-jump .guide-nav button[data-state="optional"]:not([disabled]), .guide-review-item.is-optional { background: #eef1f5 !important; border-color: #8a96a3 !important; color: #2c3a4a !important; }
+.guide-jump .guide-nav button[data-state="review"]:not([disabled]) { background: #eef0ff !important; border-color: #6366f1 !important; color: #2e2a7a !important; }
+.guide-jump .guide-nav button:not([disabled]):hover { filter: brightness(.96); }
+.guide-jump .guide-nav button[aria-current="step"]:not([disabled]) { outline: 3px solid var(--green, #243f35); outline-offset: 1px; box-shadow: 0 2px 8px rgba(32, 58, 49, .25) !important; }
+.guide-nav button:focus-visible { outline: 3px solid var(--gold, #be9b52); outline-offset: 2px; }
+.guide-state { margin: .75rem 0; }
+.guide-heading:focus { outline: 2px solid var(--gold, #be9b52); outline-offset: 4px; }
+[data-guide-step][hidden] { display: none !important; }
+[data-guide-step] { min-width: 0; }
+
+/* The bar sticks to the viewport only while the guide is on screen and rests at the end of the guide's own card,
+   so it can never cover the page footer. Cards clip overflow, which would disable sticky positioning. */
+.card:has(> form .guide-actions), .card:has(> .guide-actions) { overflow: clip; }
+.guide-actions {
+  position: sticky; z-index: 5; bottom: var(--guide-viewport-bottom, 0px); margin: 1.5rem 0 0;
+  padding: .5rem .75rem; padding-bottom: max(.5rem, env(safe-area-inset-bottom));
+  border: 1px solid #d0d5cc; border-top: 3px solid #d0708a; border-radius: 12px 12px 0 0;
+  background: #fff; box-shadow: 0 -4px 16px rgba(32, 58, 49, .12);
+}
+.guide-publish { margin-top: .45rem; padding-top: .45rem; border-top: 1px solid #e3e7e1; }
+.guide-publish[hidden] { display: none; }
+.guide-actions .guide-publish button.guide-publish-btn:not([disabled]) {
+  display: flex; align-items: center; justify-content: center; gap: .4rem; width: 100%; min-height: 44px; margin: 0;
+  padding: .55rem 1rem !important; border: 1px solid #8a6a1f !important; border-radius: 10px !important;
+  background: linear-gradient(180deg, #e9cf86, #c9a44c) !important; color: #2b1f04 !important;
+  font-size: .9rem; font-weight: 700; letter-spacing: .03em; box-shadow: 0 2px 6px rgba(138, 106, 31, .3) !important;
+}
+.guide-actions .guide-publish button.guide-publish-btn:not([disabled]):hover { background: linear-gradient(180deg, #f0d993, #d1ad56) !important; }
+.guide-actions .guide-publish button.guide-publish-btn:focus-visible { outline: 3px solid var(--green, #243f35); outline-offset: 2px; }
+.guide-actions[data-level="mid"] { border-top-color: #c98a0b; }
+.guide-actions[data-level="done"] { border-top-color: #2f8a55; }
+.guide-meter { display: flex; align-items: center; gap: .6rem; margin: 0 0 .4rem; min-width: 0; }
+.guide-meter-track { flex: 1 1 4rem; min-width: 3rem; height: 6px; border-radius: 999px; background: #e3e7e1; overflow: hidden; }
+.guide-meter-fill { display: block; width: 0; height: 100%; border-radius: inherit; background: #d0708a; transition: width .3s ease; }
+.guide-meter-track[data-level="mid"] .guide-meter-fill { background: #c98a0b; }
+.guide-meter-track[data-level="done"] .guide-meter-fill { background: #2f8a55; }
+.guide-meter-text { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; color: #33413a; font-size: .75rem; text-overflow: ellipsis; white-space: nowrap; }
+.guide-buttons { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .4rem; }
+.guide-buttons button { min-height: 44px; margin: 0; padding: .4rem .95rem; font-size: .875rem; line-height: 1.15; }
+.guide-buttons [data-guide-back] { margin-right: auto; }
+.guide-buttons [data-guide-save] { font-weight: 700; }
+.guide-actions .guide-buttons button.ghost:not([disabled]) { background: #fff !important; color: var(--green, #243f35) !important; border: 1px solid var(--green, #243f35) !important; }
+.guide-actions .guide-buttons button.ghost:not([disabled]):hover { background: #eef3ee !important; box-shadow: none !important; }
+.guide-actions .guide-buttons button { padding-left: .9rem !important; padding-right: .9rem !important; letter-spacing: .04em; }
+.guide-buttons button:focus-visible { outline: 3px solid var(--gold, #be9b52); outline-offset: 2px; }
+.guide-buttons [data-guide-next]:disabled, .guide-buttons [data-guide-skip]:disabled, .guide-buttons [data-guide-back]:disabled { opacity: .5; }
+body:has(.guide-actions) #ws-fb-toast {
+  bottom: calc(7rem + env(safe-area-inset-bottom) + var(--guide-viewport-bottom, 0px)) !important;
+  pointer-events: none;
+}
+.guide-heading { scroll-margin-block: 1rem 8rem; }
+.guide-heading:focus { scroll-margin-bottom: 8rem; }
+
+.guide-review-list { display: grid; gap: .6rem; padding-left: 0; list-style: none; }
+.guide-review-item { padding: .6rem .8rem; border: 1px solid; border-left-width: 6px; border-radius: 10px; }
+.guide-review-item a { color: inherit; font-weight: 700; }
+.guide-review-item p { margin: .25rem 0 0; color: #1f2a24; white-space: pre-wrap; overflow-wrap: anywhere; }
+.guide-badge { display: inline-block; margin: 0 .5rem .25rem 0; padding: .1rem .55rem; border: 1px solid currentColor; border-radius: 999px; background: #fff; font-size: .75rem; font-weight: 700; }
+
+.guide-advanced { border: 1px solid #d0d5cc; border-radius: 8px; padding: .8rem; margin: 1rem 0; }
+.guide-advanced > summary { cursor: pointer; font-weight: 600; }
+.guide-advanced[open] > summary { margin-bottom: 1rem; }
+.guide-errors { padding: 1rem; border: 2px solid #9a4a12; margin: 1rem 0; }
+.guide-errors a { display: block; color: inherit; text-decoration: underline; margin: .5rem 0; }
+.guide-sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.setup-block { min-width: 0; margin: 1rem 0; padding: .9rem 1rem; border: 1px solid #d0d5cc; border-radius: 10px; }
+.setup-block > legend { padding: 0 .35rem; font-weight: 700; }
+.feature-switch { display: flex; align-items: flex-start; gap: .6rem; min-height: 44px; margin: .25rem 0 .5rem; padding: .6rem .75rem; border-radius: 8px; background: #f2f6f1; font-weight: 600; cursor: pointer; box-sizing: border-box; }
+.feature-switch input { flex: none; width: 1.2rem; height: 1.2rem; margin: .1rem 0 0; accent-color: #2f8a55; }
+.feature-off-hint { color: #74203a; }
+.feature-off-hint button { margin: .4rem 0 0; }
+.setup-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: .25rem 1rem; }
+.setup-grid > * { min-width: 0; }
+#helper-invite label { display: block; margin-top: .6rem; }
+#helper-invite input, #helper-invite select { width: 100%; max-width: 100%; box-sizing: border-box; }
+
+.wedding-workspace { margin: 1.5rem 0; }
+.wedding-workspace > summary {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; min-height: 44px; padding: .75rem 1rem;
+  border: 1px solid #d0d5cc; border-radius: 10px; background: #fafbf9; cursor: pointer; font-weight: 700; box-sizing: border-box;
+}
+.wedding-workspace > summary small { font-weight: 400; color: #33413a; }
+.wedding-workspace[open] > summary { margin-bottom: 1rem; }
+
+@media (max-width: 600px) {
+  .guide-header { margin-bottom: .6rem; }
+  .guide-header > .fine { margin: 0 0 .25rem; }
+  .guide-state { margin: .25rem 0; }
+  .guide-jump { display: block; margin: .4rem 0; }
+  .guide-jump > summary { display: flex; min-height: 44px; align-items: center; flex-wrap: wrap; gap: .25rem; padding: .6rem .8rem; border: 1px solid var(--green, #243f35); border-radius: 10px; cursor: pointer; font-weight: 600; }
+  .guide-jump[open] > summary { margin-bottom: .5rem; }
+  .guide-jump:not([open]) .guide-nav { display: none; }
+  .guide-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: visible; padding: 0; }
+  .guide-jump .guide-nav button:not([disabled]) { width: 100%; max-width: none; padding: .45rem .55rem !important; }
+  .guide-nav button > span, .guide-nav small { white-space: normal; overflow-wrap: anywhere; }
+  .guide-actions { padding-inline: .5rem; padding-top: .4rem; }
+  .guide-meter { margin-bottom: .3rem; }
+  .guide-buttons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .3rem; }
+  .guide-actions .guide-buttons button { min-width: 0; padding: .3rem .25rem !important; font-size: .74rem; letter-spacing: 0; }
+  .guide-buttons [data-guide-back] { margin-right: 0; }
+  .guide-buttons [data-guide-keep] { grid-column: 1 / -1; }
+  .setup-block { padding: .75rem; }
+  [data-guide-step] input, [data-guide-step] select, [data-guide-step] textarea { max-width: 100%; box-sizing: border-box; }
+}
+@media (max-width: 360px) {
+  .guide-actions .guide-buttons button { overflow-wrap: normal; padding: .3rem .15rem !important; font-size: .68rem; }
+  .guide-meter-text { white-space: normal; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .guide-heading, .guide-nav button, .guide-meter-fill { transition: none !important; scroll-behavior: auto; }
+  .guide-nav { scroll-behavior: auto; }
+}
+@media (max-height: 500px) {
+  .guide-actions { position: static; box-shadow: none; }
+  body:has(.guide-actions) #ws-fb-toast { bottom: 1.5rem !important; }
+}

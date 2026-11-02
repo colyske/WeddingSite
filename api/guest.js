@@ -9,6 +9,7 @@ import { canonicalWeddingUrl, classifyHost, isSubdomainSlug, weddingBaseDomain }
 import { isShowcase, showcase, showcaseBids, showcaseLedger, showcaseFundraising, showcaseExtras } from "../server/showcase.js";
 import { contentError } from "../server/content-policy.js";
 import "../social-links.js";
+import { publicWeddingStyle } from "../server/wedding-style.js";
 
 const BRAND = "Join Our Wedding";
 const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -17,10 +18,15 @@ const OG_IMAGE = "https://images.unsplash.com/photo-1519741497674-611481863552?a
 function ogDetails(site) {
   if (!site?.id) return { title: BRAND, desc: "Create and share your wedding website at joinourwedding.site.", image: OG_IMAGE };
   const when = site.wedding_date ? String(site.wedding_date).slice(0, 10) : "";
+  let image = OG_IMAGE;
+  try {
+    const cover = new URL(site.cover_image_url);
+    if (cover.protocol === "https:" && !cover.username && !cover.password) image = cover.toString();
+  } catch {}
   return {
     title: `${site.couple_names} are getting married`,
     desc: `You are invited${when ? " - " + when : ""}${site.public_location ? " - " + site.public_location : ""}. RSVP, send wishes and save the date.`,
-    image: OG_IMAGE
+    image
   };
 }
 
@@ -96,6 +102,12 @@ export default async function handler(req, res) {
     if (invalidContent) return sendJson(res, 400, { error: invalidContent });
     const sample = [req.query.slug, req.query.weddingId, req.body?.slug, req.body?.weddingSlug, req.body?.weddingId].some(isShowcase);
     if (sample && req.method !== "GET") return sendJson(res, 403, { error: "Showcase: payments, RSVPs and messages are disabled." });
+    if (action === "style") {
+      if (!methodOnly(req, res, "GET")) return;
+      const style = await publicWeddingStyle(String(req.query.slug || "").toLowerCase());
+      if (!style) return sendJson(res, 404, { error: "This wedding is not available for public design reuse." });
+      return sendJson(res, 200, { style });
+    }
     if (sample && action === "site") return sendJson(res, 200, { wedding: showcase });
     if (sample && action === "leaderboard") return sendJson(res, 200, { bids: showcaseBids });
     if (sample && action === "ledger") return sendJson(res, 200, { ledger: showcaseLedger });
@@ -235,10 +247,20 @@ export default async function handler(req, res) {
         if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
       }
       
+      const settings = (await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=revenue_features`, { service: true }))?.[0];
+      if (!settings) return sendJson(res, 404, { error: "Wedding not found." });
       const offset = Math.max(0, parseInt(req.query.offset || "0"));
       const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || "50")));
-      const ledger = await rpc("get_published_contributions_page", { p_wedding_id: weddingId, p_offset: offset, p_limit: limit });
-      return sendJson(res, 200, { ledger: ledger || [] });
+      const rows = await rpc("get_published_contributions_page", { p_wedding_id: weddingId, p_offset: offset, p_limit: limit });
+      const features = settings.revenue_features || {};
+      const featureForType = {
+        "Song bid": "song_requests", "Sponsorship": "sponsors", "Featured sponsorship": "featured_sponsors",
+        "VIP reservation": "vip_seating", "Registry gift": "giving"
+      };
+      return sendJson(res, 200, { ledger: (rows || []).filter(row => {
+        const feature = featureForType[row.contribution_type];
+        return !feature || features[feature] !== false;
+      }) });
     }
 
     if (action === "rsvp" || action === "bid") {
@@ -253,8 +275,11 @@ export default async function handler(req, res) {
         if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
       }
       
-      const wd = await supabaseRequest(`/rest/v1/weddings?id=eq.${weddingId}&published_at=not.is.null&archived_at=is.null&select=wedding_date,time_zone`, { service: true });
+      const wd = await supabaseRequest(`/rest/v1/weddings?id=eq.${weddingId}&published_at=not.is.null&archived_at=is.null&select=wedding_date,time_zone,revenue_features`, { service: true });
       if (!wd?.length) return sendJson(res, 404, { error: "Wedding not found." });
+      if (action === "bid" && wd[0].revenue_features?.song_requests === false) {
+        return sendJson(res, 409, { error: "DJ song requests are not currently available for this wedding." });
+      }
       if (isPastWedding(wd[0].wedding_date, wd[0].time_zone)) {
         return sendJson(res, 410, { error: "This wedding has taken place, so RSVPs and bids are closed. Thank you for celebrating with us!" });
       }
@@ -351,14 +376,17 @@ export default async function handler(req, res) {
       const weddingId = await resolveWeddingId(slug, rpc);
       if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
       
-      const [result, campaigns, sponsorAuction] = await Promise.all([
+      const [result, campaigns, sponsorAuction, settings] = await Promise.all([
         rpc("get_public_fundraising", { p_slug: slug }),
         rpc("get_public_campaigns", { p_slug: slug }).catch(() => []),
-        rpc("get_public_sponsor_auction", { p_slug: slug }).catch(() => ({ enabled: false }))
+        rpc("get_public_sponsor_auction", { p_slug: slug }).catch(() => ({ enabled: false })),
+        supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=revenue_features`, { service: true })
       ]);
+      const features = settings?.[0]?.revenue_features || {};
       return sendJson(res, 200, {
         ...(result || { tiers: [], vip: null, sponsors: [] }),
-        campaigns: campaigns || [], sponsorAuction: sponsorAuction || { enabled: false }
+        campaigns: features.giving === false ? [] : campaigns || [],
+        sponsorAuction: features.featured_sponsors === false ? { enabled: false } : sponsorAuction || { enabled: false }
       });
     }
 
@@ -444,12 +472,21 @@ export default async function handler(req, res) {
 
     if (action === "verify-qr") {
       if (req.method === "GET") {
+        const session = await requireAuth(req, res);
+        if (!session) return;
         const code = String(req.query.code || "");
         if (!UUID.test(code)) return sendJson(res, 400, { error: "Invalid pass code." });
-        const result = await rpc("get_guest_verification", { p_code: code });
-        const guest = Array.isArray(result) ? result[0] : result;
-        if (!guest?.rsvp_id) return sendJson(res, 404, { error: "Pass not found or wedding is unpublished." });
-        return sendJson(res, 200, { guest });
+        try {
+          const result = await rpc("get_guest_verification", { p_code: code }, { token: session.token });
+          const guest = Array.isArray(result) ? result[0] : result;
+          if (!guest?.rsvp_id) return sendJson(res, 404, { error: "Pass not found or wedding is unpublished." });
+          return sendJson(res, 200, { guest });
+        } catch (error) {
+          if (error.status === 401 || /access denied|authentication required/i.test(error.message || "")) {
+            return sendJson(res, 403, { error: "You do not have check-in access for this wedding." });
+          }
+          throw error;
+        }
       }
       if (!methodOnly(req, res, "POST")) return;
       const session = await requireAuth(req, res);
