@@ -193,6 +193,15 @@
         </section>
         <section data-guide-step="giving" data-guide-title="Fundraising & celebration features">
         <p class="fine">Give guests several meaningful ways to support your celebration. Set up gifts, fundraising milestones, song bid suggestions, sponsorship and VIP options in one place. You choose the amounts and terms; nothing is priced or changed without your input.</p>
+        <fieldset>
+          <legend>Choose what guests can see</legend>
+          <p class="fine">These features start on for every new wedding. Turn one off here to hide it from guests and stop new payments for it. This does not create prices, packages, campaigns or payment methods.</p>
+          <label><input id="feature-giving" type="checkbox" checked> Gift registry and fundraising campaigns</label>
+          <label><input id="feature-sponsors" type="checkbox" checked> Sponsor packages and sponsor cards</label>
+          <label><input id="feature-featured-sponsors" type="checkbox" checked> Featured sponsor bidding (still requires a separately configured campaign)</label>
+          <label><input id="feature-song-requests" type="checkbox" checked> DJ song requests and bids</label>
+          <label><input id="feature-vip-seating" type="checkbox" checked> VIP seating (still requires a separately configured offer)</label>
+        </fieldset>
         <details class="guide-advanced" open><summary>Gift registry & suggested guest amounts</summary>
         <fieldset>
           <legend>Suggested guest amounts (<span id="preset-currency"></span>)</legend>
@@ -1097,6 +1106,12 @@
         $("wedding-slug").value = w.slug || "";
         $("slug-preview").textContent = w.slug || "wedding";
         $("welcome-story").value = w.welcome_story || "";
+        const features = w.revenue_features || {};
+        $("feature-giving").checked = features.giving !== false;
+        $("feature-sponsors").checked = features.sponsors !== false;
+        $("feature-featured-sponsors").checked = features.featured_sponsors !== false;
+        $("feature-song-requests").checked = features.song_requests !== false;
+        $("feature-vip-seating").checked = features.vip_seating !== false;
         $("wedding-date").value = w.wedding_date ? w.wedding_date.split("T")[0] : "";
         WSTime.fillSelect($("wedding-timezone"), w.time_zone || WSTime.DEFAULT_ZONE);
         setGuestSiteLink(w.slug, !!w.published_at);
@@ -1489,6 +1504,13 @@
               slotCount: Number($("featured-sponsor-slots").value),
               minimumBid: Number($("featured-sponsor-minimum").value),
               bidIncrement: Number($("featured-sponsor-increment").value)
+            },
+            revenueFeatures: {
+              giving: $("feature-giving").checked,
+              sponsors: $("feature-sponsors").checked,
+              featured_sponsors: $("feature-featured-sponsors").checked,
+              song_requests: $("feature-song-requests").checked,
+              vip_seating: $("feature-vip-seating").checked
             },
             registry: registry,
             tiers: tiers,

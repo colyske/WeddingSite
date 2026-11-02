@@ -32,7 +32,8 @@ test("organizer API persists canonical choices, preserves omitted presets and re
   const oldEnv = Object.fromEntries(Object.keys(env).map(key => [key, process.env[key]]));
   Object.assign(process.env, env);
   const oldFetch = globalThis.fetch;
-  let wedding = { id: weddingId, currency: "KES", amount_presets: null };
+  let wedding = { id: weddingId, currency: "KES", amount_presets: null,
+    revenue_features: { giving: true, sponsors: true, featured_sponsors: true, song_requests: true, vip_seating: true } };
   const patches = [];
   let cap = 500000;
   let owned = true;
@@ -42,7 +43,7 @@ test("organizer API persists canonical choices, preserves omitted presets and re
     if (url.pathname === "/rest/v1/platform_policies") return json([{ max_contribution_minor: cap }]);
     if (url.pathname === "/rest/v1/rpc/save_wedding_content") {
       const data = JSON.parse(init.body);
-      assert.equal(data.p_expected_currency, wedding.currency);
+      if (data.p_expected_currency !== null) assert.equal(data.p_expected_currency, wedding.currency);
       const patch = data.p_patch;
       if (patch.amount_presets !== undefined) assert.deepEqual(data.p_expected_presets, wedding.amount_presets);
       patches.push(patch);
@@ -89,6 +90,15 @@ test("organizer API persists canonical choices, preserves omitted presets and re
     res = await run({ currency: "KES", amountPresets: null, amountPresetsReviewed: true, amountPresetsBaseCurrency: "USD" });
     assert.equal(res.statusCode, 200, "explicit reviewed reset may change currency");
     assert.equal(wedding.amount_presets, null);
+    const disabledFeatures = { giving: false, sponsors: true, featured_sponsors: true, song_requests: false, vip_seating: true };
+    res = await run({ revenueFeatures: disabledFeatures });
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    assert.deepEqual(patches.at(-1).revenue_features, disabledFeatures);
+    assert.deepEqual(res.body.wedding.revenue_features, disabledFeatures);
+    const savedCount = patches.length;
+    res = await run({ revenueFeatures: { ...disabledFeatures, unexpected: true } });
+    assert.equal(res.statusCode, 400);
+    assert.equal(patches.length, savedCount, "invalid feature controls are rejected before saving any wedding content");
     owned = false;
     res = await run({ amountPresets: valid, amountPresetsReviewed: true, amountPresetsBaseCurrency: "KES" });
     assert.equal(res.statusCode, 404);

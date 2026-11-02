@@ -10,6 +10,14 @@ insert into public.weddings(id, slug, client_owner_id, couple_names, currency, w
 values
   ('52000000-0000-4000-8000-000000000091', 'ranking-sponsors', '51000000-0000-4000-8000-000000000091', 'Ranking sponsors', 'KES', current_date + 30, 'Sample location'),
   ('52000000-0000-4000-8000-000000000092', 'ranking-campaign', '51000000-0000-4000-8000-000000000091', 'Ranking campaign', 'EUR', current_date + 30, 'Sample location');
+do $$
+begin
+  if exists (select 1 from public.weddings
+      where id in ('52000000-0000-4000-8000-000000000091','52000000-0000-4000-8000-000000000092')
+        and revenue_features <> '{"giving":true,"sponsors":true,"featured_sponsors":true,"song_requests":true,"vip_seating":true}'::jsonb) then
+    raise exception 'New weddings must start with all guest features visible.';
+  end if;
+end $$;
 insert into public.venues(wedding_id, name, event_date, event_time, address)
 values
   ('52000000-0000-4000-8000-000000000091', 'Wedding venue', current_date + 30, '12:00', 'Sample address'),
@@ -45,10 +53,27 @@ insert into public.contributions(
   ('53000000-0000-4000-8000-000000000105', '52000000-0000-4000-8000-000000000092', 'Song', 100000, 100000, 0, 100000, 'KES', 'paid', 'Test song', 'stripe', 'test', true, now(), now()),
   ('53000000-0000-4000-8000-000000000106', '52000000-0000-4000-8000-000000000092', 'Song', 100000, 100000, 0, 100000, 'KES', 'refunded', 'Refunded song', 'daraja', 'live', true, now(), now()),
   ('53000000-0000-4000-8000-000000000107', '52000000-0000-4000-8000-000000000092', 'Song', 100000, 100000, 0, 100000, 'KES', 'paid', 'Unverified song', 'daraja', 'live', false, now(), now());
+update public.contributions set provider_name = 'paystack',
+  provider_payment_reference = case id
+    when '53000000-0000-4000-8000-000000000091' then 'rank-payment-091'
+    when '53000000-0000-4000-8000-000000000092' then 'rank-payment-092'
+    when '53000000-0000-4000-8000-000000000093' then 'rank-payment-093'
+    when '53000000-0000-4000-8000-000000000099' then 'rank-payment-099'
+    when '53000000-0000-4000-8000-000000000103' then 'rank-payment-103'
+    when '53000000-0000-4000-8000-000000000104' then 'rank-payment-104'
+  end,
+  provider_fee_pending = false, provider_fee_minor = 0, refund_fee_allocation = 'couple'
+where id in (
+  '53000000-0000-4000-8000-000000000091','53000000-0000-4000-8000-000000000092',
+  '53000000-0000-4000-8000-000000000093','53000000-0000-4000-8000-000000000099',
+  '53000000-0000-4000-8000-000000000103','53000000-0000-4000-8000-000000000104'
+);
 alter table public.contributions enable trigger user;
 
 insert into public.sponsor_tiers(wedding_id, name, min_amount_minor, perks)
 values ('52000000-0000-4000-8000-000000000091', 'Gold package', 10000, 'Recognition and a thank-you');
+insert into public.registry_items(wedding_id, name, target_amount_minor)
+values ('52000000-0000-4000-8000-000000000091', 'Honeymoon fund', 100000);
 alter table public.sponsors disable trigger user;
 insert into public.sponsors(
   id, wedding_id, company_name, amount_minor, contribution_id, status, created_at, in_kind
@@ -89,6 +114,32 @@ insert into public.dj_song_bids(
   ('55000000-0000-4000-8000-000000000096', '52000000-0000-4000-8000-000000000092', 'Unverified Song', 'Artist', 100000, 'KES', 'Guest', 'paid', '53000000-0000-4000-8000-000000000107'),
   ('55000000-0000-4000-8000-000000000097', '52000000-0000-4000-8000-000000000092', 'Legacy unlinked', 'Artist', 100000, 'KES', 'Guest', 'paid', null);
 
+select set_config('request.jwt.claim.role', 'service_role', true);
+select public.record_provider_adjustment(
+  'paystack', 'rank-event-refund-091', 'refund.processed', 'rank-refund-091',
+  'rank-payment-091', 10000, 'KES', 'refund_processed', now()
+);
+select public.record_provider_adjustment(
+  'paystack', 'rank-event-dispute-open-092', 'charge.dispute.created', 'rank-dispute-092',
+  'rank-payment-092', 10000, 'KES', 'dispute_open', now()
+);
+select public.record_provider_adjustment(
+  'paystack', 'rank-event-dispute-lost-093', 'charge.dispute.lost', 'rank-dispute-093',
+  'rank-payment-093', 10000, 'KES', 'dispute_lost', now()
+);
+select public.record_provider_adjustment(
+  'paystack', 'rank-event-refund-099', 'refund.processed', 'rank-refund-099',
+  'rank-payment-099', 5000, 'EUR', 'refund_processed', now()
+);
+select public.record_provider_adjustment(
+  'paystack', 'rank-event-refund-pending-103', 'refund.pending', 'rank-refund-103',
+  'rank-payment-103', 100, 'KES', 'refund_pending', now()
+);
+select public.record_provider_adjustment(
+  'paystack', 'rank-event-dispute-lost-104', 'charge.dispute.lost', 'rank-dispute-104',
+  'rank-payment-104', 5000, 'EUR', 'dispute_lost', now()
+);
+
 do $$
 declare
   sponsor_payload jsonb;
@@ -100,10 +151,10 @@ begin
   select array_agg(item->>'company_name' order by ordinal)
     into sponsor_names
     from jsonb_array_elements(sponsor_payload->'sponsors') with ordinality as rows(item, ordinal);
-  if sponsor_names <> array['High sponsor', 'Tie A', 'Tie B', 'In-kind sponsor', 'Foreign sponsor'] then
-    raise exception 'Sponsor cards must rank live paid amounts within currency groups with deterministic ties: %', sponsor_names;
+  if sponsor_names <> array['High sponsor', 'In-kind sponsor', 'Foreign sponsor'] then
+    raise exception 'Refunded, open-dispute and lost-dispute sponsors must not buy display placement: %', sponsor_names;
   end if;
-  if (sponsor_payload->'sponsors'->0->>'amount_minor')::bigint <> 50000
+  if (sponsor_payload->'sponsors'->0->>'amount_minor')::bigint <> 40000
       or sponsor_payload->'sponsors'->0->>'currency' <> 'KES'
       or (sponsor_payload->'sponsors'->4->>'amount_minor')::bigint <> 1000000
       or sponsor_payload->'sponsors'->4->>'currency' <> 'EUR' then
@@ -117,19 +168,58 @@ begin
   if auction->>'status' <> 'currency-mismatch' or auction->>'currency' <> 'EUR'
       or jsonb_array_length(auction->'leaders') <> 1
       or auction->'leaders'->0->>'company_name' <> 'Featured live'
-      or (auction->'leaders'->0->>'total_minor')::bigint <> 30000 then
-    raise exception 'Featured paid placements must retain their original currency and exclude test/unverified bids: %', auction;
+      or (auction->'leaders'->0->>'total_minor')::bigint <> 25000 then
+    raise exception 'Featured placement totals must net processed refunds and exclude test/unverified bids: %', auction;
   end if;
 
   select count(*) into song_count from public.get_dj_leaderboard('52000000-0000-4000-8000-000000000092');
-  if song_count <> 2
-      or (select bid_amount_minor from public.get_dj_leaderboard('52000000-0000-4000-8000-000000000092') where currency = 'KES') <> 300
-      or (select bid_amount_minor from public.get_dj_leaderboard('52000000-0000-4000-8000-000000000092') where currency = 'EUR') <> 5000
+  if song_count <> 1
+      or (select bid_amount_minor from public.get_dj_leaderboard('52000000-0000-4000-8000-000000000092') where currency = 'KES') <> 200
+      or exists(select 1 from public.get_dj_leaderboard('52000000-0000-4000-8000-000000000092') where currency = 'EUR')
       or exists(select 1 from public.get_dj_leaderboard('52000000-0000-4000-8000-000000000092')
         where song_title in ('Test Song', 'Refunded Song', 'Unverified Song', 'Legacy unlinked')) then
-    raise exception 'Song leaderboard must exclude test/refunded/unverified/unlinked rows and separate currencies.';
+    raise exception 'Song leaderboard must net pending refunds, exclude disputes/test/unverified/unlinked rows and separate currencies.';
   end if;
 end $$;
+
+select set_config('request.jwt.claim.sub', '51000000-0000-4000-8000-000000000091', true);
+select set_config('request.jwt.claims',
+  '{"sub":"51000000-0000-4000-8000-000000000091","role":"authenticated"}', true);
+select public.save_wedding_content(
+  '52000000-0000-4000-8000-000000000091',
+  '{"revenue_features":{"giving":false,"sponsors":false,"featured_sponsors":false,"song_requests":false,"vip_seating":false}}',
+  null, null, null
+);
+select public.save_wedding_content(
+  '52000000-0000-4000-8000-000000000092',
+  '{"revenue_features":{"giving":false,"sponsors":false,"featured_sponsors":false,"song_requests":false,"vip_seating":false}}',
+  null, null, null
+);
+do $$
+declare hidden_fundraising jsonb; hidden_site jsonb; hidden_auction jsonb; hidden_songs integer;
+begin
+  hidden_fundraising := public.get_public_fundraising('ranking-sponsors');
+  hidden_site := public.get_public_wedding_site('ranking-sponsors');
+  hidden_auction := public.get_public_sponsor_auction('ranking-campaign');
+  select count(*) into hidden_songs
+    from public.get_dj_leaderboard('52000000-0000-4000-8000-000000000092');
+  if jsonb_array_length(hidden_fundraising->'tiers') <> 0
+      or jsonb_array_length(hidden_fundraising->'sponsors') <> 0
+      or jsonb_array_length(hidden_site->'registry') <> 0
+      or hidden_auction->>'enabled' <> 'false' or hidden_songs <> 0 then
+    raise exception 'Persisted feature opt-outs must hide public offers and projections.';
+  end if;
+end $$;
+select public.save_wedding_content(
+  '52000000-0000-4000-8000-000000000091',
+  '{"revenue_features":{"giving":true,"sponsors":true,"featured_sponsors":true,"song_requests":true,"vip_seating":true}}',
+  null, null, null
+);
+select public.save_wedding_content(
+  '52000000-0000-4000-8000-000000000092',
+  '{"revenue_features":{"giving":true,"sponsors":true,"featured_sponsors":true,"song_requests":true,"vip_seating":true}}',
+  null, null, null
+);
 
 -- A newly finalized live song bid gets an exact contribution link, without matching
 -- other songs or changing provider settlement rules.
@@ -169,7 +259,7 @@ declare ledger_count integer;
 begin
   select count(*) into ledger_count
   from public.get_dj_bid_ledger('52000000-0000-4000-8000-000000000092');
-  if ledger_count <> 4 then
+  if ledger_count <> 3 then
     raise exception 'Organizer song ledger must show only verified live linked bids, got % rows.', ledger_count;
   end if;
 end $$;

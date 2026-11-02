@@ -544,6 +544,10 @@
 
       wedding = data.wedding;
       if (!wedding) return notice("Wedding not found.", true);
+      wedding.revenue_features = {
+        giving: true, sponsors: true, featured_sponsors: true, song_requests: true, vip_seating: true,
+        ...(wedding.revenue_features || {})
+      };
       if (wedding.is_showcase) {
         document.body.dataset.showcase = "true";
         const banner = document.createElement("aside");
@@ -569,9 +573,15 @@
         `<button type="button" class="buy-btn" data-new-song-amount="${amount}">${presetLabel(amount)}</button>`).join(" ") +
         '<button type="button" class="buy-btn" data-new-song-amount="0">Custom amount</button>' +
         presetFx(WSAmountPresets.amounts(wedding, "song"));
-      $("song-request-form").hidden = Boolean(wedding.is_past);
-      $("song-request-closed").hidden = !wedding.is_past;
+      $("song-request-form").hidden = Boolean(wedding.is_past || !wedding.revenue_features.song_requests);
+      $("song-request-closed").hidden = !wedding.is_past && wedding.revenue_features.song_requests;
+      if (!wedding.revenue_features.song_requests) {
+        $("song-request-closed").hidden = false;
+        $("song-request-closed").textContent = "Song requests are not currently available for this wedding.";
+      }
       $("no-bids-cta").hidden = Boolean(wedding.is_past);
+      $("bids").hidden = !wedding.revenue_features.song_requests;
+      $("sponsors").hidden = !wedding.revenue_features.sponsors;
 
       // Couple monogram
       const names = wedding.couple_names?.split(/[&,]|and/).map(n => n.trim().charAt(0).toUpperCase()).join("").slice(0, 3) || "WS";
@@ -665,10 +675,13 @@
         $("countdown-state").parentElement.hidden = false;
       } else {
         $("rsvp").hidden = false;
-        $("bids").hidden = false;
+        $("bids").hidden = !wedding.revenue_features.song_requests;
         restorePass();
       }
-      if (wedding.is_past) { $("bids").hidden = false; $("bids").querySelector("p.fine").textContent = "Bidding is closed. Here are the final song requests."; }
+      if (wedding.is_past && wedding.revenue_features.song_requests) {
+        $("bids").hidden = false;
+        $("bids").querySelector("p.fine").textContent = "Bidding is closed. Here are the final song requests.";
+      }
 
       loadBids();
       loadLedger();
@@ -723,11 +736,12 @@
       const res = await fetch(`/api/guest?action=fundraising&slug=${encodeURIComponent(slug)}`);
       if (!res.ok) return;
       const data = await res.json();
+      const features = wedding.revenue_features;
       sponsorPackageCount = (data.tiers || []).length;
 
       // Fundraising campaigns with milestones
       const camps = data.campaigns || [];
-      $("campaigns").hidden = !camps.length;
+      $("campaigns").hidden = features.giving !== true || !camps.length;
       if (camps.length) {
         const cur = wedding.currency || "USD";
         $("campaigns-display").innerHTML = camps.map(c => {
@@ -746,7 +760,7 @@
 
       // Display sponsorship tiers
       if (data.tiers && data.tiers.length > 0) {
-        $("sponsor-tiers").hidden = false;
+        $("sponsor-tiers").hidden = !features.sponsors;
         $("tiers-display").innerHTML = data.tiers.map(tier => `
           <div style="border: 2px solid var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
             <h3 style="margin: 0 0 0.5rem; color: var(--gold);">${esc(tier.name)}</h3>
@@ -760,7 +774,7 @@
       // Display VIP offer
       if (data.vip) {
         const v = data.vip;
-        $("vip-section").hidden = false;
+        $("vip-section").hidden = !features.vip_seating;
         const available = (v.seats_total || 0) - (v.seats_sold || 0);
         $("vip-display").innerHTML = `
           <h3 style="margin: 0 0 1rem; color: var(--gold);">${esc(v.title)}</h3>
@@ -802,10 +816,10 @@
         <p class="fine">Imagine your flowers, styling or services here, supporting ${esc(wedding.couple_names || "the couple")}.</p>
         <button type="button" class="buy-btn" id="sponsor-cta" ${wedding.is_past ? "disabled" : ""}>Become a sponsor</button>
       </article>`;
-      $("sponsors-display").innerHTML = sponsorCards + placeholder;
+      $("sponsors-display").innerHTML = features.sponsors ? sponsorCards + placeholder : "";
       sponsorAuctionOpen = auction?.enabled === true && auction.status === "open" && auction.currency === wedding.currency;
       const auctionPanel = $("sponsor-auction");
-      auctionPanel.hidden = !auction?.enabled;
+      auctionPanel.hidden = features.sponsors !== true || features.featured_sponsors !== true || !auction?.enabled;
       if (auction?.enabled) {
         const leaders = (auction.leaders || []).slice(0, Math.max(1, Number(auction.slot_count) || 1));
         auctionPanel.innerHTML = `<h3>Featured sponsor campaign</h3>

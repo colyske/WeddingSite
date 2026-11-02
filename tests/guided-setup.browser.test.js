@@ -59,6 +59,7 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
               name: venue.name, event_date: venue.eventDate, event_time: venue.eventTime, address: venue.address,
               kind: venue.kind, map_link: venue.mapLink, description: venue.description, is_main: venue.isMain })) };
           if ("amountPresets" in body) wedding.amount_presets = body.amountPresets;
+          if ("revenueFeatures" in body) wedding.revenue_features = body.revenueFeatures;
           data = { wedding };
         }
         if (action === "publish") {
@@ -177,6 +178,12 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     assert.equal(await resume.locator("#preset-song").isVisible(), true, "song bid amount suggestions are in the fundraising step");
     assert.equal(await resume.locator("summary").filter({ hasText: "Gift registry & suggested guest amounts" })
       .evaluate(el => el.closest("details").open), true, "fundraising setup opens with its feature controls visible");
+    const featureToggles = ["#feature-giving", "#feature-sponsors", "#feature-featured-sponsors",
+      "#feature-song-requests", "#feature-vip-seating"];
+    for (const selector of featureToggles) {
+      assert.equal(await resume.locator(selector).isChecked(), true, `${selector} is visible by default`);
+    }
+    await resume.uncheck("#feature-song-requests");
     await resume.check("#preset-reset");
     await resume.check("#preset-reviewed");
     await resume.locator('#edit-form button[type="submit"]').click();
@@ -185,6 +192,10 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     assert.equal(currencySave.currency, "KES");
     assert.equal(currencySave.amountPresets, null);
     assert.equal(currencySave.amountPresetsReviewed, true);
+    assert.equal(currencySave.revenueFeatures.song_requests, false, "an opt-out is included in the persisted save");
+    assert.deepEqual(wedding.revenue_features, {
+      giving: true, sponsors: true, featured_sponsors: true, song_requests: false, vip_seating: true
+    });
     await openSection(resume, 6);
     await resume.click("#edit-colors-btn");
     await resume.locator(".remove-color-btn").evaluateAll(buttons => buttons.forEach(button => button.click()));
