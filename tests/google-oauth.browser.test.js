@@ -263,5 +263,62 @@ test("A signed-in tab stays signed in across home and dashboard; expired session
   }
 });
 
+test("Showcase 'Use this style' keeps the tab session and editor deep links survive sign-in", { skip }, async t => {
+  if (!browser) {
+    if (process.env.CI) throw new Error(skip);
+    t.skip(skip);
+    return;
+  }
+  const page = await browser.newPage({ viewport: { width: 375, height: 740 } });
+  const showcaseStyleUrl = `${base}/dashboard.html?style=showcase-wedding#step=couple`;
+  await page.route("https://fonts.googleapis.com/**", route => route.fulfill({ status: 200, contentType: "text/css", body: "" }));
+  await page.route("**/api/**", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    if (action === "me") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      user: { id: "2f6d2cc1-dc56-4d38-8e2c-2ca8528cd112", email: "couple@example.test" }, role: "client" }) });
+    if (action === "google-status") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ enabled: true }) });
+    if (action === "google-exchange") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      accessToken: "fresh-access-token", refreshToken: "fresh-refresh-token",
+      user: { id: "2f6d2cc1-dc56-4d38-8e2c-2ca8528cd112", email: "couple@example.test" }, role: "client" }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ weddings: [], total: 0 }) });
+  });
+  await page.route("https://showcase-wedding.joinourwedding.site/**", route => route.fulfill({ status: 200, contentType: "text/html",
+    body: `<!doctype html><title>Showcase</title><a id="use-style" href="${showcaseStyleUrl}">Use this style</a>` }));
+  await page.route("**/dashboard.html**", route => route.fulfill({ status: 200, contentType: "text/html",
+    body: '<!doctype html><title>Dashboard</title><script src="/auth-client.js"></script>' }));
+  try {
+    await page.goto(`${base}/signin.html`);
+    await page.evaluate(() => WS.save({ accessToken: "test-access-token", refreshToken: "test-refresh-token",
+      user: { id: "2f6d2cc1-dc56-4d38-8e2c-2ca8528cd112", email: "couple@example.test" }, role: "client" }));
+    await page.goto(`${base}/`);
+    const pagesBefore = page.context().pages().length;
+    await page.locator("main a[href^='https://showcase-wedding']").first().click();
+    await page.waitForURL("https://showcase-wedding.joinourwedding.site/**");
+    assert.equal(page.context().pages().length, pagesBefore, "the showcase opens in the same tab");
+    await page.click("#use-style");
+    await page.waitForURL(url => url.pathname === "/dashboard.html");
+    assert.equal(page.url(), showcaseStyleUrl, "the selected style reaches the dashboard without a sign-in detour");
+    assert.equal(await page.evaluate(() => WS.token()), "test-access-token", "the same tab is still signed in");
+
+    await page.evaluate(() => WS.clear());
+    const editorPath = "/wedding.html?id=11111111-1111-4111-8111-111111111111#step=giving";
+    await page.goto(`${base}${editorPath}`);
+    await page.waitForURL(url => url.pathname === "/signin.html");
+    assert.equal(new URL(page.url()).searchParams.get("next"), editorPath, "a signed-out editor link keeps its destination");
+    await page.waitForFunction(() => document.getElementById("google-signin")?.disabled === false);
+    const flow = await page.evaluate(() => {
+      const state = "w".repeat(43);
+      sessionStorage.setItem("ws-google-pkce", JSON.stringify({ state, verifier: "v".repeat(43),
+        returnTo: new URLSearchParams(location.search).get("next"), createdAt: Date.now() }));
+      return state;
+    });
+    await page.route("**/wedding.html**", route => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Editor</title>" }));
+    await page.goto(`${base}/signin.html?oauth_state=${flow}&code=test-authorization-code`);
+    await page.waitForURL(url => url.pathname === "/wedding.html");
+    assert.equal(page.url(), `${base}${editorPath}`, "Google sign-in resumes the exact editor step");
+  } finally {
+    await page.close();
+  }
+});
 test.after(() => new Promise(resolve => server.close(resolve)));
 if (browser) test.after(async () => browser.close());

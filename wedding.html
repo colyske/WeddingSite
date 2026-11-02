@@ -594,7 +594,7 @@
       panel.hidden = false;
     };
 
-    if (!WS.token()) return location.replace("/signin.html");
+    if (!WS.token()) return location.replace("/signin.html?next=" + encodeURIComponent(location.pathname + location.search + location.hash));
     if (!weddingId) return notice("Wedding ID missing.", true);
 
     $("back").addEventListener("click", () => location.href = "/dashboard.html");
