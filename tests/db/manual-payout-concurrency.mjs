@@ -19,7 +19,7 @@ function sql(input, onOutput = () => {}) {
 }
 const maker = randomUUID(), checker = randomUUID(), sender = randomUUID(), wedding = randomUUID();
 const contribution = randomUUID(), custody = randomUUID(), recipient = randomUUID(), account = randomUUID(), batch = randomUUID();
-const evidence = Array.from({ length: 7 }, () => randomUUID());
+const evidence = Array.from({ length: 9 }, () => randomUUID());
 const originalGate = await sql("select pg_get_functiondef('public.manual_payouts_enabled()'::regprocedure);");
 const actor = id => `set local role authenticated; select set_config('request.jwt.claim.sub','${id}',true);
   select set_config('request.jwt.claim.role','authenticated',true);`;
@@ -57,7 +57,9 @@ try {
       ('${evidence[3]}','receipt','${randomUUID()}',repeat('d',64),'${sender}'),
       ('${evidence[4]}','receipt','${randomUUID()}',repeat('e',64),'${sender}'),
       ('${evidence[5]}','account','${randomUUID()}',repeat('f',64),'${maker}'),
-      ('${evidence[6]}','receipt','${randomUUID()}',repeat('1',64),'${sender}');
+      ('${evidence[6]}','receipt','${randomUUID()}',repeat('1',64),'${sender}'),
+      ('${evidence[7]}','statement','${randomUUID()}',repeat('2',64),'${maker}'),
+      ('${evidence[8]}','reconciliation','${randomUUID()}',repeat('3',64),'${maker}');
     insert into public.manual_payout_evidence_checks(evidence_id,checked_by)
       select id,'${checker}' from public.manual_payout_evidence where id in (${evidence.map(e => `'${e}'`).join(",")});
     insert into public.manual_payout_accounts(id,provider,canonical_registry_reference,evidence_id,recorded_by)
@@ -149,6 +151,26 @@ try {
   }
   await sql(`update public.payment_adjustments set status='failed',hold_minor=0
     where provider_adjustment_id='isolated-concurrent-refund' and wedding_id='${wedding}';`);
+  const statement = randomUUID();
+  const booked = await sql("select clock_timestamp()::text;");
+  const debitBatch = idFrom(await call(maker, `public.manual_payout_append_statement('${custody}','${batch}',
+    '${statement}',clock_timestamp(),10000,0,6000,4000,0,'${evidence[7]}')`));
+  const observed = await Promise.allSettled([randomUUID(), randomUUID()].map(line =>
+    call(maker, `public.manual_payout_register_statement_debit('${debitBatch}','${line}','FIRST-RECEIPT',
+      6000,0,'KES','${booked}','${evidence[7]}')`)));
+  assert.equal(observed.filter(r => r.status === "fulfilled").length, 1, "One immutable statement observation owns the unique reference/capacity");
+  assert.match(observed.find(r => r.status === "rejected").reason.message, /unique/);
+  const observedLine = await sql(`select line_reference from public.manual_payout_statement_debit_entries where batch_id='${debitBatch}';`);
+  assert.equal(await sql(`select public.manual_payout_state('${payout}');`), "reported", "Intake alone cannot declare paid");
+  const finalize = `public.manual_payout_reconcile('${payout}','daraja','${account}','${statement}','${observedLine}',
+    'FIRST-RECEIPT',6000,0,'KES','${booked}','${evidence[8]}')`;
+  const reconciled = await Promise.allSettled([call(checker, finalize), call(checker, finalize)]);
+  assert.equal(reconciled.filter(r => r.status === "fulfilled").length, 1, "Exactly one atomic reconciliation may finalize");
+  assert.match(reconciled.find(r => r.status === "rejected").reason.message, /Reported claimed transfer/);
+  assert.equal(await sql(`select count(*) from public.manual_payout_events e
+    join public.manual_payout_reconciliations r on r.payout_id=e.payout_id
+    join public.manual_payout_statement_debits d on d.payout_id=r.payout_id
+    where e.payout_id='${payout}' and e.state='paid' and d.batch_id='${debitBatch}' and d.line_reference='${observedLine}';`), "1");
   await call(sender, `public.manual_payout_transition('${third}','executing','${randomUUID()}')`);
   const receipts = await Promise.all([
     call(sender, `public.manual_payout_report('${third}','CONCURRENT-RECEIPT',1000,0,'KES',now(),'${evidence[3]}')`),
@@ -158,7 +180,7 @@ try {
   assert.equal(receipts.filter(output => output.split("\n").includes("f")).length, 1, "Conflicting receipt explicitly held");
   assert.equal(await sql(`select count(*) from public.manual_payout_account_holds where custody_id='${custody}'`), "1");
   await assert.rejects(call(maker, request(randomUUID(), 1000)), /Held custody account/);
-  console.log("Two-connection replay, overdraw, cross-rail claims, duplicate receipts and refund/execution race passed.");
+  console.log("Two-connection replay, overdraw, cross-rail claims, atomic observed-debit reconciliation, duplicate receipts and refund/execution race passed.");
 } finally {
   await sql(originalGate);
 }
