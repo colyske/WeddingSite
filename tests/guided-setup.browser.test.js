@@ -365,8 +365,8 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
       await resume.setViewportSize({ width, height });
       for (const position of ["guide-end", "page-bottom"]) {
       await resume.evaluate(position => {
-        if (position === "page-bottom") window.scrollTo(0, document.documentElement.scrollHeight);
-        else document.getElementById("edit-section").scrollIntoView({ block: "end" });
+        if (position === "page-bottom") window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
+        else document.getElementById("edit-section").scrollIntoView({ block: "end", behavior: "instant" });
       }, position);
       await resume.waitForTimeout(50);
       const layout = await resume.evaluate(() => {
