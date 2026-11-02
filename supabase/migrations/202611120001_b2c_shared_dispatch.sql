@@ -383,7 +383,8 @@ begin
     perform public.b2c_audit(r.wedding_id,r.id::text,'auto_approved_policy_'||p.revision,p.updated_by);
   end if;
   if public.manual_payout_state(p_id)<>'approved' then raise exception 'B2C: Four-eyes approval required.'; end if;
-  if p.require_four_eyes and (select count(*) from public.b2c_human_reviews v join public.profiles q on q.id=v.reviewer_id
+  if (p.require_four_eyes or not coalesce(p_auto,false)) and
+    (select count(*) from public.b2c_human_reviews v join public.profiles q on q.id=v.reviewer_id
     where v.payout_id=r.id and v.policy_revision=p.revision and q.platform_role::text=v.reviewer_role)<>2 then
     raise exception 'B2C: Different current Owner and SuperAdmin reviews of the exact policy revision required.';
   end if;

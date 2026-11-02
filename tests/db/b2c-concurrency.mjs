@@ -20,9 +20,11 @@ const sql = statement => new Promise((resolve, reject) => {
 let context;
 let originalGate;
 let originalPolicy;
+let originalOwner;
 try {
   originalGate = await sql("select pg_get_functiondef('public.manual_payout_require_enabled()'::regprocedure);");
   originalPolicy = JSON.parse(await sql("select to_jsonb(p) from public.b2c_policy p;"));
+  originalOwner = JSON.parse(await sql("select to_jsonb(o) from public.protected_platform_owner o where singleton;"));
   const fixture = readFileSync(new URL("./b2c.sql", import.meta.url), "utf8")
     .replace("begin;", "begin; create table public.b2c_ci_context(data jsonb); set local b2c.test_concurrency='on';")
     .replace(/rollback;\s*$/, "commit;");
@@ -132,6 +134,9 @@ try {
       delete from public.wedding_kyc where wedding_id='${context.wedding}';
       delete from public.wedding_memberships where wedding_id='${context.wedding}';
       delete from public.weddings where id='${context.wedding}';
+      update public.protected_platform_owner set owner_user_id=
+        (select owner_user_id from jsonb_populate_record(null::public.protected_platform_owner,
+          '${JSON.stringify(originalOwner).replaceAll("'", "''")}'::jsonb)) where singleton;
       delete from public.profiles where id in (${users});
       delete from auth.users where id in (${users});
       drop table public.b2c_ci_context;
