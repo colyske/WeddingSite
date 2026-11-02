@@ -135,6 +135,129 @@ test("Google OAuth denial, missing state/code and exchange failures are visible"
     await page.getByText("Google sign-in could not be completed.", { exact: false }).waitFor();
     assert.equal(exchanges, 1);
     assert.equal(await page.evaluate(() => sessionStorage.getItem("ws-session")), null);
+    assert.equal(await page.locator("#signin-form").isVisible(), true, "a failed callback returns to the usable sign-in form");
+    assert.equal(await page.locator("#auth-pending").isVisible(), false);
+  } finally {
+    await page.close();
+  }
+});
+
+test("Google callback starts the exchange before web-font CSS and never shows the idle form", { skip }, async t => {
+  if (!browser) {
+    if (process.env.CI) throw new Error(skip);
+    t.skip(skip);
+    return;
+  }
+  const page = await browser.newPage({ viewport: { width: 375, height: 740 } });
+  const events = [];
+  const started = Date.now();
+  const at = name => events.push([name, Date.now() - started]);
+  await page.route("https://fonts.googleapis.com/**", async route => {
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    at("fonts-css-done");
+    await route.fulfill({ status: 200, contentType: "text/css", body: "" });
+  });
+  await page.route("**/api/auth?action=google-status", route =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ enabled: true }) }));
+  let pendingState;
+  await page.route("**/api/auth?action=google-exchange", async route => {
+    at("exchange-start");
+    await new Promise(resolve => setTimeout(resolve, 1800));
+    pendingState = await page.evaluate(() => ({
+      pending: document.documentElement.classList.contains("ws-auth-pending"),
+      status: document.getElementById("auth-pending")?.getAttribute("role"),
+      statusVisible: !!document.getElementById("auth-pending")?.offsetParent,
+      formVisible: !!document.getElementById("signin-form")?.offsetParent,
+      googleVisible: !!document.getElementById("google-signin")?.offsetParent,
+      busy: document.querySelector("main")?.getAttribute("aria-busy")
+    }));
+    await route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({
+        accessToken: "test-access-token", refreshToken: "test-refresh-token",
+        user: { id: "2f6d2cc1-dc56-4d38-8e2c-2ca8528cd112", email: "guest@example.test" }, role: "client"
+      })
+    });
+  });
+  await page.route("**/dashboard.html**", route =>
+    route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Dashboard</title>" }));
+  try {
+    await page.goto(`${base}/signin.html`);
+    const state = "q".repeat(43);
+    await page.evaluate(stateValue => sessionStorage.setItem("ws-google-pkce", JSON.stringify({
+      state: stateValue, verifier: "v".repeat(43), returnTo: "/dashboard.html", createdAt: Date.now()
+    })), state);
+    events.length = 0;
+    await page.goto(`${base}/signin.html?oauth_state=${state}&code=test-authorization-code`, { waitUntil: "commit" });
+    await page.waitForURL("**/dashboard.html");
+    const order = events.map(([name]) => name);
+    assert.ok(order.indexOf("exchange-start") > -1 && order.indexOf("exchange-start") < order.indexOf("fonts-css-done"),
+      `the exchange starts before the render-blocking font CSS finishes (${JSON.stringify(events)})`);
+    assert.deepEqual(pendingState, { pending: true, status: "status", statusVisible: true, formVisible: false, googleVisible: false, busy: "true" });
+    assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem("ws-session") || "{}").a), "test-access-token");
+  } finally {
+    await page.close();
+  }
+});
+
+test("A signed-in tab stays signed in across home and dashboard; expired sessions are cleared", { skip }, async t => {
+  if (!browser) {
+    if (process.env.CI) throw new Error(skip);
+    t.skip(skip);
+    return;
+  }
+  const page = await browser.newPage({ viewport: { width: 375, height: 740 } });
+  let meStatus = 200;
+  await page.route("https://fonts.googleapis.com/**", route => route.fulfill({ status: 200, contentType: "text/css", body: "" }));
+  await page.route("**/api/**", route => {
+    const url = new URL(route.request().url());
+    const action = url.searchParams.get("action");
+    if (action === "sign-in") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      accessToken: "test-access-token", refreshToken: "test-refresh-token",
+      user: { id: "2f6d2cc1-dc56-4d38-8e2c-2ca8528cd112", email: "couple@example.test" }, role: "client"
+    }) });
+    if (action === "me") return route.fulfill({ status: meStatus, contentType: "application/json", body: JSON.stringify(meStatus === 200
+      ? { user: { id: "2f6d2cc1-dc56-4d38-8e2c-2ca8528cd112", email: "couple@example.test" }, role: "client" }
+      : { error: "Session expired." }) });
+    if (action === "refresh") return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "Session expired." }) });
+    if (action === "google-status") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ enabled: false }) });
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ weddings: [], total: 0 }) });
+  });
+  await page.route("**/dashboard.html**", route => route.fulfill({ status: 200, contentType: "text/html",
+    body: '<!doctype html><title>Dashboard</title><script src="/auth-client.js"></script><a id="home" href="/">Home</a>' }));
+  try {
+    await page.goto(`${base}/signin.html`);
+    assert.equal(await page.locator("#auth-pending").isVisible(), false, "a normal sign-in visit is not stuck pending");
+    await page.fill("#email", "couple@example.test");
+    await page.fill("#password", "correct horse battery staple");
+    await page.click("#signin-form button[type=submit]");
+    await page.waitForURL("**/dashboard.html");
+
+    await page.click("#home");
+    await page.waitForURL(`${base}/`);
+    const headerCta = page.locator(".site-header a.btn.primary");
+    assert.equal(await headerCta.textContent(), "Your dashboard");
+    assert.equal(await headerCta.getAttribute("href"), "/dashboard.html");
+    assert.equal(await page.locator('a[href="/signin.html"].btn.primary').count(), 0, "home CTAs follow the signed-in session");
+    assert.equal(await page.evaluate(() => WS.token()), "test-access-token", "navigating home keeps the tab session");
+    assert.ok(!(await page.evaluate(() => document.documentElement.innerHTML)).includes("test-access-token"), "tokens never appear in links or markup");
+    await headerCta.click();
+    await page.waitForURL("**/dashboard.html");
+    assert.equal(await page.evaluate(() => WS.token()), "test-access-token");
+
+    await page.goto(`${base}/signin.html`);
+    await page.locator("#signed-in").waitFor();
+    assert.match(await page.locator("#signed-in").textContent(), /already signed in as couple@example\.test/);
+
+    meStatus = 401;
+    await page.goto(`${base}/signin.html`);
+    await page.getByText("Your previous session has expired. Sign in again.").waitFor();
+    assert.equal(await page.evaluate(() => sessionStorage.getItem("ws-session")), null, "an expired session is cleared, not shown as signed in");
+    assert.equal(await page.locator("#signed-in").isVisible(), false);
+    assert.equal(await page.locator("#signin-form").isVisible(), true);
+
+    await page.goto(`${base}/`);
+    assert.equal(await page.locator(".site-header a.btn.primary").textContent(), "Sign in / Create wedding", "signed-out home offers sign-in");
   } finally {
     await page.close();
   }

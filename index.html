@@ -210,6 +210,13 @@
     const MOTIFS = ["m-rings", "m-leaves", "m-arch", "m-stars"];
     let currentPage = 0;
 
+    // Sessions live in this tab's sessionStorage; reflect them so returning home never looks signed out.
+    if (window.WS?.token()) {
+      document.querySelectorAll('a.btn.primary[href="/signin.html"]').forEach(link => { link.href = "/dashboard.html"; });
+      const headerCta = document.querySelector(".site-header a.btn.primary");
+      if (headerCta) headerCta.textContent = "Your dashboard";
+    }
+
     const contrast = (a, b) => window.WSTheme ? WSTheme.contrast(a, b) : 1;
     // Uses the wedding's saved palette as-is; only the text colour (or a scrim) adapts for readability.
     function cardTheme(w) {
