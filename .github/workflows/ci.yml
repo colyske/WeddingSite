@@ -18,6 +18,13 @@ jobs:
           version: latest
       - name: Start isolated local database
         run: supabase start --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - name: Prepare the predecessor schema for populated upgrade regression
+        run: supabase db reset --local --version 202611060002 --no-seed
+      - name: Test publication migration with existing published weddings and drafts
+        run: |
+          docker cp supabase/migrations/202611060003_guided_publication_minimum.sql supabase_db_weddingsite:/tmp/202611060003_guided_publication_minimum.sql
+          docker cp tests/db/guided-publication-upgrade.sql supabase_db_weddingsite:/tmp/guided-publication-upgrade.sql
+          docker exec supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 --file /tmp/guided-publication-upgrade.sql
       - name: Apply all migrations to a fresh database
         run: supabase db reset --local --no-seed
       - name: Lint the migrated schema
