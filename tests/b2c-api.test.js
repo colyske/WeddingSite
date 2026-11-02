@@ -22,6 +22,7 @@ test("B2C API authenticates scheduler/callbacks and never contacts Daraja with d
     assert.ok(String(url).startsWith("https://synthetic.supabase.test/"), "No provider call permitted");
     if (String(url).endsWith("/auth/v1/user")) return { ok: true, json: async () => ({ id }) };
     if (String(url).endsWith("/rpc/b2c_status")) return { ok: true, text: async () => "[]" };
+    if (String(url).endsWith("/rpc/b2c_reconcile")) return { ok: true, text: async () => '"account_held"' };
     assert.ok(String(url).endsWith("/rpc/b2c_mark_stale"));
     assert.equal(options.headers.Authorization, "Bearer synthetic-service");
     return { ok: true, text: async () => "0" };
@@ -49,6 +50,16 @@ test("B2C API authenticates scheduler/callbacks and never contacts Daraja with d
     await handler({ method: "POST", query: { action: "policy-save" }, headers: { authorization: "Bearer synthetic-staff" },
       body: { confirmed: true, changes: { require_four_eyes: false } } }, res);
     assert.equal(res.code, 400);
+    res = response();
+    await handler({ method: "POST", query: { action: "reconcile" },
+      headers: { authorization: `Bearer ${"synthetic-user"}` },
+      body: { confirmed: true, dispatchId: id, receiptEvidenceId: id, evidenceId: id, accountId: id, statementId: id,
+        lineId: id, provider: "daraja", currency: "KES", amountMinor: 10000, feeMinor: 100,
+        transactionId: "SYNTHETIC", msisdn: "254700000001",
+        transferredAt: "2026-01-01T00:00:00Z", bookedAt: "2026-01-01T00:00:00Z" } }, res);
+    assert.equal(res.code, 409);
+    assert.equal(res.body.held, true);
+    assert.equal(res.body.state, "account_held");
   } finally {
     global.fetch = oldFetch;
     for (const k of keys) {

@@ -546,6 +546,12 @@ begin
   perform public.manual_payout_evidence_require(p_receipt,'receipt',false);
   perform public.manual_payout_evidence_require(p_evidence,'reconciliation',false);
   select * into strict a from public.manual_payout_custody where id=r.custody_id;
+  if p_actual is null or p_actual<=0 or p_fee is null or p_fee<0 or p_currency is null or p_currency !~ '^[A-Z]{3}$'
+    or p_provider is null or p_account is null or p_statement is null or p_line is null
+    or p_at is null or p_booked_at is null or p_reference is null
+    or upper(btrim(p_reference)) !~ '^[A-Z0-9][A-Z0-9._:-]{0,119}$' then
+    raise exception 'B2C: Explicit valid statement debit and receipt fields required.';
+  end if;
   if public.manual_payout_state(r.id)='paid' then
     select * into strict existing from public.manual_payout_reconciliations where payout_id=r.id;
     select * into strict receipt from public.manual_payout_receipts where payout_id=r.id;
@@ -553,7 +559,11 @@ begin
       existing.transaction_reference,existing.actual_minor,existing.actual_fee_minor,existing.currency,
       existing.booked_at,existing.evidence_id,receipt.evidence_id,receipt.transferred_at,d.msisdn) is distinct from
       (p_provider,p_account,p_statement,p_line,upper(btrim(p_reference)),p_actual,p_fee,p_currency,
-      p_booked_at,p_evidence,p_receipt,p_at,p_msisdn) then raise exception 'B2C: Final reconciliation is immutable.'; end if;
+      p_booked_at,p_evidence,p_receipt,p_at,p_msisdn) then
+      perform public.manual_payout_hold_account(r.id,p_evidence,'automatic_b2c',auth.uid(),
+        p_reference,p_actual,p_fee,p_currency,p_booked_at);
+      return 'account_held';
+    end if;
     return 'paid';
   end if;
   if public.manual_payout_state(r.id) not in ('executing','uncertain','resolution_proposed')
@@ -563,14 +573,26 @@ begin
     or p_msisdn is distinct from d.msisdn or p_at is null or p_at<c.claimed_at or p_at>clock_timestamp()
     or p_booked_at is null or p_booked_at<p_at or p_booked_at>clock_timestamp()
     or p_reference is null or upper(btrim(p_reference)) !~ '^[A-Z0-9][A-Z0-9._:-]{0,119}$' then
-    raise exception 'B2C: Exact independently checked receipt and separate statement debit/account/line/amount/fee/destination required; retain holds.';
+    perform public.manual_payout_hold_account(r.id,p_evidence,'automatic_b2c',auth.uid(),
+      p_reference,p_actual,p_fee,p_currency,p_booked_at);
+    return 'account_held';
   end if;
   if exists(select 1 from public.b2c_callback_events where dispatch_id=d.id
     and (kind='result' or (d.conversation_id is not null and evidence->>'conversation_id'=d.conversation_id
       and evidence->>'originator_id'=d.originator_id))
     and evidence->>'result_code'='0' and evidence->>'transaction_id' is not null
     and upper(evidence->>'transaction_id')<>upper(btrim(p_reference))) then
-    raise exception 'B2C: Conflicting correlated provider reference; retain holds and investigate.';
+    perform public.manual_payout_hold_account(r.id,p_evidence,'automatic_b2c',auth.uid(),
+      p_reference,p_actual,p_fee,p_currency,p_booked_at);
+    return 'account_held';
+  end if;
+  if exists(select 1 from public.manual_payout_receipts where provider=a.provider
+    and account_reference=a.account_reference and transaction_reference=upper(btrim(p_reference)))
+    or exists(select 1 from public.manual_payout_reconciliations where provider=a.provider
+      and account_reference=a.account_reference and statement_reference=p_statement and line_reference=p_line) then
+    perform public.manual_payout_hold_account(r.id,p_evidence,'automatic_b2c',auth.uid(),
+      p_reference,p_actual,p_fee,p_currency,p_booked_at);
+    return 'account_held';
   end if;
   insert into public.manual_payout_receipts(payout_id,provider,account_reference,transaction_reference,actual_minor,
     actual_fee_minor,currency,transferred_at,evidence_id)

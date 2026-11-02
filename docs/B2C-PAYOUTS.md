@@ -170,7 +170,10 @@ exact provider account, unique statement/debit line, transaction reference,
 destination, amount, fee, currency, transfer time and debit booking time.
 The shared immutable receipt and reconciliation are recorded before `paid`;
 receipt evidence alone cannot settle. A conflicting correlated success reference
-prevents finalization. Including that exact paid debit in a subsequent statement
+prevents finalization. Mismatched, conflicting, late-terminal or duplicate
+statement/receipt evidence commits a shared account hold and returns an explicit
+HTTP 409 held result; throwing after the insert must not roll that hold back.
+Including that exact paid debit in a subsequent statement
 batch uses the shared accounting primitive, never a balance reset.
 Transaction Status is not used as recipient/amount proof, and no status query
 or balance provider call is implemented. Inconclusive evidence keeps the hold.

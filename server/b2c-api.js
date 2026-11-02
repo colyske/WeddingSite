@@ -108,12 +108,15 @@ export default async function handler(req, res) {
         body.provider !== "daraja" || body.currency !== "KES") {
         return sendJson(res, 400, { error: "Distinct checked receipt/reconciliation evidence, exact provider/account/statement/line and amount/fee/currency required." });
       }
-      return sendJson(res, 200, { state: await rpc("b2c_reconcile", session.token, {
+      const state = await rpc("b2c_reconcile", session.token, {
         p_id: body.dispatchId, p_receipt: body.receiptEvidenceId, p_evidence: body.evidenceId,
         p_provider: body.provider, p_account: body.accountId, p_statement: body.statementId, p_line: body.lineId,
         p_reference: body.transactionId, p_actual: body.amountMinor, p_fee: body.feeMinor, p_currency: body.currency,
         p_msisdn: body.msisdn, p_at: body.transferredAt, p_booked_at: body.bookedAt
-      }) });
+      });
+      return sendJson(res, state === "account_held" ? 409 : 200, state === "account_held"
+        ? { state, held: true, error: "Account held: mismatched, conflicting or duplicate evidence requires incident review. No history was rewritten." }
+        : { state });
     }
     if (action === "resolve") {
       if (!uuid(body.dispatchId) || !uuid(body.evidenceId) || typeof body.confirmResolution !== "boolean" ||

@@ -175,8 +175,13 @@ begin
   perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,100,%L)',
     dispatch,receipt_evidence,paid_evidence,account,statement,line,receipt_at),'Independent final');
   perform set_config('request.jwt.claim.sub',staff_id::text,true);
-  perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,0,%L)',
-    dispatch,receipt_evidence,paid_evidence,account,statement,line,receipt_at),'Exact independently');
+  begin
+    if pg_temp.b2c_reconcile(dispatch,receipt_evidence,paid_evidence,account,statement,line,0,receipt_at)<>'account_held'
+      or not exists(select 1 from public.manual_payout_account_holds where payout_id=payout) then
+      raise exception 'Mismatched automatic statement evidence must commit an account hold'; end if;
+    raise exception using errcode='P9999',message='Rollback synthetic mismatch regression';
+  exception when sqlstate 'P9999' then null;
+  end;
   perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,100,%L)',
     dispatch,receipt_evidence,receipt_evidence,account,statement,line,receipt_at),'Independently checked');
   perform pg_temp.b2c_reconcile(dispatch,receipt_evidence,paid_evidence,account,statement,line,100,receipt_at);
