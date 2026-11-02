@@ -168,7 +168,7 @@ begin
   select id into p from mp_ids where key='payout';
   perform pg_temp.actor('sender');
   perform public.manual_payout_transition(p,'executing',claim);
-  perform public.manual_payout_transition(p,'executing',claim);
+  perform pg_temp.reject(format('select public.manual_payout_transition(%L,''executing'',%L)',p,claim),'already claimed');
   perform pg_temp.reject(format('select public.manual_payout_transition(%L,''executing'',extensions.gen_random_uuid())',p),'already claimed');
   perform pg_temp.reject(format('select public.manual_payout_transition(%L,''cancelled'')',p),'Invalid');
   perform public.manual_payout_transition(p,'uncertain');
@@ -176,7 +176,7 @@ begin
   perform pg_temp.actor('maker');
   perform pg_temp.reject(format('select public.manual_payout_request(extensions.gen_random_uuid(),%L,%L,%L,4001,0,''KES'')',
     (select id from mp_ids where key='wedding'),(select id from mp_ids where key='custody'),
-    (select id from mp_ids where key='recipient')),'Insufficient');
+    (select id from mp_ids where key='recipient')),'Uncertain');
   e:=pg_temp.evidence('receipt','sender');
   perform pg_temp.actor('sender');
   perform pg_temp.reject(format('select public.manual_payout_report(%L,''RECEIPT-ONE'',6001,0,''KES'',now(),%L)',p,e),'mismatch');
@@ -318,6 +318,18 @@ begin
     values(expense,w,'Fixture','New paid expense',100,'KES','paid',at_expense);
   b2:=public.manual_payout_append_statement(a,b,extensions.gen_random_uuid(),clock_timestamp(),9000,0,100,8900,0,pg_temp.evidence('statement'));
   perform public.manual_payout_map_source('expense',expense,a,b2,pg_temp.evidence('commitment'),extensions.gen_random_uuid(),at_expense);
+  -- A newer source snapshot must never free an old statement's consumed capacity.
+  begin
+    update public.expenses set description='Changed mapped snapshot' where id=expense;
+    perform public.manual_payout_map_source('expense',expense,a,null,pg_temp.evidence('commitment'));
+    expense:=extensions.gen_random_uuid();
+    insert into public.expenses(id,wedding_id,category,description,amount_minor,currency,status,paid_at)
+      values(expense,w,'Fixture','Cannot reuse consumed debit capacity',100,'KES','paid',at_expense);
+    perform pg_temp.reject(format('select public.manual_payout_map_source(''expense'',%L,%L,%L,%L,extensions.gen_random_uuid(),%L)',
+      expense,a,b2,pg_temp.evidence('commitment'),at_expense),'capacity');
+    raise exception using errcode='P9999',message='Rollback isolated capacity regression';
+  exception when sqlstate 'P9999' then null;
+  end;
   p:=public.manual_payout_request(extensions.gen_random_uuid(),w,a,r,6400,0,'KES');
   perform pg_temp.actor('checker'); perform public.manual_payout_transition(p,'approved');
   perform pg_temp.actor('maker'); perform public.manual_payout_transition(p,'cancelled');

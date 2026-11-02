@@ -409,9 +409,7 @@ begin
       where id=b.previous_batch and p_at<=statement_at) then raise exception 'Exact statement line/date watermark required.'; end if;
     if s.debit_minor>0 and not s.paid then raise exception 'Unpaid commitments cannot be declared statement-reflected debits.'; end if;
     select coalesce(sum(x.debit_minor),0),coalesce(sum(x.hold_minor),0) into v_debits,v_holds
-      from (select distinct on (source_kind,source_id) * from public.manual_payout_source_allocations
-        order by source_kind,source_id,id desc) x
-      where x.reflected_batch=p_batch and (x.source_kind,x.source_id) is distinct from (p_kind,p_source);
+      from public.manual_payout_source_allocations x where x.reflected_batch=p_batch;
     v_debits:=v_debits+coalesce((select sum(r.actual_minor::numeric+r.actual_fee_minor)
       from public.manual_payout_statement_debits d join public.manual_payout_reconciliations r on r.payout_id=d.payout_id
       where d.batch_id=p_batch),0);
@@ -440,15 +438,19 @@ begin
   perform public.manual_payout_evidence_require(p_evidence,'statement',p_allow_owner_solo);
   select * into strict b from public.manual_payout_statement_batches where id=p_batch and custody_id=r.custody_id;
   select * into strict receipt from public.manual_payout_reconciliations where payout_id=p_id;
+  if exists(select 1 from public.manual_payout_statement_debits where payout_id=p_id) then
+    raise exception 'Reconciled debit must be unique; already included in a statement.';
+  end if;
   if public.manual_payout_state(p_id)<>'paid' or receipt.statement_reference<>b.statement_reference
-    or receipt.line_reference<>p_line or receipt.booked_at>b.statement_at then
+    or receipt.line_reference<>p_line or receipt.booked_at>b.statement_at
+    or exists(select 1 from public.manual_payout_statement_batches prior
+      where prior.id=b.previous_batch and receipt.booked_at<=prior.statement_at) then
     raise exception 'Only the exact reconciled statement debit may be included once.';
   end if;
   select coalesce(sum(x.actual_minor::numeric+x.actual_fee_minor),0) into used from public.manual_payout_statement_debits d
     join public.manual_payout_reconciliations x on x.payout_id=d.payout_id where d.batch_id=p_batch;
-  used:=used+coalesce((select sum(a.debit_minor) from (
-    select distinct on (source_kind,source_id) * from public.manual_payout_source_allocations
-      order by source_kind,source_id,id desc) a where reflected_batch=p_batch),0);
+  used:=used+coalesce((select sum(a.debit_minor) from public.manual_payout_source_allocations a
+    where a.reflected_batch=p_batch),0);
   if used+receipt.actual_minor+receipt.actual_fee_minor>b.debit_minor then raise exception 'Statement debit capacity exceeded.'; end if;
   perform public.manual_payout_record_line(p_batch,p_line,'manual_payout',p_id,
     (receipt.actual_minor::numeric+receipt.actual_fee_minor)::bigint,'debit',p_evidence);
@@ -558,6 +560,10 @@ begin
     'account',p_owner_solo);
   snapshot:=public.manual_payout_custody_snapshot(p_custody,p_owner_solo);
   if snapshot is null then raise exception 'Accepted current custody statement required.'; end if;
+  if exists(select 1 from public.manual_payout_requests pending where pending.custody_id=p_custody
+      and pending.id is distinct from p_excluding and public.manual_payout_state(pending.id) in ('uncertain','resolution_proposed')) then
+    raise exception 'Uncertain outcome holds this custody account until evidenced resolution or exact receipt.';
+  end if;
   perform public.manual_payout_evidence_require(a.evidence_id,'custody',p_owner_solo);
   perform public.manual_payout_evidence_require((select evidence_id from public.manual_payout_recipients where id=p_recipient),
     'recipient',p_owner_solo);
@@ -703,9 +709,7 @@ begin
       (r.amount_minor::numeric+r.fee_minor)::bigint,r.id,v_solo);
   elsif p_action='executing' then
     if exists(select 1 from public.manual_payout_claims where payout_id=p_id) then
-      if v_sender=auth.uid() and exists(select 1 from public.manual_payout_claims
-          where payout_id=p_id and claim_key=p_key and execution_channel='manual_external') then return true; end if;
-      raise exception 'Transfer already claimed. Never resend.';
+      raise exception 'Transfer already claimed. Inspect recorded outcome; replay is never permission to resend.';
     end if;
     if v_state<>'approved' or (auth.uid()=v_checker and not v_solo) or p_key is null then
       raise exception 'Independent sender and approved request required.';

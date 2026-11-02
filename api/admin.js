@@ -103,6 +103,8 @@ const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save", "daraja-re
 function safeMessage(error) {
   const m = String(error?.message || "");
   if (/MANUAL_PAYOUT_BLOCKED:/.test(m)) return [409, "Manual payouts are OFF. Separate operational approval and activation are required; legacy Mark sent is unavailable."];
+  if (/authority revoked|current authorized intake actor/i.test(m)) return [403, "Your current role no longer authorizes this action."];
+  if (/already claimed|receipt|statement|insufficient|canonical|idempotency/i.test(m)) return [409, "Manual payout remains held or blocked. Review the current state and evidence; never resend an uncertain transfer."];
   if (/REFERRAL_CONFLICT:/.test(m)) return referralError(error);
   const moderation = m.match(/MODERATION:\s*([^\n]{1,300})/);
   if (moderation) return [409, moderation[1].trim()];

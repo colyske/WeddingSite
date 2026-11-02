@@ -66,10 +66,14 @@ designed exception process; do not mutate history or create a blind resend.
 kinds and appends the immutable debit reconciliation before the terminal event.
 Receipt attestation alone never declares payment.
 
-Claims have no expiry. Claim replay returns the same recorded claim, not permission to
-transfer again. Duplicate receipt errors retain the current reservation. A mismatch in
+Claims have no expiry. Claim replay is rejected with a conflict; inspect the original
+recorded claim and external outcome rather than treating a retry as transfer permission.
+Duplicate receipt errors retain the current reservation. A mismatch in
 amount, currency, fee or date is rejected and must be investigated while funds remain
-held. There is no operator override that makes a mismatched transfer paid.
+held; the sender must mark its outcome uncertain and preserve the actual external
+evidence. Uncertain/resolution-proposed outcomes additionally block other reservations
+or executions on that custody account until an exact receipt or evidenced no-transfer
+resolution is recorded. There is no override that makes a mismatched transfer paid.
 
 Custody accounts are segregated by provider, canonical registry ID and currency.
 One opening statement is followed by a linear append-only chain: unique predecessor,
@@ -137,8 +141,8 @@ independently reconciled manual payments.
    uncertain outcomes, contradictory late evidence and independently proven no-transfer.
 5. Separately approve and implement an Owner-controlled activation mechanism with its
    own reviewed migration, policy bindings and operational tests. Do not drop the OFF
-   constraint or substitute the test gate in Production. Expanded statement replenishment
-   or exception accounting is separate work.
+   constraint or substitute the test gate in Production. New exception-resolution
+   procedures beyond the evidenced no-transfer path require separate review.
 
 ## Validation and release boundary
 

@@ -122,6 +122,35 @@ try {
   await Promise.race([ready, refund.then(() => { throw new Error("Refund lock signal missing"); })]);
   const execution = assert.rejects(call(sender, `public.manual_payout_transition('${third}','executing','${randomUUID()}')`), /Insufficient/);
   await Promise.all([refund, execution]);
+  // Prove authorization is re-read AFTER an advisory wait, not just at admission.
+  const revoked = randomUUID();
+  await sql(`insert into auth.users(id) values('${revoked}');`);
+  const reported = await sql(`select payout_id from public.manual_payout_receipts where payout_id in ('${payout}','${second}') limit 1;`);
+  const attempts = [
+    request(randomUUID(), 1000),
+    `public.manual_payout_transition('${third}','executing','${randomUUID()}')`,
+    `public.manual_payout_reconcile('${reported}','daraja','${account}','${randomUUID()}','${randomUUID()}','CONCURRENT-RECEIPT',1000,0,'KES',now(),'${evidence[3]}')`
+  ];
+  for (let index = 0; index < attempts.length; index++) {
+    await sql(`update public.profiles set platform_role='superadmin' where id='${revoked}';`);
+    let markBarrier;
+    const barrierReady = new Promise(resolve => { markBarrier = resolve; });
+    const barrier = sql(`begin; select pg_advisory_xact_lock(71110001); select 'REVOCATION_BARRIER'; select pg_sleep(5); commit;`,
+      output => { if (output.includes("REVOCATION_BARRIER")) markBarrier(); });
+    await Promise.race([barrierReady, barrier.then(() => { throw new Error("Missing role barrier"); })]);
+    const name = `manual-revoke-${index}`;
+    const waiting = assert.rejects(sql(`begin; set local statement_timeout='15s';
+      set local application_name='${name}'; ${actor(revoked)} select ${attempts[index]}; commit;`), /authority revoked/);
+    await sql(`do $$ begin
+      for i in 1..200 loop
+        if exists(select 1 from pg_stat_activity where application_name='${name}' and wait_event='advisory') then return; end if;
+        perform pg_sleep(0.01);
+      end loop;
+      raise exception 'Writer did not reach the role-revocation advisory wait';
+    end $$;
+    update public.profiles set platform_role='client' where id='${revoked}';`);
+    await Promise.all([barrier, waiting]);
+  }
   console.log("Two-connection replay, overdraw, cross-rail claims, duplicate receipts and refund/execution race passed.");
 } finally {
   await sql(originalGate);
