@@ -38,7 +38,7 @@ test("style entry opens unpaid native customization; retries retain the draft an
       await page.screenshot({ path: join(process.env.STARTER_EVIDENCE_DIR, screenshot), fullPage: true });
       evidence.cases.push({ label, ...metrics, screenshot });
     }
-    let responseLost = true, saved = null, wedding = null, referral = false, capabilityCallsBeforeCreate = 0;
+    let responseLost = true, saved = null, wedding = null, referral = false, capabilityCallsBeforeCreate = 0, styleAvailable = true;
     page.on("pageerror", error => errors.push(error.message));
     await page.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "test-token", role: "client" })));
     await page.route("https://**", route => route.fulfill({ body: "" }));
@@ -50,7 +50,7 @@ test("style entry opens unpaid native customization; retries retain the draft an
       if (action === "style") {
         data = { style: { ...WSInspiration.publicDesign(["#123456", "#789abc", "#bc9876", "#fefefe"]),
           setup: WSStarterSetup.fictional("garden-gathering", "KES") } };
-        if (url.searchParams.get("slug") === "private-wedding") {
+        if (!styleAvailable || url.searchParams.get("slug") === "private-wedding") {
           status = 404; data = { error: "This wedding is not available for public setup reuse." };
         }
       }
@@ -132,14 +132,22 @@ test("style entry opens unpaid native customization; retries retain the draft an
     assert.equal(creates.length, 2);
     // A real referral decision remains deliberate, even when style entry auto-continues.
     await page.evaluate(() => { sessionStorage.removeItem("ws-starter-choice"); sessionStorage.removeItem("ws-create-request-key"); });
-    referral = true; saved = null;
+    referral = true; saved = null; responseLost = true;
     await page.goto(`${base}/dashboard.html?style=past-wedding`);
     await page.locator("#client-referral-disclosure").waitFor();
     assert.equal(creates.length, 2);
     await page.selectOption("#client-referral-decision", "decline");
     await page.click("#create-submit");
-    await page.waitForURL("**/wedding.html?*#step=couple");
+    await page.locator("#notice").filter({ hasText: /Please try again/ }).waitFor();
     assert.equal(creates.length, 3);
+    styleAvailable = false;
+    await page.reload();
+    await page.locator("#client-referral-disclosure").waitFor();
+    await page.selectOption("#client-referral-decision", "decline");
+    await page.click("#create-submit");
+    await page.waitForURL("**/wedding.html?*#step=couple");
+    assert.equal(creates.length, 4);
+    assert.deepEqual(creates[3], creates[2], "owned-draft retry survives source becoming unavailable without creating another draft");
     assert.equal(creates[2].referral.decision, "decline");
     assert.equal(creates[2].starterSetup.currency, "KES", "public source currency is never relabelled");
     assert.deepEqual(errors, []);

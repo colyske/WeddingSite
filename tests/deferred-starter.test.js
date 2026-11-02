@@ -26,7 +26,7 @@ test("unpaid starter create/replay never consults collection; pending review is 
   const owner = "550e8400-e29b-41d4-a716-446655440000";
   const key = "550e8400-e29b-41d4-a716-446655440001";
   const calls = [];
-  let staged, created, pending, reviewed = false, foreignOwner = false;
+  let staged, created, pending, reviewed = false, foreignOwner = false, capabilityTimeout = true;
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
   globalThis.fetch = async (input, options = {}) => {
     const url = new URL(input), body = options.body && JSON.parse(options.body);
@@ -52,8 +52,12 @@ test("unpaid starter create/replay never consults collection; pending review is 
       assert.equal(url.searchParams.get("client_owner_id"), `eq.${owner}`);
       return json(foreignOwner ? [] : [{ id: owner, currency: "USD", published_at: null }]);
     }
-    if (url.pathname === "/rest/v1/wedding_starter_pending") return json(pending ? [{ wedding_id: owner, setup: pending }] : []);
-    if (url.pathname === "/rest/v1/platform_policies") return json({ message: "Timed out checking collection." }, 503);
+    if (url.pathname === "/rest/v1/wedding_starter_pending") {
+      assert.equal(options.headers.apikey, "anon", "pending reads use owner RLS, not service bypass");
+      return json(pending ? [{ wedding_id: owner, setup: pending }] : []);
+    }
+    if (url.pathname === "/rest/v1/platform_policies") return capabilityTimeout
+      ? json({ message: "Timed out checking collection." }, 503) : json([{ enabled_payment_providers: [] }]);
     if (url.pathname === "/rest/v1/wedding_starter_reviews") return json(reviewed ? [{ request_key: key }] : []);
     if (url.pathname.endsWith("/review_deferred_wedding_starter")) {
       assert.equal(options.headers.apikey, "service");
@@ -89,6 +93,9 @@ test("unpaid starter create/replay never consults collection; pending review is 
     const review = { weddingId: owner, requestKey: key, currency: "USD", decision: "apply", reviewed: true };
     assert.equal((await run("starter-review", review)).statusCode, 503);
     assert.equal(reviewed, false, "collection timeout leaves pending setup unchanged");
+    capabilityTimeout = false;
+    assert.equal((await run("starter-review", review)).statusCode, 409);
+    assert.equal(reviewed, false, "empty support leaves pending setup unchanged");
     pending.currency = "KES";
     assert.equal((await run("starter-review", review)).statusCode, 409);
     assert.equal(reviewed, false, "foreign currency cannot be relabelled");
