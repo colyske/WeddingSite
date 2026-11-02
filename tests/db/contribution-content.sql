@@ -30,7 +30,7 @@ begin
     values (wedding_id, client_id, 'local-sample-couple', 'Local sample couple',
       'A local celebration sample.', 'https://example.test/cover.jpg',
       'Please reply before the celebration.', current_date + 30, 'KES',
-      '{"song_requests":true}'::jsonb);
+      '{"giving":true,"sponsors":true,"featured_sponsors":true,"song_requests":true,"vip_seating":true}'::jsonb);
   insert into public.venues (wedding_id, name, event_date, event_time, address)
     values (wedding_id, 'Local sample venue', current_date + 30, '12:00', 'Local street');
   insert into public.wedding_collection_capabilities (wedding_id, provider, currency, market)
