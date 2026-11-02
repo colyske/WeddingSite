@@ -11,7 +11,7 @@ import "../currencies.js";
 import "../starter-setup.js";
 import { showcase } from "../server/showcase.js";
 
-test("safe starter selection, currency review, retry and native shared-editor customization", { timeout: 120000 }, async () => {
+test("style entry opens unpaid native customization; retries retain the draft and no preflight reviews money", { timeout: 120000 }, async () => {
   const server = http.createServer(async (req, res) => {
     try {
       const path = new URL(req.url, "http://localhost").pathname;
@@ -38,9 +38,9 @@ test("safe starter selection, currency review, retry and native shared-editor cu
       await page.screenshot({ path: join(process.env.STARTER_EVIDENCE_DIR, screenshot), fullPage: true });
       evidence.cases.push({ label, ...metrics, screenshot });
     }
-    let failCreate = true, capabilitiesFail = false, wedding = null, config = null;
+    let responseLost = true, saved = null, wedding = null, referral = false, capabilityCallsBeforeCreate = 0;
     page.on("pageerror", error => errors.push(error.message));
-    await page.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "test-token", r: "client" })));
+    await page.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "test-token", role: "client" })));
     await page.route("https://**", route => route.fulfill({ body: "" }));
     await page.route("**/api/**", route => {
       const request = route.request(), url = new URL(request.url()), action = url.searchParams.get("action");
@@ -50,47 +50,45 @@ test("safe starter selection, currency review, retry and native shared-editor cu
       if (action === "style") {
         data = { style: { ...WSInspiration.publicDesign(["#123456", "#789abc", "#bc9876", "#fefefe"]),
           setup: WSStarterSetup.fictional("garden-gathering", "KES") } };
-        if (url.searchParams.get("slug") === "private-wedding") { status = 404; data = { error: "This wedding is not available for public setup reuse." }; }
+        if (url.searchParams.get("slug") === "private-wedding") {
+          status = 404; data = { error: "This wedding is not available for public setup reuse." };
+        }
       }
       if (action === "collection-capabilities") {
-        data = { currencies: ["USD", "KES", "EUR", "CAD"].map(code => ({ code, name: code, methods: [{ name: "Mock collection", markets: ["Example market"] }] })) };
-        if (capabilitiesFail) { status = 503; data = { error: "Collection capability lookup unavailable." }; }
+        if (!saved) capabilityCallsBeforeCreate++;
+        status = 503; data = { error: "Collection availability is temporarily unavailable." };
       }
-      if (action === "disclosure") data = { intent_id: "intent-1", enabled: true, rate_basis_points: 100,
-        platform_fee_basis_points: 250, platform_fixed_fee_minor: "0", revision: "revision-1", terms_version: "client-referrals-v1" };
+      if (action === "disclosure") data = referral
+        ? { intent_id: "intent-1", enabled: true, rate_basis_points: 100, platform_fee_basis_points: 250,
+          platform_fixed_fee_minor: "0", revision: "revision-1", terms_version: "client-referrals-v1" } : {};
       if (action === "create") {
         const body = request.postDataJSON();
         creates.push(body);
-        status = failCreate ? 503 : 201;
-        data = failCreate ? { error: "Temporary failure - retry your draft." }
-          : { weddingId: "550e8400-e29b-41d4-a716-446655440000", slug: "our-own-names" };
-        if (!failCreate) {
-          config = WSStarterSetup.normalize(body.starterSetup, body.currency);
+        assert.equal(body.starterDeferred, true);
+        assert.equal(body.starterSetup.reviewed, false);
+        if (!saved) {
+          saved = { weddingId: "550e8400-e29b-41d4-a716-446655440000", slug: "our-private-guide" };
+          const config = WSStarterSetup.normalize({ ...body.starterSetup, reviewed: true }, body.currency);
           wedding = {
-            id: data.weddingId, slug: data.slug, couple_names: body.coupleNames, currency: body.currency,
+            id: saved.weddingId, slug: saved.slug, couple_names: body.coupleNames, currency: body.currency,
             wedding_date: null, public_location: null, welcome_story: "", cover_image_url: null, guest_instructions: null,
             time_zone: body.timeZone, max_guest_capacity: 150, palette: body.palette, palette_names: [],
-            revenue_features: config.features, rsvp_fee_minor: config.rsvp.feeMinor, extra_guest_fee_minor: config.rsvp.extraGuestFeeMinor,
-            premium_diet_fee_minor: config.rsvp.premiumDietFeeMinor, premium_diet_options: config.rsvp.premiumDietOptions,
-            attire_notes: config.content.attire, published_at: null,
-            starter_review_note: config.reviewNote,
+            revenue_features: config.features, rsvp_fee_minor: 0, extra_guest_fee_minor: 0, premium_diet_fee_minor: 0,
+            premium_diet_options: config.rsvp.premiumDietOptions, attire_notes: config.content.attire, published_at: null,
+            starter_pending_setup: { ...config, reviewed: false },
+            starter_review_note: "Source prices and goals are pending review in their original currency; none have been applied.",
             venues: body.venues.map((v, i) => ({ id: `event-${i}`, name: v.name, kind: v.kind, description: v.description,
               event_date: null, event_time: null, address: null, map_link: null, is_main: v.isMain, sort_order: i })),
-            registry: config.registry.map((r, i) => ({ id: `gift-${i}`, name: r.name, category: r.category, description: r.description, target_amount_minor: r.targetMinor })),
-            tiers: config.tiers.map((t, i) => ({ id: `tier-${i}`, name: t.name, min_amount_minor: t.minimumMinor, perks: t.perks })),
-            vip: config.vip ? { title: config.vip.title, description: config.vip.description, seats_total: config.vip.seats, seats_sold: 0, price_minor: config.vip.priceMinor } : null,
-            featuredSponsorCampaign: config.featured ? { enabled: false, starts_at: null, closes_at: null,
-              slot_count: config.featured.slots, minimum_bid_minor: config.featured.minimumMinor, bid_increment_minor: config.featured.incrementMinor } : null
+            registry: [], tiers: [], vip: null, featuredSponsorCampaign: null
           };
         }
+        data = saved;
+        if (responseLost) { responseLost = false; return route.abort("failed"); }
       }
       if (action === "get") data = { wedding };
       if (action === "quote") data = { quote: { pending_date: true, fee_minor: null, currency: wedding.currency } };
-      if (action === "campaigns") data = { currency: wedding.currency, campaigns: config.campaigns.map((c, i) => ({
-        id: `goal-${i}`, name: c.name, purpose: c.purpose, enabled: c.enabled, goal_minor: c.goalMinor,
-        milestones: c.milestones.map((m, j) => ({ id: `milestone-${j}`, name: m.name, description: m.description, target_minor: m.targetMinor }))
-      })), summary: [], rows: [] };
-      if (action === "extras-get") data = { travel: config.content.travel, faq: config.content.faq };
+      if (action === "campaigns") data = { currency: wedding.currency, campaigns: [], summary: [], rows: [] };
+      if (action === "extras-get") data = wedding.starter_pending_setup.content;
       return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(data) });
     });
     for (const width of [320, 375]) {
@@ -103,123 +101,59 @@ test("safe starter selection, currency review, retry and native shared-editor cu
       }
     }
     await page.getByRole("link", { name: "Use this style", exact: true }).click();
-    await page.locator("#starter-review").waitFor();
-    assert.equal(await page.locator("#couple-names").inputValue(), "");
-    assert.equal(await page.locator("#starter-currency").inputValue(), "");
-    assert.equal(await page.locator("#currency").count(), 0, "no obsolete parallel wizard/form");
-    await page.fill("#couple-names", "Our own names");
-    await page.click("#create-submit");
-    assert.equal(creates.length, 0);
-    await page.selectOption("#starter-currency", "EUR");
-    await page.locator("#starter-reviewed").check();
-    for (const width of [320, 375]) {
-      await page.setViewportSize({ width, height: 900 });
-      await capture("currency-review");
-    }
-    await page.click("#create-submit");
-    assert.equal(creates.length, 0, "real referral consent remains required");
-    await page.selectOption("#client-referral-decision", "accept");
-    await page.click("#create-submit");
-    await page.locator("#notice").filter({ hasText: /Temporary failure/ }).waitFor();
-    assert.equal(creates.length, 1);
-    assert.equal(creates[0].starterSetup.reviewed, true);
-    assert.equal(Object.hasOwn(creates[0].starterSetup, "amountPresets"), false);
-    assert.ok(creates[0].venues.every(v => !v.eventDate && !v.time && !v.address && !v.map));
+    await page.locator("#notice").filter({ hasText: /Please try again/ }).waitFor();
+    assert.equal(creates.length, 1, "no names/currency/review interstitial before unpaid create");
+    assert.equal(creates[0].coupleNames, "");
+    assert.equal(creates[0].starterSetup.currency, "USD");
+    assert.equal(capabilityCallsBeforeCreate, 0);
     await page.reload();
-    await page.locator("#starter-currency option[value=EUR]").waitFor({ state: "attached" });
-    assert.equal(await page.locator("#couple-names").inputValue(), "Our own names");
-    assert.equal(await page.locator("#starter-currency").inputValue(), "EUR");
-    await page.locator("#starter-reviewed").check();
-    await page.selectOption("#client-referral-decision", "accept");
-    failCreate = false;
-    await page.evaluate(() => {
-      for (let i = 0; i < 2; i++) document.getElementById("create-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
     await page.waitForURL("**/wedding.html?*#step=couple");
-    assert.equal(creates.length, 2, "double submit creates only one request");
-    assert.deepEqual(creates[1], creates[0], "retry preserves full payload and request key");
     await page.locator("#guide-heading-couple").waitFor();
-    assert.equal(await page.locator("#couple-names").inputValue(), "Our own names");
+    assert.equal(creates.length, 2);
+    assert.deepEqual(creates[1], creates[0], "response-loss/auth reload retries the exact same request key and payload");
+    assert.equal(await page.locator("#couple-names").inputValue(), "");
     assert.equal(await page.locator("#wedding-date").inputValue(), "");
-    assert.equal(await page.locator("#welcome-story").inputValue(), "", "template must not satisfy the real story requirement");
-    assert.equal(await page.locator(".tier-name").first().inputValue(), config.tiers[0].name);
-    assert.equal(await page.locator(".tier-min-amount").first().inputValue(), "25");
-    assert.equal(await page.locator(".cp-goal").first().inputValue(), "1500");
-    assert.equal(await page.locator("#vip-price").inputValue(), "25");
-    assert.equal(await page.locator("#featured-sponsor-enabled").isChecked(), false);
-    assert.equal(await page.locator("#featured-sponsor-starts").inputValue(), "");
-    assert.equal(await page.locator("#travel-info").inputValue(), config.content.travel);
-    assert.equal(await page.locator("#starter-review-note [data-starter-review-note]").innerText(), config.reviewNote);
-    assert.equal(await page.locator(".faq-q").count(), 3);
-    await page.locator(".guide-jump > summary").click();
-    await page.locator(".guide-nav button").filter({ hasText: "Fundraising & celebration features" }).click();
-    await page.locator(".tier-name").first().fill("Our personalized package");
-    assert.equal(await page.locator(".tier-name").first().inputValue(), "Our personalized package");
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    assert.equal(await page.locator("#welcome-story").inputValue(), "");
+    assert.equal(wedding.starter_pending_setup.tiers.length > 0, true, "source structure was retained, not dropped");
+    assert.equal(wedding.starter_pending_setup.reviewed, false);
+    assert.deepEqual(wedding.tiers, []);
+    assert.equal(Number(await page.locator("#rsvp-fee").inputValue()), 0);
+    assert.deepEqual(await page.evaluate(() => ["COP", "HUF", "IDR", "PKR", "TWD"]
+      .map(code => [WSCurrencies.supportsAccounting(code), WSCurrencies.exponent(code)])),
+    Array.from({ length: 5 }, () => [true, 2]), "Chromium uses the same accounting list as SQL/Node");
+    await page.locator("#couple-names").fill("Our real names");
+    assert.equal(await page.locator("#couple-names").inputValue(), "Our real names", "native customization remains available with a capability failure");
     for (const width of [320, 375]) {
       await page.setViewportSize({ width, height: 900 });
-      await capture("native-offering-editor");
+      await capture("unpaid-native-guide");
     }
-
-    await page.goto(`${base}/dashboard.html?style=past-wedding`);
-    await page.locator("#starter-review").waitFor();
-    await page.selectOption("#starter-currency", "KES");
-    assert.match(await page.locator("#starter-summary").innerText(), /KES 2500/);
-    await page.selectOption("#starter-currency", "EUR");
-    assert.match(await page.locator("#starter-money-disclosure").innerText(), /omitted, not converted/);
-    assert.doesNotMatch(await page.locator("#starter-summary").innerText(), /EUR 2500/);
-    assert.equal(await page.locator("#starter-reviewed").isChecked(), false);
-    await page.fill("#couple-names", "Keep our own names");
-    await page.goto(`${base}/dashboard.html?inspiration=coastal-weekend`);
-    await page.locator("#apply-inspiration").waitFor();
-    assert.equal(await page.locator("#couple-names").inputValue(), "Keep our own names");
-    await page.click("#keep-current-answers");
     await page.goto(`${base}/dashboard.html?style=private-wedding`);
     await page.locator("#notice").filter({ hasText: /not available for public setup reuse/ }).waitFor();
-    assert.equal(await page.locator("#couple-names").inputValue(), "Keep our own names");
-    capabilitiesFail = true;
-    await page.click("#starter-capabilities-retry");
-    await page.locator("#notice").filter({ hasText: /capability lookup unavailable/ }).waitFor();
-    assert.equal(await page.locator("#starter-currency option").count(), 1);
     assert.equal(creates.length, 2);
-    capabilitiesFail = false;
-    await page.click("#starter-capabilities-retry");
-    await page.locator("#starter-currency option[value=EUR]").waitFor({ state: "attached" });
-    await page.selectOption("#starter-currency", "EUR");
-    await page.locator("#starter-reviewed").check();
-    await page.selectOption("#client-referral-decision", "accept");
+    // A real referral decision remains deliberate, even when style entry auto-continues.
+    await page.evaluate(() => { sessionStorage.removeItem("ws-starter-choice"); sessionStorage.removeItem("ws-create-request-key"); });
+    referral = true; saved = null;
+    await page.goto(`${base}/dashboard.html?style=past-wedding`);
+    await page.locator("#client-referral-disclosure").waitFor();
+    assert.equal(creates.length, 2);
+    await page.selectOption("#client-referral-decision", "decline");
     await page.click("#create-submit");
     await page.waitForURL("**/wedding.html?*#step=couple");
-    await page.locator("#starter-review-note").waitFor();
     assert.equal(creates.length, 3);
-    for (const field of ["tiers", "registry", "campaigns"]) assert.deepEqual(creates[2].starterSetup[field], []);
-    assert.equal(creates[2].starterSetup.vip, null);
-    assert.equal(creates[2].starterSetup.featured, null);
-    assert.equal(creates[2].starterSetup.rsvp.fee, "0");
-    assert.match(await page.locator("#starter-review-note").innerText(), /source prices were NOT copied into EUR/);
-    await page.locator('#starter-review-note a[href="#step=campaigns"]').click();
-    await page.locator("[data-guide-step=campaigns]").waitFor({ state: "visible" });
-    assert.equal(await page.locator("[data-guide-step=campaigns]").isVisible(), true);
-    for (const width of [320, 375]) {
-      await page.setViewportSize({ width, height: 900 });
-      await capture("omissions-in-shared-wizard");
-    }
-    for (const slug of ["past-wedding", "current-wedding", "future-wedding"]) {
-      await page.goto(`${base}/guest.html?slug=${slug}`);
-      await page.locator("#reuse-wedding-style a").waitFor();
-    }
+    assert.equal(creates[2].referral.decision, "decline");
+    assert.equal(creates[2].starterSetup.currency, "KES", "public source currency is never relabelled");
     assert.deepEqual(errors, []);
     const unsigned = await browser.newContext();
     const login = await unsigned.newPage();
     await login.route("https://**", route => route.fulfill({ body: "" }));
     await login.route("**/api/**", route => route.fulfill({ contentType: "application/json", body: "{}" }));
-    await login.goto(`${base}/dashboard.html?style=current-wedding`);
+    await login.goto(`${base}/dashboard.html?style=current-wedding#step=couple`);
     await login.waitForURL("**/signin.html?next=*");
-    assert.equal(new URL(login.url()).searchParams.get("next"), "/dashboard.html?style=current-wedding");
+    assert.equal(new URL(login.url()).searchParams.get("next"), "/dashboard.html?style=current-wedding#step=couple");
     if (process.env.STARTER_EVIDENCE_DIR) {
-      for (const name of ["dashboard.js", "dashboard.html", "starter-setup.js", "server\\wedding-style.js", "api\\weddings.js",
-        "wedding.html", "supabase\\migrations\\202611090001_wedding_starter_drafts.sql"]) {
-        evidence.assets.push({ name, sha256: createHash("sha256").update(await readFile(new URL(`../${name.replaceAll("\\", "/")}`, import.meta.url))).digest("hex") });
+      for (const name of ["dashboard.js", "dashboard.html", "starter-setup.js", "currencies.js", "api/weddings.js",
+        "wedding.html", "supabase/migrations/202611100002_deferred_wedding_starters.sql"]) {
+        evidence.assets.push({ name, sha256: createHash("sha256").update(await readFile(new URL(`../${name}`, import.meta.url))).digest("hex") });
       }
       evidence.pageErrors = errors;
       await writeFile(join(process.env.STARTER_EVIDENCE_DIR, "starter-exact-head-mobile-evidence.json"), JSON.stringify(evidence, null, 2));
