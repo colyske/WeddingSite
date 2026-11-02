@@ -51,9 +51,10 @@ test("live Daraja: uncertain 503 retains the payment, never starts a second prom
     await page.fill("#song-request-amount", "10");
     await page.click('#song-request-form button[type="submit"]');
     await page.waitForFunction(() => !document.getElementById("pay-submit").disabled);
-    assert.equal(await page.locator("#pay-mode-note").isVisible(), false, "live dialog has no mode banner");
+    assert.match(await page.locator("#pay-mode-note").innerText(), /Real payment: money will be collected/,
+      "plain-language live-payment notice is visible");
     assert.equal(await page.locator("#pay-daraja-note").isVisible(), false, "live dialog has no repeated charge warning");
-    assert.equal(await page.locator("#pay-submit").textContent(), "Send M-Pesa prompt");
+    assert.equal(await page.locator("#pay-submit").textContent(), "Continue with M-Pesa");
     assert.equal(await page.locator("#pay-dialog [data-pay-preset]").count(), 0, "no amount presets in the dialog");
     assert.doesNotMatch(await page.locator("#pay-dialog").innerText(), /real money|sandbox|test checkout/i);
     await page.fill("#pay-name", "QA Guest");

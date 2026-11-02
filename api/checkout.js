@@ -321,6 +321,26 @@ async function handleCheckout(req, res) {
     return sendJson(res, 400, { error: "Invalid paid-action details or missing privacy consent." });
   }
   try {
+    const weddings = await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=id,slug,currency,wedding_date,time_zone,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,revenue_features`, { service: true });
+    const wedding = weddings?.[0];
+    if (!wedding || wedding.currency !== currency) {
+      return sendJson(res, 409, { error: "Payments are not available for this wedding or currency." });
+    }
+    if (originSlug && originSlug !== wedding.slug) {
+      return sendJson(res, 403, { error: "Checkout must be started from this wedding's own site." });
+    }
+    const featureForAction = {
+      fundraiser: "giving", registry: "giving", sponsor: "sponsors",
+      sponsor_featured_bid: "featured_sponsors", song_bid: "song_requests", vip: "vip_seating"
+    }[purchaseAction];
+    if (featureForAction && wedding.revenue_features?.[featureForAction] === false) {
+      const featureNames = {
+        giving: "Gift giving and fundraising", sponsors: "Sponsorship",
+        featured_sponsors: "Featured sponsor bidding", song_requests: "DJ song requests",
+        vip_seating: "VIP seating"
+      };
+      return sendJson(res, 409, { error: `${featureNames[featureForAction]} are not currently available for this wedding.` });
+    }
     const policy = (await supabaseRequest("/rest/v1/platform_policies?id=eq.true&select=contribution_fee_basis_points,contribution_fixed_fee_minor,contribution_fixed_fee_currency,max_contribution_minor,enabled_payment_providers", { service: true }))?.[0];
     if (!enabledPaymentProviders(policy).includes(body.provider)) {
       return sendJson(res, 409, { error: "This payment method has been disabled. Reload the payment options before starting a new checkout." });
@@ -336,13 +356,8 @@ async function handleCheckout(req, res) {
       return sendJson(res, 503, { error: "Live M-Pesa collection has not been approved by the platform Owner. No checkout was created." });
     }
     if (!await checkProviderHealth(body.provider)) return sendJson(res, 503, { error: "The selected payment provider is not healthy. No checkout was created." });
-    const weddings = await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=id,slug,currency,wedding_date,time_zone,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options`, { service: true });
-    const wedding = weddings?.[0];
-    if (!wedding || !policy || wedding.currency !== currency) {
+    if (!policy) {
       return sendJson(res, 409, { error: "Payments are not available for this wedding or currency." });
-    }
-    if (originSlug && originSlug !== wedding.slug) {
-      return sendJson(res, 403, { error: "Checkout must be started from this wedding's own site." });
     }
     const prior = (await supabaseRequest(
       `/rest/v1/contributions?checkout_idempotency_key=eq.${encodeURIComponent(idempotencyKey)}&select=id,payment_status&limit=1`,
@@ -472,6 +487,9 @@ async function handleCheckout(req, res) {
       const auction = await supabaseRequest("/rest/v1/rpc/get_public_sponsor_auction", {
         service: true, method: "POST", body: { p_slug: wedding.slug }
       });
+      if (auction?.currency && auction.currency !== currency) {
+        return sendJson(res, 409, { error: "This featured sponsor campaign uses a different wedding currency and is paused." });
+      }
       if (!auction?.enabled || auction.status !== "open") {
         return sendJson(res, 409, { error: "Featured sponsor bidding is not currently open." });
       }
@@ -724,9 +742,12 @@ async function handleCustomSponsor(req, res) {
   const weddingId = String(req.query.weddingId || "");
   if (!isUuid(weddingId) || isShowcase(weddingId)) return sendJson(res, 200, { available: false, message: "Custom sponsorship is not available here." });
   try {
-    const wedding = (await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=id,currency,wedding_date,time_zone`, { service: true }))?.[0];
+    const wedding = (await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=id,currency,wedding_date,time_zone,revenue_features`, { service: true }))?.[0];
     if (!wedding || isPastWedding(wedding.wedding_date, wedding.time_zone)) {
       return sendJson(res, 200, { available: false, message: "Sponsorship is closed for this wedding." });
+    }
+    if (wedding.revenue_features?.sponsors === false) {
+      return sendJson(res, 200, { available: false, message: "Sponsorship is not currently available for this wedding." });
     }
     if (await sponsorPackageCount(weddingId)) {
       return sendJson(res, 200, { available: false, hasPackages: true, message: "Choose one of the couple's sponsor packages." });

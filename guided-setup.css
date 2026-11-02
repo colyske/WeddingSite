@@ -1,9 +1,12 @@
 .guide-header { margin-bottom: 1.25rem; }
-.guide-nav, .guide-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
-.guide-nav { margin: 1rem 0; }
-.guide-nav button { flex: 1 1 130px; font-size: .9rem; text-align: left; padding: .7rem; }
+.guide-actions { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.guide-jump { display: contents; }
+.guide-jump > summary { display: none; }
+.guide-nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .5rem; margin: 1rem 0; }
+.guide-nav button { display: flex; width: 100%; min-width: 0; min-height: 44px; flex-direction: column; align-items: flex-start; font-size: .9rem; text-align: left; padding: .7rem; }
+.guide-nav button > span { overflow-wrap: break-word; }
 .guide-nav button[aria-current="step"] { outline: 2px solid var(--gold, #be9b52); outline-offset: 2px; }
-.guide-nav small { display: block; font-weight: normal; margin-top: .25rem; }
+.guide-nav small { display: block; color: #fff; font-weight: normal; margin-top: .25rem; opacity: 1; }
 .guide-state { margin: .75rem 0; }
 .guide-heading:focus { outline: 2px solid var(--gold, #be9b52); outline-offset: 4px; }
 [data-guide-step][hidden] { display: none !important; }
@@ -19,9 +22,21 @@
 .guide-errors a { display: block; color: inherit; text-decoration: underline; margin: .5rem 0; }
 .guide-sr { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (max-width: 600px) {
-  .guide-nav button { flex-basis: 45%; min-width: 0; overflow-wrap: anywhere; }
+  .guide-header { margin-bottom: .6rem; }
+  .guide-header > .fine { margin: 0 0 .25rem; }
+  .guide-state { margin: .25rem 0; }
+  .guide-jump { display: block; margin: .4rem 0; }
+  .guide-jump > summary { display: flex; min-height: 44px; align-items: center; flex-wrap: wrap; gap: .25rem; padding: .65rem .8rem; border: 1px solid var(--green, #243f35); cursor: pointer; font-weight: 600; }
+  .guide-jump[open] > summary { margin-bottom: .5rem; }
+  .guide-jump:not([open]) .guide-nav { display: none; }
+  .guide-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .guide-nav button { padding: .6rem; }
+  .guide-nav small { white-space: normal; }
   .guide-actions button { flex: 1 1 100px; }
   [data-guide-step] input, [data-guide-step] select, [data-guide-step] textarea { max-width: 100%; box-sizing: border-box; }
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .guide-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   #vip-offer > div { grid-template-columns: 1fr !important; }
 }
 @media (prefers-reduced-motion: reduce) {

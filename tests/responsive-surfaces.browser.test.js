@@ -34,13 +34,15 @@ test("public, organizer and back-office surfaces fit small and large screens", a
     await page.route("https://cdnjs.cloudflare.com/**", route => route.fulfill({ contentType: "text/javascript", body: "window.QRCode=class {static CorrectLevel={H:2};}" }));
     await page.route("**/api/**", route => {
       const action = new URL(route.request().url()).searchParams.get("action");
-      assert.equal(route.request().method(), "GET", "layout review never submits forms, emails or payments");
+      assert.ok(route.request().method() === "GET" || action === "visit",
+        `layout review never submits forms, emails or payments (${route.request().method()} ${action}: ${route.request().url()})`);
       if (action === "paystack-publication-adjustments" && paystackReviewUnavailable) {
         return route.fulfill({status:503,contentType:"application/json",body:JSON.stringify({error:"Synthetic review unavailable"})});
       }
       let data = {};
       if (action === "get") data = { wedding };
       if (action === "list") data = { weddings: [wedding] };
+      if (action === "manage") data = { team: { invites: [], members: [] } };
       if (action === "site") data = { wedding };
       if (action === "wedding") data = wedding;
       if (action === "verify-qr") data = { guest };
@@ -59,14 +61,21 @@ test("public, organizer and back-office surfaces fit small and large screens", a
       return route.fulfill({ contentType: "application/json", body: JSON.stringify(data) });
     });
     const pages = ["index.html", "signin.html", "dashboard.html", `wedding.html?id=${id}`,
+      `guest.html?slug=${wedding.slug}`, `team.html?weddingId=${id}`, "referrals.html",
       "account.html", "admin.html", "owner.html", `verify.html?code=${id}`,
       `ecard.html?slug=qa-couple&guest_id=${id}`, "privacy.html", "terms.html"];
     for (const surface of pages) {
       await page.goto(`http://127.0.0.1:${server.address().port}/${surface}`, { waitUntil: "domcontentloaded" });
       if (surface.startsWith("wedding.html")) await page.locator("#edit-section").waitFor({ state: "visible" });
+      if (surface === "dashboard.html") assert.equal(await page.locator("#sign-out").isVisible(), false, "the hidden sign-out fallback does not distort the mobile account menu");
+      if (surface === "dashboard.html") await page.locator(".guide-jump").waitFor();
       if (surface === "admin.html" || surface === "owner.html") await page.locator(".stat-card").first().waitFor();
-      for (const width of [320, 375, 768, 1280]) {
+      for (const width of [320, 375, 414, 768, 1280]) {
         await page.setViewportSize({ width, height: 800 });
+        if (surface === "dashboard.html" && width <= 414) {
+          await page.evaluate(() => document.fonts.ready);
+          await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        }
         const metrics = await page.evaluate(() => ({
           width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth,
           topLinks: [...document.querySelectorAll(".top a, .top button, .site-header a, .bo-nav button")]
@@ -79,8 +88,17 @@ test("public, organizer and back-office surfaces fit small and large screens", a
         }));
         assert.ok(metrics.scroll <= metrics.width, `${surface} at ${width}: ${JSON.stringify(metrics)}`);
         for (const link of metrics.topLinks) assert.ok(link.left >= 0 && link.right <= width, `${surface}: ${link.text} visible at ${width}`);
-        if (process.env.WEDDING_SCREENSHOTS) await page.screenshot({
-          path: join(process.env.WEDDING_SCREENSHOTS, `refinement-${surface.split(".")[0]}-${width}.png`),
+        if (surface === "dashboard.html" && width <= 414) {
+          assert.equal(await page.locator(".guide-jump").evaluate(el => el.open), false,
+            `mobile setup section overview starts collapsed at ${width}`);
+          const headingTop = await page.locator("#guide-heading-couple").evaluate(el => el.getBoundingClientRect().top);
+          assert.ok(headingTop < 700, `first setup question is near the top at ${width} (top: ${headingTop}px)`);
+        }
+        if (process.env.WEDDING_SCREENSHOTS && width <= 414 &&
+            ["index.html", "dashboard.html", "wedding.html", "guest.html", "team.html", "referrals.html"]
+              .some(name => surface.startsWith(name))) await page.screenshot({
+          path: join(process.env.WEDDING_SCREENSHOTS,
+            `refinement-${surface === "dashboard.html" ? "wizard" : surface.split(".")[0]}-${width}.png`),
           fullPage: !surface.startsWith("wedding.html")
         });
       }
@@ -89,6 +107,15 @@ test("public, organizer and back-office surfaces fit small and large screens", a
     await page.goto(`http://127.0.0.1:${server.address().port}/wedding.html?id=${id}`, { waitUntil: "domcontentloaded" });
     await page.locator("#edit-section").waitFor({ state: "visible" });
     await page.setViewportSize({ width: 320, height: 800 });
+    for (const width of [320, 375, 414]) {
+      await page.setViewportSize({ width, height: 800 });
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        `guided editor has no horizontal overflow at ${width}`);
+      if (process.env.WEDDING_SCREENSHOTS) await page.locator("#edit-section").screenshot({
+        path: join(process.env.WEDDING_SCREENSHOTS, `refinement-editor-${width}.png`)
+      });
+    }
+    await page.setViewportSize({ width: 320, height: 800 });
     await page.locator("[data-guide-all]").click();
     await page.click("#edit-colors-btn");
     const paletteFits = await page.locator("#color-inputs").evaluate(el => el.scrollWidth <= el.clientWidth);
@@ -96,13 +123,21 @@ test("public, organizer and back-office surfaces fit small and large screens", a
     await page.locator("#pay-fee-btn").click();
     await page.waitForFunction(() => document.getElementById("publication-status").textContent.includes("No configured payment method"));
     assert.ok(await page.locator("#publication-submit").isDisabled(), "editor fails closed without a configured publication method");
-    for (const width of [320, 375, 768, 1280]) {
+    for (const width of [320, 375, 414, 768, 1280]) {
       await page.setViewportSize({ width, height: 800 });
       assert.ok(await page.locator("#publication-dialog").evaluate(el => {
         const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && el.scrollWidth <= el.clientWidth;
       }), `integrated editor publication dialog fits ${width}`);
     }
     await page.locator("#publication-close").click();
+    await page.goto(`http://127.0.0.1:${server.address().port}/guest.html?slug=${wedding.slug}`, { waitUntil: "domcontentloaded" });
+    await page.locator("#pay-dialog").evaluate(el => el.showModal());
+    for (const width of [320, 375, 414]) {
+      await page.setViewportSize({ width, height: 800 });
+      assert.ok(await page.locator("#pay-dialog").evaluate(el => {
+        const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight && el.scrollWidth <= el.clientWidth;
+      }), `guest payment dialog fits ${width}`);
+    }
     for (const surface of ["admin.html", "owner.html"]) {
       await page.goto(`http://127.0.0.1:${server.address().port}/${surface}`, { waitUntil: "domcontentloaded" });
       await page.locator('[data-tab="fees"]').click();

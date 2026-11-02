@@ -203,8 +203,16 @@ test("stale provider switches prevent live checkout before initialization", asyn
   globalThis.fetch=async(input)=>{
     const url=new URL(input);
     if (url.host==="api.paystack.co") {providerCalls++;throw new Error("Unexpected financial call");}
-    assert.equal(url.pathname,"/rest/v1/platform_policies");
-    return Response.json([{enabled_payment_providers:["daraja"]}]);
+    if (url.pathname==="/rest/v1/weddings") {
+      return Response.json([{
+        id:WID,slug:"qa-couple",currency:"KES",wedding_date:"2099-01-01",
+        revenue_features:{giving:true,sponsors:true,featured_sponsors:true,song_requests:true,vip_seating:true}
+      }]);
+    }
+    if (url.pathname==="/rest/v1/platform_policies") {
+      return Response.json([{enabled_payment_providers:["daraja"]}]);
+    }
+    throw new Error(`Unexpected request: ${url.pathname}`);
   };
   const result=await call(checkout,{method:"POST",query:{action:"create"},headers:{origin:"https://weddingsite.example"},
     body:{weddingId:WID,purchaseAction:"song_bid",market:"KE",currency:"KES",provider:"paystack",

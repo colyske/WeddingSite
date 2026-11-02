@@ -47,6 +47,9 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
         if (action === "quote") data = { quote: wedding?.wedding_date
           ? { fee_minor: 0, currency: wedding.currency, reason: "Fixture allowance." }
           : { fee_minor: null, pending_date: true, reason: "Set the wedding date to calculate the publication fee." } };
+        if (action === "campaigns") data = { currency: "KES", campaigns: [
+          { id: "paused-campaign", name: "Hidden campaign", goal_minor: 1000, enabled: false }
+        ], summary: [], rows: [] };
         if (action === "update") {
           wedding = { ...wedding, couple_names: body.coupleNames, slug: body.slug, welcome_story: body.welcomeStory,
             wedding_date: body.weddingDate || null, public_location: body.location || null, time_zone: body.timeZone,
@@ -56,6 +59,7 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
               name: venue.name, event_date: venue.eventDate, event_time: venue.eventTime, address: venue.address,
               kind: venue.kind, map_link: venue.mapLink, description: venue.description, is_main: venue.isMain })) };
           if ("amountPresets" in body) wedding.amount_presets = body.amountPresets;
+          if ("revenueFeatures" in body) wedding.revenue_features = body.revenueFeatures;
           data = { wedding };
         }
         if (action === "publish") {
@@ -67,27 +71,56 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
       });
       return { context, page };
     }
+    async function openSection(page, index) {
+      if (await page.evaluate(() => matchMedia("(max-width: 600px)").matches) &&
+          !(await page.locator(".guide-jump").evaluate(el => el.open))) {
+        await page.locator(".guide-jump > summary").click();
+      }
+      const button = page.locator(".guide-nav button").nth(index);
+      const navSize = await button.evaluate(el => el.getBoundingClientRect().height);
+      await button.click();
+      return navSize;
+    }
     const first = await device();
     const page = first.page;
     await page.goto(`${base}/dashboard.html`);
     await page.locator("#guide-heading-couple").waitFor();
+    assert.equal(await page.locator("[data-guide-step=guests] #currency").count(), 0, "currency is not classified as a guest RSVP setting");
+    assert.equal(await page.locator("[data-guide-step=money] #currency").count(), 1);
     assert.equal(await page.locator("[data-guide-step]:visible").count(), 1);
+    await page.setViewportSize({ width: 320, height: 900 });
+    assert.equal(await page.locator(".guide-jump").evaluate(el => el.open), false);
+    const firstQuestionTop = await page.locator("#guide-heading-couple").evaluate(el => el.getBoundingClientRect().top);
+    assert.ok(firstQuestionTop < 700, `first question remains near the top on mobile (top: ${firstQuestionTop}px)`);
+    await page.locator(".guide-jump > summary").click();
+    assert.ok(await page.locator(".guide-nav button").first().isVisible(), "jump-to-section disclosure reveals accessible section links");
+    const statusContrast = await page.locator(".guide-nav button small").first().evaluate(status => {
+      const foreground = getComputedStyle(status).color.match(/\d+/g).slice(0, 3).map(Number);
+      const background = getComputedStyle(status.parentElement).backgroundColor.match(/\d+/g).slice(0, 3).map(Number);
+      const luminance = rgb => rgb.map(value => value / 255).map(value =>
+        value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4)
+        .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+      const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+      return (values[0] + 0.05) / (values[1] + 0.05);
+    });
+    assert.ok(statusContrast >= 4.5, `section status has readable contrast (${statusContrast})`);
+    await page.locator(".guide-jump > summary").click();
     await page.fill("#couple-names", "Amina & Joseph");
     await page.click("[data-guide-skip]");
-    assert.match(page.url(), /#step=venues$/);
-    assert.equal(await page.locator("#guide-heading-venues").evaluate(el => el === document.activeElement), true);
-    assert.match(await page.locator("[data-guide-announcement]").innerText(), /Step 2 of 5/);
+    assert.match(page.url(), /#step=date$/);
+    assert.equal(await page.locator("#guide-heading-date").evaluate(el => el === document.activeElement), true);
+    assert.match(await page.locator("[data-guide-announcement]").innerText(), /Step 2 of 7/);
     await page.click("[data-guide-keep]");
     await page.reload();
     assert.equal(await page.locator("#couple-names").inputValue(), "Amina & Joseph");
-    assert.equal(await page.locator("[data-guide-step=venues]").isVisible(), true);
+    assert.equal(await page.locator("[data-guide-step=date]").isVisible(), true);
     assert.equal(await page.locator("#wedding-date").inputValue(), "", "no date is fabricated");
     await page.click("[data-guide-back]");
     assert.equal(await page.locator("#couple-names").inputValue(), "Amina & Joseph");
     await page.goBack();
-    assert.equal(await page.locator("[data-guide-step=venues]").isVisible(), true, "browser Back restores the hash-selected step");
+    assert.equal(await page.locator("[data-guide-step=date]").isVisible(), true, "browser Back restores the hash-selected step");
     await page.goForward();
-    await page.locator(".guide-nav button").nth(3).click();
+    await openSection(page, 3);
     await page.click("[data-guide-skip]");
     assert.match(await page.locator("[data-guide-review]").innerText(), /Needs answers/);
     await page.click("#create-submit");
@@ -111,6 +144,8 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     const resume = second.page;
     await resume.goto(`${base}/wedding.html?id=${id}#step=venues`);
     await resume.locator("#guide-heading-venues").waitFor();
+    assert.equal(await resume.locator("[data-guide-step=guests] #currency").count(), 0, "editor currency is grouped with money, not RSVPs");
+    assert.equal(await resume.locator("[data-guide-step=money] #currency").count(), 1);
     assert.equal(await resume.locator("#welcome-story").inputValue(), "We are making plans together.", "another device resumes server-saved answers");
     assert.equal(await resume.evaluate(() => sessionStorage.getItem("ws-create-answers")), null);
     await resume.click("#publish-btn");
@@ -120,22 +155,35 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     assert.equal(await resume.locator("#wedding-date").evaluate(el => el === document.activeElement), true);
     await resume.fill("#wedding-date", "2027-06-12");
     await resume.fill("#location", "Nairobi");
-    await resume.locator('.guide-nav button').nth(3).click();
+    await openSection(resume, 5);
     await resume.click("#add-venue-btn");
     await resume.locator(".venue-name").fill("Garden ceremony");
     await resume.locator('#edit-form button[type="submit"]').click();
     await resume.waitForFunction(() => document.getElementById("notice").textContent === "Changes saved.");
     assert.equal(wedding.venues[0].name, "Garden ceremony");
     assert.equal(wedding.venues[0].event_time, null, "partial venue is preserved rather than dropped");
+    await resume.click("#add-pre-event");
+    assert.equal(await resume.locator("#pre-events-list .venue-item").count(), 1, "pre-wedding activities have a separate setup group");
+    await resume.locator("#pre-events-list .venue-kind").selectOption("main");
+    assert.equal(await resume.locator("#wedding-day-events-list .venue-item").count(), 2, "changing an event type moves it to the matching group");
     await resume.reload();
     await resume.locator("#guide-heading-venues").waitFor();
     assert.equal(await resume.locator(".venue-name").inputValue(), "Garden ceremony");
     await resume.locator(".venue-time").fill("10:00");
     await resume.locator(".venue-addr").fill("Garden Road");
     await resume.locator(".venue-date").fill("2027-06-12");
-    await resume.locator('.guide-nav button').nth(2).click();
+    await openSection(resume, 3);
     await resume.selectOption("#currency", "KES");
-    await resume.locator("summary").filter({ hasText: "Optional suggested giving" }).click();
+    await openSection(resume, 7);
+    assert.equal(await resume.locator("#preset-song").isVisible(), true, "song bid amount suggestions are in the fundraising step");
+    assert.equal(await resume.locator("summary").filter({ hasText: "Gift registry & suggested guest amounts" })
+      .evaluate(el => el.closest("details").open), true, "fundraising setup opens with its feature controls visible");
+    const featureToggles = ["#feature-giving", "#feature-sponsors", "#feature-featured-sponsors",
+      "#feature-song-requests", "#feature-vip-seating"];
+    for (const selector of featureToggles) {
+      assert.equal(await resume.locator(selector).isChecked(), true, `${selector} is visible by default`);
+    }
+    await resume.uncheck("#feature-song-requests");
     await resume.check("#preset-reset");
     await resume.check("#preset-reviewed");
     await resume.locator('#edit-form button[type="submit"]').click();
@@ -144,25 +192,43 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     assert.equal(currencySave.currency, "KES");
     assert.equal(currencySave.amountPresets, null);
     assert.equal(currencySave.amountPresetsReviewed, true);
-    await resume.locator('.guide-nav button').nth(4).click();
+    assert.equal(currencySave.revenueFeatures.song_requests, false, "an opt-out is included in the persisted save");
+    assert.deepEqual(wedding.revenue_features, {
+      giving: true, sponsors: true, featured_sponsors: true, song_requests: false, vip_seating: true
+    });
+    await openSection(resume, 6);
     await resume.click("#edit-colors-btn");
     await resume.locator(".remove-color-btn").evaluateAll(buttons => buttons.forEach(button => button.click()));
     await resume.click("#apply-colors-btn");
     await resume.locator('#edit-form button[type="submit"]').click();
     await resume.waitForFunction(() => document.getElementById("notice").textContent === "Changes saved.");
     assert.deepEqual(wedding.palette, [], "an optional palette can be removed and saved");
-    await resume.locator('.guide-nav button').last().click();
-    for (const width of [320, 375, 768, 1280]) {
+    await openSection(resume, 9);
+    for (const width of [320, 375, 414, 768, 1280]) {
       await resume.setViewportSize({ width, height: 900 });
-      for (const index of [0, 1, 2, 3, 4, 5, 6]) {
-        await resume.locator(".guide-nav button").nth(index).click();
+      for (const index of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]) {
+        const navSize = await openSection(resume, index);
         assert.ok(await resume.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `step ${index} fits ${width}`);
+        assert.ok(navSize >= 44, `step ${index} has a comfortable touch target at ${width}`);
       }
     }
+    assert.equal(await resume.locator("#campaign-list .campaign-card").count(), 1, "hidden campaigns remain available to manage");
+    assert.equal(await resume.locator("#campaign-list .cp-enabled").isChecked(), false);
+    await resume.click("#add-campaign");
+    assert.equal(await resume.locator("#campaign-list .campaign-card").last().locator(".cp-enabled").isChecked(), true,
+      "new fundraising campaigns start visible to guests");
+    assert.match(await resume.locator("#team-setup-link").getAttribute("href"), /team\.html\?weddingId=/);
     await resume.goto(`${base}/wedding.html?id=${id}#kyc-section`);
     await resume.locator("[data-guide-all]").waitFor();
     assert.equal(await resume.locator("#kyc-section").isVisible(), true);
-    await resume.locator('.guide-nav button').last().click();
+    assert.equal(await resume.locator("#guide-heading-kyc").count(), 1, "private identity details are a guided setup step");
+    await resume.fill("#kyc-p1", "Synthetic QA Partner");
+    assert.match(await resume.locator("[data-guide-state]").innerText(), /private identity details are unsaved/i);
+    await openSection(resume, 5);
+    await openSection(resume, 4);
+    assert.equal(await resume.locator("#kyc-p1").inputValue(), "Synthetic QA Partner", "KYC remains on the page while moving between setup steps");
+    assert.match(await resume.locator("[data-guide-state]").innerText(), /private identity details are unsaved/i);
+    await openSection(resume, 9);
     await resume.click("#publish-btn");
     await resume.click("#confirm-publish");
     await resume.locator("#published-section").waitFor({ state: "visible" });
