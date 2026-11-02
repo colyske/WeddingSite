@@ -20,8 +20,16 @@ begin
     select owner_id,owner_email,now() from public.protected_platform_owner where singleton;
   perform public.bootstrap_protected_owner(owner_id);
   insert into auth.users(id) values(client_id),(member_id);
-  insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date,slug,published_at)
-    values(wid,client_id,'Synthetic split fixture','KES',current_date+30,'synthetic-split',now());
+  insert into public.weddings(id,client_owner_id,couple_names,welcome_story,cover_image_url,
+      guest_instructions,currency,wedding_date,slug)
+    values(wid,client_id,'Synthetic split fixture','A local celebration sample.',
+      'https://example.test/cover.jpg','Please reply before the celebration.',
+      'KES',current_date+30,'synthetic-split');
+  insert into public.venues(wedding_id,name,event_date,event_time,address)
+    values(wid,'Local event',current_date+30,'12:00','Local street');
+  insert into public.wedding_collection_capabilities(wedding_id,provider,currency,market)
+    values(wid,'paystack','KES','KE');
+  update public.weddings set published_at=now() where id=wid;
   insert into public.wedding_memberships(wedding_id,user_id,role) values(wid,client_id,'client');
   insert into public.wedding_memberships(wedding_id,user_id,role) values(wid,member_id,'admin');
   if (select approved or split_enabled or publication_enabled from public.paystack_live_policy where singleton) then

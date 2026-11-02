@@ -6,10 +6,15 @@ values ('51000000-0000-4000-8000-000000000091', 'ranked@example.test', now());
 insert into public.profiles(id, display_name)
 values ('51000000-0000-4000-8000-000000000091', 'Ranking fixture')
 on conflict (id) do nothing;
-insert into public.weddings(id, slug, client_owner_id, couple_names, currency, wedding_date, public_location)
+insert into public.weddings(id, slug, client_owner_id, couple_names, welcome_story, cover_image_url,
+  guest_instructions, currency, wedding_date, public_location)
 values
-  ('52000000-0000-4000-8000-000000000091', 'ranking-sponsors', '51000000-0000-4000-8000-000000000091', 'Ranking sponsors', 'KES', current_date + 30, 'Sample location'),
-  ('52000000-0000-4000-8000-000000000092', 'ranking-campaign', '51000000-0000-4000-8000-000000000091', 'Ranking campaign', 'EUR', current_date + 30, 'Sample location');
+  ('52000000-0000-4000-8000-000000000091', 'ranking-sponsors', '51000000-0000-4000-8000-000000000091', 'Ranking sponsors',
+    'A local celebration sample.', 'https://example.test/cover.jpg', 'Please reply before the celebration.',
+    'KES', current_date + 30, 'Sample location'),
+  ('52000000-0000-4000-8000-000000000092', 'ranking-campaign', '51000000-0000-4000-8000-000000000091', 'Ranking campaign',
+    'A local celebration sample.', 'https://example.test/cover.jpg', 'Please reply before the celebration.',
+    'EUR', current_date + 30, 'Sample location');
 do $$
 begin
   if exists (select 1 from public.weddings
@@ -22,6 +27,10 @@ insert into public.venues(wedding_id, name, event_date, event_time, address)
 values
   ('52000000-0000-4000-8000-000000000091', 'Wedding venue', current_date + 30, '12:00', 'Sample address'),
   ('52000000-0000-4000-8000-000000000092', 'Wedding venue', current_date + 30, '12:00', 'Sample address');
+insert into public.wedding_collection_capabilities(wedding_id,provider,currency,market)
+values
+  ('52000000-0000-4000-8000-000000000091','daraja','KES','KE'),
+  ('52000000-0000-4000-8000-000000000092','stripe','EUR','DE');
 update public.weddings set published_at = now()
 where id in ('52000000-0000-4000-8000-000000000091', '52000000-0000-4000-8000-000000000092');
 insert into public.wedding_memberships(wedding_id, user_id, role)

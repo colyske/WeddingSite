@@ -5,8 +5,11 @@ declare owner_id uuid := extensions.gen_random_uuid(); wedding_id uuid := extens
   actual jsonb; candidate jsonb; blocked boolean;
 begin
   insert into auth.users(id) values(owner_id);
-  insert into public.weddings(id,client_owner_id,slug,couple_names,wedding_date,currency,public_location)
-    values(wedding_id,owner_id,'amount-presets-local','Local amount sample',current_date+90,'KES','Local city');
+  insert into public.weddings(id,client_owner_id,slug,couple_names,welcome_story,cover_image_url,
+      guest_instructions,wedding_date,currency,public_location)
+    values(wedding_id,owner_id,'amount-presets-local','Local amount sample',
+      'A local celebration sample.','https://example.test/cover.jpg','Please reply before the celebration.',
+      current_date+90,'KES','Local city');
   insert into public.venues(wedding_id,name,event_date,event_time,address)
     values(wedding_id,'Local event',current_date+90,'12:00','Local street');
   insert into public.wedding_memberships(wedding_id,user_id,role)
@@ -51,6 +54,9 @@ begin
     raise exception 'Unrelated edits must preserve saved selections'; end if;
   if public.get_public_wedding_site('amount-presets-local') is not null then
     raise exception 'Unpublished wedding must remain private'; end if;
+  update public.platform_policies set enabled_payment_providers=array['stripe'];
+  insert into public.wedding_collection_capabilities(wedding_id,provider,currency,market)
+    values(wedding_id,'stripe','USD','US');
   update public.weddings set published_at=now() where id=wedding_id;
   if public.get_public_wedding_site('amount-presets-local')->'amount_presets'
       <> '{"currency":"USD","song":[500,1000],"gift":[1000,2500]}'::jsonb then
