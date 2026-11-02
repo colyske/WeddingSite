@@ -353,7 +353,8 @@ begin
     a,original_batch,pg_temp.evidence('statement')),'chain');
   if not exists(select 1 from public.manual_payout_statement_debits where payout_id=p) then
     raise exception 'Paid was visible without its atomically allocated statement debit'; end if;
-  perform pg_temp.reject(format('select public.manual_payout_include_debit(%L,%L,%L,%L)',p,b,line,e),'retired');
+  if to_regprocedure('public.manual_payout_include_debit(uuid,uuid,uuid,uuid)') is not null then
+    raise exception 'Obsolete post-paid inclusion RPC must not exist'; end if;
   c:=extensions.gen_random_uuid();
   insert into public.contributions(id,wedding_id,stream_name,pledged_amount_minor,paid_amount_minor,
     platform_fee_minor,net_paid_minor,currency,payment_status,verified_provider_payment,provider_fee_pending,
