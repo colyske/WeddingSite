@@ -19,6 +19,7 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     try { browser = await chromium.launch({ channel: "msedge", timeout: 15000 }); } catch { browser = await chromium.launch({ timeout: 15000 }); }
     const page = await browser.newPage();
+    page.on("pageerror", error => console.error("Manual operator browser error:", error.message));
     page.setDefaultTimeout(10000);
     await page.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "fixture", r: "superadmin" })));
     await page.route("https://**", route => route.fulfill({ body: "" }));
@@ -77,17 +78,30 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
     await page.locator("#manual-policy").waitFor();
     assert.equal(await page.locator('[data-manual-policy="activate"] button').isDisabled(), true);
     assert.equal(await page.locator('[data-manual-policy="draft"] input[name="payout_fee_minor"]').inputValue(), "");
+    assert.equal(await page.locator('[data-manual-policy="draft"] input[name="fee_payer"]').inputValue(), "");
+    assert.equal(await page.locator('[data-manual-action="evidence"] option').filter({ hasText: /^policy$/ }).count(), 1);
+    const draft = { custody_id: revision, recipient_ids: [revision], per_payout_minor: 10000, daily_minor: 20000,
+      payout_fee_minor: 100, fee_payer: "wedding", statement_max_age_minutes: 60,
+      review_evidence: revision, fee_evidence: revision, rail_evidence: revision, secure_evidence: revision, enabled: false };
+    for (const [field, value] of Object.entries(draft)) {
+      if (field !== "enabled") await page.locator(`[data-manual-policy="draft"] input[name="${field}"]`).fill(String(value));
+    }
+    await page.locator('[data-manual-policy="draft"] input[name="confirmed"]').check();
+    await page.locator('[data-manual-policy="draft"] button').click();
+    await page.waitForFunction(() => document.querySelector('[data-manual-policy="draft"] input[name="confirmed"]')?.checked === false)
+      .catch(async error => { throw new Error(`${error.message}; writes=${JSON.stringify(policyWrites)}; page=${await page.locator("#manual-policy").innerText()}`); });
+    assert.deepEqual(policyWrites[0], { revision, changes: draft, confirmed: true });
     ready = true;
     await page.locator('button[data-tab="payouts"]').click();
     await page.locator('[data-manual-policy="activate"] input[name="confirmed"]').check();
     await page.locator('[data-manual-policy="activate"] button').click();
     await page.waitForFunction(() => document.querySelector('[data-manual-action="request"] button')?.disabled === false &&
       document.querySelector('[data-manual-action="request"] fieldset')?.disabled === false);
-    assert.deepEqual(policyWrites[0], { revision, changes: { enabled: true }, confirmed: true });
+    assert.deepEqual(policyWrites[1], { revision, changes: { enabled: true }, confirmed: true });
     await page.locator('[data-manual-policy="deactivate"] input[name="confirmed"]').check();
     await page.locator('[data-manual-policy="deactivate"] button').click();
     await page.locator('[data-manual-action="request"] fieldset[disabled]').waitFor({ state: "attached" });
-    assert.deepEqual(policyWrites[1], { revision, changes: { enabled: false }, confirmed: true });
+    assert.deepEqual(policyWrites[2], { revision, changes: { enabled: false }, confirmed: true });
     role = "admin";
     await page.reload();
     await page.locator('button[data-tab="operations"]').waitFor();
