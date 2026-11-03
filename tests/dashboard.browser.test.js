@@ -28,7 +28,7 @@ for (const options of [{ channel: "msedge" }, {}]) {
 const skip = browser ? false : "No Chromium/Edge available (run: npx playwright install chromium)";
 if (!browser && process.env.CI) throw new Error(skip);
 
-async function openDashboard(handlers = {}) {
+async function openDashboard(handlers = {}, query = "") {
   const context = await browser.newContext();
   const page = await context.newPage();
   const errors = [];
@@ -42,6 +42,11 @@ async function openDashboard(handlers = {}) {
   await page.route("**/api/referrals*", route => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ intent_id: null })
   }));
+  await page.route("**/api/guest*", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    const handler = handlers[`guest:${action}`];
+    return handler ? handler(route) : route.fulfill({ status: 404, body: "{}" });
+  });
   await page.route("**/api/weddings*", async route => {
     const url = new URL(route.request().url());
     const action = url.searchParams.get("action");
@@ -53,7 +58,7 @@ async function openDashboard(handlers = {}) {
     }
     return handler ? handler(route, body) : route.fulfill({ status: 404, body: "{}" });
   });
-  await page.goto(`${base}/dashboard.html`);
+  await page.goto(`${base}/dashboard.html${query}`);
   await page.waitForLoadState("networkidle");
   await page.locator("#create-submit").waitFor();
   return { page, calls, errors, close: () => context.close() };
@@ -94,6 +99,45 @@ test("create entry makes one idempotent draft request and continues to the share
   assert.equal(creates[0].body.weddingDate, null);
   assert.deepEqual(creates[0].body.venues, []);
   assert.equal(Object.hasOwn(creates[0].body, "referral"), false, "no referral choice is fabricated");
+  await close();
+});
+
+test("supported platform default preselects only a new names-only draft currency", { skip }, async () => {
+  const id = "33333333-3333-3333-3333-333333333333";
+  const { page, calls, close } = await openDashboard({
+    "collection-capabilities": json(200, {
+      currencies: [{ code: "KES", name: "Kenyan Shilling", methods: [{ name: "M-Pesa", markets: ["Kenya"] }] }],
+      defaultCurrency: { currency: "KES", configured: true, supported: true }
+    }),
+    create: json(201, { weddingId: id, slug: "default-currency" })
+  });
+  await page.fill("#couple-names", "Amina & Joseph");
+  await page.click("#create-submit");
+  await page.waitForURL(`**/wedding.html?id=${id}&slug=default-currency#step=couple`);
+  const create = calls.find(call => call.action === "create");
+  assert.equal(create.body.currency, "KES");
+  assert.equal(create.body.starterSetup, undefined, "a default does not fabricate a priced starter");
+  await close();
+});
+
+test("unavailable style entry checks the default lazily before creating a names-only draft", { skip }, async () => {
+  const id = "44444444-4444-4444-4444-444444444444";
+  const { page, calls, close } = await openDashboard({
+    "guest:style": json(404, { error: "This wedding is not available for public setup reuse." }),
+    "collection-capabilities": json(200, {
+      currencies: [{ code: "KES", name: "Kenyan Shilling", methods: [{ name: "M-Pesa", markets: ["Kenya"] }] }],
+      defaultCurrency: { currency: "KES", configured: true, supported: true }
+    }),
+    create: json(201, { weddingId: id, slug: "fallback-currency" })
+  }, "?style=unavailable-style");
+  await page.locator("#notice").filter({ hasText: /not available for public setup reuse/ }).waitFor();
+  assert.equal(calls.filter(call => call.action === "collection-capabilities").length, 0,
+    "a failed starter entry does not preflight currency before the user chooses a plain draft");
+  await page.fill("#couple-names", "Amina & Joseph");
+  await page.click("#create-submit");
+  await page.waitForURL(`**/wedding.html?id=${id}&slug=fallback-currency#step=couple`);
+  assert.equal(calls.filter(call => call.action === "collection-capabilities").length, 1);
+  assert.equal(calls.find(call => call.action === "create").body.currency, "KES");
   await close();
 });
 

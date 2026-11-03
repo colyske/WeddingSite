@@ -12,6 +12,8 @@
   let state = "loading";
   let errorMessage = "";
   let ratePublishedText = "";
+  let platformDefault = "";
+  const usePlatformDefault = document.currentScript?.hasAttribute("data-platform-default-currency") === true;
 
   function readSettings() {
     try {
@@ -19,10 +21,10 @@
       const wedding = JSON.parse(localStorage.getItem(weddingKey) || "null");
       const savedCurrency = localStorage.getItem(currencyKey);
       const weddingCurrency = wedding?.tenants?.amara?.currency || wedding?.currency;
-      const currency = options.includes(savedCurrency) ? savedCurrency : options.includes(weddingCurrency) ? weddingCurrency : options.includes(config?.currency) ? config.currency : "USD";
+      const currency = options.includes(savedCurrency) ? savedCurrency : options.includes(weddingCurrency) ? weddingCurrency : options.includes(config?.currency) ? config.currency : platformDefault || "USD";
       return { currency, config };
     } catch {
-      return { currency: "USD", config: null };
+      return { currency: platformDefault || "USD", config: null };
     }
   }
   function currency() { return readSettings().currency; }
@@ -30,7 +32,11 @@
     const updated = Date.parse(rateDate);
     return Number.isFinite(updated) ? Math.max(0, (Date.now() - updated) / 3600000) : Infinity;
   }
-  function isFresh() { return Boolean(rates.USD === 1 && rateDate && rateAgeHours() <= maxAgeHours); }
+  function isFresh() {
+    const updated = Date.parse(rateDate);
+    return Boolean(rates.USD === 1 && Number.isFinite(updated) &&
+      updated <= Date.now() + 300000 && rateAgeHours() <= maxAgeHours);
+  }
   function hasRate(code) { return code === "USD" || Number.isFinite(rates[code]); }
   function convertBetween(amount, from, to) {
     if (!isFresh() || !Number.isFinite(amount) || !hasRate(from) || !hasRate(to)) return null;
@@ -65,7 +71,7 @@
   function formatPrimaryUsd(amount, code = currency(), locale = readSettings().config?.locale || "en-US") {
     const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(amount);
     if (code === "USD") return `${usd} USD`;
-    const converted = convertUsd(amount, code);
+    const converted = isFresh() ? convertUsd(amount, code) : null;
     if (converted === null) return `${usd} USD [${code} equivalent unavailable]`;
     const formatted = formatUsd(amount, code, locale);
     return `${formatted}${formatted.includes(code) ? "" : ` ${code}`} [≈ ${usd} USD]`;
@@ -152,6 +158,16 @@
       notifyChange();
     }
   });
+  // Opt-in public pages only: the Owner default (if currently supported) replaces the USD fallback.
+  // Amounts stay USD-canonical; conversion still needs a fresh rate.
+  async function loadPlatformDefault() {
+    try {
+      const response = await fetch("/api/guest?action=platform-currency");
+      const code = response.ok ? (await response.json())?.currency : null;
+      if (typeof code === "string" && options.includes(code)) { platformDefault = code; notifyChange(); }
+    } catch {}
+  }
   notifyChange();
+  if (usePlatformDefault) loadPlatformDefault();
   refresh();
 })();
