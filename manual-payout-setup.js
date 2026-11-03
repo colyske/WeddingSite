@@ -126,7 +126,9 @@ export function mountSetup(panel, { workspace, weddings, role, esc }) {
       action === "check" || checked(e) || ((solo || kind === "policy") && e.checks?.some(c => c.owner_solo)))
       .map(e => [e.id, evidenceLabel(e)]);
     if (name === "account" && action !== "account") return accounts.map(a => [a.id, accountLabel(a)]);
-    if (["custody", "custody_id"].includes(name)) return custody.map(c => [c.id, custodyLabel(c)]);
+    if (["custody", "custody_id"].includes(name)) return custody.filter(c =>
+      !["settlement", "source", "statement", "debit", "reconcile"].includes(action) || !isShared(c))
+      .map(c => [c.id, custodyLabel(c)]);
     if (["recipient", "recipient_ids"].includes(name)) return recipients.filter(r =>
       (!wedding || r.wedding_id === wedding) && (!balance || r.provider === balance.provider && r.currency === balance.currency) &&
       !recipients.some(newer => newer.wedding_id === r.wedding_id && newer.provider === r.provider &&

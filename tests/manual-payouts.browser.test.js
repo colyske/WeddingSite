@@ -189,6 +189,8 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
     await page.locator("#manual-setup-guide").waitFor();
     assert.match(await page.locator("#manual-setup-guide").innerText(), /No Paybill balance/);
     assert.match(await page.locator("#manual-setup-guide").innerText(), /not a bank reservation or availability guarantee/);
+    assert.equal(await page.locator(`[data-manual-action="source"] [name="custody"] option[value="${revision}"]`).count(), 0,
+      "Legacy source-mapping intake must not offer a shared manual scope");
     const beforeSetup = writes;
     await page.getByRole("button", { name: "1. Add real evidence", exact: true }).click();
     const evidenceForm = page.locator('[data-manual-panel="evidence"] form');

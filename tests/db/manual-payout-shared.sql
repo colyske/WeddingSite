@@ -48,12 +48,16 @@ end $$;
 -- Other weddings on this same shared account neither fund this wedding nor
 -- consume its internal entitlement. Its own WeddingSite obligations do.
 savepoint shared_wedding_isolation;
-do $$ declare other_wedding uuid:=extensions.gen_random_uuid(); begin
+do $$ declare other_wedding uuid:=extensions.gen_random_uuid(); own_expense uuid:=extensions.gen_random_uuid(); begin
   insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date)
     values(other_wedding,(select id from mr_ids where key='client'),'Synthetic other wedding','KES',current_date+31);
-  insert into public.expenses(wedding_id,category,description,amount_minor,currency,status)
-    values(other_wedding,'Fixture','Other wedding obligation',999999,'KES','approved'),
-      ((select id from mr_ids where key='wedding'),'Fixture','Own WeddingSite obligation',2000,'KES','approved');
+  insert into public.expenses(id,wedding_id,category,description,amount_minor,currency,status)
+    values(extensions.gen_random_uuid(),other_wedding,'Fixture','Other wedding obligation',999999,'KES','approved'),
+      (own_expense,(select id from mr_ids where key='wedding'),'Fixture','Own WeddingSite obligation',2000,'KES','approved');
+  perform pg_temp.reject(format('select public.manual_payout_map_source(''expense'',%L,%L,null,%L)',
+    own_expense,(select id from mr_ids where key='shared_scope'),pg_temp.evidence('commitment')),'cannot receive legacy');
+  perform pg_temp.reject(format('insert into public.b2c_custody_bindings(custody_id,shortcode,funding_evidence)
+    values(%L,''123456'',%L)',(select id from mr_ids where key='shared_scope'),pg_temp.evidence('policy')),'cannot receive legacy');
   perform public.manual_payout_manual_eligible((select id from mr_ids where key='wedding'),
     (select id from mr_ids where key='shared_scope'),(select id from mr_ids where key='recipient'),'KES',3700,null,false);
   perform pg_temp.reject(format('select public.manual_payout_manual_eligible(%L,%L,%L,''KES'',3701,null,false)',

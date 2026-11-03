@@ -7,6 +7,23 @@ alter table public.manual_payout_custody add constraint manual_payout_scope_kind
   (shared_manual and available_minor is null and statement_at is null) or
   (not shared_manual and available_minor is not null and statement_at is not null));
 
+-- A shared scope cannot remap obligations out of the legacy account model or
+-- acquire statement/B2C funding identity through an old public intake RPC.
+create function public.manual_payout_require_statement_scope() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+  if exists(select 1 from public.manual_payout_custody where id=new.custody_id and shared_manual) then
+    raise exception 'Shared manual attribution scopes cannot receive legacy statement allocations or B2C funding bindings.'; end if;
+  return new;
+end $$;
+do $$ declare t text; begin
+  foreach t in array array['manual_payout_statement_batches','manual_payout_statement_lines',
+    'manual_payout_settlements','manual_payout_source_allocations','manual_payout_statement_debit_entries','b2c_custody_bindings'] loop
+    execute format('create trigger manual_payout_require_statement_scope before insert on public.%I
+      for each row execute function public.manual_payout_require_statement_scope()',t);
+  end loop;
+end $$;
+
 create table public.manual_payout_attributed_settlements (
   contribution_id uuid primary key references public.contributions(id),
   custody_id uuid not null references public.manual_payout_custody(id),
@@ -349,7 +366,7 @@ end $$;
 
 do $$ declare f record; begin
   for f in select p.oid from pg_proc p where p.pronamespace='public'::regnamespace and
-    p.proname in ('manual_payout_unique_settlement','manual_payout_register_shared_account','manual_payout_attribute_settlement',
+    p.proname in ('manual_payout_require_statement_scope','manual_payout_unique_settlement','manual_payout_register_shared_account','manual_payout_attribute_settlement',
       'manual_payout_manual_eligible','manual_payout_policy_blockers_statement','manual_payout_policy_blockers',
       'manual_payout_verify_transfer','manual_payout_guard_paid_statement','manual_payout_guard_paid_routed',
       'manual_payout_guard_paid_shared','manual_payout_preserve_attributed_history','manual_payout_workspace_references',

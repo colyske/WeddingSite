@@ -21,6 +21,9 @@ The existing canonical account registry still prevents aliases of the same real
 account. No historical scope is converted, no old protection is removed, and no
 policy is enabled by deployment. Existing statement-mode/B2C records keep their
 original contracts described later in this document.
+Insert guards also prevent old intake RPCs from mapping statement obligations or
+B2C funding bindings into shared scopes; this cannot reclassify history out of
+the legacy accounting model.
 
 **Start here:** Back office → **Payouts → Start here: prepare manual payouts**.
 
