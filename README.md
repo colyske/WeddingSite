@@ -385,6 +385,17 @@ npm test
 ```
 
 See [PRODUCTION.md](PRODUCTION.md) for implementation gaps, dashboard configuration names, safe provider setup, and deployment steps. Never paste credentials into chat, commit them, enable live payments, or publish publicly without owner approval.
+## Guarded manual external payouts (default OFF)
+
+The shared manual control plane records statement-backed reservations, durable
+execution claims, receipts and exact statement-debit reconciliation; the operator
+moves money only outside the site in an authorized official portal. Migration
+`202611130001` adds protected-Owner reviewed policy/readiness and deactivation,
+without enabling admission or inventing operational settings. Other eligible staff
+need two people; protected-Owner solo processing is explicit and retains every
+evidence/accounting requirement. Deployment and operational activation are separate.
+See [manual operator prerequisites and policy contract](docs/CONTROLLED-MANUAL-PAYOUTS.md).
+
 ## Default-off M-Pesa B2C payouts
 
 Guarded B2C v1 dispatch uses the controlled-payout foundation's shared custody,

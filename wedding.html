@@ -480,7 +480,7 @@
     <!-- Withdrawals / Payouts -->
     <div id="withdrawals-section" class="card" hidden>
       <h2>💰 Payouts & Withdrawals</h2>
-      <p class="notice" id="manual-payout-status">Manual external payouts are OFF pending separate operational approval and activation. A request is not a payment: review, an external execution claim, a unique receipt and statement reconciliation are required. Staff need two distinct authorized actors; the protected Owner may explicitly use audited solo manual mode. Uncertain transfers stay held; payment is never instant. Test payments and direct-settled funds cannot be withdrawn here.</p>
+      <p class="notice" id="manual-payout-status">Manual admission status is being checked. Manual requests are staff-controlled and require separately reviewed operational readiness. A request is not a payment: review, an external execution claim, a unique receipt and statement reconciliation are required. Staff need two distinct authorized actors; the protected Owner may explicitly use audited solo manual mode. Uncertain transfers stay held; payment is never instant. Test payments and direct-settled funds cannot be withdrawn here.</p>
       <p class="notice" id="payout-kyc-notice" role="status">Add both partners&rsquo; private identity details before requesting a payout. <a href="#kyc-section">Complete identity details</a>. Publishing is not blocked.</p>
       
       <section id="paystack-onboarding" class="notice" aria-labelledby="paystack-onboarding-title">
@@ -493,7 +493,7 @@
         <div id="paystack-settlement-rows" aria-live="polite"></div>
       </section>
       <div id="payout-balance" style="padding: 1.5rem; background: #f3faf3; border-radius: 8px; margin-bottom: 1.5rem;">
-        <p class="fine" style="margin: 0 0 0.5rem;">Available for manual withdrawal (OFF):</p>
+        <p class="fine" style="margin: 0 0 0.5rem;">Couple self-service withdrawal (not enabled):</p>
         <p style="margin: 0; font-size: 1.5rem; font-weight: bold; color: #244b3a;">
           <span id="balance-display">$0.00</span>
         </p>
@@ -2412,8 +2412,11 @@
           $("settling-display").textContent = WS.money(balData.settling_minor || 0, balData.currency);
           $("held-display").textContent = WS.money(balData.held_minor || 0, balData.currency);
           const manual = balData.manual;
+          $("manual-payout-status").textContent = manual?.enabled ?
+            "Staff manual admission is currently ready. Requests are staff-controlled, never instant or automatically sent. Existing custody, verified recipient, review and independent statement-debit evidence remain required; Owner solo processing is explicitly audited. This is not a promise of availability for your wedding." :
+            "Staff manual admission is OFF or not ready. Existing reservations and uncertain outcomes stay held; evidence and reconciliation can continue. Estimates are not spendable.";
           $("manual-balance-detail").textContent = manual ?
-            `Statement-backed: ${WS.money(manual.statement_backed_minor,balData.currency)}; reserved (including uncertain): ${WS.money(manual.reserved_minor,balData.currency)}; reconciled spent: ${WS.money(manual.spent_minor,balData.currency)}; known obligations: ${WS.money(manual.known_obligations_minor,balData.currency)}; unknown/held: ${WS.money(manual.unknown_or_held_minor,balData.currency)}. OFF: estimates are not spendable.` :
+            `Statement-backed: ${WS.money(manual.statement_backed_minor,balData.currency)}; reserved (including uncertain): ${WS.money(manual.reserved_minor,balData.currency)}; reconciled spent: ${WS.money(manual.spent_minor,balData.currency)}; known obligations: ${WS.money(manual.known_obligations_minor,balData.currency)}; unknown/held: ${WS.money(manual.unknown_or_held_minor,balData.currency)}. Estimates are not spendable; requests are staff-controlled.` :
             "Shared payout accounting unavailable. No estimate is spendable.";
         }
 

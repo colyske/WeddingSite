@@ -34,6 +34,18 @@ test("manual payout commands whitelist immutable inputs, reject unsafe values an
     currency: "KES", at: "2026-01-01T00:00:00Z", evidence: id, confirmed: true };
   assert.equal(manualPayoutCommand("debit", debit, "superadmin").rpc, "manual_payout_register_statement_debit");
   assert.equal(manualPayoutCommand("debit", { id, batch: id, line: id, evidence: id, confirmed: true }, "owner").status, 400);
+  const activation = { revision: id, changes: { enabled: true }, confirmed: true };
+  assert.equal(manualPayoutCommand("policy", activation, "superadmin").status, 403);
+  assert.deepEqual(manualPayoutCommand("policy", activation, "owner"), {
+    rpc: "owner_set_manual_payout_policy", args: { p_revision: id, p_changes: { enabled: true }, p_confirmed: true }
+  });
+  for (const changes of [{ enabled: "true" }, { actor_id: id }, { payout_fee_minor: -1 },
+    { recipient_ids: [id, id] }, { per_payout_minor: Number.MAX_SAFE_INTEGER + 1 }, { statement_max_age_minutes: 0 },
+    { fee_payer: "provider" }, { fee_payer: "" }]) {
+    assert.equal(manualPayoutCommand("policy", { ...activation, changes }, "owner").status, 400);
+  }
+  assert.equal(manualPayoutCommand("policy", { ...activation, changes: { fee_payer: "wedding", payout_fee_minor: 0 } }, "owner").rpc,
+    "owner_set_manual_payout_policy");
 });
 
 test("manual payout API rejects nonleaders, preserves token, surfaces OFF and retires legacy sent", async () => {
@@ -52,6 +64,7 @@ test("manual payout API rejects nonleaders, preserves token, surfaces OFF and re
       return Response.json(id);
     }
     if (url.pathname === "/rest/v1/rpc/manual_payout_overview") return Response.json({ enabled: false, requests: [] });
+    if (url.pathname === "/rest/v1/rpc/owner_set_manual_payout_policy") return Response.json({ policy: { enabled: false } });
     if (url.pathname === "/rest/v1/rpc/manual_payout_report") return Response.json(false);
     if (url.pathname === "/rest/v1/rpc/manual_payout_history") return Response.json([{ id, status: "reported", amount_minor: 1000, currency: "KES" }]);
     if (url.pathname === "/rest/v1/rpc/withdrawable_balance") return Response.json([{ available_minor: 9000, held_minor: 100 }]);
@@ -74,6 +87,11 @@ test("manual payout API rejects nonleaders, preserves token, surfaces OFF and re
       assert.equal((await invoke(action, request, action === "manual-payouts" ? "GET" : "POST")).statusCode, 403);
       assert.equal(calls.length, 0);
     }
+    assert.equal((await invoke("manual-payout-policy", { revision: id, changes: { enabled: true }, confirmed: true })).statusCode, 403);
+    assert.equal(calls.length, 0);
+    role = "owner";
+    assert.equal((await invoke("manual-payout-policy", { revision: id, changes: { enabled: false }, confirmed: true })).statusCode, 200);
+    assert.equal(calls[0].body.p_confirmed, true);
     role = "superadmin";
     assert.equal((await invoke("manual-payout-request", request)).statusCode, 409);
     assert.equal(calls[0].token, "Bearer fixture");
