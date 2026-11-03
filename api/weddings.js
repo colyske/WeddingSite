@@ -826,7 +826,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (["balance", "withdraw", "withdrawals", "guests-import", "guests-list", "fundraising", "fundraising-save", "campaigns", "campaigns-save", "sponsor-enquiries", "sponsor-enquiry-review"].includes(action)) {
+    if (["balance", "withdraw", "withdrawals", "manual-payout-intent", "guests-import", "guests-list", "fundraising", "fundraising-save", "campaigns", "campaigns-save", "sponsor-enquiries", "sponsor-enquiry-review"].includes(action)) {
       const weddingId = String(req.query.weddingId || body.weddingId || "");
       if (!UUID.test(weddingId)) return sendJson(res, 400, { error: "Invalid wedding." });
       const owned = await supabaseRequest(
@@ -834,6 +834,24 @@ export default async function handler(req, res) {
       if (!owned?.length) return sendJson(res, 404, { error: "Wedding not found." });
       const currency = owned[0].currency;
 
+      if (action === "manual-payout-intent") {
+        if (!methodOnly(req, res, "POST")) return;
+        if (Object.keys(body).some(k => !["key", "amountMinor", "confirmed", "weddingId"].includes(k)) ||
+          !UUID.test(String(body.key || "")) || !Number.isSafeInteger(body.amountMinor) || body.amountMinor<=0 || body.confirmed!==true) {
+          return sendJson(res, 400, { error: "Confirm an amount and request key only. Do not send recipient, bank details or notes." });
+        }
+        try {
+          const id = await supabaseRequest("/rest/v1/rpc/manual_payout_submit_intent", {
+            ...opts, method: "POST", body: { p_key: body.key, p_wedding: weddingId, p_amount: body.amountMinor, p_confirmed: true }
+          });
+          return sendJson(res, 201, { intentId: id, reserved: false });
+        } catch (error) {
+          if (/MANUAL_INTENT_(PENDING|CONFLICT)/.test(error.message || "")) {
+            return sendJson(res, 409, { error: "A request already awaits review or this request key changed. Refresh request history; no funds were reserved." });
+          }
+          throw error;
+        }
+      }
       if (action === "balance") {
         const rows = await supabaseRequest("/rest/v1/rpc/withdrawable_balance", { ...opts, method: "POST", body: { p_wedding_id: weddingId, p_currency: currency } });
         const manual = await supabaseRequest("/rest/v1/rpc/manual_payout_balance", {
@@ -851,7 +869,10 @@ export default async function handler(req, res) {
         const manual = await supabaseRequest("/rest/v1/rpc/manual_payout_history", {
           ...opts, method: "POST", body: { p_wedding: weddingId }
         });
-        return sendJson(res, 200, { withdrawals: rows || [], manualWithdrawals: manual, manualEnabled: false });
+        const intents = await supabaseRequest("/rest/v1/rpc/manual_payout_intent_history", {
+          ...opts, method: "POST", body: { p_wedding: weddingId }
+        });
+        return sendJson(res, 200, { withdrawals: rows || [], manualWithdrawals: manual, manualIntents: intents, manualEnabled: false });
       }
       if (action === "withdraw") {
         if (!methodOnly(req, res, "POST")) return;

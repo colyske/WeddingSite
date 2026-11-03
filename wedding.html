@@ -510,7 +510,22 @@
         <p id="method-display" style="margin: 0; font-weight: 500;">Not configured</p>
       </div>
 
-      <fieldset id="withdrawal-form" disabled style="margin-bottom: 1.5rem;">
+      <form id="manual-intent-form">
+        <h3>Request a payout for staff review</h3>
+        <p>This queues a review only, even when manual admission is OFF. It does not reserve funds, verify a recipient,
+          authorize a transfer or promise payment. Staff must separately create and approve an eligible payout.</p>
+        <label>Amount requested (integer minor units in your wedding currency; for KES, 100 minor units = KES 1)
+          <input name="amountMinor" type="number" min="1" step="1" required data-contact-allowed autocomplete="off"></label>
+        <p>Do not enter bank details, phone numbers, documents or instructions here. Recipient verification uses the separate secure staff process.</p>
+        <label><input name="confirmed" type="checkbox" required> I request staff review only; funds are not reserved and fees/eligibility still require review.</label>
+        <button type="submit">Submit payout request for review</button>
+        <p id="manual-intent-result" role="status" aria-live="polite"></p>
+      </form>
+      <section><h3>Requests awaiting / completed staff review</h3>
+        <div id="manual-intent-history">Checking request history...</div>
+      </section>
+
+      <fieldset id="withdrawal-form" disabled hidden style="margin-bottom: 1.5rem;">
         <label for="withdrawal-amount">Amount to withdraw (in your currency)</label>
         <input id="withdrawal-amount" type="number" min="0.01" step="0.01" placeholder="0.00" style="width: 100%; margin-bottom: 1rem;">
         
@@ -2424,6 +2439,18 @@
         const histRes = await WS.api(`/api/weddings?action=withdrawals&weddingId=${encodeURIComponent(weddingId)}`);
         const histData = await histRes.json();
         if (histRes.ok) {
+          const intents = histData.manualIntents || [];
+          const intentHistory = $("manual-intent-history");
+          if (intentHistory) {
+            const labels = { pending: "Awaiting staff review; no funds reserved", created: "Staff created a guarded payout; see payout history below",
+              declined: "Declined by staff; no payout created" };
+            intentHistory.innerHTML = intents.length ? intents.map(i =>
+              `<p>${WS.esc(WS.money(i.amount_minor, i.currency))}: ${WS.esc(labels[i.status] || "Review required")}
+              (${WS.esc(new Date(i.requested_at).toLocaleDateString())})</p>`).join("") : "<p>No review requests yet.</p>";
+            const pending = intents.some(i => i.status === "pending");
+            $("manual-intent-form").querySelector("button").disabled = pending;
+            if (pending) $("manual-intent-result").textContent = "A request already awaits review. No funds are reserved.";
+          }
           const manualLabels = {
             requested: "Manual request awaiting independent review", approved: "Reviewed; not transferred",
             executing: "External execution claimed; funds held", uncertain: "Outcome uncertain; funds held; do not resend",
@@ -2447,8 +2474,38 @@
         }
       } catch (err) {
         console.error("Load withdrawals failed:", err);
+        if ($("manual-intent-result")) $("manual-intent-result").textContent = "Request history could not be refreshed. Keep the existing request key; do not assume payment or submit a duplicate.";
       }
     }
+
+    // Couple request intent
+    let manualIntentKey = null;
+    $("manual-intent-form").addEventListener("submit", async e => {
+      e.preventDefault();
+      const form = e.target, button = form.querySelector("button");
+      if (button.disabled || !form.elements.confirmed.checked) return;
+      const amountMinor = Number(form.elements.amountMinor.value);
+      if (!Number.isSafeInteger(amountMinor) || amountMinor<=0) return notice("Enter a positive integer amount in minor units.", true);
+      if (!manualIntentKey) manualIntentKey = globalThis.crypto?.randomUUID?.();
+      if (!manualIntentKey) return notice("A secure request key could not be generated. Refresh in a secure browser.", true);
+      button.disabled = true;
+      form.elements.amountMinor.readOnly = true;
+      try {
+        const response = await WS.api(`/api/weddings?action=manual-payout-intent&weddingId=${encodeURIComponent(weddingId)}`, {
+          method: "POST", body: JSON.stringify({ key: manualIntentKey, amountMinor, confirmed: true })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Request could not be recorded.");
+        $("manual-intent-result").textContent = "Request queued for staff review. No funds reserved or transferred.";
+        manualIntentKey = null;
+        form.elements.amountMinor.readOnly = false;
+        form.reset();
+        await loadWithdrawals();
+      } catch (error) {
+        $("manual-intent-result").textContent = error.message + " No payment is authorized. A retry uses the same request key.";
+        button.disabled = false;
+      }
+    });
 
     // Request withdrawal
     $("request-withdrawal-btn").addEventListener("click", async e => {

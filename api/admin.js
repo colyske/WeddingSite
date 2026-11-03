@@ -59,6 +59,7 @@ async function defaultCurrencyView(code) {
 
 const GET_ACTIONS = {
   "manual-payouts": async t => rpc("manual_payout_overview", t),
+  "manual-payout-workspace": async t => rpc("manual_payout_workspace", t),
   "referral-policy": async t => ({ policy: await rpc("referral_admin_policy", t) }),
   "referral-history": async t => ({ history: await rpc("referral_admin_history", t) }),
   "referral-ledger": async (t, q) => {
@@ -114,6 +115,7 @@ function safeMessage(error) {
   const m = String(error?.message || "");
   if (/MANUAL_PAYOUT_BLOCKED:/.test(m)) return [409, "Manual admission is OFF or not ready. Inspect reviewed policy and evidence; legacy Mark sent is unavailable."];
   if (/MANUAL_POLICY_(BLOCKED|CONFLICT):/.test(m)) return [409, "Manual policy is incomplete, stale or outside reviewed scope. Refresh readiness; no approval or execution was recorded."];
+  if (/MANUAL_INTENT_/.test(m)) return [409, "The couple request changed or was already reviewed. Refresh the queue; no new payout was created."];
   if (/authority revoked|current authorized intake actor/i.test(m)) return [403, "Your current role no longer authorizes this action."];
   if (/already claimed|receipt|statement|insufficient|canonical|idempotency|held custody|uncertain outcome|incident/i.test(m)) return [409, "Manual payout remains held or blocked. Review the current state and evidence; never resend an uncertain transfer."];
   if (/REFERRAL_CONFLICT:/.test(m)) return referralError(error);
