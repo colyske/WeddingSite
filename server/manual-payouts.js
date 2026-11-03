@@ -6,7 +6,19 @@ const currency = v => typeof v === "string" && /^[A-Z]{3}$/.test(v);
 const timestamp = v => typeof v === "string" && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,6})?Z$/.test(v) && Number.isFinite(Date.parse(v));
 const optionalUuid = v => v === null || uuid(v);
 const ownerSolo = v => v === undefined || typeof v === "boolean";
+const policyFields = {
+  enabled: v => typeof v === "boolean", custody_id: optionalUuid,
+  recipient_ids: v => Array.isArray(v) && v.length <= 100 && v.every(uuid) && new Set(v).size === v.length,
+  per_payout_minor: v => v === null || amount(v), daily_minor: v => v === null || amount(v),
+  payout_fee_minor: v => v === null || fee(v),
+  fee_payer: v => v === null || v === "wedding",
+  statement_max_age_minutes: v => v === null || (Number.isSafeInteger(v) && v > 0 && v <= 2147483647),
+  review_evidence: optionalUuid, fee_evidence: optionalUuid, rail_evidence: optionalUuid, secure_evidence: optionalUuid
+};
+const policyChanges = v => v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0 &&
+  Object.entries(v).every(([key, value]) => Object.hasOwn(policyFields, key) && policyFields[key](value));
 const specs = {
+  policy: ["owner_set_manual_payout_policy", { revision: uuid, changes: policyChanges }],
   evidence: ["manual_payout_submit_evidence", {
     kind: v => ["account", "commitment", "statement", "recipient", "custody", "settlement", "receipt", "reconciliation", "no_transfer", "policy"].includes(v),
     reference: uuid, sha256: v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v)
@@ -56,6 +68,7 @@ const specs = {
 
 export function manualPayoutCommand(action, body, role) {
   if (!["owner", "superadmin"].includes(role)) return { status: 403, error: "Leadership access required." };
+  if (action === "policy" && role !== "owner") return { status: 403, error: "Only the protected Owner may configure manual admission." };
   const spec = specs[action];
   if (!spec || !body || typeof body !== "object" || Array.isArray(body) || body.confirmed !== true ||
       Object.keys(body).some(k => k !== "confirmed" && !Object.hasOwn(spec[1], k)) ||
@@ -68,5 +81,7 @@ export function manualPayoutCommand(action, body, role) {
   if (body.owner_solo === true && role !== "owner") {
     return { status: 403, error: "Only the protected Owner may explicitly select solo manual mode." };
   }
-  return { rpc: spec[0], args: Object.fromEntries(Object.keys(spec[1]).filter(key => body[key] !== undefined).map(key => [`p_${key}`, body[key]])) };
+  const args = Object.fromEntries(Object.keys(spec[1]).filter(key => body[key] !== undefined).map(key => [`p_${key}`, body[key]]));
+  if (action === "policy") args.p_confirmed = true;
+  return { rpc: spec[0], args };
 }

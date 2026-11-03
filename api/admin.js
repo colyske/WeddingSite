@@ -112,7 +112,8 @@ const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save", "default-c
 
 function safeMessage(error) {
   const m = String(error?.message || "");
-  if (/MANUAL_PAYOUT_BLOCKED:/.test(m)) return [409, "Manual payouts are OFF. Separate operational approval and activation are required; legacy Mark sent is unavailable."];
+  if (/MANUAL_PAYOUT_BLOCKED:/.test(m)) return [409, "Manual admission is OFF or not ready. Inspect reviewed policy and evidence; legacy Mark sent is unavailable."];
+  if (/MANUAL_POLICY_(BLOCKED|CONFLICT):/.test(m)) return [409, "Manual policy is incomplete, stale or outside reviewed scope. Refresh readiness; no approval or execution was recorded."];
   if (/authority revoked|current authorized intake actor/i.test(m)) return [403, "Your current role no longer authorizes this action."];
   if (/already claimed|receipt|statement|insufficient|canonical|idempotency|held custody|uncertain outcome|incident/i.test(m)) return [409, "Manual payout remains held or blocked. Review the current state and evidence; never resend an uncertain transfer."];
   if (/REFERRAL_CONFLICT:/.test(m)) return referralError(error);
