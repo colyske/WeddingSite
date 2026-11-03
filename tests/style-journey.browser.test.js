@@ -7,6 +7,9 @@ import "../inspiration-fixtures.js";
 import "../currencies.js";
 import "../starter-setup.js";
 import { showcase } from "../server/showcase.js";
+import { publicWeddingStyle } from "../server/wedding-style.js";
+
+const showcaseStyle = await publicWeddingStyle("showcase-wedding");
 
 const WWW = "https://www.joinourwedding.site";
 const SHOWCASE = "https://showcase-wedding.joinourwedding.site";
@@ -15,7 +18,7 @@ const USER = { id: "2f6d2cc1-dc56-4d38-8e2c-2ca8528cd112", email: "couple@exampl
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml" };
 
 // The real pages on emulated production hosts: root 308s to www, wedding sites are subdomains, APIs are mocked.
-function journey(context) {
+function journey(context, scratch = false) {
   const state = { creates: [], reviews: [], wedding: null, capabilityStatus: 503 };
   const api = (route, url) => {
     const request = route.request(), action = url.searchParams.get("action");
@@ -32,9 +35,11 @@ function journey(context) {
     }
     if (action === "google-exchange") data = { accessToken: "fresh-access-token", refreshToken: "fresh-refresh-token", user: USER, role: "client" };
     if (action === "list") data = { weddings: state.wedding ? [state.wedding] : [], total: state.wedding ? 1 : 0 };
-    if (action === "site") data = { wedding: { ...showcase, slug: "showcase-wedding" } };
+    if (action === "site") data = { wedding: url.searchParams.get("slug") === "our-private-guide" && state.wedding
+      ? state.wedding : { ...showcase, slug: "showcase-wedding" } };
     if (action === "style") data = { style: { ...WSInspiration.publicDesign(["#123456", "#789abc", "#bc9876", "#fefefe"]),
-      setup: WSStarterSetup.fictional("garden-gathering", "KES") } };
+      setup: WSStarterSetup.fictional("garden-gathering", "USD") } };
+    if (action === "style" && scratch) data = { style: showcaseStyle };
     if (action === "collection-capabilities") { status = state.capabilityStatus; data = { error: "Collection availability is temporarily unavailable." }; }
     if (action === "create") {
       const body = request.postDataJSON();
@@ -46,9 +51,13 @@ function journey(context) {
           wedding_date: null, public_location: null, welcome_story: "", time_zone: body.timeZone, max_guest_capacity: 150,
           palette: body.palette, palette_names: [], revenue_features: config.features, rsvp_fee_minor: 0,
           extra_guest_fee_minor: 0, premium_diet_fee_minor: 0, premium_diet_options: config.rsvp.premiumDietOptions,
-          published_at: null, starter_pending_setup: { ...config, reviewed: false },
+          published_at: null, starter_pending_setup: config.currency === body.currency ? { ...config, reviewed: false } : null,
+          starter_structure: WSStarterSetup.structure(config),
+          attire_notes: config.content.attire, travel_info: config.content.travel, faq: config.content.faq,
           starter_review_note: "Source prices and goals are pending review in their original currency; none have been applied.",
-          venues: [], registry: [], tiers: [], vip: null, featuredSponsorCampaign: null
+          venues: body.venues.map((v, index) => ({ id: `event-${index}`, name: v.name, description: v.description,
+            kind: v.kind, is_main: v.isMain, sort_order: index, event_date: null, event_time: null, address: null, map_link: null })),
+          registry: [], tiers: [], vip: null, featuredSponsorCampaign: null
         };
       }
       data = { weddingId: WEDDING_ID, slug: "our-private-guide" };
@@ -56,7 +65,7 @@ function journey(context) {
     if (action === "get") data = { wedding: state.wedding };
     if (action === "quote") data = { quote: { pending_date: true, fee_minor: null, currency: state.wedding?.currency } };
     if (action === "campaigns") data = { currency: state.wedding?.currency, campaigns: [], summary: [], rows: [] };
-    if (action === "extras-get") data = state.wedding?.starter_pending_setup?.content || {};
+    if (action === "extras-get") data = { travel: state.wedding?.travel_info || "", faq: state.wedding?.faq || [] };
     if (action === "starter-review") {
       state.reviews.push(request.postDataJSON());
       state.wedding = { ...state.wedding, starter_pending_setup: null, starter_review_note: null };
@@ -156,6 +165,33 @@ test("signed-in and signed-out showcase style choices reach the same-tab native 
     await reviewInGuide(login, fresh);
     assert.equal(await login.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "no overflow at 320px");
     await signedOut.close();
+
+    // From scratch uses the real virtual showcase mapping, saved native controls and shared guest renderer.
+    const scratchContext = await browser.newContext({ viewport: { width: 375, height: 800 }, reducedMotion: "reduce" });
+    const defaults = await journey(scratchContext, true);
+    const scratch = await scratchContext.newPage();
+    await scratch.goto(`${WWW}/signin.html`);
+    await scratch.evaluate(user => WS.save({ accessToken: "test-access-token", user, role: "client" }), USER);
+    await scratch.goto(`${WWW}/dashboard.html?scratch=showcase#step=couple`);
+    await scratch.waitForURL(`${WWW}/wedding.html?id=${WEDDING_ID}*#step=couple`);
+    await scratch.locator("#guide-heading-couple").waitFor();
+    assert.equal(defaults.creates.length, 1);
+    assert.deepEqual(defaults.wedding.palette, showcase.palette, "actual saved palette, not a marketing preview");
+    assert.equal(defaults.wedding.venues.length, showcase.venues.length);
+    assert.equal(await scratch.locator(".venue-item").count(), showcase.venues.length);
+    assert.equal(await scratch.locator(".venue-date").first().inputValue(), "");
+    assert.equal(await scratch.locator("#welcome-story").inputValue(), "");
+    assert.equal(defaults.wedding.currency, "USD", "unavailable destination support never chooses source KES");
+    assert.equal(defaults.wedding.starter_pending_setup, null);
+    assert.equal(defaults.wedding.starter_structure.campaigns[0].milestones[0].targetMinor, null);
+    await scratch.reload();
+    await scratch.locator("#guide-heading-couple").waitFor();
+    assert.equal(defaults.creates.length, 1, "saved native draft reload does not create another");
+    await scratch.goto(`${WWW}/guest.html?slug=our-private-guide`);
+    await scratch.locator("#palette-preview figure").first().waitFor();
+    assert.equal(await scratch.locator("#palette-preview figure").count(), 4, "shared guest renderer uses the saved showcase palette");
+    assert.equal(defaults.wedding.published_at, null, "renderer verification does not publish the real draft");
+    await scratchContext.close();
   } finally {
     await browser?.close();
   }

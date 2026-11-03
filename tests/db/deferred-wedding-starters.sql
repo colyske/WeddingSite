@@ -52,6 +52,11 @@ begin
   if public.create_deferred_wedding_starter(f.key,f.payload) is distinct from f.result then
     raise exception 'Retry did not return the same private draft';
   end if;
+  if not exists(select 1 from public.wedding_starter_structures where wedding_id=(f.result->>'weddingId')::uuid
+      and setup#>'{tiers,0,minimumMinor}'='null'::jsonb
+      and setup#>'{campaigns,0,milestones,0,targetMinor}'='null'::jsonb) then
+    raise exception 'Unpriced editable structure was not persisted';
+  end if;
 end $$;
 reset role;
 do $$
@@ -173,7 +178,7 @@ begin
 end $$;
 select set_config('request.jwt.claim.sub',extensions.gen_random_uuid()::text,true);
 do $$ begin
-  if exists(select 1 from public.wedding_starter_pending) then
+  if exists(select 1 from public.wedding_starter_pending) or exists(select 1 from public.wedding_starter_structures) then
     raise exception 'Another account can read pending source configuration';
   end if;
 end $$;
@@ -187,7 +192,6 @@ begin
   begin update public.weddings set published_at=now() where id=wid;
   exception when raise_exception then blocked := sqlerrm like 'PUBLISH_INCOMPLETE:%'; end;
   if not blocked then raise exception 'Unreviewed source setup allowed publication'; end if;
-  update public.weddings set currency='USD' where id=wid;
 end $$;
 set local role service_role;
 select set_config('request.jwt.claim.role','service_role',true);
@@ -196,13 +200,7 @@ declare f deferred_fixture; wid uuid; blocked boolean := false;
 begin
   select * into f from deferred_fixture;
   wid := (f.result->>'weddingId')::uuid;
-  begin perform public.review_deferred_wedding_starter(f.owner_id,wid,f.key,
-    '{"currency":"USD","decision":"apply","reviewed":true}'::jsonb);
-  exception when raise_exception then blocked := sqlerrm like 'Source prices cannot be relabelled%'; end;
-  if not blocked or not exists(select 1 from public.wedding_starter_pending where wedding_id=wid) then
-    raise exception 'Foreign-currency application consumed pending setup';
-  end if;
-  update public.weddings set currency='KES',rsvp_fee_minor=1234 where id=wid;
+  update public.weddings set rsvp_fee_minor=1234 where id=wid;
   blocked := false;
   begin perform public.review_deferred_wedding_starter(f.owner_id,wid,f.key,
     '{"currency":"KES","decision":"apply","reviewed":true}'::jsonb);
@@ -215,6 +213,61 @@ begin
       exists(select 1 from public.sponsor_tiers where wedding_id=wid) then
     raise exception 'Explicit omission discarded personalized settings or applied source money';
   end if;
+  if not exists(select 1 from public.wedding_starter_structures where wedding_id=wid
+      and jsonb_array_length(setup->'tiers')=1 and jsonb_array_length(setup->'campaigns')=1) then
+    raise exception 'Omitting amounts discarded useful structures';
+  end if;
 end $$;
 reset role;
+-- New destination currency clears ALL source amounts, including nested money, without changing source input.
+update deferred_fixture set key=extensions.gen_random_uuid(),result=null,
+  payload=jsonb_set(jsonb_set(payload,'{slug}','"cross-currency-starter"'::jsonb),'{currency}','"USD"'::jsonb);
+set local role service_role;
+select public.stage_wedding_starter_source(owner_id,key,payload) from deferred_fixture;
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claim.role','authenticated',true);
+update deferred_fixture set result=public.create_deferred_wedding_starter(key,payload);
+do $$
+declare f deferred_fixture; wid uuid; saved jsonb; blocked boolean := false;
+begin
+  select * into f from deferred_fixture;
+  wid := (f.result->>'weddingId')::uuid;
+  if exists(select 1 from public.wedding_starter_pending where wedding_id=wid) then
+    raise exception 'Cross-currency creation retained source amounts';
+  end if;
+  select setup into saved from public.wedding_starter_structures where wedding_id=wid;
+  if jsonb_array_length(saved->'tiers')<>1 or saved#>>'{tiers,0,name}'<>'Your package' or
+      saved#>'{campaigns,0,milestones,0,targetMinor}' is distinct from 'null'::jsonb or
+      saved#>'{registry,0,targetMinor}' is distinct from 'null'::jsonb then
+    raise exception 'Cross-currency creation lost or relabelled nested structure';
+  end if;
+  -- The function is internal; clients cannot inject even nested prices via the owner save.
+  begin perform public.save_wedding_starter_structure(wid,jsonb_set(saved,'{campaigns,0,milestones,0,targetMinor}','123'::jsonb));
+  exception when raise_exception then blocked := true; end;
+  if not blocked then raise exception 'Client stored usable source prices in an unpriced scaffold'; end if;
+  perform public.save_wedding_starter_structure(wid,jsonb_set(saved,'{tiers,0,name}','"Our own wording"'::jsonb));
+  if public.create_deferred_wedding_starter(f.key,f.payload) is distinct from f.result then raise exception 'Currency retry duplicated draft'; end if;
+end $$;
+reset role;
+-- Changing an already reviewed private draft clears active prices too, retaining owner-editable structures.
+do $$
+declare wid uuid; saved jsonb;
+begin
+  select id into wid from public.weddings where slug='deferred-starter-test';
+  update public.weddings set currency='USD' where id=wid;
+  if exists(select 1 from public.sponsor_tiers where wedding_id=wid) or
+      exists(select 1 from public.registry_items where wedding_id=wid) or
+      exists(select 1 from public.vip_offers where wedding_id=wid) or
+      exists(select 1 from public.sponsor_featured_campaigns where wedding_id=wid) or
+      exists(select 1 from public.fundraising_streams where wedding_id=wid) or
+      not exists(select 1 from public.weddings where id=wid and rsvp_fee_minor=0 and extra_guest_fee_minor=0
+        and premium_diet_fee_minor=0 and amount_presets is null and currency='USD') then
+    raise exception 'Changing currency reinterpreted active source amounts';
+  end if;
+  select setup into saved from public.wedding_starter_structures where wedding_id=wid;
+  if jsonb_array_length(saved->'tiers')<>1 or saved#>'{campaigns,0,milestones,0,targetMinor}'<>'null'::jsonb then
+    raise exception 'Currency reset lost useful nested structure';
+  end if;
+end $$;
 rollback;

@@ -4,6 +4,9 @@ import http from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { chromium } from "playwright";
+import { publicWeddingStyle } from "../server/wedding-style.js";
+
+const showcaseStyle = await publicWeddingStyle("showcase-wedding");
 
 test("guided drafts: skip, tab resume, one create, server resume on another device, validation, save and accessible section navigation", async () => {
   const server = http.createServer(async (req, res) => {
@@ -36,6 +39,7 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
         const body = route.request().postData() ? route.request().postDataJSON() : null;
         calls.push({ action, body, path: new URL(route.request().url()).pathname });
         let data = {};
+        if (action === "style") data = { style: showcaseStyle };
         if (action === "collection-capabilities") data = { currencies: [
           { code: "USD", name: "US Dollar", methods: [{ name: "Card", markets: ["United States"] }] },
           { code: "KES", name: "Kenyan Shilling", methods: [{ name: "M-Pesa", markets: ["Kenya"] }] }
@@ -47,7 +51,10 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
           wedding = { id, slug: "amina-and-joseph", couple_names: body.coupleNames,
             wedding_date: body.weddingDate, public_location: body.location || null, currency: body.currency,
             max_guest_capacity: body.maxCapacity, time_zone: body.timeZone, palette: body.palette,
-            palette_names: [], venues: [], registry: [], tiers: [], published_at: null };
+            palette_names: [], venues: body.venues.map(venue => ({
+              name: venue.name, kind: venue.kind, is_main: venue.isMain, description: venue.description,
+              event_date: venue.eventDate, event_time: venue.time, address: venue.address, map_link: venue.map
+            })), registry: [], tiers: [], published_at: null };
           data = { weddingId: id, slug: wedding.slug };
         }
         if (action === "invite") {
@@ -124,7 +131,8 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     assert.equal(calls.filter(call => call.action === "create").length, 1, "the guide handoff creates exactly one draft");
     assert.equal(calls.find(call => call.action === "create").body.coupleNames, "Amina & Joseph");
     assert.equal(calls.find(call => call.action === "create").body.weddingDate, null);
-    assert.equal(calls.find(call => call.action === "create").body.venues.length, 0);
+    assert.deepEqual(calls.find(call => call.action === "create").body.venues, showcaseStyle.venues);
+    assert.equal(await page.locator(".venue-item").count(), showcaseStyle.venues.length);
     assert.match(await page.locator("[data-guide-state]").innerText(), /Saved wedding details/);
     assert.match(await page.locator("#fee-box").innerText(), /Set the wedding date/);
     assert.equal(await page.locator("[data-guide-step]:not(#kyc-section):visible").count(), 1,
@@ -146,6 +154,8 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     });
     assert.ok(statusContrast >= 4.5, `section status has readable contrast (${statusContrast})`);
     await page.locator(".guide-jump > summary").click();
+    await page.locator(".remove-venue").evaluateAll(buttons => buttons.forEach(button => button.click()));
+    assert.equal(await page.locator(".venue-item").count(), 0, "couples can remove all default events before defining their own");
     await page.fill("#welcome-story", "We are making plans together.");
     await page.click("[data-guide-skip]");
     assert.match(page.url(), /#step=date$/);
@@ -234,7 +244,7 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     await resume.locator(".venue-date").fill("2027-06-12");
     await openSection(resume, 2);
     await resume.selectOption("#currency", "KES");
-    assert.match(await resume.locator("#currency-change-help").innerText(), /will not convert.*numbers stay the same/i);
+    assert.match(await resume.locator("#currency-change-help").innerText(), /will not convert.*Review all amounts before saving/i);
     await openSection(resume, 6);
     assert.equal(await resume.locator("#preset-song, #preset-gift, #preset-reset").count(), 0,
       "organizers no longer configure suggested contribution amounts");

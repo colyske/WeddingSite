@@ -10,6 +10,9 @@ import { readFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { publicWeddingStyle } from "../server/wedding-style.js";
+
+const showcaseStyle = await publicWeddingStyle("showcase-wedding");
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" };
@@ -51,6 +54,9 @@ async function openDashboard(handlers = {}) {
     sessionStorage.setItem("ws-session", JSON.stringify({ a: "test-token", r: "client", n: "Test User", e: "test@example.com" }));
   });
   await page.route("**/api/referrals*", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ intent_id: null }) }));
+  await page.route("**/api/guest?action=style*", route => route.fulfill({
+    contentType: "application/json", body: JSON.stringify({ style: showcaseStyle })
+  }));
   
   await page.route("**/api/weddings*", async (route) => {
     const url = new URL(route.request().url());
@@ -176,7 +182,7 @@ test("Create wedding auto-navigates after success", { skip }, async () => {
     }
   });
   
-  // Draft creation collects only the couple names; the shared guide handles the rest.
+  // Names remain the couple's own; reusable defaults accompany the guide handoff.
   await page.fill("#couple-names", "Sarah & John");
   const navigationPromise = page.waitForURL(url =>
     url.pathname === "/wedding.html" && url.searchParams.get("id") === "550e8400-e29b-41d4-a716-446655440001"
@@ -185,6 +191,8 @@ test("Create wedding auto-navigates after success", { skip }, async () => {
   await navigationPromise;
   assert.equal(createRequests.length, 1, "one private draft should be created");
   assert.equal(createRequests[0].coupleNames, "Sarah & John");
+  assert.deepEqual(createRequests[0].palette, showcaseStyle.palette);
+  assert.deepEqual(createRequests[0].venues, showcaseStyle.venues);
   assert.equal(new URL(page.url()).searchParams.get("slug"), "sarah-john");
   await close();
 });

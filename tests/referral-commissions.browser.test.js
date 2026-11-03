@@ -5,6 +5,9 @@ import { readFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { publicWeddingStyle } from "../server/wedding-style.js";
+
+const showcaseStyle = await publicWeddingStyle("showcase-wedding");
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const server = http.createServer(async (req, res) => {
@@ -33,6 +36,7 @@ async function context(authenticated = true) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   if (authenticated) await ctx.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "actor-token", role: "client" })));
   const page = await ctx.newPage();
+  await page.route("**/api/guest?action=style*", route => fulfill(route, { style: showcaseStyle }));
   return { ctx, page };
 }
 async function fillWedding(page) {
