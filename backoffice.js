@@ -282,6 +282,11 @@
     },
     async fees(el) {
       const [{ policies: p }, refundPolicy, paymentControls] = await Promise.all([get("policies"), get("refund-policy"), get("payment-controls")]);
+      let defaultCurrencyData = null, defaultCurrencyError = "";
+      if (role === "owner") {
+        try { defaultCurrencyData = await get("default-currency"); }
+        catch (error) { defaultCurrencyError = error.message; }
+      }
       const extendedPolicy = ["contribution_fixed_fee_minor", "contribution_fixed_fee_currency", "min_payout_minor", "payout_hold_days"]
         .every((key) => Object.prototype.hasOwnProperty.call(p, key));
       const { history = [] } = extendedPolicy ? await get("policy-history") : {};
@@ -307,6 +312,27 @@
         <button type="submit"${owner ? "" : " disabled"}>${owner ? "Save settings" : "Owner access required"}</button></fieldset></form>
         <p class="fine">Only the protected Owner can change platform fee and payout policies. SuperAdmins can view these settings; regular Admins cannot access them. Transaction eligibility and fee calculation are enforced server-side.</p>
         ${extendedPolicy ? `<details><summary>Recent policy versions (${history.length})</summary>${history.length ? history.map((h) => `<article class="policy-version"><strong>${date(h.changed_at)}</strong><pre>${esc(JSON.stringify({ old: h.old_values, new: h.new_values }, null, 2))}</pre></article>`).join("") : '<p class="fine">No policy changes have been recorded yet.</p>'}</details>` : ""}`;
+      if (owner) {
+        const supported = defaultCurrencyData?.currencies || [];
+        const current = defaultCurrencyData?.currency || "";
+        const options = supported.map(item => `<option value="${esc(item.code)}"${item.code === current ? " selected" : ""}>${esc(item.code)} - ${esc(item.name)}</option>`).join("");
+        const unsupportedCurrent = current && !supported.some(item => item.code === current)
+          ? `<option value="${esc(current)}" selected>${esc(current)} - currently unavailable</option>` : "";
+        el.insertAdjacentHTML("beforeend", `<section id="default-currency-settings" class="notice" aria-labelledby="default-currency-heading">
+          <h3 id="default-currency-heading">Owner: default currency</h3>
+          <p>Used only to preselect a supported currency for new wedding drafts and as the initial display preference for public indicative USD quotes. USD remains the canonical publication-fee currency; quotes use fresh daily rates. Existing weddings, saved currencies, invoices, payments and historical records are not converted or changed.</p>
+          ${defaultCurrencyError
+            ? `<p class="fine" role="status">Supported currencies could not be checked: ${esc(defaultCurrencyError)}. Reload this panel before changing the setting.</p>`
+            : `<form id="default-currency-form"><label for="platform-default-currency">New-wedding default</label>
+              <select id="platform-default-currency" name="currency"${defaultCurrencyData ? "" : " disabled"}>
+                <option value=""${!current ? " selected" : ""}>No explicit default (USD legacy behavior)</option>${unsupportedCurrent}${options}
+              </select>
+              <button type="submit"${defaultCurrencyData ? "" : " disabled"}>Save default currency</button></form>
+              <p class="fine" role="status">${current
+                ? `Current default: ${esc(current)}${defaultCurrencyData.supported ? " (currently supported)" : " (not currently supported; new drafts require a supported choice)"}`
+                : "No Owner-selected default; new drafts retain the USD fallback."}</p>`}
+        </section>`);
+      }
       const refundAllocation = refundPolicy.allocation || "manual_review";
       const dj = paymentControls.daraja || {};
       const djLive = dj.configuredEnvironment === "production";
@@ -575,6 +601,22 @@
           });
           await show("referrals");
           toast("Referral policy saved. All estimates remain held and unpayable.");
+        } catch (error) { toast(error.message, true); button.disabled = false; }
+        return;
+      }
+      if (e.target.id === "default-currency-form") {
+        e.preventDefault();
+        const currency = e.target.elements.currency.value || null;
+        const confirmation = currency
+          ? `Set ${currency} as the default for new wedding drafts and public indicative FX display? Existing weddings and all USD-based fees and historical records remain unchanged.`
+          : "Clear the platform default? New drafts will return to the USD legacy fallback. Existing weddings, fees and historical records remain unchanged.";
+        if (!confirm(confirmation)) return;
+        const button = e.target.querySelector('button[type="submit"]');
+        button.disabled = true;
+        try {
+          await post("default-currency-save", { currency, confirmed: true });
+          toast("Platform default currency saved.");
+          await show("fees");
         } catch (error) { toast(error.message, true); button.disabled = false; }
         return;
       }

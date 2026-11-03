@@ -54,7 +54,12 @@
     <div id="create-section" class="card">
       <h2>Start your wedding guide</h2>
       <p>Create a private draft with the couple&rsquo;s names, then continue setup in the same step-by-step guide used to edit it. Nothing is published until you review and publish.</p>
-      <p class="fine">New drafts start in USD and have no offers or prices. Before adding fundraising, choose a currency that currently has a ready guest-payment option. Existing saved currencies and paid amounts are never converted automatically.</p>
+      <p id="create-currency-note" class="fine">New drafts start in USD and have no offers or prices. Before adding fundraising, choose a currency that currently has a ready guest-payment option. Existing saved currencies and paid amounts are never converted automatically.</p>
+      <div id="draft-currency-choice" hidden>
+        <label for="draft-currency">Choose a currently supported currency for this names-only draft</label>
+        <select id="draft-currency"><option value="">Check current collection support first</option></select>
+      </div>
+      <button type="button" class="link" id="draft-currency-retry" hidden>Check currency support again</button>
       <p><a href="/inspiration.html">Explore fictional wedding inspiration</a> or use the reusable setup from an eligible public wedding.</p>
       <form id="create-form" novalidate onsubmit="return false">
         <label for="couple-names">Couple names</label>
