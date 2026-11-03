@@ -29,11 +29,13 @@ const policy = changes => run(ids.owner, `public.owner_set_manual_payout_policy(
   (select (public.manual_payout_readiness()->'policy'->>'revision')::uuid),'${JSON.stringify(changes)}',true)`);
 const request = (key = randomUUID(), amount = 4000) => `public.manual_payout_request('${key}','${ids.wedding}',
   '${ids.custody}','${ids.recipient}',${amount},100,'KES')`;
-const waitForAdvisory = name => sql(`do $$ begin for i in 1..1000 loop
+const waitForLock = (name, event = "advisory", blocker = null) => sql(`do $$ begin for i in 1..1000 loop
   perform pg_stat_clear_snapshot();
-  if exists(select 1 from pg_stat_activity where application_name='${name}' and wait_event='advisory') then return; end if;
+  if exists(select 1 from pg_stat_activity waiting where application_name='${name}' and wait_event='${event}'
+    ${blocker ? `and exists(select 1 from pg_stat_activity holding where holding.application_name='${blocker}'
+      and holding.pid=any(pg_blocking_pids(waiting.pid)))` : ""}) then return; end if;
   perform pg_sleep(0.01);
-end loop; raise exception 'Writer never reached advisory wait'; end $$;`);
+end loop; raise exception 'Writer % never reached % wait behind %','${name}','${event}','${blocker || "expected lock"}'; end $$;`);
 async function revokeWhileWaiting(expression, reviewer = false) {
   const revoked = reviewer ? ids.checker : randomUUID();
   if (!reviewer) await sql(`insert into auth.users(id) values('${revoked}');
@@ -50,7 +52,7 @@ async function revokeWhileWaiting(expression, reviewer = false) {
     set local application_name='${name}'; ${actor(reviewer ? ids.maker : revoked)} select ${expression}; commit;`),
   /authority revoked|authorized intake|MANUAL_PAYOUT_BLOCKED/);
   try {
-    await waitForAdvisory(name);
+    await waitForLock(name);
     await sql(`update public.profiles set platform_role='client' where id='${revoked}';`);
   } finally { control.release(); }
   try { await Promise.all([barrier, denied]); }
@@ -70,7 +72,7 @@ async function deactivateWhileWaiting(expression) {
   const name = randomUUID();
   const denied = assert.rejects(sql(`begin; set local statement_timeout='20s';
     set local application_name='${name}'; ${actor(ids.maker)} select ${expression}; commit;`), /MANUAL_PAYOUT_BLOCKED/);
-  try { await waitForAdvisory(name); } finally { control.release(); }
+  try { await waitForLock(name); } finally { control.release(); }
   await Promise.all([disabling, denied]);
 }
 try {
@@ -233,7 +235,9 @@ try {
   const feeControl = {};
   let feeReady;
   const feeSignal = new Promise(resolve => { feeReady = resolve; });
+  const feeWriter = randomUUID();
   const feeChange = sql(`begin; set local idle_in_transaction_session_timeout='30s';
+    set local application_name='${feeWriter}';
     update public.contributions set provider_fee_pending=true where id='${sharedContribution}';
     select 'FEE_HELD';\n`, data => { if (data.includes("FEE_HELD")) feeReady(); }, feeControl);
   await Promise.race([feeSignal, feeChange.then(() => { throw new Error("Missing fee-change barrier"); })]);
@@ -242,7 +246,7 @@ try {
     set local application_name='${feeWaiter}'; ${actor(ids.maker)}
     select public.manual_payout_transition('${sharedClaimed}','executing','${randomUUID()}'); commit;`),
   /Insufficient attributable/);
-  try { await waitForAdvisory(feeWaiter); } finally { feeControl.release(); }
+  try { await waitForLock(feeWaiter, "transactionid", feeWriter); } finally { feeControl.release(); }
   await Promise.all([feeChange, feeDenied]);
   assert.equal(await sql(`select count(*) from public.manual_payout_claims where payout_id='${sharedClaimed}';`), "0",
     "A committed unknown fee blocks the waiting claim without releasing the reservation");
