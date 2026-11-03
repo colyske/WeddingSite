@@ -42,7 +42,9 @@ sql(`
       (select count(*) from public.manual_payout_operating_policies)<>1 or
       exists(select 1 from public.manual_payout_operating_policies where enabled or actor_id is not null
         or custody_id is not null or per_payout_minor is not null or daily_minor is not null
-        or payout_fee_minor is not null or statement_max_age_minutes is not null)
+        or payout_fee_minor is not null or fee_payer is not null or statement_max_age_minutes is not null
+        or review_evidence is not null or fee_evidence is not null or rail_evidence is not null
+        or secure_evidence is not null or cardinality(recipient_ids)<>0)
       or exists(select 1 from public.manual_payout_policy_bindings)
       then raise exception 'Upgrade enabled admission or fabricated policy choices'; end if;
   end $$;

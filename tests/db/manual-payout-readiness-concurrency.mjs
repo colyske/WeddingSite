@@ -29,9 +29,14 @@ const policy = changes => run(ids.owner, `public.owner_set_manual_payout_policy(
   (select (public.manual_payout_readiness()->'policy'->>'revision')::uuid),'${JSON.stringify(changes)}',true)`);
 const request = (key = randomUUID(), amount = 4000) => `public.manual_payout_request('${key}','${ids.wedding}',
   '${ids.custody}','${ids.recipient}',${amount},100,'KES')`;
-async function revokeWhileWaiting(expression) {
-  const revoked = randomUUID();
-  await sql(`insert into auth.users(id) values('${revoked}');
+const waitForAdvisory = name => sql(`do $$ begin for i in 1..1000 loop
+  perform pg_stat_clear_snapshot();
+  if exists(select 1 from pg_stat_activity where application_name='${name}' and wait_event='advisory') then return; end if;
+  perform pg_sleep(0.01);
+end loop; raise exception 'Writer never reached advisory wait'; end $$;`);
+async function revokeWhileWaiting(expression, reviewer = false) {
+  const revoked = reviewer ? ids.checker : randomUUID();
+  if (!reviewer) await sql(`insert into auth.users(id) values('${revoked}');
     update public.profiles set platform_role='superadmin' where id='${revoked}';`);
   const control = {};
   let ready;
@@ -42,16 +47,31 @@ async function revokeWhileWaiting(expression) {
   await Promise.race([signal, barrier.then(() => { throw new Error("Missing barrier"); })]);
   const name = randomUUID();
   const denied = assert.rejects(sql(`begin; set local statement_timeout='20s';
-    set local application_name='${name}'; ${actor(revoked)} select ${expression}; commit;`), /authority revoked|authorized intake/);
+    set local application_name='${name}'; ${actor(reviewer ? ids.maker : revoked)} select ${expression}; commit;`),
+  /authority revoked|authorized intake|MANUAL_PAYOUT_BLOCKED/);
   try {
-    await sql(`do $$ begin for i in 1..1000 loop
-      perform pg_stat_clear_snapshot();
-      if exists(select 1 from pg_stat_activity where application_name='${name}' and wait_event='advisory') then return; end if;
-      perform pg_sleep(0.01);
-    end loop; raise exception 'Writer never reached advisory wait'; end $$;
-    update public.profiles set platform_role='client' where id='${revoked}';`);
+    await waitForAdvisory(name);
+    await sql(`update public.profiles set platform_role='client' where id='${revoked}';`);
   } finally { control.release(); }
-  await Promise.all([barrier, denied]);
+  try { await Promise.all([barrier, denied]); }
+  finally {
+    if (reviewer) await sql(`update public.profiles set platform_role='superadmin' where id='${revoked}';`);
+  }
+}
+async function deactivateWhileWaiting(expression) {
+  const control = {};
+  let ready;
+  const signal = new Promise(resolve => { ready = resolve; });
+  const disabling = sql(`begin; set local idle_in_transaction_session_timeout='30s'; ${actor(ids.owner)}
+    select public.owner_set_manual_payout_policy(
+      (public.manual_payout_readiness()->'policy'->>'revision')::uuid,'{"enabled":false}',true);
+    select 'DISABLED_HELD';\n`, data => { if (data.includes("DISABLED_HELD")) ready(); }, control);
+  await Promise.race([signal, disabling.then(() => { throw new Error("Missing deactivation barrier"); })]);
+  const name = randomUUID();
+  const denied = assert.rejects(sql(`begin; set local statement_timeout='20s';
+    set local application_name='${name}'; ${actor(ids.maker)} select ${expression}; commit;`), /MANUAL_PAYOUT_BLOCKED/);
+  try { await waitForAdvisory(name); } finally { control.release(); }
+  await Promise.all([disabling, denied]);
 }
 try {
   const fixture = readFileSync(new URL("./manual-payout-readiness.sql", import.meta.url), "utf8")
@@ -59,13 +79,24 @@ try {
       select jsonb_object_agg(key,id) ids from mr_ids; commit;`);
   await sql(fixture);
   ids = JSON.parse(await sql("select ids from public.manual_readiness_ci_context;"));
+  const offKey = randomUUID();
+  await deactivateWhileWaiting(request(offKey, 1000));
+  assert.equal(await sql(`select count(*) from public.manual_payout_requests where request_key='${offKey}';`), "0");
+  await policy({ enabled: true });
   const competing = await Promise.allSettled([run(ids.maker, request()), run(ids.maker, request())]);
   assert.equal(competing.filter(r => r.status === "fulfilled").length, 1, "Only one request fits the real aggregate policy");
   assert.match(competing.find(r => r.status === "rejected").reason.message, /UTC-day total/);
-  const payout = uuid(competing.find(r => r.status === "fulfilled").value);
+  let payout = uuid(competing.find(r => r.status === "fulfilled").value);
+  await run(ids.checker, `public.manual_payout_transition('${payout}','approved')`);
+  await deactivateWhileWaiting(`public.manual_payout_transition('${payout}','executing','${randomUUID()}')`);
+  assert.equal(await sql(`select count(*) from public.manual_payout_claims where payout_id='${payout}';`), "0");
+  await run(ids.maker, `public.manual_payout_transition('${payout}','cancelled')`);
+  await policy({ enabled: true });
+  payout = uuid(await run(ids.maker, request()));
   await run(ids.checker, `public.manual_payout_transition('${payout}','approved')`);
   await revokeWhileWaiting(request(randomUUID(), 1000));
   await revokeWhileWaiting(`public.manual_payout_transition('${payout}','executing','${randomUUID()}')`);
+  await revokeWhileWaiting(`public.manual_payout_transition('${payout}','executing','${randomUUID()}')`, true);
   const claims = await Promise.allSettled([run(ids.maker, `public.manual_payout_transition('${payout}','executing','${randomUUID()}')`),
     run(ids.maker, `public.manual_payout_transition('${payout}','executing','${randomUUID()}')`)]);
   assert.equal(claims.filter(r => r.status === "fulfilled").length, 1);

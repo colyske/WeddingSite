@@ -135,9 +135,10 @@ begin
     per_payout_minor,daily_minor,payout_fee_minor,fee_payer,statement_max_age_minutes,
     review_evidence,fee_evidence,rail_evidence,secure_evidence,actor_id)
     values(old.revision,n.enabled,n.custody_id,n.recipient_ids,n.per_payout_minor,n.daily_minor,n.payout_fee_minor,
-      n.fee_payer,n.statement_max_age_minutes,n.review_evidence,n.fee_evidence,n.rail_evidence,n.secure_evidence,auth.uid());
+      n.fee_payer,n.statement_max_age_minutes,n.review_evidence,n.fee_evidence,n.rail_evidence,n.secure_evidence,auth.uid())
+    returning * into n;
   insert into public.audit_events(actor_id,table_name,record_id,action)
-    values(auth.uid(),'manual_payout_operating_policies',old.revision::text,
+    values(auth.uid(),'manual_payout_operating_policies',n.revision::text,
       case when n.enabled then 'manual_policy_enabled_revision' else 'manual_policy_disabled_revision' end);
   return public.manual_payout_readiness();
 end $$;

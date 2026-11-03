@@ -100,8 +100,8 @@ begin
   perform pg_temp.policy(config);
   if public.manual_payouts_enabled() or (public.manual_payout_readiness()->'blockers')<>'[]'::jsonb then
     raise exception 'Reviewed draft should be ready but still OFF'; end if;
-    perform pg_temp.reject('select pg_temp.policy(''{"enabled":true,"fee_payer":null}'')','prerequisites');
-    perform pg_temp.reject('select pg_temp.policy(''{"enabled":true,"per_payout_minor":999999999}'')','prerequisites');
+  perform pg_temp.reject('select pg_temp.policy(''{"enabled":true,"fee_payer":null}'')','prerequisites');
+  perform pg_temp.reject('select pg_temp.policy(''{"enabled":true,"per_payout_minor":999999999}'')','prerequisites');
   perform pg_temp.reject(format('select public.manual_payout_request(extensions.gen_random_uuid(),%L,%L,%L,2000,100,''KES'')',
     (select id from mr_ids where key='wedding'),custody,recipient),'MANUAL_PAYOUT_BLOCKED');
   select revision into old from public.manual_payout_operating_policies order by sequence desc limit 1;
@@ -109,11 +109,11 @@ begin
   perform pg_temp.reject(format('select public.owner_set_manual_payout_policy(%L,''{"enabled":false}'',true)',old),'CONFLICT');
   if not public.manual_payouts_enabled() then raise exception 'Real activation failed'; end if;
 end $$;
-create function pg_temp.request(key uuid default extensions.gen_random_uuid(),solo boolean default false,
-  amount bigint default 2000,fee bigint default 100) returns uuid language plpgsql as $$
+create function pg_temp.request(p_key uuid default extensions.gen_random_uuid(),solo boolean default false,
+  p_amount bigint default 2000,p_fee bigint default 100) returns uuid language plpgsql as $$
 begin
-  return public.manual_payout_request(key,(select id from mr_ids where key='wedding'),
-    (select id from mr_ids where key='custody'),(select id from mr_ids where key='recipient'),amount,fee,'KES',solo);
+  return public.manual_payout_request(p_key,(select id from mr_ids where key='wedding'),
+    (select id from mr_ids where key='custody'),(select id from mr_ids where key='recipient'),p_amount,p_fee,'KES',solo);
 end $$;
 -- Normal two-person workflow, revoked reviewer, stale policy/fee/hold rechecks.
 do $$
@@ -132,7 +132,7 @@ savepoint revoked_checker;
 update public.profiles set platform_role='client' where id=(select id from mr_ids where key='checker');
 select pg_temp.actor('maker');
 select pg_temp.reject(format('select public.manual_payout_transition(%L,''executing'',extensions.gen_random_uuid())',
-  (select id from mr_ids where key='normal')),'revoked');
+  (select id from mr_ids where key='normal')),'MANUAL_PAYOUT_BLOCKED');
 rollback to revoked_checker;
 savepoint held_contribution;
 update public.contributions set funds_available_at=now()+interval '1 day' where id=(select id from mr_ids where key='contribution');
@@ -192,6 +192,15 @@ select pg_temp.actor('owner');
 select pg_temp.policy('{"enabled":false}');
 select pg_temp.actor('maker');
 select pg_temp.reject('select pg_temp.request()','MANUAL_PAYOUT_BLOCKED');
+select public.manual_payout_transition((select id from mr_ids where key='normal'),'uncertain');
+select pg_temp.actor('owner');
+select pg_temp.reject('select pg_temp.policy(''{"enabled":true}'')','prerequisites');
+select pg_temp.actor('client');
+do $$ begin
+  if public.manual_payout_state((select id from mr_ids where key='normal'))<>'uncertain'
+    or (public.manual_payout_balance((select id from mr_ids where key='wedding'))->>'reserved_minor')::bigint<>2100 then
+    raise exception 'Uncertain reservation not retained after deactivation'; end if;
+end $$;
 select pg_temp.finish((select id from mr_ids where key='normal'),false);
 
 -- Protected Owner solo retains distinct receipt/statement/reconciliation evidence.

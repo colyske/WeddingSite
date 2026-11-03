@@ -40,9 +40,12 @@ test("manual payout commands whitelist immutable inputs, reject unsafe values an
     rpc: "owner_set_manual_payout_policy", args: { p_revision: id, p_changes: { enabled: true }, p_confirmed: true }
   });
   for (const changes of [{ enabled: "true" }, { actor_id: id }, { payout_fee_minor: -1 },
-    { recipient_ids: [id, id] }, { per_payout_minor: Number.MAX_SAFE_INTEGER + 1 }, { statement_max_age_minutes: 0 }]) {
+    { recipient_ids: [id, id] }, { per_payout_minor: Number.MAX_SAFE_INTEGER + 1 }, { statement_max_age_minutes: 0 },
+    { fee_payer: "provider" }, { fee_payer: "" }]) {
     assert.equal(manualPayoutCommand("policy", { ...activation, changes }, "owner").status, 400);
   }
+  assert.equal(manualPayoutCommand("policy", { ...activation, changes: { fee_payer: "wedding", payout_fee_minor: 0 } }, "owner").rpc,
+    "owner_set_manual_payout_policy");
 });
 
 test("manual payout API rejects nonleaders, preserves token, surfaces OFF and retires legacy sent", async () => {
