@@ -54,6 +54,8 @@ jobs:
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < supabase/migrations/202611140001_reusable_starter_structures.sql
       - name: Commit operator workspace and couple review intents with populated rollback
         run: node tests/db/manual-payout-workspace-upgrade.mjs
+      - name: Commit manual shared-account attribution without converting history or changing B2C
+        run: node tests/db/manual-payout-shared-upgrade.mjs
       - name: Apply all migrations to a fresh database
         run: supabase db reset --local --no-seed
       - name: Lint the migrated schema
@@ -104,6 +106,8 @@ jobs:
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/b2c.sql
       - name: Test couple review intents through normal and Owner-solo exact reconciliation
         run: node tests/db/manual-payout-workspace.mjs
+      - name: Test manual shared Paybill attribution and transaction-specific verification
+        run: node tests/db/manual-payout-shared.mjs
       - name: Race real manual policy, requests, claims and deactivation
         env:
           MANUAL_PAYOUT_TEST_DB_CONTAINER: supabase_db_weddingsite

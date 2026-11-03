@@ -25,6 +25,14 @@ test("manual payout commands whitelist immutable inputs, reject unsafe values an
   }
   assert.equal(manualPayoutCommand("request", { ...request, owner_solo: true }, "superadmin").status, 403);
   assert.equal(manualPayoutCommand("request", { ...request, owner_solo: true }, "owner").args.p_owner_solo, true);
+  for (const action of ["shared-account", "attribute-settlement", "verify-transfer"]) {
+    assert.equal(manualPayoutCommand(action, {}, "admin").status, 403);
+    assert.equal(manualPayoutCommand(action, { confirmed: true, bankAccount: "unsupported" }, "owner").status, 400);
+  }
+  assert.deepEqual(manualPayoutCommand("shared-account", { account: id, currency: "KES", evidence: id, confirmed: true }, "owner"),
+    { rpc: "manual_payout_register_shared_account", args: { p_account: id, p_currency: "KES", p_evidence: id } });
+  assert.equal(manualPayoutCommand("attribute-settlement", { contribution: id, custody: id, line: id, settled: 1234,
+    at: "2026-01-01T10:00:00Z", evidence: id, confirmed: true }, "superadmin").args.p_settled, 1234);
   const review = { id, decision: "created", key: id, custody: id, recipient: id, fee: 0, owner_solo: false, confirmed: true };
   assert.equal(manualPayoutCommand("review-intent", review, "superadmin").rpc, "manual_payout_review_intent");
   assert.equal(manualPayoutCommand("review-intent", { ...review, owner_solo: true }, "superadmin").status, 403);
