@@ -164,8 +164,8 @@ begin
   if p.per_payout_minor is null or p.daily_minor is null or p.daily_minor<p.per_payout_minor
     or p.payout_fee_minor is null or p.fee_payer is distinct from 'wedding' then
     blockers:=blockers||jsonb_build_array('Explicit per-transfer total, UTC-day exposure cap and wedding fee payer/amount required'); end if;
-  if not exists(select 1 from public.platform_policies where id
-    and p.per_payout_minor::numeric-p.payout_fee_minor between min_payout_minor and max_payout_minor) then
+  if not exists(select 1 from public.platform_policies pp where pp.id is true
+    and p.per_payout_minor::numeric-p.payout_fee_minor between pp.min_payout_minor and pp.max_payout_minor) then
     blockers:=blockers||jsonb_build_array('Manual principal limit must fit existing platform payout minimum/maximum'); end if;
   if not public.manual_payout_evidence_accepted(p.review_evidence,'policy',true)
     or not public.manual_payout_evidence_accepted(p.fee_evidence,'policy',true)

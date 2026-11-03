@@ -115,6 +115,6 @@ do $$ declare p uuid; e uuid; begin
   if not exists(select 1 from public.manual_payout_account_holds where custody_id=(select id from mr_ids where key='shared_scope'))
     or public.manual_payout_state(p)<>'executing' then raise exception 'Duplicate did not retain exposure and hold'; end if;
   perform pg_temp.policy('{"enabled":false}');
-  if public.live_payouts_enabled() or exists((select to_jsonb(p) from public.b2c_policy p) except (select value from mr_automatic_before)) then
+  if public.live_payouts_enabled() or exists((select to_jsonb(automatic_policy_row) from public.b2c_policy automatic_policy_row) except (select value from mr_automatic_before)) then
     raise exception 'Shared manual changed automatic policy'; end if;
 end $$;
