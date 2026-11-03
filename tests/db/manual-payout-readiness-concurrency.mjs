@@ -83,6 +83,13 @@ try {
   await deactivateWhileWaiting(request(offKey, 1000));
   assert.equal(await sql(`select count(*) from public.manual_payout_requests where request_key='${offKey}';`), "0");
   await policy({ enabled: true });
+  const replayKey = randomUUID();
+  const replays = await Promise.all([run(ids.maker, request(replayKey, 1000)), run(ids.maker, request(replayKey, 1000))]);
+  const replayId = uuid(replays[0]);
+  assert.ok(replayId);
+  assert.equal(uuid(replays[1]), replayId, "Concurrent real-policy replay reserves once");
+  await assert.rejects(run(ids.maker, request(replayKey, 1001)), /Idempotency/);
+  await run(ids.maker, `public.manual_payout_transition('${replayId}','cancelled')`);
   const competing = await Promise.allSettled([run(ids.maker, request()), run(ids.maker, request())]);
   assert.equal(competing.filter(r => r.status === "fulfilled").length, 1,
     `Only one request fits the real aggregate policy: ${competing.map(r => r.status === "rejected" ? r.reason.message : r.value).join("\n")}`);
@@ -132,7 +139,31 @@ try {
     `public.owner_set_manual_payout_policy('${current}','{"enabled":${enabled}}',true)`)));
   assert.equal(edits.filter(r => r.status === "fulfilled").length, 1);
   assert.match(edits.find(r => r.status === "rejected").reason.message, /CONFLICT/);
-  console.log("Real default-OFF policy: aggregate reservations, single claims, Owner CAS, revoked waiting actors, and exact reconciliation after deactivation passed.");
+  // Two real claimed outcomes compete for one provider/account receipt reference
+  // while admission is OFF. One receipt commits; the other commits a shared hold.
+  await policy({ enabled: true, daily_minor: 14000 });
+  const receiptRaces = [];
+  for (let i = 0; i < 2; i++) {
+    const id = uuid(await run(ids.maker, request(randomUUID(), 1000)));
+    await run(ids.checker, `public.manual_payout_transition('${id}','approved')`);
+    await run(ids.maker, `public.manual_payout_transition('${id}','executing','${randomUUID()}')`);
+    receiptRaces.push({ id, evidence: await evidence("receipt") });
+  }
+  await policy({ enabled: false });
+  const reference = randomUUID();
+  const reports = await Promise.all(receiptRaces.map(r => run(ids.maker,
+    `public.manual_payout_report('${r.id}','${reference}',1000,100,'KES',clock_timestamp(),'${r.evidence}')`)));
+  assert.equal(reports.filter(output => output.split("\n").includes("t")).length, 1);
+  assert.equal(reports.filter(output => output.split("\n").includes("f")).length, 1);
+  assert.equal(await sql(`select count(*) from public.manual_payout_receipts where transaction_reference=upper('${reference}');`), "1");
+  assert.equal(await sql(`select count(*) from public.manual_payout_account_holds where custody_id='${ids.custody}';`), "1");
+  assert.equal(await sql(`select count(*) from public.manual_payout_claims where payout_id in
+    ('${receiptRaces[0].id}','${receiptRaces[1].id}');`), "2");
+  const balance = JSON.parse((await run(ids.client, `public.manual_payout_balance('${ids.wedding}')`)).split("\n").find(line => line.startsWith("{")));
+  assert.equal(balance.reserved_minor, 2200);
+  assert.equal(balance.available_minor, 0);
+  await assert.rejects(policy({ enabled: true }), /prerequisites/);
+  console.log("Real default-OFF policy: replays, aggregate reservations, single claims, deactivation races, Owner CAS, revoked actors/reviewer, exact OFF reconciliation, and duplicate receipt holds passed.");
 } finally {
   if (ids) await policy({ enabled: false });
 }
