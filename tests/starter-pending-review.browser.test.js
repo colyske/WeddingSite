@@ -38,11 +38,12 @@ test("the currency step reviews pending style amounts inline without blocking pe
       const request = route.request(), url = new URL(request.url()), action = url.searchParams.get("action");
       let data = {}, status = 200;
       const wedding = {
-        id: WEDDING_ID, slug: "our-private-guide", couple_names: "", currency: state.currency, wedding_date: null,
+        id: WEDDING_ID, slug: "our-private-guide", couple_names: state.names || "", currency: state.currency, wedding_date: null,
         public_location: null, welcome_story: "", time_zone: "Africa/Nairobi", max_guest_capacity: 150,
         palette: ["#123456"], palette_names: [], revenue_features: pending.features, rsvp_fee_minor: 0,
         extra_guest_fee_minor: 0, premium_diet_fee_minor: 0, published_at: null, venues: [], registry: [], tiers: [],
         vip: null, featuredSponsorCampaign: null, starter_pending_setup: state.pending,
+        starter_structure: state.structure || null,
         starter_review_note: state.pending ? "Source prices and goals are pending review in their original currency; none have been applied." : null
       };
       if (action === "get") data = { wedding };
@@ -50,6 +51,16 @@ test("the currency step reviews pending style amounts inline without blocking pe
       if (action === "quote") data = { quote: { pending_date: true, fee_minor: null, currency: state.currency } };
       if (action === "campaigns") data = { currency: state.currency, campaigns: [], summary: [], rows: [] };
       if (action === "extras-get") data = pending.content;
+      if (action === "update") {
+        const body = request.postDataJSON();
+        if (body.currency !== state.currency) state = { ...state, currency: body.currency, pending: null };
+        state.names = body.coupleNames;
+        data = { wedding: { ...wedding, couple_names: state.names, currency: state.currency, starter_pending_setup: state.pending } };
+      }
+      if (action === "starter-structure") {
+        state.structure = request.postDataJSON().structure;
+        data = { ok: true, structure: state.structure };
+      }
       if (action === "starter-review") {
         reviews.push(request.postDataJSON());
         const next = reviewResponses.shift() || { status: 200, body: { ok: true } };
@@ -117,7 +128,7 @@ test("the currency step reviews pending style amounts inline without blocking pe
     await page.goto(`${base}/wedding.html?id=${WEDDING_ID}#step=money`);
     await page.waitForFunction(() => !document.getElementById("starter-pending-apply").hidden);
     await page.locator("#currency").selectOption("USD");
-    await page.locator("#starter-pending-hint").filter({ hasText: /Save your currency change first/ }).waitFor();
+    await page.locator("#starter-pending-hint").filter({ hasText: /Saving a different currency permanently clears/ }).waitFor();
     assert.equal(await apply.isDisabled(), true);
     assert.equal(await omit.isDisabled(), true);
 
@@ -177,6 +188,48 @@ test("the currency step reviews pending style amounts inline without blocking pe
     const last = reviews.at(-1);
     assert.equal(last.decision, "omit");
     assert.equal(last.currency, "USD");
+    await page.locator("#guide-heading-money").waitFor();
+    assert.equal(await panel.isHidden(), true);
+    // Amount-free structures are real native editors and survive omission, edits, saves and reloads.
+    state = { currency: "KES", pending, structure: WSStarterSetup.structure(pending), capabilities: {
+      status: 200, currencies: [{ code: "KES", name: "Kenyan shilling", methods: [{ name: "M-Pesa", markets: ["KE"] }] },
+        { code: "USD", name: "US dollar", methods: [{ name: "Card", markets: ["US"] }] }]
+    } };
+    await page.goto("about:blank");
+    await page.goto(`${base}/wedding.html?id=${WEDDING_ID}#step=money`);
+    await panel.waitFor();
+    await Promise.all([page.waitForEvent("load"), omit.click()]);
+    await page.locator("#guide-heading-money").waitFor();
+    assert.equal(state.structure.tiers.length, 2);
+    await page.evaluate(() => { location.hash = "#step=couple"; });
+    await page.locator("#couple-names").fill("Our own couple");
+    await page.evaluate(() => { location.hash = "#step=giving"; });
+    await page.locator(".tier-name").first().fill("Our editable package");
+    assert.equal(await page.locator(".tier-min-amount").first().inputValue(), "");
+    assert.equal(await page.locator(".registry-target").first().inputValue(), "");
+    assert.equal(await page.locator("#vip-price").inputValue(), "");
+    await page.evaluate(() => document.getElementById("edit-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    await page.waitForFunction(() => !document.getElementById("edit-form").dataset.submitting);
+    assert.equal(state.structure.tiers[0].name, "Our editable package");
+    await page.reload();
+    await page.locator("#guide-heading-giving").waitFor();
+    assert.equal(await page.locator(".tier-name").first().inputValue(), "Our editable package");
+    await page.evaluate(() => { location.hash = "#step=campaigns"; });
+    await page.locator(".cp-name").first().waitFor();
+    assert.equal(await page.locator(".ms-row").count(), 2);
+    assert.equal(await page.locator(".ms-target").first().inputValue(), "");
+    // Even nested, newly typed amounts are cleared when the owner chooses a different currency.
+    await page.locator(".cp-goal").first().fill("800");
+    await page.locator(".ms-target").first().fill("100");
+    await page.evaluate(() => { location.hash = "#step=money"; });
+    await page.locator("#currency").selectOption("USD");
+    assert.equal(await page.locator(".cp-goal").first().inputValue(), "");
+    assert.equal(await page.locator(".ms-target").first().inputValue(), "");
+    await page.evaluate(() => document.getElementById("edit-form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    await page.waitForFunction(() => !document.getElementById("edit-form").dataset.submitting);
+    assert.equal(state.currency, "USD");
+    assert.equal(state.structure.campaigns[0].milestones[0].targetMinor, null);
+    await page.reload();
     await page.locator("#guide-heading-money").waitFor();
     assert.equal(await panel.isHidden(), true);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "no overflow at 320px");

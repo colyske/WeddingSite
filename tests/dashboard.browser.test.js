@@ -5,6 +5,9 @@ import { readFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { publicWeddingStyle } from "../server/wedding-style.js";
+
+const showcaseStyle = await publicWeddingStyle("showcase-wedding");
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" };
@@ -45,7 +48,7 @@ async function openDashboard(handlers = {}, query = "") {
   await page.route("**/api/guest*", route => {
     const action = new URL(route.request().url()).searchParams.get("action");
     const handler = handlers[`guest:${action}`];
-    return handler ? handler(route) : route.fulfill({ status: 404, body: "{}" });
+    return handler ? handler(route) : route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ style: showcaseStyle }) });
   });
   await page.route("**/api/weddings*", async route => {
     const url = new URL(route.request().url());
@@ -60,7 +63,7 @@ async function openDashboard(handlers = {}, query = "") {
   });
   await page.goto(`${base}/dashboard.html${query}`);
   await page.waitForLoadState("networkidle");
-  await page.locator("#create-submit").waitFor();
+  if (!query.includes("style=") || query.includes("unavailable-style")) await page.locator("#create-submit").waitFor();
   return { page, calls, errors, close: () => context.close() };
 }
 
@@ -97,12 +100,15 @@ test("create entry makes one idempotent draft request and continues to the share
   assert.equal(creates[0].body.coupleNames, "Sarah & John");
   assert.ok(creates[0].body.requestKey);
   assert.equal(creates[0].body.weddingDate, null);
-  assert.deepEqual(creates[0].body.venues, []);
+  assert.equal(creates[0].body.styleSlug, "showcase-wedding");
+  assert.deepEqual(creates[0].body.palette, showcaseStyle.palette);
+  assert.deepEqual(creates[0].body.venues, showcaseStyle.venues);
+  assert.equal(creates[0].body.starterDeferred, true);
   assert.equal(Object.hasOwn(creates[0].body, "referral"), false, "no referral choice is fabricated");
   await close();
 });
 
-test("supported platform default preselects only a new names-only draft currency", { skip }, async () => {
+test("supported platform default selects destination currency without changing showcase source currency", { skip }, async () => {
   const id = "33333333-3333-3333-3333-333333333333";
   const { page, calls, close } = await openDashboard({
     "collection-capabilities": json(200, {
@@ -116,11 +122,12 @@ test("supported platform default preselects only a new names-only draft currency
   await page.waitForURL(`**/wedding.html?id=${id}&slug=default-currency#step=couple`);
   const create = calls.find(call => call.action === "create");
   assert.equal(create.body.currency, "KES");
-  assert.equal(create.body.starterSetup, undefined, "a default does not fabricate a priced starter");
+  assert.equal(create.body.starterSetup.currency, "KES");
+  assert.equal(create.body.starterSetup.reviewed, false, "showcase money is never auto-reviewed");
   await close();
 });
 
-test("unavailable style entry checks the default lazily before creating a names-only draft", { skip }, async () => {
+test("unavailable style entry never silently creates an empty substitute", { skip }, async () => {
   const id = "44444444-4444-4444-4444-444444444444";
   const { page, calls, close } = await openDashboard({
     "guest:style": json(404, { error: "This wedding is not available for public setup reuse." }),
@@ -135,9 +142,8 @@ test("unavailable style entry checks the default lazily before creating a names-
     "a failed starter entry does not preflight currency before the user chooses a plain draft");
   await page.fill("#couple-names", "Amina & Joseph");
   await page.click("#create-submit");
-  await page.waitForURL(`**/wedding.html?id=${id}&slug=fallback-currency#step=couple`);
-  assert.equal(calls.filter(call => call.action === "collection-capabilities").length, 1);
-  assert.equal(calls.find(call => call.action === "create").body.currency, "KES");
+  assert.match(await page.locator("#notice").innerText(), /no empty replacement draft/);
+  assert.equal(calls.filter(call => call.action === "create").length, 0);
   await close();
 });
 
@@ -162,14 +168,28 @@ for (const [label, handler, pattern] of [
   });
 }
 
-test("client validation focuses missing names and sends no create request", { skip }, async () => {
+test("scratch allows names to be answered in the native private guide", { skip }, async () => {
   const { page, calls, close } = await openDashboard({ create: json(201, { weddingId: "x", slug: "x" }) });
   await page.click("#create-submit");
-  assert.match(await page.locator("#notice").innerText(), /names/i);
-  assert.equal(await page.locator("#couple-names").evaluate(element => element === document.activeElement), true);
-  assert.equal(calls.filter(call => call.action === "create").length, 0);
-  await page.fill("#couple-names", "Amina & Joseph");
-  assert.equal(await page.locator("#couple-names").inputValue(), "Amina & Joseph");
+  await page.waitForURL("**/wedding.html?*#step=couple");
+  assert.equal(calls.filter(call => call.action === "create").length, 1);
+  assert.equal(calls.find(call => call.action === "create").body.coupleNames, "");
+  await close();
+});
+
+test("explicit public style wins over the scratch showcase default", { skip }, async () => {
+  const alternate = structuredClone(showcaseStyle);
+  alternate.palette = ["#112233", "#334455", "#667788", "#eeeeee"];
+  alternate.venues = alternate.venues.slice(0, 2);
+  const { page, calls, close } = await openDashboard({
+    "guest:style": json(200, { style: alternate }),
+    create: json(201, { weddingId: "x", slug: "alternative" })
+  }, "?style=another-public-wedding");
+  await page.waitForURL("**/wedding.html?*#step=couple");
+  const created = calls.find(call => call.action === "create").body;
+  assert.equal(created.styleSlug, "another-public-wedding");
+  assert.deepEqual(created.palette, alternate.palette);
+  assert.deepEqual(created.venues, alternate.venues);
   await close();
 });
 
@@ -230,5 +250,6 @@ test("owner profile link opens the account page and stays hidden for clients", {
 
 test.after(async () => {
   await browser?.close();
+  server.closeAllConnections();
   await new Promise(resolve => server.close(resolve));
 });

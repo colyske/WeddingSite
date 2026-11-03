@@ -184,6 +184,47 @@
   const prompts = () => ({ attire: "Add your own dress guidance and accessibility considerations.",
     travel: "Add confirmed transport, accommodation and accessibility guidance for your own venues.",
     faq: [{ q: "What should guests know before attending?", a: "Replace this prompt with guidance for your own celebration." }] });
+  function structure(config) {
+    return {
+      tiers: config.tiers.map(item => ({ name: item.name, perks: item.perks, minimumMinor: null })),
+      registry: config.registry.map(item => ({ name: item.name, category: item.category, description: item.description, targetMinor: null })),
+      vip: config.vip ? { title: config.vip.title, description: config.vip.description, seats: config.vip.seats, priceMinor: null } : null,
+      featured: config.featured ? { slots: config.featured.slots, minimumMinor: null, incrementMinor: null } : null,
+      campaigns: config.campaigns.map(item => ({ name: item.name, purpose: item.purpose, enabled: item.enabled, goalMinor: null,
+        milestones: item.milestones.map(m => ({ name: m.name, description: m.description, targetMinor: null })) }))
+    };
+  }
+  function restoreStructure(value) {
+    keysOnly(value, ["tiers", "registry", "vip", "featured", "campaigns"], "draft structures");
+    const list = (items, max) => {
+      if (!Array.isArray(items) || items.length > max) throw new Error("Check draft structure limits.");
+      return items;
+    };
+    const record = (item, fields, amounts) => {
+      keysOnly(item, [...Object.keys(fields), ...amounts], "draft structure");
+      for (const [key, max] of Object.entries(fields)) text(item[key], max, "draft wording", true);
+      if (amounts.some(key => item[key] !== null)) throw new Error("Draft structures cannot contain amounts.");
+    };
+    list(value.tiers, 6).forEach(item => record(item, { name: 60, perks: 240 }, ["minimumMinor"]));
+    list(value.registry, 20).forEach(item => record(item, { name: 100, category: 50, description: 240 }, ["targetMinor"]));
+    if (value.vip !== null) {
+      const { seats, ...rest } = value.vip;
+      record(rest, { title: 80, description: 240 }, ["priceMinor"]);
+      if (!Number.isInteger(seats) || seats < 1 || seats > 500) throw new Error("Check draft seating.");
+    }
+    if (value.featured !== null) {
+      keysOnly(value.featured, ["slots", "minimumMinor", "incrementMinor"], "draft featured offering");
+      if (!Number.isInteger(value.featured.slots) || value.featured.slots < 1 || value.featured.slots > 20 ||
+          value.featured.minimumMinor !== null || value.featured.incrementMinor !== null) throw new Error("Check draft featured offering.");
+    }
+    list(value.campaigns, 6).forEach(item => {
+      const { enabled, milestones, ...rest } = item;
+      record(rest, { name: 100, purpose: 240 }, ["goalMinor"]);
+      if (typeof enabled !== "boolean") throw new Error("Check draft goal visibility.");
+      list(milestones, 10).forEach(m => record(m, { name: 100, description: 240 }, ["targetMinor"]));
+    });
+    return clone(value);
+  }
   root.WSStarterSetup = Object.freeze({ featureKeys, defaultFeatures, normalize, restoreEditable, fictional, clearMoney, prompts,
-    hasSamples: currency => Object.hasOwn(prices, currency), clone });
+    structure, restoreStructure, hasSamples: currency => Object.hasOwn(prices, currency), clone });
 })(globalThis);

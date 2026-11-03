@@ -96,21 +96,13 @@
     capabilitiesRequest.catch(() => { capabilitiesRequest = null; });
     return capabilitiesRequest;
   }
-  // Owner default currency only preselects names-only drafts; no setting keeps the legacy USD draft.
+  // Destination defaults never select the source currency or grant collection readiness.
   function renderDraftCurrency() {
     const status = platformCurrency, note = $("create-currency-note");
-    const choose = !selectedStarter && status?.configured === true && !status.supported;
+    const choose = status?.configured === true && !status.supported;
     $("draft-currency-choice").hidden = !choose;
     $("draft-currency-retry").hidden = !(choose && !draftCurrencies.length) && !status?.unavailable;
-    if (status?.configured === true && status.supported) {
-      note.textContent = `New drafts start in ${status.currency}, the platform default currency, and have no offers or prices. You can choose another currency that has a ready guest-payment option in your guide. Existing saved currencies and paid amounts are never converted automatically.`;
-    } else if (status?.configured === true) {
-      note.textContent = draftCurrencies.length
-        ? `The platform default currency (${status.currency}) does not currently have a ready guest-payment option. Choose a supported currency for this draft; it has no offers or prices yet.`
-        : `The platform default currency (${status.currency}) does not currently have a ready guest-payment option, and no other collection currency is ready. Creating a names-only draft is paused; your answers are kept.`;
-    } else if (status?.unavailable) {
-      note.textContent = "We could not check the platform default currency right now. Check again, or continue: this draft will start in USD with no offers or prices, and you can choose a supported currency in your guide.";
-    } else note.textContent = "New drafts start in USD and have no offers or prices. Before adding fundraising, choose a currency that currently has a ready guest-payment option. Existing saved currencies and paid amounts are never converted automatically.";
+    note.textContent = `Your unpaid draft starts in ${draftCurrency()} using your destination defaults, not the source wedding's currency. You can personalize now even if payment support cannot be checked. Matching source amounts require explicit supported-currency review in the guide; a different currency clears every source amount, never converts it. Unpriced structures remain editable.`;
   }
   async function checkDraftCurrency(force = false) {
     const selected = $("draft-currency").value;
@@ -129,7 +121,7 @@
     renderDraftCurrency();
   }
   function draftCurrency() {
-    if (platformCurrency?.configured === true) return platformCurrency.supported ? platformCurrency.currency : $("draft-currency").value;
+    if (platformCurrency?.configured === true) return platformCurrency.supported ? platformCurrency.currency : $("draft-currency").value || "USD";
     return "USD";
   }
   function rememberStarter() {
@@ -161,7 +153,7 @@
       ? "Your existing names and saved answers have not been replaced. Choose explicitly whether to use this new starting point."
       : selectedStarter.inspirationId
         ? "Author-owned fictional inspiration, not customers, donations or paid sponsorships. Examples are illustrative and editable."
-        : "Public reusable configuration only. Public visibility is not permission to copy personal content: neutral prompts replace personal stories, photos, event details and original writing.";
+        : "Public reusable configuration only: colours, event types/order, shared venue groups, RSVP choices, features and unpriced sponsor/gift/goal structures. Public visibility is not permission to copy personal content: neutral editable prompts replace original writing, identities, locations and instructions.";
     if (selectedStarter && !pendingStarter) $("inspiration-selection-copy").textContent +=
       " Your private guide opens next. Source prices stay pending in their original currency until you review them in the guide; payment availability does not block personalization.";
   }
@@ -194,6 +186,8 @@
         const text = sessionStorage.getItem(starterKey);
         if (text) saved = JSON.parse(text);
       } catch (error) { throw new Error(`Could not restore this tab's starter selection: ${error.message}`); }
+      const entry = new URLSearchParams(location.search);
+      if (saved?.snapshot?.completed && !entry.has("style") && !entry.has("inspiration") && !entry.has("scratch")) saved = null;
       if (saved?.source) {
         if (!$("couple-names").value && typeof saved.names === "string") $("couple-names").value = saved.names;
         if (/^[0-9a-f-]{36}$/i.test(saved.requestKey || "")) requestKey = saved.requestKey;
@@ -221,7 +215,13 @@
             } else await chooseStarter(item);
           }
         }
+      } else if (params.get("scratch") === "showcase" || (!selectedStarter && !legacyAnswers)) {
+        const source = { styleSlug: "showcase-wedding" };
+        if (!selectedStarter || JSON.stringify(selectedStarter.source) !== JSON.stringify(source)) {
+          await chooseStarter(await loadStarter(source));
+        }
       }
+      if (!selectedStarter?.submittedPayload) draftCurrencyCheck = checkDraftCurrency();
     } catch (error) { starterFailed = true; setNotice(`${error.message} Your existing answers are kept.`, "bad"); }
     finally {
       starterLoading = false;
@@ -341,7 +341,7 @@
       venues
     };
     if (selectedStarter) Object.assign(payload, selectedStarter.source, {
-      currency: starterConfig().currency, palette: [...selectedStarter.palette], starterDeferred: true,
+      currency: fields.currency || draftCurrency(), palette: [...selectedStarter.palette], starterDeferred: true,
       weddingDate: null, location: "", venues: WSStarterSetup.clone(selectedStarter.venues),
       starterSetup: starterConfig()
     });
@@ -351,6 +351,7 @@
   async function submitCreate(event) {
     event.preventDefault();
     if (state.submitting || state.created || starterLoading) return;
+    if (starterFailed) return setNotice("That setup could not be loaded. Your answers are kept. Retry the link or choose From scratch to load the showcase default; no empty replacement draft was created.", "bad");
     const names = $("couple-names").value.trim();
     $("couple-names").removeAttribute("aria-invalid");
     if (!names && !selectedStarter) {
@@ -370,10 +371,6 @@
     if (!selectedStarter && !($("include-legacy-answers")?.checked && legacyAnswers?.fields?.currency)) {
       if (!platformCurrency) draftCurrencyCheck = checkDraftCurrency();
       await draftCurrencyCheck;
-      if (platformCurrency?.configured === true && !draftCurrencies.some(item => item.code === draftCurrency())) {
-        $("draft-currency").focus();
-        return setNotice("Choose a currency that currently has a ready guest-payment option before creating this draft. Your answers are kept.", "bad", $("draft-currency"));
-      }
     }
     if (!referralReady) {
       try { await loadReferralDisclosure(); }
@@ -412,6 +409,10 @@
       }
       if (!data.weddingId || !data.slug) throw new Error("The server did not return a wedding address. Your answers are still here; please retry.");
       state.created = { weddingId: data.weddingId, slug: data.slug, names };
+      if (selectedStarter) {
+        selectedStarter.completed = true;
+        rememberStarter();
+      }
       WSReferrals.clear();
       referralDisclosure = null;
       $("client-referral-disclosure").hidden = true;
@@ -503,7 +504,7 @@
     prepareLegacyAnswerChoice();
     loadWeddings();
     Promise.all([initializeStarter(), loadReferralDisclosure()]).then(() => {
-      const sourceRequested = new URLSearchParams(location.search).has("style") || new URLSearchParams(location.search).has("inspiration");
+      const sourceRequested = new URLSearchParams(location.search).has("style") || new URLSearchParams(location.search).has("inspiration") || new URLSearchParams(location.search).get("scratch") === "showcase";
       if (sourceRequested && selectedStarter && !pendingStarter && !starterFailed && !referralDisclosure?.intent_id) {
         submitCreate({ preventDefault() {} });
       }

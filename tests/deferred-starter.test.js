@@ -52,6 +52,7 @@ test("unpaid starter create/replay never consults collection; pending review is 
       assert.equal(url.searchParams.get("client_owner_id"), `eq.${owner}`);
       return json(foreignOwner ? [] : [{ id: owner, currency: "USD", published_at: null }]);
     }
+    if (url.pathname === "/rest/v1/wedding_starter_structures") return json(pending ? [{ wedding_id: owner, setup: WSStarterSetup.structure(pending) }] : []);
     if (url.pathname === "/rest/v1/wedding_starter_pending") {
       assert.equal(options.headers.apikey, "anon", "pending reads use owner RLS, not service bypass");
       return json(pending ? [{ wedding_id: owner, setup: pending }] : []);

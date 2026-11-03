@@ -40,17 +40,17 @@ controls are not shown. Starter copying neither reads nor writes legacy
 `amount_presets`. Fixed package/offer prices, campaign goals, RSVP fees and
 legal/payment minimum validation remain separate and unchanged.
 
-### Wedding inspiration and public design reuse
+### Public setup reuse and the showcase default
 
-`/inspiration.html` offers three author-owned, explicitly fictional examples,
-classified by the static `author-owned-fictional-inspiration` allowlist in
-`inspiration-fixtures.js`. Previewing makes no server writes; **Use this style**
-creates an unpaid private draft and opens the native guide.
-Fictional names, dates, times and venues never fill required answers. Curated
-sample event titles/notes and offering/goal structures can be personalized.
-Welcome stories remain preview-only; editable illustrative attire/travel/FAQ
-examples can enter the new private draft. These fixtures
-have no checkout, guests, purchased sponsorships, donations or activity.
+Browse published weddings at `/#weddings`. The retired `/inspiration.html` URL
+redirects there (permanent hosting redirect and static fallback); its catalogue
+UI/assets and discovery links are removed. Shared legacy fixture helpers remain
+only for previously saved starter/retry compatibility, not product discovery.
+**From scratch** uses the read-only, explicitly fictional showcase's reusable
+configuration through the same unpaid, idempotent native draft path. A selected
+public wedding overrides that default. The shared guest layout and saved palette,
+event/activity sequence, feature choices and unpriced offering/goal structures
+are populated, not merely previewed. No source wedding is edited.
 
 Eligible public wedding pages also offer **Use this style**, for past, current
 and future celebrations alike. `server/wedding-style.js` reads an explicit
@@ -63,7 +63,7 @@ package, event, registry, milestone and meal labels. Sources are never edited.
 | Couple-configurable surface | Copied into starter | Needs personalization / review | Never copied |
 |---|---|---|---|
 | Theme/layout | Palette; existing shared platform layout | Colour choices | Photos, client-authored artwork, music URL |
-| Pre-wedding / wedding-day events | Explicit type and list order; curated sample titles/notes; real-source structure with generic titles/notes | Own title, description, main event, date, time, venue, address, map, personal instructions | Real-source dates/times/addresses, exact event text, invitations |
+| Pre-wedding / wedding-day events | Pre/main type, sequence, main-event flag; recognized activity types mapped to fixed editable labels; repeated public venues represented by generic venue groups | Own title, description, date, time, venue, address, map and instructions | Source prose, dates/times/addresses/map links, private planning tasks, assignees/status/history |
 | Couple/story/site address | No real/fictitious identity claims | Own names, address slug, welcome story | Source names, identities, contacts |
 | Guest RSVP | Supported fee structures and premium meal-choice count with generic labels | Fees, meal labels, capacity; standard fixed RSVP questions retain existing behaviour | Guest list, answers, attendance, passes, check-ins, custom questions (not supported) |
 | Sponsorship offerings | Public tier count/prices; curated sample offerings; generic real-source package names/terms | Own names, offering promises and minimums | Sponsor identities, purchased sponsorships, paid amounts |
@@ -71,13 +71,13 @@ package, event, registry, milestone and meal labels. Sources are never edited.
 | VIP offerings | Public total-seat offering and price, generic title/notes | Actual availability, description, own price | Seats sold, reservations, purchasers |
 | Contribution/bid suggestions | Nothing; guests type amounts | Existing minimum validation remains | Source suggested amounts, bids or payments |
 | Featured sponsorship | Public enabled offering's slot/minimum/increment structure; starter is always disabled with null dates | New campaign window and explicit enablement | Prior auction windows, bids, winners |
-| FAQ/travel/attire | Curated illustrative copy or neutral editable prompts | Own answers and guest guidance | Client-authored FAQ/travel/attire/personal instructions |
+| FAQ/travel/attire | Neutral editable prompts | Own answers and guest guidance | Source FAQ/travel/attire/personal instructions |
 | Money/account/privacy | Nothing | Own receiving/payment configuration and real consent | KYC, payout/provider/referral settings, helpers/invites, financial records |
 | Publication/lifecycle | New private draft only | Own publication readiness/review | Published/paid/archive/moderation state, live-readiness claims |
 
 Style entry goes directly to a private wedding guide, without a collection
 preflight or redundant review form. Names may be left blank until the native
-couple step; ordinary dashboard creation still asks for names. Actual referral
+couple step, including From scratch. Actual referral
 attribution still requires an explicit accept/decline decision. The native guide controls edit
 packages, RSVP settings, registry/VIP, fundraising goals/milestones, featured
 campaign structure and guest prompts; there is no duplicate setup form.
@@ -85,19 +85,27 @@ Other ordinary wizard entry points remain unchanged. No custom RSVP-question
 schema is introduced. Names/story/date/venue readiness is not inherited.
 Cover photos and guest instructions remain optional (the current wizard contract).
 
-Numeric configuration is retained owner-only in `starter_pending_setup`, marked
-`reviewed:false` in its original source currency. No active fees, packages, goals,
+When destination and source currencies match, numeric configuration is retained
+owner-only in `starter_pending_setup`, marked `reviewed:false` in its original source currency. No active fees, packages, goals,
 VIP or featured offering is created until review. Palette/events/guest prompts,
 meal labels and feature preferences are immediately editable; RSVP starts free.
 The native currency step offers explicit same-currency application only after a
 fresh authenticated collection check, or explicit omission of source prices.
 A mismatch, empty result or failure is inline and does not block personalization
-or discard pending structure. Changing currency never relabels or converts
-source amounts. Explicit omission keeps personalized settings and lets the
-couple supply their own prices/goals. Pending monetary review blocks publication,
+or discard pending structure. `wedding_starter_structures` stores independent,
+owner-only unpriced editing scaffolds for packages, gifts, VIP/featured offers
+and nested campaign milestones. They hydrate the actual native editors, survive
+explicit omission and save/reload, and are not usable checkout offers.
+Choosing a different destination currency clears **all** source amounts, including
+nested milestone targets and already-reviewed configuration on never-published
+private template drafts, retaining the unpriced structures. Currency changes
+are refused if that template has publication or financial history; historical
+records are never cleared, converted or relabelled. The server ignores old monetary
+values in a currency-change save, not just the UI. Destination defaults never
+silently pick the source currency. Pending monetary review blocks publication,
 not private saves. Static accounting membership is pinned to the existing SQL
 allowlist, not runtime ICU defaults, and is never proof of collection readiness.
-Fictional samples remain hand-authored, not FX conversions or received funds.
+The read-only showcase is an explicitly fictional demonstration, never a customer.
 Standard custom-sponsorship/legal minimums are unchanged.
 
 `server/starter-capabilities.js` reuses the shared read-only
