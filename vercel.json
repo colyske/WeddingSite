@@ -1,4 +1,7 @@
 {
+  "redirects": [
+    { "source": "/inspiration.html", "destination": "/#weddings", "permanent": true }
+  ],
   "rewrites": [
     { "source": "/api/b2c", "destination": "/api/admin?b2c=1" },
     { "source": "/api/referrals", "destination": "/api/weddings?client_referrals=1" },

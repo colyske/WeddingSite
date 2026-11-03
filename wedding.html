@@ -545,6 +545,7 @@
 
   <script src="site-urls.js"></script>
   <script src="currencies.js"></script>
+  <script src="starter-setup.js"></script>
   <script src="fx.js"></script>
   <script src="auth-client.js"></script>
   <script src="social-links.js"></script>
@@ -562,6 +563,52 @@
     let extrasLoaded = false;
     let extrasDirty = false;
     let campaignCurrency = "USD";
+    function unpricedStructure() {
+      const w = window.__wedding;
+      return w?.starter_structure || (w?.starter_pending_setup ? WSStarterSetup.structure(w.starter_pending_setup) :
+        w?.starter_review_note ? { tiers: [], registry: [], vip: null, campaigns: [],
+          featured: w.featuredSponsorCampaign ? { slots: w.featuredSponsorCampaign.slot_count, minimumMinor: null, incrementMinor: null } : null } : null);
+    }
+    function captureUnpricedStructure() {
+      const current = window.__wedding?.starter_structure ||
+        ($("currency").value !== window.__wedding?.currency ? unpricedStructure() : null);
+      if (!current) return null;
+      const value = (row, selector) => row.querySelector(selector).value.trim();
+      const registry = [...$("registry-list").querySelectorAll(".registry-item")]
+        .filter(row => !value(row, ".registry-id") && !Number(value(row, ".registry-target")) &&
+          [".registry-name", ".registry-category", ".registry-desc"].some(key => value(row, key)))
+        .map(row => ({ name: value(row, ".registry-name"), category: value(row, ".registry-category"),
+          description: value(row, ".registry-desc"), targetMinor: null }));
+      const tiers = [...$("tiers-list").querySelectorAll(".tier-item")]
+        .filter(row => !value(row, ".tier-id") && !Number(value(row, ".tier-min-amount")) &&
+          [".tier-name", ".tier-perks"].some(key => value(row, key)))
+        .map(row => ({ name: value(row, ".tier-name"), perks: value(row, ".tier-perks"), minimumMinor: null }));
+      const campaigns = [...$("campaign-list").querySelectorAll(".campaign-card")]
+        .filter(card => !card.dataset.id && !Number(value(card, ".cp-goal")) && !blankCampaign(card))
+        .map(card => {
+          if ([...card.querySelectorAll(".ms-target")].some(input => Number(input.value))) {
+            throw new Error("Complete the campaign goal or clear its milestone amounts to keep an unpriced structure.");
+          }
+          return { name: value(card, ".cp-name"), purpose: value(card, ".cp-purpose"), enabled: card.querySelector(".cp-enabled").checked,
+            goalMinor: null, milestones: [...card.querySelectorAll(".ms-row")].map(row => ({
+              name: value(row, ".ms-name"), description: value(row, ".ms-desc"), targetMinor: null
+            })) };
+        });
+      return WSStarterSetup.restoreStructure({ registry, tiers, campaigns,
+        vip: !Number($("vip-price").value) && (current.vip || $("vip-description").value.trim())
+          ? { title: $("vip-title").value, description: $("vip-description").value, seats: Number($("vip-seats").value), priceMinor: null } : null,
+        featured: current.featured && !Number($("featured-sponsor-minimum").value) && !Number($("featured-sponsor-increment").value)
+          ? { slots: Number($("featured-sponsor-slots").value), minimumMinor: null, incrementMinor: null } : null });
+    }
+    async function saveUnpricedStructure(structure) {
+      if (!structure) return;
+      const res = await WS.api("/api/weddings?action=starter-structure", {
+        method: "POST", body: JSON.stringify({ weddingId, structure })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not save unfinished offering structures. Your answers are still on this page.");
+      window.__wedding.starter_structure = data.structure;
+    }
     const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     const notice = (text, bad) => { 
       const el = $("notice");
@@ -1166,7 +1213,7 @@
       if (Number(rsvp.feeMinor) || Number(rsvp.extraGuestFeeMinor) || Number(rsvp.premiumDietFeeMinor)) items.push(`RSVP fees: base ${amount(rsvp.feeMinor)}, extra guest ${amount(rsvp.extraGuestFeeMinor)}, premium meal ${amount(rsvp.premiumDietFeeMinor)}`);
       if (pending.vip) items.push(`VIP seating at ${amount(pending.vip.priceMinor)} per seat`);
       if (pending.featured) items.push(`Featured sponsor bidding from ${amount(pending.featured.minimumMinor)}`);
-      $("starter-pending-intro").textContent = `Your palette, events and wording are already in your draft. The style also came with amounts in ${pending.currency}. None of them are on your wedding yet, and nothing is charged until you publish and guests choose to pay.`;
+      $("starter-pending-intro").textContent = `Your colours, event/activity sequence, venue groups, RSVP choices and unpriced offering/goal structures are already editable in your draft. Generic prompts replaced personal content. The style also came with amounts in ${pending.currency}; none are applied. Choose that currently supported currency and explicitly review them to use them. A different currency clears all source amounts, never converts them.`;
       $("starter-pending-items").replaceChildren(...(items.length ? items : ["No amounts to review"]).map(text => {
         const li = document.createElement("li");
         li.innerHTML = `<span aria-hidden="true">&#9675;</span> To review: `;
@@ -1180,7 +1227,7 @@
       apply.textContent = `Add these ${pending.currency} amounts to my wedding`;
       apply.hidden = !(saved === pending.currency && supported);
       let hint;
-      if (selected && selected !== saved) hint = `Save your currency change first, then come back to decide about these amounts.`;
+      if (selected && selected !== saved) hint = "Saving a different currency permanently clears every source amount, including nested goals and prices. Unpriced structures and your other answers remain editable.";
       else if (saved !== pending.currency) hint = `Your wedding uses ${saved}. These ${pending.currency} amounts can't be converted or relabelled, so you can leave them out and set your own amounts in ${saved}.`;
       else if (!supported) hint = `Guest payments in ${pending.currency} aren't confirmed for your account right now. Keep personalizing; you can add these amounts later or leave them out.`;
       else hint = "You can still edit or remove any amount afterwards.";
@@ -1235,10 +1282,24 @@
       const changed = Boolean(savedCurrency && currency && savedCurrency !== currency);
       $("currency-change-help").hidden = !changed;
       $("currency-change-help").textContent = changed
-        ? `Changing from ${savedCurrency} to ${currency} will not convert your saved fees, goals, prices or minimums. Their numbers stay the same; review them in Guest RSVP and Fundraising before saving.`
+        ? unpricedStructure() || window.__wedding?.starter_pending_setup
+          ? `Saving ${currency} clears every source fee, price, goal and nested milestone, never converts or relabels them. The unpriced structures remain editable. Published weddings or financial history prevent this currency reset.`
+          : `Changing from ${savedCurrency} to ${currency} will not convert your saved fees, goals, prices or minimums. Review all amounts before saving.`
         : "";
     }
-    $("currency").addEventListener("change", () => { updateCurrencyLabels(); renderStarterPending(); });
+    $("currency").addEventListener("change", () => {
+      if ($("currency").value !== window.__wedding?.currency && (unpricedStructure() || window.__wedding?.starter_pending_setup)) {
+        ["rsvp-fee", "extra-guest-fee", "premium-diet-fee", "vip-price", "featured-sponsor-minimum", "featured-sponsor-increment"]
+          .forEach(id => { $(id).value = ""; });
+        document.querySelectorAll(".registry-target,.tier-min-amount,.cp-goal,.ms-target,.registry-id,.tier-id")
+          .forEach(input => { input.value = ""; });
+        document.querySelectorAll(".campaign-card,.ms-row").forEach(row => { row.dataset.id = ""; });
+        $("featured-sponsor-enabled").checked = false;
+        $("featured-sponsor-starts").value = $("featured-sponsor-closes").value = "";
+        campaignsDirty = true;
+      }
+      updateCurrencyLabels(); renderStarterPending();
+    });
 
     function showSavedPayoutPreference(method) {
       const select = $("payout-method");
@@ -1436,15 +1497,16 @@
         $("premium-diet-fee").value = ((w.premium_diet_fee_minor || 0) / 100).toFixed(2);
         $("premium-diet-options").value = (w.premium_diet_options || []).join(", ");
         $("attire-notes").value = w.attire_notes || "";
+        const scaffold = w.starter_structure;
         const featuredCampaign = w.featuredSponsorCampaign || {};
         $("featured-sponsor-enabled").checked = featuredCampaign.enabled === true;
         $("featured-sponsor-starts").value = featuredCampaign.starts_at ? toLocalDateTimeValue(featuredCampaign.starts_at) : "";
         $("featured-sponsor-closes").value = featuredCampaign.closes_at ? toLocalDateTimeValue(featuredCampaign.closes_at) : "";
-        $("featured-sponsor-slots").value = featuredCampaign.slot_count || 3;
+        $("featured-sponsor-slots").value = featuredCampaign.slot_count || scaffold?.featured?.slots || 3;
         $("featured-sponsor-minimum").value = featuredCampaign.minimum_bid_minor
-          ? (featuredCampaign.minimum_bid_minor / 100).toFixed(2) : "25.00";
+          ? (featuredCampaign.minimum_bid_minor / 100).toFixed(2) : scaffold ? "" : "25.00";
         $("featured-sponsor-increment").value = featuredCampaign.bid_increment_minor
-          ? (featuredCampaign.bid_increment_minor / 100).toFixed(2) : "5.00";
+          ? (featuredCampaign.bid_increment_minor / 100).toFixed(2) : scaffold ? "" : "5.00";
         syncFeaturedRequirements();
 
         // Load venues
@@ -1487,7 +1549,7 @@
         // Load registry items
         if (w.registry && Array.isArray(w.registry)) {
           $("registry-list").innerHTML = "";
-          w.registry.forEach((reg, idx) => {
+          [...w.registry, ...(scaffold?.registry || []).map(item => ({ ...item, target_amount_minor: null }))].forEach((reg, idx) => {
             const id = `registry-${idx}`;
             const html = `
               <div class="registry-item" data-registry-id="${id}">
@@ -1502,7 +1564,7 @@
                 </div>
                 <div>
                   <label>Target amount (<span data-currency-code>${esc(w.currency || "USD")}</span>)</label>
-                  <input type="number" class="registry-target" value="${(reg.target_amount_minor || 0) / 100}" min="1" step="0.01" placeholder="e.g. 5000">
+                  <input type="number" class="registry-target" value="${reg.target_amount_minor == null ? "" : reg.target_amount_minor / 100}" min="1" step="0.01" placeholder="Set your own amount">
                 </div>
                 <div>
                   <label>Description</label>
@@ -1523,13 +1585,13 @@
               item.remove();
             });
           });
-          registryCount = w.registry.length;
+          registryCount = $("registry-list").children.length;
         }
 
         // Load sponsor tiers
         if (w.tiers && Array.isArray(w.tiers)) {
           $("tiers-list").innerHTML = "";
-          w.tiers.forEach((tier, idx) => {
+          [...w.tiers, ...(scaffold?.tiers || []).map(item => ({ ...item, min_amount_minor: null }))].forEach((tier, idx) => {
             const id = `tier-${idx}`;
             const html = `
               <div class="tier-item" data-tier-id="${id}">
@@ -1540,7 +1602,7 @@
                 </div>
                 <div>
                   <label>Minimum contribution (<span data-currency-code>${esc(w.currency || "USD")}</span>)</label>
-                  <input type="number" class="tier-min-amount" value="${(tier.min_amount_minor || 0) / 100}" min="1" step="0.01" placeholder="e.g. 1000">
+                  <input type="number" class="tier-min-amount" value="${tier.min_amount_minor == null ? "" : tier.min_amount_minor / 100}" min="1" step="0.01" placeholder="Set your own amount">
                 </div>
                 <div>
                   <label>Perks / Recognition</label>
@@ -1557,7 +1619,7 @@
               item.remove();
             });
           });
-          tierCount = w.tiers.length;
+          tierCount = $("tiers-list").children.length;
         }
 
         // Empty setup forms are shown ready to answer; blank rows are never submitted.
@@ -1565,10 +1627,10 @@
         if (!$("tiers-list").querySelector(".tier-item")) addTierEditor();
 
         // Load VIP offer
-        if (w.vip) {
-          const v = w.vip;
+        if (w.vip || scaffold?.vip) {
+          const v = w.vip || { ...scaffold.vip, seats_total: scaffold.vip.seats };
           $("vip-title").value = v.title || "VIP Seating";
-          $("vip-price").value = (v.price_minor || 0) / 100;
+          $("vip-price").value = v.price_minor == null ? "" : v.price_minor / 100;
           $("vip-seats").value = v.seats_total || 20;
           $("vip-description").value = v.description || "";
         } else {
@@ -1801,6 +1863,7 @@
           ? undefined
           : payoutMethod ? { method: payoutMethod, fields: {}, verified: false } : null;
 
+        const structure = captureUnpricedStructure();
         const res = await WS.api("/api/weddings?action=update", {
           method: "POST",
           body: JSON.stringify({
@@ -1823,7 +1886,7 @@
             extraGuestFee: Number($("extra-guest-fee").value || 0),
             premiumDietFee: Number($("premium-diet-fee").value || 0),
             premiumDietOptions: $("premium-diet-options").value,
-            featuredSponsorCampaign: {
+            featuredSponsorCampaign: !$("featured-sponsor-enabled").checked && !window.__wedding?.featuredSponsorCampaign ? undefined : {
               enabled: $("featured-sponsor-enabled").checked,
               startsAt: $("featured-sponsor-starts").value
                 ? new Date($("featured-sponsor-starts").value).toISOString() : "",
@@ -1869,6 +1932,7 @@
           updateCurrencyLabels(data.wedding.currency || $("currency").value);
         }
         const sectionSaveErrors = [];
+        await saveUnpricedStructure(structure);
         for (const [label, saveSection, dirty] of [
           ["fundraising campaigns", saveCampaigns, campaignsDirty],
           ["travel details and questions", saveExtras, extrasDirty]
@@ -2173,8 +2237,8 @@
         if (!r.ok) throw new Error(d.error || "Could not load fundraising campaigns.");
         campaignCurrency = d.currency || "USD";
         $("campaign-list").innerHTML = "";
-        (d.campaigns || []).forEach(c => $("campaign-list").appendChild(campaignCard(c)));
-        if (!d.campaigns?.length) $("campaign-list").appendChild(campaignCard());
+        [...(d.campaigns || []), ...(unpricedStructure()?.campaigns || [])].forEach(c => $("campaign-list").appendChild(campaignCard(c)));
+        if (!$("campaign-list").children.length) $("campaign-list").appendChild(campaignCard());
         campaignsDirty = false;
         const sum = d.summary || [];
         $("campaign-summary").innerHTML = sum.length ? sum.map(s => `<strong>${WS.esc(s.name)}</strong>: ${WS.money(s.raised_minor, campaignCurrency, true)} of ${WS.money(s.goal_minor, campaignCurrency, true)} · ${s.pledges} gift${s.pledges === 1 ? "" : "s"}${s.enabled ? "" : " (hidden)"}`).join("<br>") : "No campaigns yet.";
@@ -2213,7 +2277,8 @@
     }
     async function saveCampaigns() {
       if (!campaignsLoaded) throw new Error("Campaigns could not be loaded. Reload the page before saving this section.");
-      const campaigns = [...$("campaign-list").querySelectorAll(".campaign-card")].filter(card => !blankCampaign(card)).map(c => ({
+      const campaigns = [...$("campaign-list").querySelectorAll(".campaign-card")]
+        .filter(card => !blankCampaign(card) && (card.dataset.id || Number(card.querySelector(".cp-goal").value) > 0)).map(c => ({
         id: c.dataset.id || null, name: c.querySelector(".cp-name").value, goal: c.querySelector(".cp-goal").value,
         purpose: c.querySelector(".cp-purpose").value, enabled: c.querySelector(".cp-enabled").checked,
         milestones: [...c.querySelectorAll(".ms-row")].map(m => ({ id: m.dataset.id || null, name: m.querySelector(".ms-name").value, target: m.querySelector(".ms-target").value, description: m.querySelector(".ms-desc").value }))

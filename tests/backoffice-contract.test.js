@@ -41,7 +41,7 @@ test("migrations never grant client deletes on weddings and the back-office migr
 });
 
 test("every page loads the editorial theme and the shared footer", async () => {
-  const pages = (await readdir(root)).filter(f => f.endsWith(".html") && !["demo.html", "client-site.html"].includes(f));
+  const pages = (await readdir(root)).filter(f => f.endsWith(".html") && !["demo.html", "client-site.html", "inspiration.html"].includes(f));
   assert.ok(pages.length >= 10);
   for (const f of pages) {
     const html = await read(f);
@@ -50,6 +50,9 @@ test("every page loads the editorial theme and the shared footer", async () => {
   }
   const footer = await read("footer.js");
   assert.match(footer, /Organize your wedding your way/);
+  const legacy = await read("inspiration.html");
+  assert.match(legacy, /location\.replace\("\/#weddings"\)/);
+  assert.match(legacy, /http-equiv="refresh" content="0;url=\/#weddings"/);
 });
 
 test("landing wedding links use the guest route and weddings are never deleted from the UI", async () => {

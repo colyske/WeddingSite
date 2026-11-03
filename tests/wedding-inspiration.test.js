@@ -111,8 +111,10 @@ test("style endpoints allowlist public configuration, stage only current currenc
       return response([{ slot_count: 3, minimum_bid_minor: 1000000, bid_increment_minor: 250000 }]);
     }
     if (url.pathname === "/rest/v1/venues") {
-      assert.equal(url.searchParams.get("select"), "kind,is_main");
-      return response([{ kind: "pre" }, { kind: "main" }]);
+      assert.equal(url.searchParams.get("select"), "name,kind,is_main,address,map_link");
+      return response([{ name: "Secret Person introductions at Private House", kind: "pre", address: "PRIVATE_CANARY_VENUE" },
+        { name: "Secret Person fundraiser", kind: "pre", address: "PRIVATE_CANARY_VENUE" },
+        { name: "Secret Person ceremony", kind: "main", is_main: true, address: "PRIVATE_CANARY_OTHER" }]);
     }
     if (url.pathname === "/rest/v1/fundraising_streams") {
       assert.equal(url.searchParams.get("select"), "id,goal_minor");
@@ -159,6 +161,16 @@ test("style endpoints allowlist public configuration, stage only current currenc
       assert.equal(res.body.style.setup.reviewed, false);
       assert.equal(res.body.style.setup.tiers[0].minAmount, slug === "showcase-wedding" ? "10000.00" : "2500.00");
       assert.equal(JSON.stringify(res.body).includes("A personal menu label"), false);
+      assert.doesNotMatch(JSON.stringify(res.body), /PRIVATE_CANARY|Secret Person|2099|Homestead|Amara|Kito/);
+      if (slug !== "showcase-wedding") {
+        assert.deepEqual(res.body.style.venues.map(v => v.kind), ["pre", "pre", "main"]);
+        assert.match(res.body.style.venues[0].name, /Family introductions/);
+        assert.match(res.body.style.venues[1].name, /fundraiser/);
+        assert.match(res.body.style.venues[2].name, /Ceremony/);
+        assert.match(res.body.style.venues[0].description, /Venue group 1/);
+        assert.match(res.body.style.venues[1].description, /Venue group 1/);
+        assert.match(res.body.style.venues[2].description, /Venue group 2/);
+      }
       assert.equal(JSON.stringify(res.body).includes("raised"), false);
       assert.deepEqual(Object.keys(res.body), ["style"]);
     }

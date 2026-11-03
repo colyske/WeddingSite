@@ -92,7 +92,7 @@ const loadWeddingDetails = async (weddings, opts) => {
   if (!rows.length) return [];
   const ids = rows.map(row => row.id);
   const inFilter = `in.(${ids.map(encodeURIComponent).join(",")})`;
-  const [venues, payouts, registry, tiers, vip, siteContent, campaigns, setupStatuses, featuredCampaigns, pendingStarters] = await Promise.all([
+  const [venues, payouts, registry, tiers, vip, siteContent, campaigns, setupStatuses, featuredCampaigns, pendingStarters, starterStructures] = await Promise.all([
     supabaseRequest(`/rest/v1/venues?wedding_id=${inFilter}&select=id,wedding_id,name,event_time,event_date,map_link,description,is_main,kind,address,sort_order&order=sort_order.asc`, opts),
     supabaseRequest(`/rest/v1/payout_preferences?wedding_id=${inFilter}&select=wedding_id,method,display_mask,verified`, opts),
     supabaseRequest(`/rest/v1/registry_items?wedding_id=${inFilter}&select=id,wedding_id,name,description,category,target_amount_minor,notes,sort_order&order=sort_order.asc`, opts),
@@ -104,11 +104,15 @@ const loadWeddingDetails = async (weddings, opts) => {
       ...opts, method: "POST", body: { p_wedding_ids: ids }
     }),
     supabaseRequest(`/rest/v1/sponsor_featured_campaigns?wedding_id=${inFilter}&select=wedding_id,enabled,starts_at,closes_at,slot_count,minimum_bid_minor,bid_increment_minor`, { service: true }),
-    supabaseRequest(`/rest/v1/wedding_starter_pending?wedding_id=${inFilter}&select=wedding_id,setup`, opts)
+    supabaseRequest(`/rest/v1/wedding_starter_pending?wedding_id=${inFilter}&select=wedding_id,setup`, opts),
+    supabaseRequest(`/rest/v1/wedding_starter_structures?wedding_id=${inFilter}&select=wedding_id,setup`, opts)
   ]);
   return rows.map(row => ({
     ...row,
     starter_pending_setup: (pendingStarters || []).find(item => item.wedding_id === row.id)?.setup || null,
+    starter_structure: (starterStructures || []).find(item => item.wedding_id === row.id)?.setup ||
+      ((pendingStarters || []).some(item => item.wedding_id === row.id)
+        ? globalThis.WSStarterSetup.structure(pendingStarters.find(item => item.wedding_id === row.id).setup) : null),
     venues: (venues || []).filter(item => item.wedding_id === row.id),
     payout: (payouts || []).find(item => item.wedding_id === row.id) || null,
     registry: (registry || []).filter(item => item.wedding_id === row.id),
@@ -129,6 +133,22 @@ export default async function handler(req, res) {
   const opts = { token: session.token };
   const action = String(req.query?.action || "list");
   const body = req.body && typeof req.body === "object" ? req.body : {};
+  if (action === "starter-structure") {
+    if (!methodOnly(req, res, "POST")) return;
+    if (!UUID.test(String(body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+    try {
+      const setup = globalThis.WSStarterSetup.restoreStructure(body.structure);
+      const invalid = contentError(setup);
+      if (invalid) return sendJson(res, 400, { error: invalid });
+      await supabaseRequest("/rest/v1/rpc/save_wedding_starter_structure", {
+        ...opts, method: "POST", body: { p_wedding_id: body.weddingId, p_setup: setup }
+      });
+      return sendJson(res, 200, { ok: true, structure: setup });
+    } catch (error) {
+      console.error("Draft structure save failed:", error.message);
+      return sendJson(res, 400, { error: error.message || "Could not save your unfinished offerings. Your answers are still on this page." });
+    }
+  }
   if (action === "collection-capabilities") {
     if (!methodOnly(req, res, "GET")) return;
     const weddingId = String(req.query.weddingId || "");
@@ -262,7 +282,8 @@ export default async function handler(req, res) {
         try {
           // Validate the source structure without treating it as accepted money.
           starterSetup = globalThis.WSStarterSetup.normalize(
-            deferredStarter ? { ...body.starterSetup, reviewed: true } : body.starterSetup, body.currency);
+            deferredStarter ? { ...body.starterSetup, reviewed: true } : body.starterSetup,
+            deferredStarter ? body.starterSetup?.currency : body.currency);
         }
         catch (error) { return sendJson(res, 400, { error: error.message, field: "starter-setup" }); }
         const invalidStarter = contentError(starterSetup);
@@ -371,10 +392,19 @@ export default async function handler(req, res) {
       if (!UUID.test(String(body.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
       const patch = {};
       let baseCurrency = null;
+      let clearStarterAmounts = false;
       if (body.currency !== undefined) {
         const current = (await supabaseRequest(`/rest/v1/weddings?id=eq.${body.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=currency`, opts))?.[0];
         if (!current) return sendJson(res, 404, { error: "Wedding not found." });
         baseCurrency = current.currency;
+        if (String(body.currency).toUpperCase() !== baseCurrency) {
+          const [structures, pending, reviewed] = await Promise.all([
+            supabaseRequest(`/rest/v1/wedding_starter_structures?wedding_id=eq.${body.weddingId}&select=wedding_id`, opts),
+            supabaseRequest(`/rest/v1/wedding_starter_pending?wedding_id=eq.${body.weddingId}&select=wedding_id`, opts),
+            supabaseRequest(`/rest/v1/wedding_starter_reviews?wedding_id=eq.${body.weddingId}&select=wedding_id`, { service: true })
+          ]);
+          clearStarterAmounts = !!(structures?.length || pending?.length || reviewed?.length);
+        }
       }
       let normalizedVenues = null;
       if (body.venues !== undefined) {
@@ -500,7 +530,7 @@ export default async function handler(req, res) {
         if (body[key] === undefined) continue;
         const minor = Math.round(Number(body[key]) * 100);
         if (!Number.isFinite(minor) || minor < 0 || minor > 100000000) return sendJson(res, 400, { error: "Fees must be between 0 and 1,000,000." });
-        patch[col] = minor;
+        patch[col] = clearStarterAmounts ? 0 : minor;
       }
       if (body.premiumDietOptions !== undefined) {
         const list = Array.isArray(body.premiumDietOptions) ? body.premiumDietOptions : String(body.premiumDietOptions).split(",");
@@ -535,7 +565,7 @@ export default async function handler(req, res) {
       const rows = [updated];
 
       // Update registry items if provided
-      if (Array.isArray(body.registry)) {
+      if (!clearStarterAmounts && Array.isArray(body.registry)) {
         try {
           const existing = (await supabaseRequest(`/rest/v1/registry_items?wedding_id=eq.${body.weddingId}&select=id`, opts) || []).map(r => r.id);
           const incoming = body.registry.filter(r => r && r.id).map(r => r.id);
@@ -564,7 +594,7 @@ export default async function handler(req, res) {
       }
 
       // Update sponsor tiers if provided
-      if (Array.isArray(body.tiers)) {
+      if (!clearStarterAmounts && Array.isArray(body.tiers)) {
         try {
           const existing = (await supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=eq.${body.weddingId}&select=id`, opts) || []).map(t => t.id);
           const incoming = body.tiers.filter(t => t && t.id).map(t => t.id);
@@ -591,7 +621,7 @@ export default async function handler(req, res) {
         } catch (e) { console.error("Tier update failed:", e.message); throw e; }
       }
 
-      if (body.featuredSponsorCampaign) {
+      if (!clearStarterAmounts && body.featuredSponsorCampaign) {
         const campaign = body.featuredSponsorCampaign;
         const positiveMoney = value => Number.isFinite(Number(value)) && Number(value) > 0 && Number(value) <= 1000000000;
         const slotCount = Number(campaign.slotCount);
@@ -617,7 +647,7 @@ export default async function handler(req, res) {
       }
 
       // Update VIP offer if provided
-      if (body.vip) {
+      if (!clearStarterAmounts && body.vip) {
         try {
           const v = body.vip;
           await supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${body.weddingId}`, { ...opts, method: "DELETE", prefer: "return=minimal" });

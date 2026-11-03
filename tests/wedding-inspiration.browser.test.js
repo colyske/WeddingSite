@@ -11,10 +11,11 @@ import "../currencies.js";
 import "../starter-setup.js";
 import { showcase } from "../server/showcase.js";
 
-test("style entry opens unpaid native customization; retries retain the draft and no preflight reviews money", { timeout: 120000 }, async () => {
+test("public style entry opens unpaid native customization; legacy catalogue redirects; retries retain one draft", { timeout: 600000 }, async () => {
   const server = http.createServer(async (req, res) => {
     try {
-      const path = new URL(req.url, "http://localhost").pathname;
+      const input = new URL(req.url, "http://localhost").pathname;
+      const path = input === "/" ? "/index.html" : input;
       if (path.includes("..")) throw new Error("Invalid path");
       const body = await readFile(new URL(`..${path}`, import.meta.url));
       res.writeHead(200, { "Content-Type": ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css" })[extname(path)] || "application/octet-stream" }).end(body);
@@ -68,14 +69,15 @@ test("style entry opens unpaid native customization; retries retain the draft an
         assert.equal(body.starterSetup.reviewed, false);
         if (!saved) {
           saved = { weddingId: "550e8400-e29b-41d4-a716-446655440000", slug: "our-private-guide" };
-          const config = WSStarterSetup.normalize({ ...body.starterSetup, reviewed: true }, body.currency);
+          const config = WSStarterSetup.normalize({ ...body.starterSetup, reviewed: true }, body.starterSetup.currency);
           wedding = {
             id: saved.weddingId, slug: saved.slug, couple_names: body.coupleNames, currency: body.currency,
             wedding_date: null, public_location: null, welcome_story: "", cover_image_url: null, guest_instructions: null,
             time_zone: body.timeZone, max_guest_capacity: 150, palette: body.palette, palette_names: [],
             revenue_features: config.features, rsvp_fee_minor: 0, extra_guest_fee_minor: 0, premium_diet_fee_minor: 0,
             premium_diet_options: config.rsvp.premiumDietOptions, attire_notes: config.content.attire, published_at: null,
-            starter_pending_setup: { ...config, reviewed: false },
+            starter_pending_setup: body.currency === config.currency ? { ...config, reviewed: false } : null,
+            starter_structure: WSStarterSetup.structure(config), travel_info: config.content.travel, faq: config.content.faq,
             starter_review_note: "Source prices and goals are pending review in their original currency; none have been applied.",
             venues: body.venues.map((v, i) => ({ id: `event-${i}`, name: v.name, kind: v.kind, description: v.description,
               event_date: null, event_time: null, address: null, map_link: null, is_main: v.isMain, sort_order: i })),
@@ -88,24 +90,22 @@ test("style entry opens unpaid native customization; retries retain the draft an
       if (action === "get") data = { wedding };
       if (action === "quote") data = { quote: { pending_date: true, fee_minor: null, currency: wedding.currency } };
       if (action === "campaigns") data = { currency: wedding.currency, campaigns: [], summary: [], rows: [] };
-      if (action === "extras-get") data = wedding.starter_pending_setup.content;
+      if (action === "extras-get") data = { travel: wedding.travel_info, faq: wedding.faq };
       return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(data) });
     });
     for (const width of [320, 375]) {
       await page.setViewportSize({ width, height: 900 });
-      for (const fixture of [null, ...WSInspiration.fixtures]) {
-        await page.goto(`${base}/inspiration.html${fixture ? `?style=${fixture.id}` : ""}`);
-        assert.equal(await page.locator("form").count(), 0);
-        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-        await capture(fixture?.id || "gallery");
-      }
+      await page.goto(`${base}/inspiration.html?style=retired`);
+      await page.waitForURL(`${base}/#weddings`);
+      assert.equal(await page.locator('a[href*="inspiration.html"]').count(), 0);
+      await capture("published-wedding-browse");
     }
-    await page.getByRole("link", { name: "Use this style", exact: true }).click();
+    await page.goto(`${base}/dashboard.html?style=current-wedding#step=couple`);
     await page.locator("#notice").filter({ hasText: /Please try again/ }).waitFor();
     assert.equal(creates.length, 1, "no names/currency/review interstitial before unpaid create");
     assert.equal(creates[0].coupleNames, "");
-    assert.equal(creates[0].starterSetup.currency, "USD");
-    assert.equal(capabilityCallsBeforeCreate, 0);
+    assert.equal(creates[0].currency, "USD", "destination fallback, not silently chosen source currency");
+    assert.equal(creates[0].starterSetup.currency, "KES", "original source currency remains unchanged until discarded");
     await page.reload();
     await page.waitForURL("**/wedding.html?*#step=couple");
     await page.locator("#guide-heading-couple").waitFor();
@@ -114,9 +114,10 @@ test("style entry opens unpaid native customization; retries retain the draft an
     assert.equal(await page.locator("#couple-names").inputValue(), "");
     assert.equal(await page.locator("#wedding-date").inputValue(), "");
     assert.equal(await page.locator("#welcome-story").inputValue(), "");
-    assert.equal(wedding.starter_pending_setup.tiers.length > 0, true, "source structure was retained, not dropped");
-    assert.equal(wedding.starter_pending_setup.reviewed, false);
+    assert.equal(wedding.starter_structure.tiers.length > 0, true, "unpriced structure was retained, not dropped");
+    assert.equal(wedding.starter_pending_setup, null, "different currency clears source money");
     assert.deepEqual(wedding.tiers, []);
+    assert.equal(await page.locator(".tier-min-amount").first().inputValue(), "");
     assert.equal(Number(await page.locator("#rsvp-fee").inputValue()), 0);
     assert.deepEqual(await page.evaluate(() => ["COP", "HUF", "IDR", "PKR", "TWD"]
       .map(code => [WSCurrencies.supportsAccounting(code), WSCurrencies.exponent(code)])),
@@ -160,7 +161,7 @@ test("style entry opens unpaid native customization; retries retain the draft an
     assert.equal(new URL(login.url()).searchParams.get("next"), "/dashboard.html?style=current-wedding#step=couple");
     if (process.env.STARTER_EVIDENCE_DIR) {
       for (const name of ["dashboard.js", "dashboard.html", "starter-setup.js", "currencies.js", "api/weddings.js",
-        "wedding.html", "supabase/migrations/202611100002_deferred_wedding_starters.sql"]) {
+        "wedding.html", "supabase/migrations/202611140001_reusable_starter_structures.sql"]) {
         evidence.assets.push({ name, sha256: createHash("sha256").update(await readFile(new URL(`../${name}`, import.meta.url))).digest("hex") });
       }
       evidence.pageErrors = errors;

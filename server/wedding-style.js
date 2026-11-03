@@ -20,7 +20,7 @@ export async function publicWeddingStyle(slug) {
     features.giving ? supabaseRequest(`/rest/v1/fundraising_streams?wedding_id=eq.${source.id}&enabled=eq.true&select=id,goal_minor&order=sort_order&limit=6`, { service: true }) : [],
     features.giving ? supabaseRequest(`/rest/v1/registry_items?wedding_id=eq.${source.id}&select=target_amount_minor&order=sort_order&limit=20`, { service: true }) : [],
     features.vip_seating ? supabaseRequest(`/rest/v1/vip_offers?wedding_id=eq.${source.id}&select=seats_total,price_minor&limit=1`, { service: true }) : [],
-    supabaseRequest(`/rest/v1/venues?wedding_id=eq.${source.id}&select=kind,is_main&order=sort_order,created_at&limit=30`, { service: true }),
+    supabaseRequest(`/rest/v1/venues?wedding_id=eq.${source.id}&select=name,kind,is_main,address,map_link&order=sort_order,created_at&limit=30`, { service: true }),
     features.featured_sponsors ? supabaseRequest(`/rest/v1/sponsor_featured_campaigns?wedding_id=eq.${source.id}&enabled=eq.true&select=slot_count,minimum_bid_minor,bid_increment_minor&limit=1`, { service: true }) : []
   ]);
   const amount = (minor, defaultValue = 0) => {
@@ -37,13 +37,28 @@ export async function publicWeddingStyle(slug) {
       })) };
   }));
   const design = globalThis.WSInspiration.publicDesign(source.palette);
-  const eventStructure = (events || []).map((event, index) => ({
-    name: `${event.kind === "pre" ? "Pre-wedding activity" : "Wedding-day event"} ${index + 1}`,
+  const venueGroups = new Map();
+  const eventType = event => {
+    const name = String(event.name || "").toLowerCase();
+    for (const [pattern, label] of [
+      [/introduc|blessing/, "Family introductions and blessing"], [/fundrais/, "Pre-wedding fundraiser"],
+      [/bridal|committee/, "Bridal celebration and planning gathering"], [/rehears/, "Rehearsal"],
+      [/ceremony|vows/, "Ceremony"], [/reception|lunch|toast/, "Reception"],
+      [/welcome|tea/, "Welcome gathering"], [/dinner/, "Celebration dinner"], [/dance/, "Dancing"]
+    ]) if (pattern.test(name)) return label;
+    return event.kind === "pre" ? "Pre-wedding activity" : "Wedding-day event";
+  };
+  const eventStructure = (events || []).map((event, index) => {
+    // Equality preserves shared venue structure, never the source location itself.
+    const key = String(event.map_link || event.address || "").trim();
+    if (key && !venueGroups.has(key)) venueGroups.set(key, venueGroups.size + 1);
+    return {
+    name: `${eventType(event)} ${index + 1}`,
     kind: event.kind === "pre" ? "pre" : "main", time: "", eventDate: "", address: "", map: "",
-    description: "Personalize this event with your own plans and guest guidance.",
+    description: `${key ? `Venue group ${venueGroups.get(key)}. ` : ""}Add your own venue, plans and accessibility guidance.`,
     isMain: index === events.findIndex(item => item.kind !== "pre" && item.is_main === true) ||
       (!events.some(item => item.kind !== "pre" && item.is_main === true) && index === events.findIndex(item => item.kind !== "pre"))
-  }));
+  }; });
   return {
     ...design, venues: eventStructure.length ? eventStructure : design.venues, classification: "public-reusable-configuration",
     setup: {

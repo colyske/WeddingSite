@@ -5,6 +5,32 @@ import "../inspiration-fixtures.js";
 import "../starter-setup.js";
 import { starterCapabilities } from "../server/starter-capabilities.js";
 
+test("unpriced structures retain every offering and nested goal but reject amounts or foreign fields", () => {
+  const config = WSStarterSetup.normalize({ ...WSStarterSetup.fictional("garden-gathering", "KES"), reviewed: true }, "KES");
+  const structure = WSStarterSetup.structure(config);
+  assert.deepEqual(WSStarterSetup.restoreStructure(structure), structure);
+  assert.equal(structure.tiers.length, config.tiers.length);
+  assert.equal(structure.registry.length, config.registry.length);
+  assert.equal(structure.campaigns[0].milestones.length, 2);
+  assert.equal(structure.vip.seats, config.vip.seats);
+  assert.equal(structure.featured.slots, config.featured.slots);
+  const amounts = [];
+  const visit = value => {
+    if (!value || typeof value !== "object") return;
+    for (const [key, child] of Object.entries(value)) {
+      if (/Minor$/.test(key)) amounts.push(child);
+      else visit(child);
+    }
+  };
+  visit(structure);
+  assert.ok(amounts.length > 6);
+  assert.ok(amounts.every(amount => amount === null));
+  assert.equal(config.registry[0].targetMinor, 15000000, "source remains untouched");
+  assert.throws(() => WSStarterSetup.restoreStructure({ ...structure, transactions: [] }), /draft structures/);
+  structure.campaigns[0].milestones[0].targetMinor = 100;
+  assert.throws(() => WSStarterSetup.restoreStructure(structure), /cannot contain amounts/);
+});
+
 test("curated starter structures cover existing configurable sections with explicit currency review", () => {
   for (const fixture of WSInspiration.fixtures) {
     const empty = WSStarterSetup.fictional(fixture.id);
