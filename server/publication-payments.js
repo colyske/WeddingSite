@@ -96,15 +96,16 @@ export async function handlePublicationPayment(req, res, session, action) {
       message: "An existing publication payment must be resolved before another can start." });
     const quote = await publicationQuote(weddingId, session.token, wedding.currency);
     if (!creating) {
+      const turnstileSiteKey = process.env.TURNSTILE_SITE_KEY || process.env.TURNSTILE_PUBLIC_KEY;
       const configured = (process.env.WEDDINGSITE_PAYMENT_MODE === "test" || paystackAdmissionEnabled("publication")) &&
-        Boolean(process.env.TURNSTILE_SITE_KEY && process.env.TURNSTILE_SECRET_KEY);
+        Boolean(turnstileSiteKey && process.env.TURNSTILE_SECRET_KEY);
       const methods = configured && !wedding.published_at && !wedding.archived_at && Number(quote.fee_minor) > 0
         ? await publicationMethods(wedding.currency) : [];
       return sendJson(res, 200, {
         quote, checkout: null, testMode: process.env.WEDDINGSITE_PAYMENT_MODE !== "live",
         methods: methods.map(item => ({ id: methodFor(item.id), label: labelFor(methodFor(item.id)),
           quote: publicationMethodQuote(quote, item.id) })),
-        turnstileSiteKey: configured ? process.env.TURNSTILE_SITE_KEY : null
+        turnstileSiteKey: configured ? turnstileSiteKey : null
       });
     }
     const origin = String(req.headers.origin || "");

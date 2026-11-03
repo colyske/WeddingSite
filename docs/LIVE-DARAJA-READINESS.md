@@ -26,10 +26,13 @@ The SDK is historical evidence, not proof of current merchant approval, callback
 ## Design (implemented, default OFF)
 - **Admission** (new live checkouts) needs every adapter switch above AND Owner approval in the DB (`daraja_live_approval`, default `approved=false`, shortcode must match). Either off = no live admission.
 - **Reconciliation** of already-admitted live rows needs only the configured production environment (mode live + env production + confirmed shortcode) and the row's immutable bound context (`payment_environment`, `daraja_shortcode`, `daraja_merchant_request_id`, exact CheckoutRequestID). Turning the kill switch or approval off never strands admitted payments. Callbacks are unsigned hints; the independent STK query is the proof.
-- Test/sandbox rows and publication payments (test-only) are never queried with production credentials and vice versa; mismatches fail before any fetch.
+- Test/sandbox Daraja rows and Daraja publication payments (test-only) are never queried with production credentials and vice versa; mismatches fail before any fetch.
 - Migration `202610300015_daraja_live_approval.sql`: approval table (Owner RPCs, audited, direct access revoked), merchant context columns, `guard_live_payment_context` (immutable context; settlement requires persisted reference + merchant request ID + shortcode, also against the generic `record_verified_payment` RPC), and a **hard-OFF payout gate** (`payouts_enabled` is constrained false; `withdrawable_balance`, `request_payout` and `guard_test_payouts` all require it and non-pending provider fees). Unknown Daraja fees stay pending, funds held.
 - STK init: only an explicit non-zero `ResponseCode` is a rejection. Timeouts, 5xx, malformed 2xx or missing IDs are **uncertain**: the pending row is kept, no automatic retry, response carries `paymentId`. The guest UI (`payment-intent.js`) stores that id, shows check-status, keeps one idempotency key per intent and blocks a second initiation. Live copy comes from trusted `options.mode` and warns of real money.
-- Stripe/Paystack and publication checkout remain test-only.
+- Stripe and Daraja publication checkout remain test-only. Separately gated live
+  Paystack guest and publication checkout are implemented; see
+  [Paystack readiness](LIVE-PAYSTACK-READINESS.md). This is a capability statement,
+  not evidence of current Production approval, credentials or availability.
 
 ## Validation
 Mocked-network tests: `tests/daraja-live-gate.test.js`, `tests/daraja-live-reconcile.test.js` (plus existing suites). SQL: `tests/db/live-daraja.sql` runs only in the isolated CI migrations job (rolled back). No Production, provider, sandbox or payment activity was performed.

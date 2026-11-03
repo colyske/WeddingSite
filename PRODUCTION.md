@@ -50,8 +50,13 @@ switches may be changed by SuperAdmins or Owner. API, RPC and RLS enforce this.
 New free/in-kind solicitation/approval is retired, including stale-tab/direct
 writes. Historical enquiries and already-approved cards remain on record.
 
-Publication checkout is separate from wedding contributions and uses `test_paid`,
-excluded from collected publication revenue. New USD-canonical fee conversion,
+Publication checkout is separate from wedding contributions. Test settlement uses
+`test_paid`, excluded from collected publication revenue; separately gated live
+Paystack publication is implemented, without implying current activation.
+Daraja publication remains test-only. Both guest and publication widgets accept
+`TURNSTILE_SITE_KEY || TURNSTILE_PUBLIC_KEY` (SITE takes precedence); the secret
+and successful server-side challenge verification remain required.
+New USD-canonical fee conversion,
 immutable FX evidence, freshness and rounding rules are described in README.
 Historical fee/checkout records are not repriced; already-published unsettled
 quotes are not automatic debt. Publication never requires KYC; payout request
@@ -61,8 +66,10 @@ and staff approval/sent require the existing both-partner KYC model.
 
 - Provider-confirmed end-to-end success is not established by accepting an STK
   initiation or returning from hosted checkout. Failed sandbox results must
-  produce no paid ledger/song credit. Live collection requires separate
-  implementation/review and explicit approval, not just changing an env flag.
+  produce no paid ledger/song credit. Implemented live collection paths require
+  their provider-specific configuration, Owner approval and release gates,
+  not just changing an env flag. Documentation and mocked tests do not establish
+  current merchant readiness or authorized live availability.
 - Payouts are controlled requests/status records, not an automated money-transfer
   rail. Confirm the operational settlement, refunds/disputes and reconciliation
   process with the merchant before promising real disbursement.

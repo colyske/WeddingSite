@@ -204,7 +204,12 @@ unresolved intent per wedding. Already-published weddings are not newly charged.
 Current policy still grants the first publication free unless the far-future
 rule takes precedence; no fee setting is changed by this implementation.
 
-Turnstile remains required. A provider return URL or accepted STK request cannot
+Turnstile remains required. Publication and guest checkout resolve the public
+widget key as `TURNSTILE_SITE_KEY || TURNSTILE_PUBLIC_KEY` (SITE takes precedence).
+Publication options expose no methods or widget key unless a public key and
+`TURNSTILE_SECRET_KEY` are both present and the payment-mode gate permits admission.
+Configuration alone does not establish provider readiness or live availability.
+A provider return URL or accepted STK request cannot
 settle a fee. Signed card events or authenticated provider queries must match
 the stored reference, amount and currency. Separate `publication_checkouts`
 records preserve attempts without creating contributions or couple payout credit.
@@ -309,6 +314,15 @@ WeddingSite contains two distinct experiences:
 2. **A generated wedding guest site** (`client-site.html`) is a polished invitation for the illustrative Amara Njeri and Kito Mwangi wedding, with RSVP, capacity, attire, optional dietary accommodation, DJ bids, fundraisers, consent-based public ledger, and currency display.
 
 The browser UI is an interactive demo. A separate server-side foundation is also included under `api/`, `server/`, and `supabase/migrations/`; the static UI is not yet wired to those endpoints and this repository is **not production-ready**.
+
+## Historical initial-prototype record
+
+The Preview, demo role model, wedding/payment behavior and server-foundation
+sections below describe the initial prototype, not current live availability.
+Their missing-feature and unconfigured-provider statements are historical;
+use the current hosted-service and publication sections above and the
+provider-specific readiness documents for implemented capabilities and gates.
+No historical check establishes current Production configuration or settlement.
 
 ## Preview
 
