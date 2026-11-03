@@ -5,6 +5,7 @@
   const SEC = { overview: "Overview", operations: "Operations", weddings: "Weddings", users: "Users & roles", fees: "Fees & settings", referrals: "Client referrals", ledger: "Ledger", payouts: "Payouts", b2c: "M-Pesa B2C", audit: "Audit log", security: "Security" };
   let role = "";
   let cache = {};
+  let manualSetup;
 
   const toast = (text, bad) => {
     const el = $("notice");
@@ -46,6 +47,9 @@
       : '<p class="empty">Nothing here yet.</p>';
   const btn = (label, attrs) => `<button type="button" class="mini" ${attrs}>${esc(label)}</button>`;
   const manualFields = {
+    "shared-account": ["account", "currency", "evidence"],
+    "attribute-settlement": ["contribution", "custody", "line", "settled", "at", "evidence"],
+    "verify-transfer": ["id", "reference", "actual", "fee", "currency", "at", "debit_evidence", "evidence"],
     "review-intent": ["id", "decision", "key", "custody", "recipient", "fee", "owner_solo"],
     evidence: ["kind", "reference", "sha256"], check: ["id", "owner_solo"], recipient: ["wedding", "evidence", "provider", "currency"],
     account: ["account", "provider", "registry", "evidence"],
@@ -97,7 +101,7 @@
             const fields = ["custody_id", "recipient_ids", "per_payout_minor", "daily_minor", "payout_fee_minor", "fee_payer",
               "statement_max_age_minutes", "review_evidence", "fee_evidence", "rail_evidence", "secure_evidence"];
             return `<section id="manual-policy"><h4>Protected Owner manual policy</h4>
-              <p>One existing custody account/currency and exact recipient revisions. Limits include principal plus fee.
+              <p>One registered account scope/currency and exact recipient revisions. Shared scopes track WeddingSite attribution, not global bank liquidity. Limits include principal plus fee.
               Fee payer must explicitly be "wedding": the shared ledger reserves/deducts the fee from wedding entitlement. Other fee payers are not supported.
               UTC-day exposure also counts prior-day open commitments and the other channel. No operational value is assumed.</p>
               <form data-manual-policy="draft" data-revision="${esc(policy.revision)}">
@@ -137,12 +141,16 @@
         prefill("Prepare no-transfer proposal", "transition", { id, action: "resolution_proposed" })];
       case "resolution_proposed": return [`Next: ${r.owner_solo ? "protected Owner" : "independent"} confirmation that no transfer occurred, using the same checked no_transfer evidence. Funds stay held until then.`,
         prefill("Prepare not-transferred confirmation", "transition", { id, action: "not_transferred", evidence: proposed?.evidence_id || "" })];
-      case "reported": return [`Receipt ${esc(ws.receipt?.transaction_reference || "")} reported. Next: append the checked statement, register its actual debit line (exact reference/amount/fee/currency/date), then ${r.owner_solo ? "the protected Owner" : "a leader other than the sender"} reconciles with checked reconciliation evidence. Only reconciliation marks paid.`,
+      case "reported": if ((w.sharedScopes || []).includes(ws.custody_id)) return [
+        `Receipt reported, not paid. Have ${r.owner_solo ? "the same protected Owner (explicit solo)" : "an independent leader"} check transaction-specific debit evidence from the official portal against the verified recipient, account, reference, amount, fee, currency and booked time. No whole-account statement or global balance is needed.`,
+        prefill("Prepare exact transfer verification", "verify-transfer", { id, reference: ws.receipt?.transaction_reference || "",
+          actual: ws.receipt?.actual_minor ?? "", fee: ws.receipt?.actual_fee_minor ?? "", currency: ws.receipt?.currency || "" })];
+        return [`Receipt ${esc(ws.receipt?.transaction_reference || "")} reported. Next: append the checked statement, register its actual debit line (exact reference/amount/fee/currency/date), then ${r.owner_solo ? "the protected Owner" : "a leader other than the sender"} reconciles with checked reconciliation evidence. Only reconciliation marks paid.`,
         ...(debit ? [] : [prefill("Prepare statement debit", "debit", { reference: ws.receipt?.transaction_reference || "", actual: ws.receipt?.actual_minor ?? "", fee: ws.receipt?.actual_fee_minor ?? "", currency: ws.receipt?.currency || "" })]),
         prefill("Prepare reconciliation", "reconcile", { id, provider: ws.provider || "", account: ws.account_reference || "",
           ...(debit ? { statement: debit.statement_reference, line: debit.line_reference, reference: debit.transaction_reference,
             actual: debit.actual_minor, fee: debit.actual_fee_minor, currency: debit.currency, at: debit.booked_at.replace(/\+00:00$/, "Z") } : {}) })];
-      case "paid": return [`Paid: statement-reconciled${ws.reconciliation ? ` by ${esc(ws.reconciliation.reconciled_by)} at ${date(ws.reconciliation.reconciled_at)}` : ""}. No further action.`];
+      case "paid": return [`Paid: exact outcome reconciled${ws.reconciliation ? ` by ${esc(ws.reconciliation.reconciled_by)} at ${date(ws.reconciliation.reconciled_at)}` : ""}. No further action.`];
       default: return ["Terminal state. No further action; history is append-only."];
     }
   }
@@ -162,8 +170,8 @@
         `<tr><td>${shortId(e.id)}</td><td>${esc(e.kind)}</td><td>${date(e.submitted_at)} by ${esc(e.submitted_by)}</td><td>${(e.checks || []).map(c => `${esc(c.checked_by)}${c.owner_solo ? " (Owner solo)" : ""}`).join("; ") || "unchecked"}</td><td>${prefill("Prepare check", "check", { id: e.id })}</td></tr>`))}</details>
       <details><summary>Registered accounts (${(w.accounts || []).length})</summary>${table(["Account", "Provider", "Evidence"], (w.accounts || []).map(a =>
         `<tr><td>${shortId(a.id)}</td><td>${esc(a.provider)}</td><td>${shortId(a.evidence_id)}</td></tr>`))}</details>
-      <details><summary>Custody and latest statement (${(w.custody || []).length})</summary>${table(["Custody", "Provider / account / currency", "Latest statement", "Action"], (w.custody || []).map(c =>
-        `<tr><td>${shortId(c.id)}</td><td>${esc(c.provider)} / ${shortId(c.account_reference)} / ${esc(c.currency)}</td><td>${c.latest_batch ? `${shortId(c.latest_batch.id)} ref ${shortId(c.latest_batch.statement_reference)} at ${date(c.latest_batch.statement_at)}; closing ${esc(WS.money(Number(c.latest_batch.closing_minor), c.currency, false))}, held ${esc(WS.money(Number(c.latest_batch.held_minor), c.currency, false))}` : "-"}</td><td>${prefill("Prepare next statement", "statement", { custody: c.id, previous: c.latest_batch?.id || "", opening: c.latest_batch?.closing_minor ?? "" })}</td></tr>`))}</details>
+      <details><summary>Account scopes (${(w.custody || []).length})</summary>${table(["Scope", "Provider / account / currency", "Accounting model", "Action"], (w.custody || []).map(c =>
+        `<tr><td>${shortId(c.id)}</td><td>${esc(c.provider)} / ${shortId(c.account_reference)} / ${esc(c.currency)}</td><td>${(w.sharedScopes || []).includes(c.id) ? "Shared account: WeddingSite attribution only; portal liquidity external" : c.latest_batch ? `Legacy statement ${shortId(c.latest_batch.id)} at ${date(c.latest_batch.statement_at)}` : "Legacy statement preparation required"}</td><td>${(w.sharedScopes || []).includes(c.id) ? prefill("Prepare contribution settlement proof", "attribute-settlement", { custody: c.id }) : prefill("Prepare next statement", "statement", { custody: c.id, previous: c.latest_batch?.id || "", opening: c.latest_batch?.closing_minor ?? "" })}</td></tr>`))}</details>
       <details><summary>Recipient revisions (${(w.recipients || []).length})</summary>${table(["Recipient revision", "Wedding", "Provider / currency", "Evidence"], (w.recipients || []).map(r =>
         `<tr><td>${shortId(r.id)} (#${esc(r.revision)})</td><td>${shortId(r.wedding_id)}</td><td>${esc(r.provider)} / ${esc(r.currency)}</td><td>${shortId(r.evidence_id)}</td></tr>`))}</details>
       <details><summary>Registered statement debits awaiting reconciliation (${(w.unreconciledDebits || []).length})</summary>${table(["Debit line", "Statement", "Reference", "Amount / fee", "Booked"], (w.unreconciledDebits || []).map(d =>
@@ -513,14 +521,19 @@
         row: (l) => `<tr><td>${date(l.created_at)}</td><td>${esc(l.couple_names)}</td><td>${esc(l.stream_name)}</td><td>${esc(l.contributor || "Anonymous")}</td><td>${esc(WS.money(l.amount_minor, l.currency, false))}</td><td>${esc(WS.money(Number(l.fee_minor || 0), l.currency, false))}</td><td>${esc(WS.money(Number(l.net_minor || 0), l.currency, false))}</td><td>${esc(l.status)}</td><td>${esc(l.provider || "-")}</td></tr>`
       });
     },    async payouts(el) {
+      manualSetup = await import("./manual-payout-setup.js");
       const [{ payouts }, manual, workspace] = await Promise.all([get("payouts"), get("manual-payouts"), get("manual-payout-workspace").catch(() => null)]);
+      if (workspace) workspace.requestDetails = manual.requests || [];
+      cache.manualWorkspace = workspace;
       el.innerHTML = `<h2>Payouts / withdrawals</h2>
         <section id="manual-payout-control"><h3>Controlled manual external payouts: ${manual.enabled ? "enabled" : "OFF"}</h3>
           <p>This manual control never changes automatic B2C policy or sends money. Code readiness does not authorize use of a funded merchant rail. Operators transfer only outside this site in the official authorized portal, after a durable execution claim. Never resend an uncertain transfer.</p>
           <p>${esc(manual.verification)}</p>
           <p class="notice">${(manual.blockers || []).map(esc).join(". ")}.</p>
-          <p>Request &rarr; review &rarr; execution claim &rarr; receipt reported &rarr; statement reconciliation. Other eligible leaders require two distinct actors. The protected Owner may explicitly opt into audited solo manual mode; evidence, funds and reconciliation are still mandatory. Only statement-reconciled transfers are paid. Uncertain transfers retain funds; there is no timeout release.</p>
-          <p>Record the checked statement batch and its actual debit line before reconciling. Reconciliation must match that existing line exactly and atomically allocates it before paid; arbitrary statement/line IDs and post-paid inclusion are not accepted.</p>
+          <p>Request &rarr; review &rarr; execution claim &rarr; receipt reported &rarr; exact outcome reconciliation. Other eligible leaders require two distinct actors. The protected Owner may explicitly opt into audited solo manual mode; evidence, funds and reconciliation are still mandatory. Uncertain outcomes retain internal exposure; there is no timeout release.</p>
+          <p>Shared Paybill: only attributable settled wedding net, WeddingSite obligations and disbursements are tracked. Internal reservations are NOT bank reservations or liquidity guarantees.
+          The authorized operator checks portal liquidity externally. No other-system receipts or whole-account balance are requested.
+          Legacy statement-mode requests still require their existing line exactly and atomically allocate it before paid.</p>
           <p>Evidence reference fields accept opaque repository UUIDs only. Do not enter bank details, names, KYC, credentials or public document URLs. Identity evidence must include consent and actual verification by the appointed reviewer; an attestation is not a provider lookup.</p>
           <p>Evidence intake and existing-claim outcomes remain available while manual admission is OFF. Approval/execution always recheck the current policy revision, limits, fees, recipient and statement.</p>
           ${manualPolicyForm(manual.readiness)}
@@ -541,6 +554,7 @@
           if (["requested", "approved"].includes(p.status)) acts.push(btn("Cancel legacy request", `data-ps="cancelled" data-id="${esc(p.id)}"`));
           return `<tr><td>${date(p.requested_at)}</td><td>${esc(p.couple_names)} <a href="/wedding.html?id=${encodeURIComponent(p.wedding_id)}#kyc-section">KYC details</a></td><td>${esc(WS.money(Number(p.amount_minor), p.currency, false))}</td><td>${esc(p.status)}</td><td>${esc(p.note || "")}</td><td class="acts">${acts.join(" ") || "-"}</td></tr>`;
         }));
+      manualSetup.mountSetup(el, { workspace, weddings: workspace?.weddings || [], role, esc });
     },
     async b2c(el) {
       await window.B2CBackoffice.mount(el, role === "owner");
@@ -610,9 +624,17 @@
           else if (input && field !== "key") input.value = "";
         }
         form.dataset.keyContext = `${action}:${values.id || values.custody || ""}:${values.action || ""}`;
+        if (action === "review-intent") form.dataset.wedding = (cache.manualWorkspace?.intents || []).find(i => i.id === values.id)?.wedding_id || "";
         if (form.elements.namedItem("key")) form.elements.namedItem("key").value = manualKey(form.dataset.keyContext);
         details.open = true;
-        for (const [name, value] of Object.entries(values)) if (form.elements[name]) form.elements[name].value = String(value ?? "");
+        for (const [name, value] of Object.entries(values)) if (form.elements.namedItem(name)) {
+          const input = form.elements.namedItem(name);
+          if (!input.dataset.setupMoney) input.value = String(value ?? "");
+        }
+        form.dispatchEvent(new Event("manual-prefilled"));
+        for (const [name, value] of Object.entries(values)) if (form.elements.namedItem(name)?.dataset.setupMoney) {
+          manualSetup.prefillSetupValue(form.elements.namedItem(name), value);
+        }
         form.elements.confirmed.checked = false;
         details.scrollIntoView({ block: "start" });
         ([...form.querySelectorAll("input[required]:not([type=checkbox])")].find(i => !i.value) || form.elements.confirmed).focus();
@@ -700,17 +722,20 @@
         const form = e.target;
         if (!form.elements.confirmed.checked) return;
         let changes = { enabled: form.dataset.manualPolicy === "activate" };
+        try {
         if (form.dataset.manualPolicy === "draft") {
           for (const field of ["custody_id", "review_evidence", "fee_evidence", "rail_evidence", "secure_evidence"]) {
-            changes[field] = form.elements[field].value.trim() || null;
+            changes[field] = manualSetup.readSetupValue(form, field) || null;
           }
-          changes.recipient_ids = form.elements.recipient_ids.value.split(",").map(v => v.trim()).filter(Boolean);
+          const recipients = manualSetup.readSetupValue(form, "recipient_ids");
+          changes.recipient_ids = Array.isArray(recipients) ? recipients : recipients.split(",").map(v => v.trim()).filter(Boolean);
           changes.fee_payer = form.elements.fee_payer.value.trim() || null;
           for (const field of ["per_payout_minor", "daily_minor", "payout_fee_minor", "statement_max_age_minutes"]) {
-            const value = form.elements[field].value.trim();
-            changes[field] = value === "" ? null : Number(value);
+            const value = manualSetup.readSetupValue(form, field);
+           changes[field] = value === "" || value === null ? null : Number(value);
           }
         }
+          } catch (error) { toast(error.message, true); return; }
         const button = form.querySelector("button");
         button.disabled = true;
         try {
@@ -723,10 +748,13 @@
       if (e.target.matches("[data-manual-action]")) {
         e.preventDefault();
         const form = e.target, action = form.dataset.manualAction;
-        const body = Object.fromEntries(manualFields[action].map(key => {
-          const value = form.elements[key]?.value || "";
-          return [key, key === "owner_solo" ? form.elements[key]?.checked === true : manualNumbers.has(key) ? value === "" ? null : Number(value) : value || null];
+        let body;
+        try {
+        body = Object.fromEntries(manualFields[action].map(key => {
+          const value = manualSetup.readSetupValue(form, key);
+          return [key, key === "owner_solo" ? form.elements[key]?.checked === true : manualNumbers.has(key) ? value === "" || value === null ? null : Number(value) : value || null];
         }));
+        } catch (error) { toast(error.message, true); return; }
         if (action === "review-intent" && body.decision === "declined") {
           for (const key of ["key", "custody", "recipient", "fee"]) body[key] = null;
           body.owner_solo = false;

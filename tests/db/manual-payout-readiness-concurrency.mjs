@@ -194,6 +194,61 @@ try {
   assert.equal(balance.reserved_minor, 2200);
   assert.equal(balance.available_minor, 0);
   await assert.rejects(policy({ enabled: true }), /prerequisites/);
+  // Shared merchant mode does not read a global bank balance. Only actual
+  // contribution net proof and WeddingSite commitments constrain admission.
+  const sharedAccount = randomUUID(), sharedContribution = randomUUID();
+  await run(ids.owner, `public.manual_payout_register_account('${sharedAccount}','daraja','${randomUUID()}','${await evidence("account")}')`);
+  const sharedScope = uuid(await run(ids.owner, `public.manual_payout_register_shared_account('${sharedAccount}','KES','${await evidence("custody")}')`));
+  assert.ok(sharedScope);
+  await sql(`begin;
+    alter table public.contributions disable trigger guard_payment_environment;
+    alter table public.contributions disable trigger guard_live_payment_context;
+    insert into public.contributions(id,wedding_id,stream_name,pledged_amount_minor,paid_amount_minor,platform_fee_minor,net_paid_minor,
+      currency,payment_status,verified_provider_payment,provider_fee_pending,provider_fee_minor,payment_environment,provider_name,paid_at)
+    values('${sharedContribution}','${ids.wedding}','Isolated shared settlement',20000,20000,0,20000,
+      'KES','paid',true,false,100,'live','daraja',now()-interval '3 days');
+    set constraints all immediate;
+    alter table public.contributions enable trigger guard_payment_environment;
+    alter table public.contributions enable trigger guard_live_payment_context; commit;`);
+  const settlementEvidence = await evidence("settlement");
+  const attribute = line => `public.manual_payout_attribute_settlement('${sharedContribution}','${sharedScope}','${line}',19900,clock_timestamp(),'${settlementEvidence}')`;
+  const creditRace = await Promise.allSettled([run(ids.maker, attribute(randomUUID())), run(ids.maker, attribute(randomUUID()))]);
+  assert.equal(creditRace.filter(r => r.status === "fulfilled").length, 1, "One settled contribution credits once");
+  assert.equal(await sql(`select count(*) from public.manual_payout_statement_batches where custody_id='${sharedScope}';`), "0");
+  const sharedRequest = (key = randomUUID(), amount = 6000) => `public.manual_payout_request('${key}','${ids.wedding}',
+    '${sharedScope}','${ids.recipient}',${amount},100,'KES')`;
+  await policy({ enabled: false, custody_id: sharedScope, statement_max_age_minutes: null, daily_minor: 20000 });
+  await policy({ enabled: true });
+  const sharedReservations = await Promise.allSettled([run(ids.maker, sharedRequest()), run(ids.maker, sharedRequest())]);
+  assert.equal(sharedReservations.filter(r => r.status === "fulfilled").length, 1,
+    `Shared wedding net admits one: ${sharedReservations.map(r => r.status === "rejected" ? r.reason.message : r.value).join("\n")}`);
+  assert.match(sharedReservations.find(r => r.status === "rejected").reason.message, /attributable settled wedding net/);
+  const sharedPayout = uuid(sharedReservations.find(r => r.status === "fulfilled").value);
+  await run(ids.checker, `public.manual_payout_transition('${sharedPayout}','approved')`);
+  await deactivateWhileWaiting(`public.manual_payout_transition('${sharedPayout}','executing','${randomUUID()}')`);
+  await run(ids.maker, `public.manual_payout_transition('${sharedPayout}','cancelled')`);
+  await policy({ enabled: true });
+  const sharedClaimed = uuid(await run(ids.maker, sharedRequest()));
+  await run(ids.checker, `public.manual_payout_transition('${sharedClaimed}','approved')`);
+  await revokeWhileWaiting(`public.manual_payout_transition('${sharedClaimed}','executing','${randomUUID()}')`, true);
+  const sharedClaims = await Promise.allSettled([run(ids.maker, `public.manual_payout_transition('${sharedClaimed}','executing','${randomUUID()}')`),
+    run(ids.maker, `public.manual_payout_transition('${sharedClaimed}','executing','${randomUUID()}')`)]);
+  assert.equal(sharedClaims.filter(r => r.status === "fulfilled").length, 1, "One durable shared manual claim");
+  const sharedReceiptEvidence = await evidence("receipt");
+  await run(ids.maker, `public.manual_payout_report('${sharedClaimed}','${sharedClaimed}',6000,100,'KES',clock_timestamp(),'${sharedReceiptEvidence}')`);
+  const sharedDebit = await evidence("statement"), sharedReconciliation = await evidence("reconciliation");
+  const sharedBooked = await sql("select clock_timestamp()::text;");
+  await policy({ enabled: false });
+  const verifyTransfer = `public.manual_payout_verify_transfer('${sharedClaimed}','${sharedClaimed}',6000,100,'KES',
+    '${sharedBooked}','${sharedDebit}','${sharedReconciliation}')`;
+  await assert.rejects(run(ids.maker, verifyTransfer), /Independent reconciler/);
+  const verifyReplays = await Promise.all([run(ids.checker, verifyTransfer), run(ids.checker, verifyTransfer)]);
+  assert.equal(verifyReplays.length, 2);
+  assert.equal(await sql(`select count(*) from public.manual_payout_transfer_verifications where payout_id='${sharedClaimed}';`), "1");
+  assert.equal(await sql(`select public.manual_payout_state('${sharedClaimed}');`), "paid");
+  assert.equal(await sql(`select count(*) from public.manual_payout_statement_batches where custody_id='${sharedScope}';`), "0",
+    "Exact shared paid verification never fabricates global statements");
+  console.log("Shared-account races: credit once, wedding-net overdraw, role revocation, OFF/claim serialization, durable single claim and exact OFF transaction verification replay passed.");
   console.log("Real default-OFF policy: replays, aggregate reservations, single claims, deactivation races, Owner CAS, revoked actors/reviewer, exact OFF reconciliation, and duplicate receipt holds passed.");
 } finally {
   if (ids) await policy({ enabled: false });

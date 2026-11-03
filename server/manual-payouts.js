@@ -18,6 +18,14 @@ const policyFields = {
 const policyChanges = v => v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0 &&
   Object.entries(v).every(([key, value]) => Object.hasOwn(policyFields, key) && policyFields[key](value));
 const specs = {
+  "shared-account": ["manual_payout_register_shared_account", { account: uuid, currency, evidence: uuid }],
+  "attribute-settlement": ["manual_payout_attribute_settlement", {
+    contribution: uuid, custody: uuid, line: uuid, settled: amount, at: timestamp, evidence: uuid
+  }],
+  "verify-transfer": ["manual_payout_verify_transfer", {
+    id: uuid, reference: v => typeof v === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(v),
+    actual: amount, fee, currency, at: timestamp, debit_evidence: uuid, evidence: uuid
+  }],
   "review-intent": ["manual_payout_review_intent", {
     id: uuid, decision: v => v === "created" || v === "declined", key: optionalUuid, custody: optionalUuid,
     recipient: optionalUuid, fee: v => v === null || fee(v), owner_solo: v => typeof v === "boolean"

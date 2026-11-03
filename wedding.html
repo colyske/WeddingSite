@@ -2428,10 +2428,10 @@
           $("held-display").textContent = WS.money(balData.held_minor || 0, balData.currency);
           const manual = balData.manual;
           $("manual-payout-status").textContent = manual?.enabled ?
-            "Staff manual admission is currently ready. Requests are staff-controlled, never instant or automatically sent. Existing custody, verified recipient, review and independent statement-debit evidence remain required; Owner solo processing is explicitly audited. This is not a promise of availability for your wedding." :
+            "Staff manual admission is currently ready. Requests are reviewed, never instant or automatically sent. Attributable settled net, verified recipient and exact transfer evidence remain required; Owner solo processing is explicitly audited. Merchant liquidity is checked externally, not guaranteed." :
             "Staff manual admission is OFF or not ready. Existing reservations and uncertain outcomes stay held; evidence and reconciliation can continue. Estimates are not spendable.";
           $("manual-balance-detail").textContent = manual ?
-            `Statement-backed: ${WS.money(manual.statement_backed_minor,balData.currency)}; reserved (including uncertain): ${WS.money(manual.reserved_minor,balData.currency)}; reconciled spent: ${WS.money(manual.spent_minor,balData.currency)}; known obligations: ${WS.money(manual.known_obligations_minor,balData.currency)}; unknown/held: ${WS.money(manual.unknown_or_held_minor,balData.currency)}. Estimates are not spendable; requests are staff-controlled.` :
+            `Attributable settled net: ${WS.money(manual.attributable_settled_minor ?? manual.statement_backed_minor,balData.currency)}; reserved (including uncertain): ${WS.money(manual.reserved_minor,balData.currency)}; reconciled spent: ${WS.money(manual.spent_minor,balData.currency)}; known obligations: ${WS.money(manual.known_obligations_minor,balData.currency)}; unknown/held: ${WS.money(manual.unknown_or_held_minor,balData.currency)}. Estimates are not spendable; requests are staff-controlled. Reservations are internal exposure, not bank reservations or liquidity guarantees.` :
             "Shared payout accounting unavailable. No estimate is spendable.";
         }
 
@@ -2454,7 +2454,7 @@
           const manualLabels = {
             requested: "Manual request awaiting independent review", approved: "Reviewed; not transferred",
             executing: "External execution claimed; funds held", uncertain: "Outcome uncertain; funds held; do not resend",
-            reported: "Receipt reported; awaiting independent statement reconciliation", paid: "Independently statement-reconciled payment",
+            reported: "Receipt reported; awaiting independent exact transfer verification", paid: "Independently reconciled exact payment",
             resolution_proposed: "No-transfer resolution awaiting independent review; funds held",
             not_transferred: "Independently confirmed not transferred", cancelled: "Cancelled before execution"
           };

@@ -10,6 +10,96 @@ append-only operating-policy chain and guarded protected-Owner activation/readin
 Its only deployment row is OFF, with no scope, fees, limits or evidence defaults.
 Deploying this capability is **not operational availability or activation authorization**.
 
+## Shared Paybill: current manual setup (no global bank balance)
+
+`202611160001` adds an **explicit new manual-only shared-account scope**. A Paybill
+used by other systems is not a dedicated WeddingSite bank account. WeddingSite
+does not ask for its global available balance, opening/closing statement or
+other-system transactions, and cannot reserve or guarantee merchant liquidity.
+The authorized operator checks liquidity in the official portal outside this site.
+The existing canonical account registry still prevents aliases of the same real
+account. No historical scope is converted, no old protection is removed, and no
+policy is enabled by deployment. Existing statement-mode/B2C records keep their
+original contracts described later in this document.
+
+**Start here:** Back office → **Payouts → Start here: prepare manual payouts**.
+
+1. **Add real evidence.** Keep the actual document in your approved access-controlled
+   store. Choose the original file in the local fingerprint tool (up to 20 MiB).
+   The browser computes SHA-256 from the actual bytes; no file, filename or bank/
+   recipient detail is uploaded or logged. **Assign a new evidence-register
+   reference**, then **Download reference card for the secure register**. Save
+   that card beside the original in your external store, confirm you did so,
+   select the evidence purpose, and explicitly record the evidence. For an
+   existing registered document, reuse its real opaque reference/fingerprint
+   rather than inventing another identity. The reference is a locator in your
+   own register, not a provider ID or proof that a document exists.
+2. **Check evidence.** Choose the saved record by kind/time/reference suffix.
+   The reviewer must actually inspect the original through the external store.
+   Checking is a separate confirmed action: no automatic attestation. Normal
+   processing requires an independent eligible leader. A protected Owner must
+   explicitly select audited Owner-solo self-check when applicable.
+3. **Register merchant account.** This records an already authorized real account;
+   it does not open/fund an account or collect account numbers. The technical
+   record ID is generated internally. Select checked account evidence. Use the
+   opaque entry from the canonical account register. **Assign a new register
+   reference** only after confirming the real account has no existing entry;
+   save it externally. Never create an alias to evade account/receipt uniqueness.
+4. **Prepare shared account attribution.** Select the registered account,
+   explicitly enter its currency, and select checked evidence describing
+   WeddingSite attribution and authorized use (the historical evidence kind is
+   internally named `custody`, but this is **not a bank balance assertion**).
+   No available/opening/closing amounts or full account statement are entered.
+5. **Prepare verified recipient.** Select the wedding, actual provider/currency
+   and checked recipient evidence, with private KYC/consent already complete.
+   This creates an immutable revision selected by its wedding/date/provider/
+   revision description. Actual recipient/bank details stay in the secure
+   external procedure and existing private KYC, not unsupported new fields.
+6. **Record actual contribution settlement.** Choose the shared scope and an
+   existing live, provider-verified, fee-known WeddingSite contribution. Its exact
+   net is shown in KES; actual checked transaction-specific settlement proof and
+   settlement date are required. A timer or payment status alone is not proof.
+   The same contribution cannot credit legacy/shared/automatic scopes twice.
+   Other-system receipts are not accepted as contributions or funds.
+7. **Protected Owner manual policy.** Select the prepared scope, exact recipients
+   and checked policy/fee/rail/evidence-procedure records. Enter your reviewed
+   per-transfer total, UTC-day exposure cap, fee and explicit supported `wedding`
+   payer. KES fields accept shillings/cents: KES 12.34 → exactly 1234 integer minor
+   units, never floating rounding or FX. No value is assumed. Global statement
+   freshness is not a prerequisite for shared scopes. **Save reviewed draft
+   (OFF)** prepares only; **Enable reviewed manual admission** remains a separate
+   authorized action and fails closed on blockers.
+8. A couple review intent remains nonfinancial. **Prepare staff review** selects
+   the real prepared scope/recipient internally; confirmed `created` reserves
+   **internal WeddingSite exposure**, not bank funds. Admission subtracts all
+   known WeddingSite refunds/disputes/holds, prior expenses/payouts, and both
+   rails' open/paid commitments for that wedding, with current contribution
+   eligibility rechecked at approval and claim. Uncertain exposure never expires.
+9. After independent approval (or explicit protected-Owner solo), **Prepare
+   execution claim** commits one durable claim. The operator checks liquidity
+   and transfers once outside the site only with separate payment authorization.
+   On uncertainty, record it; never blindly retry or cancel-unreserve.
+10. Record the sender's actual receipt as before. On a shared-scope reported
+    payout use **Prepare exact transfer verification → Record manual
+    verify-transfer**. A separate checked transaction-specific debit document
+    from the official account portal must identify that payout's source account,
+    actual verified recipient, unique reference, principal, fee, currency and
+    booked date. A full account statement/global balance is not needed. An
+    independent eligible reconciler confirms the exact match using separate
+    reconciliation evidence; explicit Owner-solo retains the same Owner and
+    explicit self-checks. Only atomic exact verification appends `paid`.
+    Duplicate/contradictory receipts still commit the existing account hold
+    across both channels and retain exposure.
+
+Selections carry IDs internally; raw IDs are retained for audit rather than
+requiring hand-copying between forms. Check labels describe recorded checks, not
+automatic provider verification; current roles/KYC/funds are always revalidated
+by the database. Missing/truncated/stale records do not become silently valid.
+The external evidence store, canonical register and human validation procedure
+remain genuine Owner prerequisites. If the real account already has a legacy
+statement-mode scope, do not alias it: continuing or migrating that historical
+scope requires a separately reviewed plan; this migration does not convert it.
+
 ## Guarded operating policy and deactivation
 
 The Payouts tab exposes preparation, exact outcome accounting and (protected Owner
@@ -20,7 +110,7 @@ policy revision, using compare-and-swap under the shared financial advisory lock
 Other staff, direct table writes, stale revisions and unconfirmed changes are denied.
 The deployment baseline, legacy withdrawal gate and automatic B2C policy are untouched.
 
-Every activation needs an explicit existing canonical custody account/provider/currency,
+For legacy statement-mode scopes, activation needs an explicit existing canonical custody account/provider/currency,
 an allowlist of exact current recipient revisions, per-transfer **principal plus fee**
 and aggregate UTC-day caps, fixed fee amount, fee payer and statement maximum age.
 The supported fee payer is explicitly `wedding`: the existing shared ledger reserves
@@ -46,7 +136,7 @@ cancellation before claim, receipt reporting, uncertainty/no-transfer decisions 
 statement reconciliation for existing executions. A claim survives every policy change.
 No automatic transfer or provider call is made by these controls.
 
-## Owner UI procedure and couple review requests
+## Legacy statement-mode procedure and couple review requests
 
 Migration `202611150001` follows released `202611140001`. It adds append-only
 **nonfinancial review intents**, not another financial reservation or activation
@@ -165,7 +255,7 @@ Revoked requester/approver/evidence-reviewer authority blocks new approval/execu
 | approved -> executing | Sender other than approver; unique durable claim key; funds/recipient rechecked | Reservation retained; claim committed **before** operator visits portal |
 | executing -> uncertain | Claimed sender | Reservation retained indefinitely; never blindly resend |
 | executing/uncertain -> reported | Claimed sender, unique scoped receipt, exact amount/fee/currency/date and statement evidence | Reservation retained; **not paid** |
-| reported -> paid | Separate immutable statement-debit reconciliation binding account, reference, amount, fee, currency, date and unique statement line; independent reconciler or explicit protected Owner solo | Final spent commitment, never recredited |
+| reported -> paid | Exact independently checked transaction-debit verification for a shared manual scope, or the original registered statement-debit reconciliation for a legacy scope; independent reconciler or explicit protected Owner solo | Final spent commitment, never recredited |
 | requested/approved -> cancelled | Leader; no claim may exist | Reservation released |
 | executing/uncertain -> resolution_proposed -> not_transferred | Checked no-transfer evidence; distinct resolution checker or explicitly opted-in protected Owner solo | Release only after evidenced no-transfer decision |
 
@@ -181,7 +271,7 @@ designed exception process; do not mutate history or create a blind resend.
 kinds and appends the immutable debit reconciliation before the terminal event.
 Receipt attestation alone never declares payment.
 
-The batch must already exist for the request's custody account and currency, with
+For legacy statement-mode requests, the batch must already exist for the request's custody account and currency, with
 accepted statement evidence. First register the observed debit using
 `manual_payout_register_statement_debit(batch,line,reference,actual,fee,currency,at,evidence)`.
 This records immutable `manual_payout_statement_debit_entries`, checks the batch's
