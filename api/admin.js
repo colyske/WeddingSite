@@ -2,6 +2,7 @@ import { sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireRole } from "../server/auth-middleware.js";
 import { contentError } from "../server/content-policy.js";
 import { referralError } from "../server/referral-errors.js";
+import { manualPayoutCommand } from "../server/manual-payouts.js";
 import { darajaCollectionStatus, paymentProviderReadiness } from "./checkout.js";
 import { collectionCapabilities } from "../server/collection-capabilities.js";
 import { defaultCurrencyStatus, readPlatformDefaultCurrency } from "../server/platform-currency.js";
@@ -56,6 +57,7 @@ async function defaultCurrencyView(code) {
 }
 
 const GET_ACTIONS = {
+  "manual-payouts": async t => rpc("manual_payout_overview", t),
   "referral-policy": async t => ({ policy: await rpc("referral_admin_policy", t) }),
   "referral-history": async t => ({ history: await rpc("referral_admin_history", t) }),
   "referral-ledger": async (t, q) => {
@@ -104,11 +106,14 @@ const REVIEW_DECISIONS = new Set(["republish", "lift", "return"]);
 const text = value => typeof value === "string" ? value.trim() : "";
 const ROLES = new Set(["client", "admin", "superadmin"]);
 const PAYOUT_STATUSES = new Set(["approved", "sent", "cancelled"]);
-const LEADERSHIP_ACTIONS = new Set(["overview", "ledger", "payouts", "audit", "policies", "refund-policy", "payment-controls", "policy-history", "set-role", "payment-controls-save", "paystack-settlement", "paystack-publication-adjustments"]);
+const LEADERSHIP_ACTIONS = new Set(["overview", "ledger", "payouts", "payout-status", "manual-payouts", "audit", "policies", "refund-policy", "payment-controls", "policy-history", "set-role", "payment-controls-save", "paystack-settlement", "paystack-publication-adjustments"]);
 const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save", "default-currency", "default-currency-save", "daraja-readiness", "daraja-approval", "paystack-readiness", "paystack-policy", "paystack-settlement-mode", "paystack-destination", "paystack-publication-resolution"]);
 
 function safeMessage(error) {
   const m = String(error?.message || "");
+  if (/MANUAL_PAYOUT_BLOCKED:/.test(m)) return [409, "Manual payouts are OFF. Separate operational approval and activation are required; legacy Mark sent is unavailable."];
+  if (/authority revoked|current authorized intake actor/i.test(m)) return [403, "Your current role no longer authorizes this action."];
+  if (/already claimed|receipt|statement|insufficient|canonical|idempotency|held custody|uncertain outcome|incident/i.test(m)) return [409, "Manual payout remains held or blocked. Review the current state and evidence; never resend an uncertain transfer."];
   if (/REFERRAL_CONFLICT:/.test(m)) return referralError(error);
   const moderation = m.match(/MODERATION:\s*([^\n]{1,300})/);
   if (moderation) return [409, moderation[1].trim()];
@@ -125,6 +130,9 @@ export default async function handler(req, res) {
   const role = session.profile.platform_role;
   const action = String(req.query?.action || "role");
   const token = session.token;
+  if (action.startsWith("manual-payout-") && !["owner", "superadmin"].includes(role)) {
+    return sendJson(res, 403, { error: "Leadership access required." });
+  }
   if ((["referral-policy", "referral-history", "referral-ledger"].includes(action) && !["owner", "superadmin"].includes(role)) ||
       (action === "referral-policy-save" && role !== "owner")) {
     return sendJson(res, 403, { error: "Your role does not allow this referral action." });
@@ -146,6 +154,15 @@ export default async function handler(req, res) {
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
     const invalidContent = contentError(body);
     if (invalidContent) return sendJson(res, 400, { error: invalidContent });
+    if (action.startsWith("manual-payout-")) {
+      const command = manualPayoutCommand(action.slice("manual-payout-".length), body, role);
+      if (command.error) return sendJson(res, command.status, { error: command.error });
+      const result = await rpc(command.rpc, token, command.args);
+      if (command.rpc === "manual_payout_report" && result === false) {
+       return sendJson(res, 409, { held: true, error: "Outcome evidence recorded as a custody-account incident. Both payout channels are held; do not resend or treat this as paid." });
+      }
+      return sendJson(res, 200, { result });
+    }
     if (action === "referral-policy-save") {
       if (typeof body.enabled !== "boolean" || !Number.isInteger(body.rateBasisPoints) ||
           body.rateBasisPoints < 0 || body.rateBasisPoints > 10000 || !UUID.test(String(body.revision || "")) || body.confirmed !== true) {
@@ -162,6 +179,7 @@ export default async function handler(req, res) {
       return sendJson(res, 200, { ok: true });
     }
     if (action === "payout-status") {
+      if (body.status !== "cancelled") return sendJson(res, 409, { error: "Legacy approvals and Mark sent are unavailable. Manual transfers require independent statement reconciliation after separate activation." });
       if (!PAYOUT_STATUSES.has(body.status) || !body.payout_id) return sendJson(res, 400, { error: "Invalid payout status." });
       const note = text(body.note);
       if (body.status === "cancelled" && (note.length < 10 || note.length > 240)) {
@@ -327,7 +345,8 @@ export default async function handler(req, res) {
     }
     return sendJson(res, 404, { error: "Unknown action." });
   } catch (error) {
-    console.error("admin endpoint failed", action, String(error?.message || "").slice(0, 300));
+    if (action.startsWith("manual-payout")) console.error("manual payout action failed", action, error?.status || "database_rejection");
+    else console.error("admin endpoint failed", action, String(error?.message || "").slice(0, 300));
     if (action === "payout-status" && error.message?.includes("PAYOUT_KYC_REQUIRED")) {
       return sendJson(res, 409, { error: "Complete KYC to receive your payout.", kycRequired: true });
     }

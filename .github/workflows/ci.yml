@@ -31,6 +31,10 @@ jobs:
         run: node tests/db/wedding-starter-upgrade.mjs
       - name: Commit deferred starter upgrade without changing existing weddings or readiness
         run: node tests/db/deferred-starter-upgrade.mjs
+      - name: Apply Owner currency predecessor before populated manual upgrade
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < supabase/migrations/202611100003_platform_default_currency.sql
+      - name: Commit manual-payout control plane on populated predecessor and test DDL rollback
+        run: node tests/db/manual-payout-upgrade.mjs
       - name: Apply all migrations to a fresh database
         run: supabase db reset --local --no-seed
       - name: Lint the migrated schema
@@ -75,6 +79,12 @@ jobs:
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/deferred-wedding-starters.sql
       - name: Test Owner default currency audit and unchanged fee/wedding records
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/platform-default-currency.sql
+      - name: Test manual payout evidence, accounting, uncertainty and role boundaries with rollback
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/manual-payouts.sql
+      - name: Test two-connection reservations, durable claims and duplicate receipts
+        env:
+          MANUAL_PAYOUT_TEST_DB_CONTAINER: supabase_db_weddingsite
+        run: node tests/db/manual-payout-concurrency.mjs
       - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup

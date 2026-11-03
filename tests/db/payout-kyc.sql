@@ -1,5 +1,7 @@
 -- Isolated local CI database only. All fixtures and effects are rolled back.
 begin;
+-- Exercise preserved historical KYC logic as database owner, not a callable client
+-- route. manual-payouts.sql verifies that public legacy approvals/sent are retired.
 -- Model future real funds only for this isolated KYC regression. The separate
 -- support-boundaries regression verifies the production live-settlement guard.
 alter table public.contributions disable trigger guard_payment_environment;
@@ -73,7 +75,7 @@ begin
   perform set_config('request.jwt.claim.sub', staff_id::text, true);
   blocked := false;
   begin
-    perform public.admin_set_payout_status(payout_id, 'approved');
+    perform public.legacy_payout_status_internal(payout_id, 'approved');
   exception when raise_exception then
     if sqlerrm not like 'PAYOUT_KYC_REQUIRED:%' then raise; end if;
     blocked := true;
@@ -83,29 +85,29 @@ begin
     raise exception 'Blocked approval must not change the payout';
   end if;
   blocked := false;
-  begin perform public.admin_set_payout_status(cancel_id, 'cancelled');
+  begin perform public.legacy_payout_status_internal(cancel_id, 'cancelled');
   exception when raise_exception then
     if sqlerrm not like 'MODERATION:%' then raise; end if;
     blocked := true;
   end;
   if not blocked then raise exception 'Payout cancellation requires a client-visible reason'; end if;
-  perform public.admin_set_payout_status(cancel_id, 'cancelled', 'Local cancellation reason for the Client');
-  perform public.admin_set_payout_status(cancel_id, 'cancelled', 'Local cancellation reason for the Client');
+  perform public.legacy_payout_status_internal(cancel_id, 'cancelled', 'Local cancellation reason for the Client');
+  perform public.legacy_payout_status_internal(cancel_id, 'cancelled', 'Local cancellation reason for the Client');
   if (select note from public.payout_records where id=cancel_id) <> 'Local cancellation test'
     or (select staff_reason from public.payout_records where id=cancel_id) <> 'Local cancellation reason for the Client' then
     raise exception 'Cancellation must preserve the request note and staff reason separately';
   end if;
   blocked := false;
-  begin perform public.admin_set_payout_status(cancel_id, 'approved');
+  begin perform public.legacy_payout_status_internal(cancel_id, 'approved');
   exception when raise_exception then blocked := true; end;
   if not blocked then raise exception 'Cancelled payout must not reopen'; end if;
 
   update public.wedding_kyc k set partner2_id_number = 'TEST5678' where k.wedding_id = payout_kyc_test.wedding_id;
-  perform public.admin_set_payout_status(payout_id, 'approved');
+  perform public.legacy_payout_status_internal(payout_id, 'approved');
   update public.wedding_kyc k set consent_at = null where k.wedding_id = payout_kyc_test.wedding_id;
   blocked := false;
   begin
-    perform public.admin_set_payout_status(payout_id, 'sent');
+    perform public.legacy_payout_status_internal(payout_id, 'sent');
   exception when raise_exception then
     if sqlerrm not like 'PAYOUT_KYC_REQUIRED:%' then raise; end if;
     blocked := true;
@@ -115,12 +117,12 @@ begin
     raise exception 'Blocked sent transition must not change the payout';
   end if;
   update public.wedding_kyc k set consent_at = now() where k.wedding_id = payout_kyc_test.wedding_id;
-  perform public.admin_set_payout_status(payout_id, 'sent');
+  perform public.legacy_payout_status_internal(payout_id, 'sent');
   if (select status from public.payout_records where id = payout_id) <> 'sent' then
     raise exception 'Complete KYC must allow the normal approved-to-sent transition';
   end if;
   blocked := false;
-  begin perform public.admin_set_payout_status(payout_id, 'cancelled', 'Cannot cancel a payout already sent.');
+  begin perform public.legacy_payout_status_internal(payout_id, 'cancelled', 'Cannot cancel a payout already sent.');
   exception when raise_exception then blocked := true; end;
   if not blocked then raise exception 'Sent payout must stay immutable'; end if;
 
