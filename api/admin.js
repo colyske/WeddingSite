@@ -3,6 +3,8 @@ import { requireRole } from "../server/auth-middleware.js";
 import { contentError } from "../server/content-policy.js";
 import { referralError } from "../server/referral-errors.js";
 import { darajaCollectionStatus, paymentProviderReadiness } from "./checkout.js";
+import { collectionCapabilities } from "../server/collection-capabilities.js";
+import { defaultCurrencyStatus, readPlatformDefaultCurrency } from "../server/platform-currency.js";
 
 import { checkProviderHealth, darajaConfiguredEnvironment, isSecurePublicOrigin } from "../server/payment-adapters.js";
 import {
@@ -47,6 +49,12 @@ async function darajaReadiness(token, query) {
   return result;
 }
 
+// Options always come from current collection capabilities, never a static currency list.
+async function defaultCurrencyView(code) {
+  const currencies = await collectionCapabilities();
+  return { ...defaultCurrencyStatus(code, currencies), currencies: currencies.map(({ code: c, name }) => ({ code: c, name })) };
+}
+
 const GET_ACTIONS = {
   "referral-policy": async t => ({ policy: await rpc("referral_admin_policy", t) }),
   "referral-history": async t => ({ history: await rpc("referral_admin_history", t) }),
@@ -75,6 +83,7 @@ const GET_ACTIONS = {
   },
   policies: async (t) => ({ policies: await rpc("admin_get_policies", t) }),
   "refund-policy": async (t) => ({ allocation: await rpc("admin_get_refund_policy", t) }),
+  "default-currency": async () => defaultCurrencyView(await readPlatformDefaultCurrency()),
   "payment-controls": async t => ({ enabled: await rpc("admin_get_payment_controls", t), providers: paymentProviderReadiness(), daraja: await darajaCollectionStatus(), paystack: await paystackReadiness() }),
   "paystack-readiness": async () => paystackReadiness(),
   "paystack-publication-adjustments": async t => ({ adjustments: await rpc("admin_paystack_publication_adjustments", t) }),
@@ -96,7 +105,7 @@ const text = value => typeof value === "string" ? value.trim() : "";
 const ROLES = new Set(["client", "admin", "superadmin"]);
 const PAYOUT_STATUSES = new Set(["approved", "sent", "cancelled"]);
 const LEADERSHIP_ACTIONS = new Set(["overview", "ledger", "payouts", "audit", "policies", "refund-policy", "payment-controls", "policy-history", "set-role", "payment-controls-save", "paystack-settlement", "paystack-publication-adjustments"]);
-const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save", "daraja-readiness", "daraja-approval", "paystack-readiness", "paystack-policy", "paystack-settlement-mode", "paystack-destination", "paystack-publication-resolution"]);
+const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save", "default-currency", "default-currency-save", "daraja-readiness", "daraja-approval", "paystack-readiness", "paystack-policy", "paystack-settlement-mode", "paystack-destination", "paystack-publication-resolution"]);
 
 function safeMessage(error) {
   const m = String(error?.message || "");
@@ -164,6 +173,17 @@ export default async function handler(req, res) {
     if (action === "policies-save") {
       await rpc("admin_save_policies", token, { p_data: body.policies || {} });
       return sendJson(res, 200, { ok: true, policies: await rpc("admin_get_policies", token) });
+    }
+    if (action === "default-currency-save") {
+      const currency = body.currency === null ? null : typeof body.currency === "string" ? body.currency.trim().toUpperCase() : undefined;
+      if (body.confirmed !== true || currency === undefined || (currency !== null && !/^[A-Z]{3}$/.test(currency))) {
+        return sendJson(res, 400, { error: "Confirm a supported default currency, or clear the default." });
+      }
+      if (currency !== null && !(await collectionCapabilities()).some(item => item.code === currency)) {
+        return sendJson(res, 409, { error: `${currency} does not currently have a ready guest-payment option. Choose a currently supported currency.` });
+      }
+      const saved = await rpc("owner_set_default_currency", token, { p_currency: currency, p_confirmed: true });
+      return sendJson(res, 200, { ...(await defaultCurrencyView(saved?.default_currency ?? null)), changed: saved?.changed === true });
     }
     if (action === "refund-policy-save") {
       if (!["manual_review", "couple", "platform"].includes(body.allocation) || body.confirmed !== true) {

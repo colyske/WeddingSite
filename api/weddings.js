@@ -10,6 +10,7 @@ import { contentError } from "../server/content-policy.js";
 import { handlePublicationPayment } from "../server/publication-payments.js";
 import { publicationQuote } from "../server/publication-fx.js";
 import { collectionCapabilities } from "../server/collection-capabilities.js";
+import { platformDefaultCurrencyStatus } from "../server/platform-currency.js";
 import "../currencies.js";
 import "../inspiration-fixtures.js";
 import { publicWeddingStyle } from "../server/wedding-style.js";
@@ -140,7 +141,8 @@ export default async function handler(req, res) {
       if (!rows?.length) return sendJson(res, 404, { error: "Wedding not found." });
     }
     try {
-      return sendJson(res, 200, { currencies: await collectionCapabilities({ weddingId: weddingId || null }) });
+      const currencies = await collectionCapabilities({ weddingId: weddingId || null });
+      return sendJson(res, 200, { currencies, defaultCurrency: await platformDefaultCurrencyStatus(currencies) });
     } catch (error) {
       console.error("Wedding payment currency capabilities unavailable:", error.message);
       return sendJson(res, 503, {
