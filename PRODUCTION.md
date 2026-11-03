@@ -16,6 +16,13 @@ Supabase-domain label remains separate, optional paid branding setup; see
 README for the custom auth domain and Google consent-screen steps.
 
 Payment activation is provider-specific, not inferred from this document.
+The [controlled manual payout policy](docs/CONTROLLED-MANUAL-PAYOUTS.md) capability
+in migration `202611130001` follows released shared B2C `202611120001` and precedes
+the separately coordinated template migration `202611140001`. Release leaves
+manual admission OFF with no operational defaults. Protected-Owner activation
+requires separately authorized actual policy/evidence inputs; it is not part of
+migration/deployment approval. Deactivation retains claims/reservations and permits
+exact existing-outcome accounting. Legacy withdrawal and B2C gates are not unlocked.
 Daraja has separate [live collection gates](docs/LIVE-DARAJA-READINESS.md).
 The additive [Paystack live collection implementation](docs/LIVE-PAYSTACK-READINESS.md)
 remains default-OFF and was validated only with isolated fixtures; account-specific

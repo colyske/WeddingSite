@@ -59,25 +59,51 @@
     reconcile: ["id", "provider", "account", "statement", "line", "reference", "actual", "fee", "currency", "at", "evidence"]
   };
   const manualNumbers = new Set(["available", "settled", "amount", "actual", "fee", "held", "opening", "credit", "debit", "closing"]);
-  function manualForms() {
+  function manualForms(admissionEnabled) {
     return Object.entries(manualFields).map(([action, fields]) => `<details><summary>Manual-only: ${esc(action)}</summary>
-      <form data-manual-action="${action}"><fieldset disabled><legend>Unavailable until separately approved activation</legend>
+      <form data-manual-action="${action}"><fieldset${action === "request" && !admissionEnabled ? " disabled" : ""}><legend>${action === "request" ? "Current reviewed manual admission required" : "Evidence preparation / existing-outcome accounting; never sends money"}</legend>
       ${fields.map(field => {
         if (field === "owner_solo") return role === "owner" ?
           '<label><input name="owner_solo" type="checkbox"> Explicit protected-Owner solo manual mode (audited; all evidence and custody controls still apply)</label>' :
           '<input name="owner_solo" type="hidden" value="">';
         const options = field === "kind" ? action === "source" ? ["payout", "expense", "adjustment"] :
-          ["account", "commitment", "statement", "recipient", "custody", "settlement", "receipt", "reconciliation", "no_transfer"] :
+          ["account", "commitment", "statement", "recipient", "custody", "settlement", "receipt", "reconciliation", "no_transfer", ...(role === "owner" ? ["policy"] : [])] :
           field === "action" ? ["approved", "executing", "cancelled", "uncertain", "resolution_proposed", "not_transferred"] : null;
         const optional = (action === "transition" && ["key", "evidence"].includes(field)) ||
           (action === "source" && ["batch", "line", "at"].includes(field)) || (action === "settlement" && field === "batch");
         const label = `${field.replaceAll("_", " ")}${manualNumbers.has(field) ? " (minor units; explicit, no defaults)" :
           ["at", "statement_at"].includes(field) ? " (UTC ISO timestamp)" : field === "sha256" ? " (evidence digest)" : ""}`;
-        return `<label>${esc(label)}${options ? `<select name="${field}">${options.map(o => `<option>${o}</option>`).join("")}</select>` :
-          `<input name="${field}" type="${manualNumbers.has(field) ? "number" : "text"}"${optional ? "" : " required"} autocomplete="off">`}</label>`;
+        return `<label>${esc(label)}${options ? `<select name="${field}">${options.map(o => `<option${action === "transition" && !admissionEnabled && ["approved", "executing"].includes(o) ? " disabled" : ""}>${o}</option>`).join("")}</select>` :
+          `<input name="${field}" type="${manualNumbers.has(field) ? "number" : "text"}"${optional ? "" : " required"} data-contact-allowed autocomplete="off">`}</label>`;
       }).join("")}
       <label><input name="confirmed" type="checkbox" required> I reviewed immutable evidence and understand this never sends money. A claim replay is not permission to resend.</label>
       <button type="submit">Record manual ${esc(action)}</button></fieldset></form></details>`).join("");
+  }
+  function manualPolicyForm(readiness) {
+            if (role !== "owner" || !readiness?.policy) return "";
+            const policy = readiness.policy;
+            const fields = ["custody_id", "recipient_ids", "per_payout_minor", "daily_minor", "payout_fee_minor", "fee_payer",
+              "statement_max_age_minutes", "review_evidence", "fee_evidence", "rail_evidence", "secure_evidence"];
+            return `<section id="manual-policy"><h4>Protected Owner manual policy</h4>
+              <p>One existing custody account/currency and exact recipient revisions. Limits include principal plus fee.
+              Fee payer must explicitly be "wedding": the shared ledger reserves/deducts the fee from wedding entitlement. Other fee payers are not supported.
+              UTC-day exposure also counts prior-day open commitments and the other channel. No operational value is assumed.</p>
+              <form data-manual-policy="draft" data-revision="${esc(policy.revision)}">
+              ${fields.map(field => `<label>${esc(field.replaceAll("_", " "))}${field === "recipient_ids" ? " (comma-separated revision UUIDs)" : ""}
+                <input name="${field}" type="${["per_payout_minor", "daily_minor", "payout_fee_minor", "statement_max_age_minutes"].includes(field) ? "number" : "text"}"
+                value="${esc(Array.isArray(policy[field]) ? policy[field].join(",") : policy[field] ?? "")}"
+                data-contact-allowed autocomplete="off"></label>`).join("")}
+              <label><input name="confirmed" type="checkbox" required> I reviewed scoped policy, fees, funded account entitlement and secure evidence procedures. Saving appends an OFF revision and invalidates unclaimed approvals.</label>
+              <button type="submit">Save reviewed draft (OFF)</button></form>
+              <form data-manual-policy="activate" data-revision="${esc(policy.revision)}">
+                <label><input name="confirmed" type="checkbox" required> Separately authorized: enable manual admission for this exact reviewed revision only. This never initiates a transfer or enables B2C.</label>
+                <button type="submit"${readiness.blockers?.length ? " disabled" : ""}>Enable reviewed manual admission</button></form>
+              <form data-manual-policy="deactivate" data-revision="${esc(policy.revision)}">
+                <label><input name="confirmed" type="checkbox" required> Stop new requests/approvals/execution claims, preserving all reservations, evidence and existing-outcome accounting.</label>
+                <button type="submit">Disable manual admission</button></form>
+              <details><summary>Append-only policy revisions</summary>${(readiness.history || []).map(p =>
+                `<p>${esc(p.revision)}: ${p.enabled ? "admission configured" : "OFF"}, actor ${esc(p.actor_id || "deployment baseline")}, ${date(p.recorded_at)}</p>`).join("")}</details>
+              </section>`;
   }
   async function moderationQueue(el) {
     const { cases = [] } = await get("moderation", "&closed=1");
@@ -425,18 +451,20 @@
       const [{ payouts }, manual] = await Promise.all([get("payouts"), get("manual-payouts")]);
       el.innerHTML = `<h2>Payouts / withdrawals</h2>
         <section id="manual-payout-control"><h3>Controlled manual external payouts: ${manual.enabled ? "enabled" : "OFF"}</h3>
-          <p>Automatic transfers remain OFF. Code readiness does not authorize use of a funded merchant rail. Operators transfer only outside this site in the official authorized portal, after a durable execution claim. Never resend an uncertain transfer.</p>
+          <p>This manual control never changes automatic B2C policy or sends money. Code readiness does not authorize use of a funded merchant rail. Operators transfer only outside this site in the official authorized portal, after a durable execution claim. Never resend an uncertain transfer.</p>
           <p>${esc(manual.verification)}</p>
           <p class="notice">${(manual.blockers || []).map(esc).join(". ")}.</p>
           <p>Request &rarr; review &rarr; execution claim &rarr; receipt reported &rarr; statement reconciliation. Other eligible leaders require two distinct actors. The protected Owner may explicitly opt into audited solo manual mode; evidence, funds and reconciliation are still mandatory. Only statement-reconciled transfers are paid. Uncertain transfers retain funds; there is no timeout release.</p>
           <p>Record the checked statement batch and its actual debit line before reconciling. Reconciliation must match that existing line exactly and atomically allocates it before paid; arbitrary statement/line IDs and post-paid inclusion are not accepted.</p>
           <p>Evidence reference fields accept opaque repository UUIDs only. Do not enter bank details, names, KYC, credentials or public document URLs. Identity evidence must include consent and actual verification by the appointed reviewer; an attestation is not a provider lookup.</p>
-          ${manualForms()}
-          ${role === "owner" ? `<details><summary>Protected Owner: record policy evidence only (cannot activate)</summary>
+          <p>Evidence intake and existing-claim outcomes remain available while manual admission is OFF. Approval/execution always recheck the current policy revision, limits, fees, recipient and statement.</p>
+          ${manualPolicyForm(manual.readiness)}
+          ${manualForms(Boolean(manual.enabled))}
+          ${role === "owner" ? `<details><summary>Protected Owner: record policy evidence (separate review required)</summary>
             <form data-manual-action="evidence"><input type="hidden" name="kind" value="policy">
-              <label>Opaque policy document reference (UUID)<input name="reference" required autocomplete="off"></label>
-              <label>Policy evidence SHA-256 digest<input name="sha256" pattern="[0-9a-f]{64}" required autocomplete="off"></label>
-              <label><input name="confirmed" type="checkbox" required> Record review evidence only; no funded rail, limits, fees or activation is approved by this action.</label>
+              <label>Opaque policy document reference (UUID)<input name="reference" required data-contact-allowed autocomplete="off"></label>
+              <label>Policy evidence SHA-256 digest<input name="sha256" pattern="[0-9a-f]{64}" required data-contact-allowed autocomplete="off"></label>
+              <label><input name="confirmed" type="checkbox" required> Record opaque human review evidence only; this does not verify a provider or activate admission.</label>
               <button type="submit">Record Owner policy evidence</button></form></details>` : ""}
           ${(manual.heldAccounts || []).map(h => `<p role="alert">Custody account held across both payout channels: ${esc(h.custody_id)}; incident ${esc(h.id)}, request ${esc(h.payout_id)} (${date(h.recorded_at)}). Contradictory outcome requires separate incident review; no release or resend action is available.</p>`).join("")}
           ${(manual.requests || []).map(r => `<article><h4>${esc(r.id)}: ${esc(r.state)}</h4><p>${esc(WS.money(Number(r.amount_minor),r.currency,false))}; recipient revision ${esc(r.recipient_revision)}; ${r.owner_solo ? "explicit Owner solo mode" : "two-person review"}</p><details><summary>Append-only actor / evidence history</summary>${(r.events || []).map(e => `<p>${esc(e.state)}: actor ${esc(e.actor_id)}, evidence ${esc(e.evidence_id || "-")}, Owner solo: ${e.owner_solo ? "yes" : "no"} (${date(e.created_at)})</p>`).join("")}</details></article>`).join("")}
@@ -578,6 +606,31 @@
       } catch (err) { toast(err.message, true); }
     });
     panel.addEventListener("submit", async (e) => {
+      if (e.target.matches("[data-manual-policy]")) {
+        e.preventDefault();
+        const form = e.target;
+        if (!form.elements.confirmed.checked) return;
+        let changes = { enabled: form.dataset.manualPolicy === "activate" };
+        if (form.dataset.manualPolicy === "draft") {
+          for (const field of ["custody_id", "review_evidence", "fee_evidence", "rail_evidence", "secure_evidence"]) {
+            changes[field] = form.elements[field].value.trim() || null;
+          }
+          changes.recipient_ids = form.elements.recipient_ids.value.split(",").map(v => v.trim()).filter(Boolean);
+          changes.fee_payer = form.elements.fee_payer.value.trim() || null;
+          for (const field of ["per_payout_minor", "daily_minor", "payout_fee_minor", "statement_max_age_minutes"]) {
+            const value = form.elements[field].value.trim();
+            changes[field] = value === "" ? null : Number(value);
+          }
+        }
+        const button = form.querySelector("button");
+        button.disabled = true;
+        try {
+          await post("manual-payout-policy", { revision: form.dataset.revision, changes, confirmed: true });
+          toast("Manual policy revision recorded. No transfer or automatic policy change.");
+          await show("payouts");
+        } catch (error) { toast(error.message, true); button.disabled = false; }
+        return;
+      }
       if (e.target.matches("[data-manual-action]")) {
         e.preventDefault();
         const form = e.target, action = form.dataset.manualAction;

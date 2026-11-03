@@ -4,8 +4,47 @@ This is a bounded **unactivated control plane**, not launch-ready withdrawals or
 authorized funded rail. Migration `202611110001` does not enable any payment or payout
 provider, initiate transfers, contact an external service, copy B2C branch code, or
 modify historical finance records. Automatic transfers retain their existing hard-OFF
-gate. The new manual policy is separately constrained OFF; this release has **no
-activation RPC**. Deploying code or recording an Owner policy document is not activation.
+gate. The original manual policy remains constrained OFF as historical baseline.
+Migration `202611130001`, ordered after shared B2C `202611120001`, adds a separate
+append-only operating-policy chain and guarded protected-Owner activation/readiness.
+Its only deployment row is OFF, with no scope, fees, limits or evidence defaults.
+Deploying this capability is **not operational availability or activation authorization**.
+
+## Guarded operating policy and deactivation
+
+The Payouts tab exposes preparation, exact outcome accounting and (protected Owner
+only) policy readiness/revisions. `manual_payout_readiness()` returns explicit blockers;
+it does not certify external documents, account entitlement or funds for a wedding.
+Only `owner_set_manual_payout_policy(revision,changes,confirmed)` may append a reviewed
+policy revision, using compare-and-swap under the shared financial advisory lock.
+Other staff, direct table writes, stale revisions and unconfirmed changes are denied.
+The deployment baseline, legacy withdrawal gate and automatic B2C policy are untouched.
+
+Every activation needs an explicit existing canonical custody account/provider/currency,
+an allowlist of exact current recipient revisions, per-transfer **principal plus fee**
+and aggregate UTC-day caps, fixed fee amount, fee payer and statement maximum age.
+The supported fee payer is explicitly `wedding`: the existing shared ledger reserves
+and deducts that fee from wedding entitlement. An alternative payer/funding source is
+not implemented or inferred. The principal cap must fit the current platform minimum
+and maximum; the existing platform hold and refund/dispute rules still apply. Checked
+Owner policy evidence separately identifies the review, fee agreement, existing funded
+rail entitlement and secure evidence-custody procedures. No new values are prefilled.
+
+UTC-day exposure includes **both channels**, every older open commitment, and paid
+requests requested, claimed, transferred or reconciled during the day. Policy revision
+or channel changes cannot reset this cap. All new requests bind their immutable policy
+revision; changing the policy invalidates unclaimed approvals even when values match.
+Cancel an unclaimed stale request and create a newly reviewed request; never rewrite it.
+Current Owner/reviewer roles, statement freshness, recipient/KYC/consent, incident holds,
+fees, limits and existing statement-backed eligibility are rechecked at financial write.
+
+Saving a draft appends an OFF revision. Activation is an explicit separately confirmed
+Owner operation and fails closed on any prerequisite blocker. Disabling appends an OFF
+revision even if old evidence has expired: it blocks new requests, approvals and claims,
+but **never** releases reservations, deletes claims or prevents evidence preparation,
+cancellation before claim, receipt reporting, uncertainty/no-transfer decisions or exact
+statement reconciliation for existing executions. A claim survives every policy change.
+No automatic transfer or provider call is made by these controls.
 
 ## Authority and evidence
 
@@ -193,9 +232,11 @@ independently reconciled manual payments.
 4. Appoint the two-person staff workflow or explicitly select protected-Owner solo
    manual requests, with evidence review and statement reconciliation; define incident handling for receipt collisions, mismatches,
    uncertain outcomes, contradictory late evidence and independently proven no-transfer.
-5. Separately approve and implement an Owner-controlled activation mechanism with its
-   own reviewed migration, policy bindings and operational tests. Do not drop the OFF
-   constraint or substitute the test gate in Production. New exception-resolution
+5. Separately authorize the protected Owner's operational activation of the reviewed
+   policy using the new capability only after release and actual prerequisites are
+   satisfied. Do not drop the historical OFF constraint or substitute a test gate.
+   No external monitoring or notification delivery is proven by this capability.
+   New exception-resolution
    procedures beyond the evidenced no-transfer path require separate review.
 
 ## Validation and release boundary
@@ -206,7 +247,13 @@ rollback-only SQL scenarios and two-connection reservations/replays/claims/recei
 collisions, protected-Owner solo and two-person role/revocation boundaries. Only named isolated local/CI Docker databases accept simulated fixtures;
 they never connect to a remote database or call a provider. The concurrency runner
 temporarily substitutes the gate in the isolated database and restores its exact
-definition in `finally`; committed fixtures disappear when CI destroys that database.
+definition in `finally`; those released-predecessor compatibility tests are retained.
+The new readiness suite instead exercises the **real** default-OFF policy RPC, including
+activation, two-person and explicit Owner-solo complete nonzero-fee reconciliation,
+stale policy/role/statement denials, aggregate reservations, single claims, concurrent
+Owner revisions, waiting-role revocation and outcomes after deactivation. Its populated
+upgrade test verifies rollback/full COMMIT, unchanged finance rows and B2C definitions.
+Fixtures exist only in the isolated database, destroyed by CI.
 
 Require full green CI at the PR's **exact head**, coordinator migration dry-run at that
 same head and separate DB-first deployment approval. Do not merge or manually push a
