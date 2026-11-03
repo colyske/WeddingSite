@@ -73,7 +73,12 @@
   };
   let manualResult = "";
   function manualForms(admissionEnabled) {
-    return Object.entries(manualFields).map(([action, fields]) => `<details data-manual-panel="${action}"><summary>Manual-only: ${esc(action)}</summary>
+    const titles = { evidence: "Register real evidence", check: "Check saved evidence", account: "Register merchant account",
+      "shared-account": "Prepare shared account attribution", "attribute-settlement": "Record contribution settlement proof",
+      "verify-transfer": "Verify the exact completed transfer", recipient: "Prepare verified recipient revision",
+      request: "Create a staff-reviewed payout request", "review-intent": "Review a couple request",
+      transition: "Record the selected workflow step", receipt: "Report an actual transfer receipt" };
+    return Object.entries(manualFields).map(([action, fields]) => `<details data-manual-panel="${action}"><summary>Manual-only: ${esc(titles[action] || action)}</summary>
       <form data-manual-action="${action}" data-key-context="${action}"><fieldset${action === "request" && !admissionEnabled ? " disabled" : ""}><legend>${action === "request" ? "Current reviewed manual admission required" : "Evidence preparation / existing-outcome accounting; never sends money"}</legend>
       ${fields.map(field => {
         if (field === "owner_solo") return role === "owner" ?
@@ -93,7 +98,7 @@
           `<input name="${field}" type="${manualNumbers.has(field) ? "number" : "text"}"${optional ? "" : " required"}${field === "key" ? ` value="${esc(manualKey(action))}"` : ""} data-contact-allowed autocomplete="off">`}</label>`;
       }).join("")}
       <label><input name="confirmed" type="checkbox" required> I reviewed immutable evidence and understand this never sends money. A claim replay is not permission to resend.</label>
-      <button type="submit">Record manual ${esc(action)}</button></fieldset></form></details>`).join("");
+      <button type="submit">${esc(titles[action] || `Record manual ${action}`)}</button></fieldset></form></details>`).join("");
   }
   function manualPolicyForm(readiness) {
             if (role !== "owner" || !readiness?.policy) return "";
@@ -132,9 +137,9 @@
     const reviewer = r.owner_solo ? "the same protected Owner (explicit solo mode)" : "a different eligible leader";
     const proposed = (r.events || []).find(e => e.state === "resolution_proposed");
     switch (r.state) {
-      case "requested": return [`Next: approval by ${reviewer}. Approval rechecks policy, recipient, statement and funds.`,
+      case "requested": return [`Next: approval by ${reviewer}. Approval rechecks policy, recipient and ${(w.sharedScopes || []).includes(ws.custody_id) ? "attributable settled wedding net, obligations and internal exposure" : "legacy statement-backed funds"}.`,
         prefill("Prepare approval", "transition", { id, action: "approved" }), prefill("Prepare cancellation", "transition", { id, action: "cancelled" })];
-      case "approved": return [`Next: execution claim by ${r.owner_solo ? "the protected Owner" : "a sender other than the approver"} BEFORE any transfer. Then transfer once, outside this site, in the official authorized portal.`,
+      case "approved": return [`Next: execution claim by ${r.owner_solo ? "the protected Owner" : "a sender other than the approver"} BEFORE any transfer. The authorized operator checks portal liquidity externally; WeddingSite does not reserve bank funds. Transfer only once outside this site, under separate payment authorization.`,
         prefill("Prepare execution claim", "transition", { id, action: "executing" }), prefill("Prepare cancellation", "transition", { id, action: "cancelled" })];
       case "executing": case "uncertain": return [`Claimed${ws.claim ? ` by ${esc(ws.claim.sender_id)} at ${date(ws.claim.claimed_at)}` : ""}. Never resend. Record receipt evidence, check it, then report the portal receipt; if the outcome is unknown, the sender marks it uncertain.`,
         prefill("Prepare receipt report", "receipt", { id }), ...(r.state === "executing" ? [prefill("Prepare uncertain", "transition", { id, action: "uncertain" })] : []),
@@ -158,7 +163,7 @@
     if (!w) return '<p class="notice">Manual operator workspace unavailable. Evidence and record IDs cannot be listed; no action was taken.</p>';
     const ev = w.evidence || [];
     return `<section id="manual-workspace"><h4>Operator workspace (read-only references)</h4>
-      <p class="fine">Opaque IDs only. Use these to fill the manual forms; listing never changes funds, policy or gates.
+      <p class="fine">Audit references only: the guided forms select records by readable descriptions and carry IDs internally. Listing never changes funds, policy or gates.
       Lists show the latest 200 evidence/recipient records, latest 100 financial requests, all pending review intents and latest 100 completed reviews.
       Retain older IDs in the secure operations register; records are never deleted.</p>
       <h4>Couple requests for staff review (no funds reserved)</h4>

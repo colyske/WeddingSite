@@ -80,8 +80,8 @@ original contracts described later in this document.
    and transfers once outside the site only with separate payment authorization.
    On uncertainty, record it; never blindly retry or cancel-unreserve.
 10. Record the sender's actual receipt as before. On a shared-scope reported
-    payout use **Prepare exact transfer verification → Record manual
-    verify-transfer**. A separate checked transaction-specific debit document
+    payout use **Prepare exact transfer verification → Verify the exact completed
+    transfer**. A separate checked transaction-specific debit document
     from the official account portal must identify that payout's source account,
     actual verified recipient, unique reference, principal, fee, currency and
     booked date. A full account statement/global balance is not needed. An
