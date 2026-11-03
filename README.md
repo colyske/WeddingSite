@@ -363,6 +363,16 @@ npm test
 ```
 
 See [PRODUCTION.md](PRODUCTION.md) for implementation gaps, dashboard configuration names, safe provider setup, and deployment steps. Never paste credentials into chat, commit them, enable live payments, or publish publicly without owner approval.
+## Default-off M-Pesa B2C payouts
+
+Guarded B2C v1 dispatch uses the controlled-payout foundation's shared custody,
+reservations and exclusive manual/automatic execution claim. Both deployment and
+Owner policy default OFF with two-person review and no limits. The Owner may
+explicitly configure audited automated approval; phone control, independent
+identity/name evidence, actual disbursable collected funds, fees, holds and
+independent final reconciliation remain mandatory. No production/provider
+activation has occurred. See [B2C operator guide and exact contract
+evidence/limitations](docs/B2C-PAYOUTS.md).
 # Client-wedding referrals
 
 `/api/referrals` is rewritten to the existing wedding function, which dispatches

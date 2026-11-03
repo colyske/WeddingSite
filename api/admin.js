@@ -2,6 +2,7 @@ import { sendJson, supabaseRequest } from "../server/supabase.js";
 import { requireRole } from "../server/auth-middleware.js";
 import { contentError } from "../server/content-policy.js";
 import { referralError } from "../server/referral-errors.js";
+import b2cHandler from "../server/b2c-api.js";
 import { manualPayoutCommand } from "../server/manual-payouts.js";
 import { darajaCollectionStatus, paymentProviderReadiness } from "./checkout.js";
 import { collectionCapabilities } from "../server/collection-capabilities.js";
@@ -125,6 +126,7 @@ function safeMessage(error) {
 }
 
 export default async function handler(req, res) {
+  if (req.query?.b2c === "1") return b2cHandler(req, res);
   const session = await requireRole(req, res, ["owner", "superadmin", "admin"]);
   if (!session) return;
   const role = session.profile.platform_role;

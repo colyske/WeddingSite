@@ -2,7 +2,7 @@
 (function () {
   const $ = (id) => document.getElementById(id);
   const esc = (s) => WS.esc(s);
-  const SEC = { overview: "Overview", operations: "Operations", weddings: "Weddings", users: "Users & roles", fees: "Fees & settings", referrals: "Client referrals", ledger: "Ledger", payouts: "Payouts", audit: "Audit log", security: "Security" };
+  const SEC = { overview: "Overview", operations: "Operations", weddings: "Weddings", users: "Users & roles", fees: "Fees & settings", referrals: "Client referrals", ledger: "Ledger", payouts: "Payouts", b2c: "M-Pesa B2C", audit: "Audit log", security: "Security" };
   let role = "";
   let cache = {};
 
@@ -447,6 +447,9 @@
           return `<tr><td>${date(p.requested_at)}</td><td>${esc(p.couple_names)} <a href="/wedding.html?id=${encodeURIComponent(p.wedding_id)}#kyc-section">KYC details</a></td><td>${esc(WS.money(Number(p.amount_minor), p.currency, false))}</td><td>${esc(p.status)}</td><td>${esc(p.note || "")}</td><td class="acts">${acts.join(" ") || "-"}</td></tr>`;
         }));
     },
+    async b2c(el) {
+      await window.B2CBackoffice.mount(el, role === "owner");
+    },
     async audit(el) {
       const { audit } = await get("audit");
       mountPaged(el, "audit", {
@@ -492,6 +495,7 @@
     if (opts.ownerOnly && role !== "owner") return location.replace("/account.html");
     $("role-badge").textContent = "Role: " + role;
     const tabs = role === "admin" ? ["operations", "weddings", "users"] : ["overview", "operations", "weddings", "users", "fees", "referrals", "ledger", "payouts", "audit", "security"];
+    if (["owner", "superadmin"].includes(role) && window.B2CBackoffice) tabs.splice(tabs.indexOf("audit"), 0, "b2c");
     $("admin-nav").innerHTML = tabs.map((t, i) => `<button type="button" class="tab-btn${i ? "" : " active"}" role="tab" aria-selected="${i ? "false" : "true"}" data-tab="${t}">${SEC[t]}</button>`).join("");
     $("admin-nav").addEventListener("click", (e) => { const b = e.target.closest(".tab-btn"); if (b) { delete $("panel").dataset.wedding; show(b.dataset.tab); } });
     $("sign-out").addEventListener("click", () => { WS.clear(); location.replace("/signin.html"); });

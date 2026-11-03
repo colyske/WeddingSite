@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Payout destination | Join Our Wedding</title><link rel="stylesheet" href="platform.css">
+  <link rel="stylesheet" href="editorial.css">
+  <script defer src="auth-client.js"></script><script defer src="b2c-recipient.js"></script>
+</head><body><main class="panel" style="max-width:48rem;margin:2rem auto;padding:1rem">
+  <a href="account.html">Back to account</a><h1>Payout destination and request</h1>
+  <p>Phone verification proves control of your phone, not legal identity or the registered M-Pesa name.
+  Staff must separately review identity, account name and payout consent against your current KYC.
+  Payouts use only independently evidenced available collected funds. Automation is OFF by default.</p>
+  <label>Wedding UUID<input id="wedding" required></label><button id="load" type="button">Load my reviewed recipients</button>
+  <form id="phone-start"><h2>Verify control</h2><label>Your exact KYC partner phone (254...)<input name="msisdn" pattern="254[17][0-9]{8}" required></label>
+    <button>Send phone-change verification code</button></form>
+  <form id="phone-confirm"><label>Phone (254...)<input name="msisdn" pattern="254[17][0-9]{8}" required></label>
+    <label>Supabase verification code<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" required></label>
+    <button>Confirm code</button></form>
+  <p>Requires configured Supabase SMS and secure phone-change verification. Do not share codes with staff.</p>
+  <form id="bind"><h2>Bind independently reviewed destination</h2><label>Recipient revision UUID<input name="recipientId" required></label>
+    <button>Bind current verified phone</button></form>
+  <form id="request"><h2>Request payout</h2><label>Recipient revision UUID<input name="recipientId" required></label>
+    <label>Approved custody envelope UUID<input name="custodyId" required></label>
+    <label>Principal (minor KES; 100 = KES 1)<input name="amountMinor" type="number" min="100" step="100" required></label>
+    <button type="submit">Reserve and request payout</button>
+    <button id="new-request" type="button">Start a distinct request after this one is closed</button></form>
+  <form id="cancel"><h2>Cancel before execution</h2><label>My payout request UUID<input name="payoutId" required></label>
+    <label><input type="checkbox" required> Cancel only if unclaimed; an uncertain transfer cannot be cancelled.</label>
+    <button>Cancel unclaimed request</button></form>
+  <pre id="context" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+  <p id="notice" role="status" aria-live="polite"></p>
+</main><script src="footer.js"></script></body></html>
