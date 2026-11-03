@@ -87,9 +87,13 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
       if (field !== "enabled") await page.locator(`[data-manual-policy="draft"] input[name="${field}"]`).fill(String(value));
     }
     await page.locator('[data-manual-policy="draft"] input[name="confirmed"]').check();
+    assert.deepEqual(await page.locator('[data-manual-policy="draft"]').evaluate(form =>
+      [...form.elements].filter(input => !input.validity.valid).map(input => ({
+        name: input.name, type: input.type, message: input.validationMessage
+      }))), []);
     await page.locator('[data-manual-policy="draft"] button').click();
     await page.waitForFunction(() => document.querySelector('[data-manual-policy="draft"] input[name="confirmed"]')?.checked === false)
-      .catch(async error => { throw new Error(`${error.message}; writes=${JSON.stringify(policyWrites)}; page=${await page.locator("#manual-policy").innerText()}`); });
+      .catch(async error => { throw new Error(`${error.message}; writes=${JSON.stringify(policyWrites)}; notice=${await page.locator("#notice").textContent()}`); });
     assert.deepEqual(policyWrites[0], { revision, changes: draft, confirmed: true });
     ready = true;
     await page.locator('button[data-tab="payouts"]').click();

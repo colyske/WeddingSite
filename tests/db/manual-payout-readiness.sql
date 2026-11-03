@@ -223,6 +223,17 @@ begin
 end $$;
 -- Admission respects the aggregate cap including paid and unresolved commitments.
 select pg_temp.actor('owner');
+select pg_temp.policy('{"enabled":true}');
+select pg_temp.actor('maker');
+-- The last statement was Owner self-checked for solo processing. A normal
+-- request must not silently inherit that evidence exception.
+select pg_temp.reject('select pg_temp.request()','Accepted current custody statement');
+select pg_temp.actor('checker');
+select public.manual_payout_check_evidence((select evidence_id from public.manual_payout_statement_batches
+  where custody_id=(select id from mr_ids where key='custody') order by sequence desc limit 1));
+select pg_temp.actor('maker');
+select public.manual_payout_transition(pg_temp.request(),'cancelled');
+select pg_temp.actor('owner');
 select pg_temp.policy('{"enabled":false,"daily_minor":10000,"per_payout_minor":10000}');
 select pg_temp.policy('{"enabled":true}');
 select pg_temp.reject('select pg_temp.request(extensions.gen_random_uuid(),true,6000,100)','UTC-day total');

@@ -74,7 +74,7 @@
         const label = `${field.replaceAll("_", " ")}${manualNumbers.has(field) ? " (minor units; explicit, no defaults)" :
           ["at", "statement_at"].includes(field) ? " (UTC ISO timestamp)" : field === "sha256" ? " (evidence digest)" : ""}`;
         return `<label>${esc(label)}${options ? `<select name="${field}">${options.map(o => `<option${action === "transition" && !admissionEnabled && ["approved", "executing"].includes(o) ? " disabled" : ""}>${o}</option>`).join("")}</select>` :
-          `<input name="${field}" type="${manualNumbers.has(field) ? "number" : "text"}"${optional ? "" : " required"} autocomplete="off">`}</label>`;
+          `<input name="${field}" type="${manualNumbers.has(field) ? "number" : "text"}"${optional ? "" : " required"} data-contact-allowed autocomplete="off">`}</label>`;
       }).join("")}
       <label><input name="confirmed" type="checkbox" required> I reviewed immutable evidence and understand this never sends money. A claim replay is not permission to resend.</label>
       <button type="submit">Record manual ${esc(action)}</button></fieldset></form></details>`).join("");
@@ -90,16 +90,17 @@
               UTC-day exposure also counts prior-day open commitments and the other channel. No operational value is assumed.</p>
               <form data-manual-policy="draft" data-revision="${esc(policy.revision)}">
               ${fields.map(field => `<label>${esc(field.replaceAll("_", " "))}${field === "recipient_ids" ? " (comma-separated revision UUIDs)" : ""}
-                <input name="${field}" value="${esc(Array.isArray(policy[field]) ? policy[field].join(",") : policy[field] ?? "")}"
-                autocomplete="off"></label>`).join("")}
+                <input name="${field}" type="${["per_payout_minor", "daily_minor", "payout_fee_minor", "statement_max_age_minutes"].includes(field) ? "number" : "text"}"
+                value="${esc(Array.isArray(policy[field]) ? policy[field].join(",") : policy[field] ?? "")}"
+                data-contact-allowed autocomplete="off"></label>`).join("")}
               <label><input name="confirmed" type="checkbox" required> I reviewed scoped policy, fees, funded account entitlement and secure evidence procedures. Saving appends an OFF revision and invalidates unclaimed approvals.</label>
-              <button>Save reviewed draft (OFF)</button></form>
+              <button type="submit">Save reviewed draft (OFF)</button></form>
               <form data-manual-policy="activate" data-revision="${esc(policy.revision)}">
                 <label><input name="confirmed" type="checkbox" required> Separately authorized: enable manual admission for this exact reviewed revision only. This never initiates a transfer or enables B2C.</label>
-                <button${readiness.blockers?.length ? " disabled" : ""}>Enable reviewed manual admission</button></form>
+                <button type="submit"${readiness.blockers?.length ? " disabled" : ""}>Enable reviewed manual admission</button></form>
               <form data-manual-policy="deactivate" data-revision="${esc(policy.revision)}">
                 <label><input name="confirmed" type="checkbox" required> Stop new requests/approvals/execution claims, preserving all reservations, evidence and existing-outcome accounting.</label>
-                <button>Disable manual admission</button></form>
+                <button type="submit">Disable manual admission</button></form>
               <details><summary>Append-only policy revisions</summary>${(readiness.history || []).map(p =>
                 `<p>${esc(p.revision)}: ${p.enabled ? "admission configured" : "OFF"}, actor ${esc(p.actor_id || "deployment baseline")}, ${date(p.recorded_at)}</p>`).join("")}</details>
               </section>`;
@@ -461,8 +462,8 @@
           ${manualForms(Boolean(manual.enabled))}
           ${role === "owner" ? `<details><summary>Protected Owner: record policy evidence (separate review required)</summary>
             <form data-manual-action="evidence"><input type="hidden" name="kind" value="policy">
-              <label>Opaque policy document reference (UUID)<input name="reference" required autocomplete="off"></label>
-              <label>Policy evidence SHA-256 digest<input name="sha256" pattern="[0-9a-f]{64}" required autocomplete="off"></label>
+              <label>Opaque policy document reference (UUID)<input name="reference" required data-contact-allowed autocomplete="off"></label>
+              <label>Policy evidence SHA-256 digest<input name="sha256" pattern="[0-9a-f]{64}" required data-contact-allowed autocomplete="off"></label>
               <label><input name="confirmed" type="checkbox" required> Record opaque human review evidence only; this does not verify a provider or activate admission.</label>
               <button type="submit">Record Owner policy evidence</button></form></details>` : ""}
           ${(manual.heldAccounts || []).map(h => `<p role="alert">Custody account held across both payout channels: ${esc(h.custody_id)}; incident ${esc(h.id)}, request ${esc(h.payout_id)} (${date(h.recorded_at)}). Contradictory outcome requires separate incident review; no release or resend action is available.</p>`).join("")}
