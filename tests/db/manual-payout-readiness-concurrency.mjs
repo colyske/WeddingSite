@@ -84,7 +84,8 @@ try {
   assert.equal(await sql(`select count(*) from public.manual_payout_requests where request_key='${offKey}';`), "0");
   await policy({ enabled: true });
   const competing = await Promise.allSettled([run(ids.maker, request()), run(ids.maker, request())]);
-  assert.equal(competing.filter(r => r.status === "fulfilled").length, 1, "Only one request fits the real aggregate policy");
+  assert.equal(competing.filter(r => r.status === "fulfilled").length, 1,
+    `Only one request fits the real aggregate policy: ${competing.map(r => r.status === "rejected" ? r.reason.message : r.value).join("\n")}`);
   assert.match(competing.find(r => r.status === "rejected").reason.message, /UTC-day total/);
   let payout = uuid(competing.find(r => r.status === "fulfilled").value);
   await run(ids.checker, `public.manual_payout_transition('${payout}','approved')`);
