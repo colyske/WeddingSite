@@ -18,6 +18,10 @@ const policyFields = {
 const policyChanges = v => v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0 &&
   Object.entries(v).every(([key, value]) => Object.hasOwn(policyFields, key) && policyFields[key](value));
 const specs = {
+  "review-intent": ["manual_payout_review_intent", {
+    id: uuid, decision: v => v === "created" || v === "declined", key: optionalUuid, custody: optionalUuid,
+    recipient: optionalUuid, fee: v => v === null || fee(v), owner_solo: v => typeof v === "boolean"
+  }],
   policy: ["owner_set_manual_payout_policy", { revision: uuid, changes: policyChanges }],
   evidence: ["manual_payout_submit_evidence", {
     kind: v => ["account", "commitment", "statement", "recipient", "custody", "settlement", "receipt", "reconciliation", "no_transfer", "policy"].includes(v),
@@ -81,7 +85,12 @@ export function manualPayoutCommand(action, body, role) {
   if (body.owner_solo === true && role !== "owner") {
     return { status: 403, error: "Only the protected Owner may explicitly select solo manual mode." };
   }
+  if (action === "review-intent" && (body.decision === "created" ?
+    !uuid(body.key) || !uuid(body.custody) || !uuid(body.recipient) || !fee(body.fee) :
+    body.key !== null || body.custody !== null || body.recipient !== null || body.fee !== null || body.owner_solo)) {
+    return { status: 400, error: "Create requires explicit payout settings; decline accepts none." };
+  }
   const args = Object.fromEntries(Object.keys(spec[1]).filter(key => body[key] !== undefined).map(key => [`p_${key}`, body[key]]));
-  if (action === "policy") args.p_confirmed = true;
+  if (["policy", "review-intent"].includes(action)) args.p_confirmed = true;
   return { rpc: spec[0], args };
 }

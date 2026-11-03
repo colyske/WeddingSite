@@ -79,6 +79,37 @@ try {
       select jsonb_object_agg(key,id) ids from mr_ids; commit;`);
   await sql(fixture);
   ids = JSON.parse(await sql("select ids from public.manual_readiness_ci_context;"));
+  // Nonfinancial admission works OFF; same-key replay and distinct-key pending
+  // submissions serialize before any reservation or staff financial request.
+  await policy({ enabled: false });
+  const intent = (key = randomUUID()) => `public.manual_payout_submit_intent('${key}','${ids.wedding}',1000,true)`;
+  const beforeRequests = await sql("select count(*) from public.manual_payout_requests;");
+  const intentKey = randomUUID();
+  const intentReplays = await Promise.all([run(ids.client, intent(intentKey)), run(ids.client, intent(intentKey))]);
+  const intentId = uuid(intentReplays[0]);
+  assert.ok(intentId);
+  assert.equal(uuid(intentReplays[1]), intentId, "Concurrent couple replay records one intent");
+  await assert.rejects(run(ids.client, intent()), /already awaits/);
+  assert.equal(await sql("select count(*) from public.manual_payout_requests;"), beforeRequests, "OFF intents reserve nothing");
+  const review = (id, decision, key = randomUUID()) => `public.manual_payout_review_intent('${id}','${decision}',
+    ${decision === "created" ? `'${key}','${ids.custody}','${ids.recipient}',100` : "null,null,null,null"},false,true)`;
+  await assert.rejects(run(ids.maker, review(intentId, "created")), /MANUAL_PAYOUT_BLOCKED/);
+  assert.equal(await sql(`select count(*) from public.manual_payout_intent_reviews where intent_id='${intentId}';`), "0");
+  await policy({ enabled: true });
+  await revokeWhileWaiting(review(intentId, "created"));
+  const staffKey = randomUUID();
+  const staffReplays = await Promise.all([run(ids.maker, review(intentId, "created", staffKey)), run(ids.maker, review(intentId, "created", staffKey))]);
+  const intentPayout = uuid(staffReplays[0]);
+  assert.ok(intentPayout);
+  assert.equal(uuid(staffReplays[1]), intentPayout, "Concurrent staff replay reserves exactly once");
+  await run(ids.maker, `public.manual_payout_transition('${intentPayout}','cancelled')`);
+  const pendingRace = await Promise.allSettled([run(ids.client, intent()), run(ids.client, intent())]);
+  assert.equal(pendingRace.filter(r => r.status === "fulfilled").length, 1, "Only one pending intent");
+  const pendingId = uuid(pendingRace.find(r => r.status === "fulfilled").value);
+  const reviewRace = await Promise.allSettled([run(ids.maker, review(pendingId, "created")), run(ids.owner, review(pendingId, "declined"))]);
+  assert.equal(reviewRace.filter(r => r.status === "fulfilled").length, 1, "Create vs decline has a single immutable decision");
+  const racedPayout = await sql(`select coalesce(payout_id::text,'') from public.manual_payout_intent_reviews where intent_id='${pendingId}';`);
+  if (racedPayout) await run(ids.maker, `public.manual_payout_transition('${racedPayout}','cancelled')`);
   const offKey = randomUUID();
   await deactivateWhileWaiting(request(offKey, 1000));
   assert.equal(await sql(`select count(*) from public.manual_payout_requests where request_key='${offKey}';`), "0");

@@ -46,6 +46,82 @@ cancellation before claim, receipt reporting, uncertainty/no-transfer decisions 
 statement reconciliation for existing executions. A claim survives every policy change.
 No automatic transfer or provider call is made by these controls.
 
+## Owner UI procedure and couple review requests
+
+Migration `202611150001` follows released `202611140001`. It adds append-only
+**nonfinancial review intents**, not another financial reservation or activation
+path. It creates no payout, operational policy, seed, role or funded balance.
+
+1. In the wedding editor, **Payouts & Withdrawals → Request a payout for staff
+   review → Submit payout request for review** accepts an integer amount in the
+   wedding's minor units and explicit review-only confirmation. No bank details,
+   documents or notes are accepted. It works with admission OFF, reserves nothing,
+   and permits one pending intent per wedding. History distinguishes awaiting
+   review, staff-created payout and declined. This is not a payment promise.
+2. Owner/SuperAdmin opens **Back office → Payouts → Controlled manual external
+   payouts → Operator workspace (read-only references)**. The queue's **Prepare
+   staff review** opens **Manual-only: review-intent** with the intent ID and a
+   generated UUID. Choose `declined` and confirm to close the review without
+   reservation (also available OFF). Choose `created`, explicitly supply custody,
+   recipient revision and fee, then confirm **Record manual review-intent** to
+   atomically create the actual staff payout/reservation. Wedding, principal and
+   currency come from the immutable couple intent, not editable staff fields.
+   Creation uses the existing gate, policy, entitlement and recipient checks;
+   a blocked creation leaves the intent pending. Owner solo must be explicitly
+   selected here if required; otherwise normal independent review applies.
+3. Before any financial creation, use **Manual-only: evidence**, **check**,
+   **account**, **custody**, **recipient**, **settlement**, **source** and
+   **statement** as applicable to record the real verified setup below.
+   Workspace tables retain opaque references/check actors for follow-up. Lists
+   are explicitly bounded; retain older IDs in the secure operations register.
+   Records and private recipient details are not public.
+4. Protected Owner alone uses **Save reviewed draft (OFF)** with real reviewed
+   scope, limits, fees and evidence. After separate activation authorization and
+   zero readiness blockers, **Enable reviewed manual admission** can enable the
+   manual gate **from this UI**. Do not do so merely because code is released.
+   **Disable manual admission** stops new financial requests/approvals/claims,
+   never releases existing reservations or enables automatic B2C.
+5. On the created request, **Prepare approval** fills
+   **Manual-only: transition → approved**. Confirm **Record manual transition**.
+   Normal mode needs a different approver; explicit solo mode needs the same
+   protected Owner. **Prepare execution claim → executing** records a durable
+   claim before the sender may leave the site. Inspect the persisted claim/sender
+   and state; a timeout or conflict is never permission to transfer or resend.
+6. Only the authorized operator, **outside this application**, may transfer once
+   in the official authorized portal. The site has no transfer button/call.
+   On uncertainty, **Prepare uncertain** retains funds indefinitely.
+7. Record genuine receipt evidence using **evidence** and the required **check**,
+   then **Prepare receipt report → Record manual receipt**, supplying the actual
+   unique reference, principal, fee, currency and timestamp. This is `reported`,
+   **not paid**. A mismatch/duplicate creates a shared account hold, not success.
+8. Append the real checked statement with **Prepare next statement**; use
+   **Prepare statement debit → Record manual debit** for its observed exact line.
+   Then **Prepare reconciliation → Record manual reconcile** binds the registered
+   line and separate checked reconciliation evidence. Normal mode requires a
+   reconciler other than the sender; explicit solo requires the same Owner.
+   Only successful atomic statement-debit reconciliation changes status to `paid`.
+
+Prefill buttons never submit. They clear stale form fields/confirmation and retain
+the same generated UUID for retries of the same prepared request/claim within the
+open page, including failed submissions. Buttons are disabled while submitting.
+After a browser restart, inspect persisted queue/payout/claim history before another
+financial attempt. Couple retries keep their key and amount after an ambiguous error;
+refresh history before creating anything else. Legacy withdrawal/Mark sent stays off.
+
+**Owner inputs, in order (none should be sent as secrets in chat):** choose the
+real funded canonical account/provider/currency and prove authorized portal/rail
+entitlement; designate an access-controlled external evidence repository, canonical
+account register and recipient-validation/retention procedure; complete existing
+private wedding KYC/consent and immutable verified recipient revision; supply actual
+statement chain/settlements plus historical commitments/refunds/holds; decide explicit
+per-transfer and daily caps, fee (including an explicitly reviewed zero), supported
+`wedding` fee payer, statement freshness, exact allowed recipients and normal vs
+explicit Owner-solo mode. Enter opaque evidence UUIDs/digests in **Manual-only:
+evidence**, and the reviewed operating settings in **Protected Owner manual policy**.
+The application does not host/upload these external documents or invent secure
+storage. Until these non-secret decisions and external verification are complete,
+financial admission remains blocked; enabling it still requires separate permission.
+
 ## Authority and evidence
 
 Only Owner/SuperAdmin can mutate operational records, including via direct RPC.

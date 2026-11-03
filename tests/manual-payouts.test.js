@@ -25,6 +25,13 @@ test("manual payout commands whitelist immutable inputs, reject unsafe values an
   }
   assert.equal(manualPayoutCommand("request", { ...request, owner_solo: true }, "superadmin").status, 403);
   assert.equal(manualPayoutCommand("request", { ...request, owner_solo: true }, "owner").args.p_owner_solo, true);
+  const review = { id, decision: "created", key: id, custody: id, recipient: id, fee: 0, owner_solo: false, confirmed: true };
+  assert.equal(manualPayoutCommand("review-intent", review, "superadmin").rpc, "manual_payout_review_intent");
+  assert.equal(manualPayoutCommand("review-intent", { ...review, owner_solo: true }, "superadmin").status, 403);
+  assert.equal(manualPayoutCommand("review-intent", { ...review, fee: null }, "owner").status, 400);
+  assert.equal(manualPayoutCommand("review-intent", { ...review, decision: "declined" }, "owner").status, 400);
+  assert.equal(manualPayoutCommand("review-intent", { ...review, decision: "declined", key: null, custody: null, recipient: null, fee: null }, "owner").rpc,
+    "manual_payout_review_intent");
   const policy = { kind: "policy", reference: id, sha256: "a".repeat(64), confirmed: true };
   assert.equal(manualPayoutCommand("evidence", policy, "superadmin").status, 403);
   assert.equal(manualPayoutCommand("evidence", policy, "owner").rpc, "manual_payout_submit_evidence");
@@ -64,6 +71,10 @@ test("manual payout API rejects nonleaders, preserves token, surfaces OFF and re
       return Response.json(id);
     }
     if (url.pathname === "/rest/v1/rpc/manual_payout_overview") return Response.json({ enabled: false, requests: [] });
+    if (url.pathname === "/rest/v1/rpc/manual_payout_workspace") return Response.json({ intents: [], evidence: [] });
+    if (url.pathname === "/rest/v1/rpc/manual_payout_intent_history") return Response.json([{ id, status: "pending" }]);
+    if (url.pathname === "/rest/v1/rpc/manual_payout_submit_intent") return Response.json(id);
+    if (url.pathname === "/rest/v1/rpc/manual_payout_review_intent") return Response.json(null);
     if (url.pathname === "/rest/v1/rpc/owner_set_manual_payout_policy") return Response.json({ policy: { enabled: false } });
     if (url.pathname === "/rest/v1/rpc/manual_payout_report") return Response.json(false);
     if (url.pathname === "/rest/v1/rpc/manual_payout_history") return Response.json([{ id, status: "reported", amount_minor: 1000, currency: "KES" }]);
@@ -83,8 +94,8 @@ test("manual payout API rejects nonleaders, preserves token, surfaces OFF and re
     return response;
   };
   try {
-    for (const action of ["manual-payout-request", "manual-payout-transition", "manual-payouts", "payout-status"]) {
-      assert.equal((await invoke(action, request, action === "manual-payouts" ? "GET" : "POST")).statusCode, 403);
+    for (const action of ["manual-payout-request", "manual-payout-transition", "manual-payouts", "manual-payout-workspace", "manual-payout-review-intent", "payout-status"]) {
+      assert.equal((await invoke(action, request, ["manual-payouts", "manual-payout-workspace"].includes(action) ? "GET" : "POST")).statusCode, 403);
       assert.equal(calls.length, 0);
     }
     assert.equal((await invoke("manual-payout-policy", { revision: id, changes: { enabled: true }, confirmed: true })).statusCode, 403);
@@ -115,7 +126,30 @@ test("manual payout API rejects nonleaders, preserves token, surfaces OFF and re
     assert.equal(history.statusCode, 200);
     assert.equal(history.data.manualEnabled, false);
     assert.equal(history.data.manualWithdrawals[0].status, "reported");
+    assert.equal(history.data.manualIntents[0].status, "pending");
     assert.equal(calls.find(c => c.path.endsWith("manual_payout_history")).body.p_wedding, id);
+    const callerToken = calls[0].token;
+    const workspace = await invoke("manual-payout-workspace", {}, "GET");
+    assert.deepEqual(workspace.data, { intents: [], evidence: [] });
+    assert.equal(calls[0].token, callerToken);
+    const decline = await invoke("manual-payout-review-intent", {
+      id, decision: "declined", key: null, custody: null, recipient: null, fee: null, owner_solo: false, confirmed: true
+    });
+    assert.equal(decline.statusCode, 200);
+    assert.equal(decline.data.result, null);
+    assert.equal(calls[0].body.p_confirmed, true);
+    role = "client";
+    const intent = { key: id, amountMinor: 1200, confirmed: true };
+    const queued = await invoke("manual-payout-intent", intent, "POST", weddings);
+    assert.equal(queued.statusCode, 201);
+    assert.deepEqual(queued.data, { intentId: id, reserved: false });
+    assert.deepEqual(calls[0].body, { p_key: id, p_wedding: id, p_amount: 1200, p_confirmed: true });
+    assert.equal(calls[0].token, callerToken);
+    for (const patch of [{ confirmed: false }, { amountMinor: 0 }, { amountMinor: "1200" }, { key: "no" },
+      { amountMinor: Number.MAX_SAFE_INTEGER + 1 }, { bankAccount: "never accepted" }, { note: "never accepted" }]) {
+      assert.equal((await invoke("manual-payout-intent", { ...intent, ...patch }, "POST", weddings)).statusCode, 400);
+      assert.equal(calls.length, 0);
+    }
     for (payoutState of ["requested", "uncertain", "paid"]) {
       const balance = await invoke("balance", {}, "GET", weddings);
       assert.equal(balance.statusCode, 200);

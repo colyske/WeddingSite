@@ -46,6 +46,7 @@
       : '<p class="empty">Nothing here yet.</p>';
   const btn = (label, attrs) => `<button type="button" class="mini" ${attrs}>${esc(label)}</button>`;
   const manualFields = {
+    "review-intent": ["id", "decision", "key", "custody", "recipient", "fee", "owner_solo"],
     evidence: ["kind", "reference", "sha256"], check: ["id", "owner_solo"], recipient: ["wedding", "evidence", "provider", "currency"],
     account: ["account", "provider", "registry", "evidence"],
     custody: ["provider", "account", "currency", "available", "statement_at", "evidence", "held"],
@@ -59,22 +60,33 @@
     reconcile: ["id", "provider", "account", "statement", "line", "reference", "actual", "fee", "currency", "at", "evidence"]
   };
   const manualNumbers = new Set(["available", "settled", "amount", "actual", "fee", "held", "opening", "credit", "debit", "closing"]);
+  // Generated once per render so a retried submission replays the same idempotency/claim key.
+  const newKey = () => globalThis.crypto?.randomUUID?.() || "";
+  const manualKeys = new Map();
+  const manualKey = context => {
+    if (!manualKeys.has(context)) manualKeys.set(context, newKey());
+    return manualKeys.get(context);
+  };
+  let manualResult = "";
   function manualForms(admissionEnabled) {
-    return Object.entries(manualFields).map(([action, fields]) => `<details><summary>Manual-only: ${esc(action)}</summary>
-      <form data-manual-action="${action}"><fieldset${action === "request" && !admissionEnabled ? " disabled" : ""}><legend>${action === "request" ? "Current reviewed manual admission required" : "Evidence preparation / existing-outcome accounting; never sends money"}</legend>
+    return Object.entries(manualFields).map(([action, fields]) => `<details data-manual-panel="${action}"><summary>Manual-only: ${esc(action)}</summary>
+      <form data-manual-action="${action}" data-key-context="${action}"><fieldset${action === "request" && !admissionEnabled ? " disabled" : ""}><legend>${action === "request" ? "Current reviewed manual admission required" : "Evidence preparation / existing-outcome accounting; never sends money"}</legend>
       ${fields.map(field => {
         if (field === "owner_solo") return role === "owner" ?
           '<label><input name="owner_solo" type="checkbox"> Explicit protected-Owner solo manual mode (audited; all evidence and custody controls still apply)</label>' :
           '<input name="owner_solo" type="hidden" value="">';
         const options = field === "kind" ? action === "source" ? ["payout", "expense", "adjustment"] :
           ["account", "commitment", "statement", "recipient", "custody", "settlement", "receipt", "reconciliation", "no_transfer", ...(role === "owner" ? ["policy"] : [])] :
+          field === "decision" ? ["created", "declined"] :
           field === "action" ? ["approved", "executing", "cancelled", "uncertain", "resolution_proposed", "not_transferred"] : null;
         const optional = (action === "transition" && ["key", "evidence"].includes(field)) ||
+          action === "review-intent" && ["key", "custody", "recipient", "fee"].includes(field) ||
           (action === "source" && ["batch", "line", "at"].includes(field)) || (action === "settlement" && field === "batch");
         const label = `${field.replaceAll("_", " ")}${manualNumbers.has(field) ? " (minor units; explicit, no defaults)" :
-          ["at", "statement_at"].includes(field) ? " (UTC ISO timestamp)" : field === "sha256" ? " (evidence digest)" : ""}`;
+          ["at", "statement_at"].includes(field) ? " (UTC ISO timestamp)" : field === "sha256" ? " (evidence digest)" :
+          field === "key" ? " (generated; reused if you retry this form)" : ""}`;
         return `<label>${esc(label)}${options ? `<select name="${field}">${options.map(o => `<option${action === "transition" && !admissionEnabled && ["approved", "executing"].includes(o) ? " disabled" : ""}>${o}</option>`).join("")}</select>` :
-          `<input name="${field}" type="${manualNumbers.has(field) ? "number" : "text"}"${optional ? "" : " required"} data-contact-allowed autocomplete="off">`}</label>`;
+          `<input name="${field}" type="${manualNumbers.has(field) ? "number" : "text"}"${optional ? "" : " required"}${field === "key" ? ` value="${esc(manualKey(action))}"` : ""} data-contact-allowed autocomplete="off">`}</label>`;
       }).join("")}
       <label><input name="confirmed" type="checkbox" required> I reviewed immutable evidence and understand this never sends money. A claim replay is not permission to resend.</label>
       <button type="submit">Record manual ${esc(action)}</button></fieldset></form></details>`).join("");
@@ -104,6 +116,59 @@
               <details><summary>Append-only policy revisions</summary>${(readiness.history || []).map(p =>
                 `<p>${esc(p.revision)}: ${p.enabled ? "admission configured" : "OFF"}, actor ${esc(p.actor_id || "deployment baseline")}, ${date(p.recorded_at)}</p>`).join("")}</details>
               </section>`;
+  }
+  const prefill = (label, action, values) => btn(label, `data-manual-prefill="${esc(JSON.stringify({ action, values }))}"`);
+  const shortId = id => id ? `<code title="${esc(id)}">${esc(id)}</code>` : "-";
+  // Workflow guidance only: every RPC still enforces role, independence, policy, evidence and funds.
+  function manualNextStep(r, w) {
+    const id = r.id, ws = (w.requests || []).find(x => x.id === id) || {};
+    if (ws.automatic || ws.claim?.channel === "automatic_b2c") return ["Automatic-channel record: read-only here. Use the separately controlled B2C workflow; no manual action is offered."];
+    const debit = ws.receipt && (w.unreconciledDebits || []).find(d => d.custody_id === ws.custody_id &&
+      d.transaction_reference === ws.receipt.transaction_reference);
+    const reviewer = r.owner_solo ? "the same protected Owner (explicit solo mode)" : "a different eligible leader";
+    const proposed = (r.events || []).find(e => e.state === "resolution_proposed");
+    switch (r.state) {
+      case "requested": return [`Next: approval by ${reviewer}. Approval rechecks policy, recipient, statement and funds.`,
+        prefill("Prepare approval", "transition", { id, action: "approved" }), prefill("Prepare cancellation", "transition", { id, action: "cancelled" })];
+      case "approved": return [`Next: execution claim by ${r.owner_solo ? "the protected Owner" : "a sender other than the approver"} BEFORE any transfer. Then transfer once, outside this site, in the official authorized portal.`,
+        prefill("Prepare execution claim", "transition", { id, action: "executing" }), prefill("Prepare cancellation", "transition", { id, action: "cancelled" })];
+      case "executing": case "uncertain": return [`Claimed${ws.claim ? ` by ${esc(ws.claim.sender_id)} at ${date(ws.claim.claimed_at)}` : ""}. Never resend. Record receipt evidence, check it, then report the portal receipt; if the outcome is unknown, the sender marks it uncertain.`,
+        prefill("Prepare receipt report", "receipt", { id }), ...(r.state === "executing" ? [prefill("Prepare uncertain", "transition", { id, action: "uncertain" })] : []),
+        prefill("Prepare no-transfer proposal", "transition", { id, action: "resolution_proposed" })];
+      case "resolution_proposed": return [`Next: ${r.owner_solo ? "protected Owner" : "independent"} confirmation that no transfer occurred, using the same checked no_transfer evidence. Funds stay held until then.`,
+        prefill("Prepare not-transferred confirmation", "transition", { id, action: "not_transferred", evidence: proposed?.evidence_id || "" })];
+      case "reported": return [`Receipt ${esc(ws.receipt?.transaction_reference || "")} reported. Next: append the checked statement, register its actual debit line (exact reference/amount/fee/currency/date), then ${r.owner_solo ? "the protected Owner" : "a leader other than the sender"} reconciles with checked reconciliation evidence. Only reconciliation marks paid.`,
+        ...(debit ? [] : [prefill("Prepare statement debit", "debit", { reference: ws.receipt?.transaction_reference || "", actual: ws.receipt?.actual_minor ?? "", fee: ws.receipt?.actual_fee_minor ?? "", currency: ws.receipt?.currency || "" })]),
+        prefill("Prepare reconciliation", "reconcile", { id, provider: ws.provider || "", account: ws.account_reference || "",
+          ...(debit ? { statement: debit.statement_reference, line: debit.line_reference, reference: debit.transaction_reference,
+            actual: debit.actual_minor, fee: debit.actual_fee_minor, currency: debit.currency, at: debit.booked_at.replace(/\+00:00$/, "Z") } : {}) })];
+      case "paid": return [`Paid: statement-reconciled${ws.reconciliation ? ` by ${esc(ws.reconciliation.reconciled_by)} at ${date(ws.reconciliation.reconciled_at)}` : ""}. No further action.`];
+      default: return ["Terminal state. No further action; history is append-only."];
+    }
+  }
+  function manualWorkspace(w) {
+    if (!w) return '<p class="notice">Manual operator workspace unavailable. Evidence and record IDs cannot be listed; no action was taken.</p>';
+    const ev = w.evidence || [];
+    return `<section id="manual-workspace"><h4>Operator workspace (read-only references)</h4>
+      <p class="fine">Opaque IDs only. Use these to fill the manual forms; listing never changes funds, policy or gates.
+      Lists show the latest 200 evidence/recipient records, latest 100 financial requests, all pending review intents and latest 100 completed reviews.
+      Retain older IDs in the secure operations register; records are never deleted.</p>
+      <h4>Couple requests for staff review (no funds reserved)</h4>
+      <p>Prepare a review, choose created or declined, and explicitly confirm. Created invokes the same guarded manual request/reservation.
+      Creating requires enabled admission, exact policy scope and fees. Declining remains available OFF. No request auto-approves or sends money.</p>
+      ${table(["Intent / wedding", "Amount", "Review", "Action"], (w.intents || []).map(i =>
+        `<tr><td>${shortId(i.id)} / ${shortId(i.wedding_id)}</td><td>${esc(WS.money(Number(i.amount_minor), i.currency, false))}</td><td>${esc(i.status)}${i.payout_id ? ` / payout ${shortId(i.payout_id)}` : ""}</td><td>${i.status === "pending" ? prefill("Prepare staff review", "review-intent", { id: i.id, decision: "created" }) : "-"}</td></tr>`))}
+      <details><summary>Evidence (${ev.length}; ${ev.filter(e => !(e.checks || []).length).length} unchecked)</summary>${table(["ID", "Kind", "Submitted", "Checks", "Action"], ev.map(e =>
+        `<tr><td>${shortId(e.id)}</td><td>${esc(e.kind)}</td><td>${date(e.submitted_at)} by ${esc(e.submitted_by)}</td><td>${(e.checks || []).map(c => `${esc(c.checked_by)}${c.owner_solo ? " (Owner solo)" : ""}`).join("; ") || "unchecked"}</td><td>${prefill("Prepare check", "check", { id: e.id })}</td></tr>`))}</details>
+      <details><summary>Registered accounts (${(w.accounts || []).length})</summary>${table(["Account", "Provider", "Evidence"], (w.accounts || []).map(a =>
+        `<tr><td>${shortId(a.id)}</td><td>${esc(a.provider)}</td><td>${shortId(a.evidence_id)}</td></tr>`))}</details>
+      <details><summary>Custody and latest statement (${(w.custody || []).length})</summary>${table(["Custody", "Provider / account / currency", "Latest statement", "Action"], (w.custody || []).map(c =>
+        `<tr><td>${shortId(c.id)}</td><td>${esc(c.provider)} / ${shortId(c.account_reference)} / ${esc(c.currency)}</td><td>${c.latest_batch ? `${shortId(c.latest_batch.id)} ref ${shortId(c.latest_batch.statement_reference)} at ${date(c.latest_batch.statement_at)}; closing ${esc(WS.money(Number(c.latest_batch.closing_minor), c.currency, false))}, held ${esc(WS.money(Number(c.latest_batch.held_minor), c.currency, false))}` : "-"}</td><td>${prefill("Prepare next statement", "statement", { custody: c.id, previous: c.latest_batch?.id || "", opening: c.latest_batch?.closing_minor ?? "" })}</td></tr>`))}</details>
+      <details><summary>Recipient revisions (${(w.recipients || []).length})</summary>${table(["Recipient revision", "Wedding", "Provider / currency", "Evidence"], (w.recipients || []).map(r =>
+        `<tr><td>${shortId(r.id)} (#${esc(r.revision)})</td><td>${shortId(r.wedding_id)}</td><td>${esc(r.provider)} / ${esc(r.currency)}</td><td>${shortId(r.evidence_id)}</td></tr>`))}</details>
+      <details><summary>Registered statement debits awaiting reconciliation (${(w.unreconciledDebits || []).length})</summary>${table(["Debit line", "Statement", "Reference", "Amount / fee", "Booked"], (w.unreconciledDebits || []).map(d =>
+        `<tr><td>${shortId(d.line_reference)}</td><td>${shortId(d.statement_reference)}</td><td>${esc(d.transaction_reference)}</td><td>${esc(WS.money(Number(d.actual_minor), d.currency, false))} / ${esc(WS.money(Number(d.actual_fee_minor), d.currency, false))}</td><td>${date(d.booked_at)}</td></tr>`))}</details>
+    </section>`;
   }
   async function moderationQueue(el) {
     const { cases = [] } = await get("moderation", "&closed=1");
@@ -448,7 +513,7 @@
         row: (l) => `<tr><td>${date(l.created_at)}</td><td>${esc(l.couple_names)}</td><td>${esc(l.stream_name)}</td><td>${esc(l.contributor || "Anonymous")}</td><td>${esc(WS.money(l.amount_minor, l.currency, false))}</td><td>${esc(WS.money(Number(l.fee_minor || 0), l.currency, false))}</td><td>${esc(WS.money(Number(l.net_minor || 0), l.currency, false))}</td><td>${esc(l.status)}</td><td>${esc(l.provider || "-")}</td></tr>`
       });
     },    async payouts(el) {
-      const [{ payouts }, manual] = await Promise.all([get("payouts"), get("manual-payouts")]);
+      const [{ payouts }, manual, workspace] = await Promise.all([get("payouts"), get("manual-payouts"), get("manual-payout-workspace").catch(() => null)]);
       el.innerHTML = `<h2>Payouts / withdrawals</h2>
         <section id="manual-payout-control"><h3>Controlled manual external payouts: ${manual.enabled ? "enabled" : "OFF"}</h3>
           <p>This manual control never changes automatic B2C policy or sends money. Code readiness does not authorize use of a funded merchant rail. Operators transfer only outside this site in the official authorized portal, after a durable execution claim. Never resend an uncertain transfer.</p>
@@ -459,6 +524,8 @@
           <p>Evidence reference fields accept opaque repository UUIDs only. Do not enter bank details, names, KYC, credentials or public document URLs. Identity evidence must include consent and actual verification by the appointed reviewer; an attestation is not a provider lookup.</p>
           <p>Evidence intake and existing-claim outcomes remain available while manual admission is OFF. Approval/execution always recheck the current policy revision, limits, fees, recipient and statement.</p>
           ${manualPolicyForm(manual.readiness)}
+          <p id="manual-last-result" role="status">${esc(manualResult)}</p>
+          ${manualWorkspace(workspace)}
           ${manualForms(Boolean(manual.enabled))}
           ${role === "owner" ? `<details><summary>Protected Owner: record policy evidence (separate review required)</summary>
             <form data-manual-action="evidence"><input type="hidden" name="kind" value="policy">
@@ -467,7 +534,7 @@
               <label><input name="confirmed" type="checkbox" required> Record opaque human review evidence only; this does not verify a provider or activate admission.</label>
               <button type="submit">Record Owner policy evidence</button></form></details>` : ""}
           ${(manual.heldAccounts || []).map(h => `<p role="alert">Custody account held across both payout channels: ${esc(h.custody_id)}; incident ${esc(h.id)}, request ${esc(h.payout_id)} (${date(h.recorded_at)}). Contradictory outcome requires separate incident review; no release or resend action is available.</p>`).join("")}
-          ${(manual.requests || []).map(r => `<article><h4>${esc(r.id)}: ${esc(r.state)}</h4><p>${esc(WS.money(Number(r.amount_minor),r.currency,false))}; recipient revision ${esc(r.recipient_revision)}; ${r.owner_solo ? "explicit Owner solo mode" : "two-person review"}</p><details><summary>Append-only actor / evidence history</summary>${(r.events || []).map(e => `<p>${esc(e.state)}: actor ${esc(e.actor_id)}, evidence ${esc(e.evidence_id || "-")}, Owner solo: ${e.owner_solo ? "yes" : "no"} (${date(e.created_at)})</p>`).join("")}</details></article>`).join("")}
+          ${(manual.requests || []).map(r => `<article><h4>${esc(r.id)}: ${esc(r.state)}</h4><p>${esc(WS.money(Number(r.amount_minor),r.currency,false))}; recipient revision ${esc(r.recipient_revision)}; ${r.owner_solo ? "explicit Owner solo mode" : "two-person review"}</p>${(([text, ...actions]) => `<p class="notice" data-manual-next="${esc(r.state)}">${text}</p>${actions.length ? `<p class="acts">${actions.join(" ")}</p>` : ""}`)(manualNextStep(r, workspace || {}))}<details><summary>Append-only actor / evidence history</summary>${(r.events || []).map(e => `<p>${esc(e.state)}: actor ${esc(e.actor_id)}, evidence ${esc(e.evidence_id || "-")}, Owner solo: ${e.owner_solo ? "yes" : "no"} (${date(e.created_at)})</p>`).join("")}</details></article>`).join("")}
         </section><h3>Legacy requests (cannot be approved or marked sent)</h3><p class="fine">Identity submissions are not independent recipient verification. <a href="/wedding.html">Wedding identity details</a> remain private. A bare Mark sent can never declare payment.</p>` +
         table(["Requested", "Wedding", "Amount", "Status", "Note", "Actions"], payouts.map((p) => {
           const acts = [];
@@ -530,6 +597,28 @@
 
     const panel = $("panel");
     panel.addEventListener("click", async (e) => {
+      const fill = e.target.closest("[data-manual-prefill]");
+      if (fill) {
+        const { action, values } = JSON.parse(fill.dataset.manualPrefill);
+        const details = panel.querySelector(`details[data-manual-panel="${action}"]`);
+        const form = details?.querySelector("form");
+        if (!form) return;
+        form.reset();
+        for (const field of manualFields[action]) {
+          const input = form.elements.namedItem(field);
+          if (input?.type === "checkbox") input.checked = false;
+          else if (input && field !== "key") input.value = "";
+        }
+        form.dataset.keyContext = `${action}:${values.id || values.custody || ""}:${values.action || ""}`;
+        if (form.elements.namedItem("key")) form.elements.namedItem("key").value = manualKey(form.dataset.keyContext);
+        details.open = true;
+        for (const [name, value] of Object.entries(values)) if (form.elements[name]) form.elements[name].value = String(value ?? "");
+        form.elements.confirmed.checked = false;
+        details.scrollIntoView({ block: "start" });
+        ([...form.querySelectorAll("input[required]:not([type=checkbox])")].find(i => !i.value) || form.elements.confirmed).focus();
+        toast("Form prepared. Review every field and confirm; nothing has been recorded.");
+        return;
+      }
       if (e.target.closest("#referral-older")) {
         const button = e.target.closest("#referral-older");
         button.disabled = true;
@@ -636,14 +725,24 @@
         const form = e.target, action = form.dataset.manualAction;
         const body = Object.fromEntries(manualFields[action].map(key => {
           const value = form.elements[key]?.value || "";
-          return [key, key === "owner_solo" ? form.elements[key]?.checked === true : manualNumbers.has(key) ? Number(value) : value || null];
+          return [key, key === "owner_solo" ? form.elements[key]?.checked === true : manualNumbers.has(key) ? value === "" ? null : Number(value) : value || null];
         }));
+        if (action === "review-intent" && body.decision === "declined") {
+          for (const key of ["key", "custody", "recipient", "fee"]) body[key] = null;
+          body.owner_solo = false;
+        }
         body.confirmed = form.elements.confirmed.checked;
+        if (!body.confirmed) return;
+        const button = form.querySelector("button");
+        if (button.disabled) return;
+        button.disabled = true;
         try {
           const result = await post("manual-payout-" + action, body);
-          toast("Manual evidence/action recorded: " + String(result.result) + ". No transfer was initiated.");
+          manualResult = `Manual ${action} recorded: ${result.result === null ? "declined; no reservation" : String(result.result)}. No transfer was initiated.`;
+          manualKeys.delete(form.dataset.keyContext);
+          toast(manualResult);
           await show("payouts");
-        } catch (error) { toast(error.message, true); }
+        } catch (error) { toast(error.message, true); button.disabled = false; }
         return;
       }
       if (e.target.id === "referral-policy-form") {
