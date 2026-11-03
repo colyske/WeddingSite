@@ -129,7 +129,8 @@ export function mountSetup(panel, { workspace, weddings, role, esc }) {
     if (["custody", "custody_id"].includes(name)) return custody.map(c => [c.id, custodyLabel(c)]);
     if (["recipient", "recipient_ids"].includes(name)) return recipients.filter(r =>
       (!wedding || r.wedding_id === wedding) && (!balance || r.provider === balance.provider && r.currency === balance.currency) &&
-      !recipients.some(newer => newer.wedding_id === r.wedding_id && Number(newer.revision) > Number(r.revision)))
+      !recipients.some(newer => newer.wedding_id === r.wedding_id && newer.provider === r.provider &&
+        newer.currency === r.currency && Number(newer.revision) > Number(r.revision)))
       .map(r => [r.id, recipientLabel(r)]);
     if (name === "wedding") return weddings.map(w => [w.id, weddingLabel(w.id)]);
     if (name === "evidence") return evRows(evidenceKinds[action] || (action === "transition" ? "no_transfer" : null));
@@ -232,6 +233,7 @@ export function mountSetup(panel, { workspace, weddings, role, esc }) {
 
   function evidenceTool(form) {
     const reference = form.elements.namedItem("reference"), hash = form.elements.namedItem("sha256");
+    let fingerprintRevision = 0;
     reference.closest("label").firstChild.textContent = "Opaque reference in your secure evidence register (not a document URL)";
     hash.closest("label").firstChild.textContent = "SHA-256 fingerprint of the original file (not a password)";
     const tools = document.createElement("fieldset");
@@ -245,18 +247,29 @@ export function mountSetup(panel, { workspace, weddings, role, esc }) {
       <label><input type="checkbox" required data-register-saved> I have saved this reference and fingerprint beside the original in our access-controlled register.
       This records my attestation only; the required check is a separate action.</label>`;
     reference.closest("label").before(tools);
+    for (const input of [reference, hash, form.elements.namedItem("kind")]) {
+      input.addEventListener("input", () => { tools.querySelector("[data-register-saved]").checked = false; });
+    }
     tools.querySelector("[data-new-evidence]").onclick = () => {
       reference.value = uuid();
       tools.querySelector("[data-register-saved]").checked = false;
       tools.querySelector("[data-evidence-status]").textContent = `Save reference ${reference.value} beside the original before recording evidence.`;
     };
     tools.querySelector("[data-evidence-file]").onchange = async event => {
+      const revision = ++fingerprintRevision;
       hash.value = "";
       tools.querySelector("[data-register-saved]").checked = false;
+      tools.querySelector("[data-register-saved]").disabled = true;
       try {
-        hash.value = await fileFingerprint(event.target.files[0]);
+        const fingerprint = await fileFingerprint(event.target.files[0]);
+        if (revision !== fingerprintRevision) return;
+        hash.value = fingerprint;
         tools.querySelector("[data-evidence-status]").textContent = `Computed locally. Fingerprint: ${hash.value}. Save it and the reference in your secure register. Nothing was uploaded or verified.`;
-      } catch (error) { tools.querySelector("[data-evidence-status]").textContent = error.message; }
+      } catch (error) {
+        if (revision === fingerprintRevision) tools.querySelector("[data-evidence-status]").textContent = error.message;
+      } finally {
+        if (revision === fingerprintRevision) tools.querySelector("[data-register-saved]").disabled = false;
+      }
     };
     tools.querySelector("[data-save-reference]").onclick = () => {
       if (!/^[0-9a-f-]{36}$/i.test(reference.value) || !/^[0-9a-f]{64}$/.test(hash.value)) {

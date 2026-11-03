@@ -45,6 +45,34 @@ do $$ declare scope uuid:=(select id from mr_ids where key='shared_scope'); cont
   perform pg_temp.reject(format('select public.manual_payout_manual_eligible(%L,%L,%L,''KES'',5800,null,false)',
     (select id from mr_ids where key='wedding'),scope,(select id from mr_ids where key='recipient')),'Insufficient attributable');
 end $$;
+-- Other weddings on this same shared account neither fund this wedding nor
+-- consume its internal entitlement. Its own WeddingSite obligations do.
+savepoint shared_wedding_isolation;
+do $$ declare other_wedding uuid:=extensions.gen_random_uuid(); begin
+  insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date)
+    values(other_wedding,(select id from mr_ids where key='client'),'Synthetic other wedding','KES',current_date+31);
+  insert into public.expenses(wedding_id,category,description,amount_minor,currency,status)
+    values(other_wedding,'Fixture','Other wedding obligation',999999,'KES','approved'),
+      ((select id from mr_ids where key='wedding'),'Fixture','Own WeddingSite obligation',2000,'KES','approved');
+  perform public.manual_payout_manual_eligible((select id from mr_ids where key='wedding'),
+    (select id from mr_ids where key='shared_scope'),(select id from mr_ids where key='recipient'),'KES',3700,null,false);
+  perform pg_temp.reject(format('select public.manual_payout_manual_eligible(%L,%L,%L,''KES'',3701,null,false)',
+    (select id from mr_ids where key='wedding'),(select id from mr_ids where key='shared_scope'),
+    (select id from mr_ids where key='recipient')),'Insufficient attributable');
+end $$;
+rollback to shared_wedding_isolation;
+-- Even an isolated synthetic B2C policy cannot make a shared manual scope
+-- into bank-backed dispatch custody. The saved real policy is restored.
+savepoint shared_b2c_separation;
+select pg_temp.actor('owner');
+update public.b2c_policy set enabled=true,custody_ids=array[(select id from mr_ids where key='shared_scope')],
+  recipient_ids=array[(select id from mr_ids where key='recipient')],per_payout_minor=1000,daily_minor=10000,
+  payout_fee_minor=100,statement_max_age_minutes=120,shortcode='123456',command_id='BusinessPayment',
+  contract_reference=pg_temp.evidence('policy'),funding_reference=pg_temp.evidence('policy'),
+  updated_by=(select id from mr_ids where key='owner');
+select pg_temp.reject(format('select public.b2c_policy_require(%L,%L,1000,100)',
+  (select id from mr_ids where key='shared_scope'),(select id from mr_ids where key='recipient')),'B2C_FUNDING_NEEDED');
+rollback to shared_b2c_separation;
 create function pg_temp.shared_request(solo boolean default false,amount bigint default 1000) returns uuid language plpgsql as $$
 begin
   return public.manual_payout_request(extensions.gen_random_uuid(),(select id from mr_ids where key='wedding'),

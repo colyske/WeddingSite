@@ -4,6 +4,7 @@ import http from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
 import { chromium } from "playwright";
+import { createHash } from "node:crypto";
 
 test("manual payout leadership UI is explicitly OFF, no legacy sent or accidental operations", { timeout: 180000 }, async () => {
   const server = http.createServer(async (req, res) => {
@@ -192,6 +193,18 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
     await page.getByRole("button", { name: "1. Add real evidence", exact: true }).click();
     const evidenceForm = page.locator('[data-manual-panel="evidence"] form');
     await evidenceForm.locator('[name="kind"]').selectOption("account");
+    const newestHash = await evidenceForm.evaluate(async form => {
+      const input = form.querySelector("[data-evidence-file]");
+      let release;
+      const firstRead = new Promise(resolve => { release = resolve; });
+      const older = input.onchange({ target: { files: [{ size: 1, arrayBuffer: () => firstRead }] } });
+      await input.onchange({ target: { files: [{ size: 1, arrayBuffer: async () => new Uint8Array([2]).buffer }] } });
+      release(new Uint8Array([1]).buffer);
+      await older;
+      return form.elements.namedItem("sha256").value;
+    });
+    assert.equal(newestHash, createHash("sha256").update(Buffer.from([2])).digest("hex"),
+      "A slow older file fingerprint cannot replace the newly selected file's digest");
     await evidenceForm.locator("[data-evidence-file]").setInputFiles({
       name: "synthetic-only.txt", mimeType: "text/plain", buffer: Buffer.from("actual synthetic evidence bytes")
     });

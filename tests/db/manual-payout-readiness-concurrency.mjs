@@ -230,6 +230,23 @@ try {
   await policy({ enabled: true });
   const sharedClaimed = uuid(await run(ids.maker, sharedRequest()));
   await run(ids.checker, `public.manual_payout_transition('${sharedClaimed}','approved')`);
+  const feeControl = {};
+  let feeReady;
+  const feeSignal = new Promise(resolve => { feeReady = resolve; });
+  const feeChange = sql(`begin; set local idle_in_transaction_session_timeout='30s';
+    update public.contributions set provider_fee_pending=true where id='${sharedContribution}';
+    select 'FEE_HELD';\n`, data => { if (data.includes("FEE_HELD")) feeReady(); }, feeControl);
+  await Promise.race([feeSignal, feeChange.then(() => { throw new Error("Missing fee-change barrier"); })]);
+  const feeWaiter = randomUUID();
+  const feeDenied = assert.rejects(sql(`begin; set local statement_timeout='20s';
+    set local application_name='${feeWaiter}'; ${actor(ids.maker)}
+    select public.manual_payout_transition('${sharedClaimed}','executing','${randomUUID()}'); commit;`),
+  /Insufficient attributable/);
+  try { await waitForAdvisory(feeWaiter); } finally { feeControl.release(); }
+  await Promise.all([feeChange, feeDenied]);
+  assert.equal(await sql(`select count(*) from public.manual_payout_claims where payout_id='${sharedClaimed}';`), "0",
+    "A committed unknown fee blocks the waiting claim without releasing the reservation");
+  await sql(`update public.contributions set provider_fee_pending=false where id='${sharedContribution}';`);
   await revokeWhileWaiting(`public.manual_payout_transition('${sharedClaimed}','executing','${randomUUID()}')`, true);
   const sharedClaims = await Promise.allSettled([run(ids.maker, `public.manual_payout_transition('${sharedClaimed}','executing','${randomUUID()}')`),
     run(ids.maker, `public.manual_payout_transition('${sharedClaimed}','executing','${randomUUID()}')`)]);
