@@ -223,7 +223,14 @@
         }
       }
     } catch (error) { starterFailed = true; setNotice(`${error.message} Your existing answers are kept.`, "bad"); }
-    finally { starterLoading = false; renderSubmit(); }
+    finally {
+      starterLoading = false;
+      const params = new URLSearchParams(location.search);
+      if (!selectedStarter && !pendingStarter && !params.has("style") && !params.has("inspiration")) {
+        draftCurrencyCheck = checkDraftCurrency();
+      }
+      renderSubmit();
+    }
   }
   $("apply-inspiration").addEventListener("click", () => chooseStarter(pendingStarter));
   $("keep-current-answers").addEventListener("click", () => { pendingStarter = null; renderStarterReview(); });
@@ -361,6 +368,7 @@
     renderSubmit();
     try {
     if (!selectedStarter && !($("include-legacy-answers")?.checked && legacyAnswers?.fields?.currency)) {
+      if (!platformCurrency) draftCurrencyCheck = checkDraftCurrency();
       await draftCurrencyCheck;
       if (platformCurrency?.configured === true && !draftCurrencies.some(item => item.code === draftCurrency())) {
         $("draft-currency").focus();
@@ -493,7 +501,6 @@
       .catch(error => { $("client-referral-dismiss").hidden = false; setNotice(error.message, "bad"); });
   } else {
     prepareLegacyAnswerChoice();
-    draftCurrencyCheck = checkDraftCurrency();
     loadWeddings();
     Promise.all([initializeStarter(), loadReferralDisclosure()]).then(() => {
       const sourceRequested = new URLSearchParams(location.search).has("style") || new URLSearchParams(location.search).has("inspiration");

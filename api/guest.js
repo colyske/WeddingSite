@@ -144,7 +144,7 @@ export default async function handler(req, res) {
       if (host.kind === "root") {
         res.statusCode = 200;
         res.setHeader("Content-Type", "text/html; charset=utf-8");
-        res.setHeader("Cache-Control", failed ? "no-store" : "public, max-age=0, s-maxage=300");
+        res.setHeader("Cache-Control", "public, max-age=0, s-maxage=300");
         return res.end(await readFile(join(process.cwd(), "index.html"), "utf8"));
       }
       if (host.kind === "reserved") {
