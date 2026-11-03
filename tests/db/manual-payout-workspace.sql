@@ -29,9 +29,9 @@ begin
     raise exception 'Missing couple pending history'; end if;
 end $$;
 set local role authenticated;
-select pg_temp.reject('select public.manual_payout_workspace()','SuperAdmin');
+select pg_temp.reject('select public.manual_payout_workspace()','Staff access required');
 select pg_temp.reject(format('select public.manual_payout_review_intent(%L,''declined'',null,null,null,null,false,true)',
-  (select id from mr_ids where key='intent')),'SuperAdmin');
+  (select id from mr_ids where key='intent')),'Staff access required');
 select pg_temp.actor('admin');
 select pg_temp.reject('select public.manual_payout_workspace()','SuperAdmin');
 select pg_temp.reject(format('select public.manual_payout_submit_intent(extensions.gen_random_uuid(),%L,1200,true)',
