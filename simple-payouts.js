@@ -27,6 +27,7 @@ function history(rows, esc, money) {
     <p>Partner ${esc(r.partner_slot)} · ${esc(new Date(r.requested_at).toLocaleDateString())}
       ${r.fee_minor !== null && r.fee_minor !== undefined ? ` · transfer fee ${esc(money(r.fee_minor, r.currency))}` : " · fee confirmed by the operator before Processing"}</p>
     ${r.reason ? `<p role="status">${esc(reasons[r.reason] || "Staff review needed")}. Reservation retained.</p>` : ""}
+    ${r.recipient_changed && !["paid", "cancelled"].includes(r.status) ? `<p role="alert">Identity or recipient details changed after this request. Do not send to the updated details on this claim. ${r.claimed_at ? "Hold if not already sent; only the claimed operator may report an already completed transfer to the originally checked recipient." : "Cancel before Processing and request again with the correct details."}</p>` : ""}
     ${r.transaction_reference ? `<p>Transaction ID: <strong>${esc(r.transaction_reference)}</strong>. Reported by the operator, not provider-verified or statement-reconciled.</p>` : ""}
     ${r.claimed_at && r.status !== "paid" ? "<p>Never send again, cancel or release because of a timeout. The existing operator must confirm the outcome.</p>" : ""}
     <details><summary>Status history</summary>${(r.history || []).map(e => `<p>${esc(labels[e.state] || e.state)}${e.reason ? ` · ${esc(reasons[e.reason])}` : ""} · ${esc(new Date(e.at).toLocaleString())}</p>`).join("")}</details>

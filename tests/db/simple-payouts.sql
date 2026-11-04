@@ -50,6 +50,9 @@ begin
   insert into mr_ids values('simple_paid',p),('simple_normal',p2);
 end $$;
 -- Own obligations reduce availability; other weddings and test/direct funds do not add it.
+select pg_temp.reject(format('insert into public.expenses(wedding_id,category,description,amount_minor,currency,status)
+  values(%L,''Fixture'',''Cannot spend payout reservations'',14000,''KES'',''approved'')',
+  (select id from mr_ids where key='wedding')),'already reserved');
 savepoint simple_obligations;
 insert into public.expenses(wedding_id,category,description,amount_minor,currency,status)
   values((select id from mr_ids where key='wedding'),'Fixture','Known unpaid expense',13000,'KES','approved');
@@ -70,7 +73,7 @@ rollback to simple_kyc_revision;
 -- New reservations cannot be spent by existing manual/automatic request wrappers.
 savepoint simple_crosspath;
 do $$ declare p uuid:=pg_temp.simple_request(9000); begin
-  perform pg_temp.actor('owner'); perform pg_temp.policy('{"enabled":true}');
+  perform pg_temp.actor('owner'); perform pg_temp.policy('{"enabled":true,"daily_minor":20000}');
   perform pg_temp.reject(format('select public.manual_payout_request(extensions.gen_random_uuid(),%L,%L,%L,7000,100,''KES'',true)',
     (select id from mr_ids where key='wedding'),(select id from mr_ids where key='custody'),
     (select id from mr_ids where key='recipient')),'already committed');
@@ -91,6 +94,7 @@ do $$ declare p uuid:=pg_temp.simple_request(); reference text; v_key uuid:=exte
     or exists(select 1 from public.simple_payout_receipts where payout_id=p) then
     raise exception 'Duplicate ID lost claim/reservation or marked Paid'; end if;
   perform pg_temp.reject(format('select pg_temp.simple_action(%L,''cancelled'')',p),'already been claimed');
+  perform pg_temp.reject(format('select pg_temp.simple_action(%L,''paid'',extensions.gen_random_uuid(),''REPLACEMENT-ID'')',p),'conflicting outcome already holds');
 end $$;
 rollback to simple_old_receipt;
 savepoint simple_preserve_paid;

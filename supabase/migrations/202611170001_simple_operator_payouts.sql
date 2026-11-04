@@ -196,6 +196,8 @@ begin
   if p_action='paid' then
     if c.payout_id is null or c.sender_id<>auth.uid() then raise exception 'SIMPLE_PAYOUT: Only the claimed operator can report their external transfer.'; end if;
     if ref is null or ref !~ '^[A-Z0-9][A-Z0-9._:-]{0,119}$' then raise exception 'SIMPLE_PAYOUT: Enter the actual transaction ID, not recipient details.'; end if;
+    if exists(select 1 from public.simple_payout_incidents where payout_id=p_id) then
+      raise exception 'SIMPLE_PAYOUT: A conflicting outcome already holds this request. Contact support; changing the transaction ID cannot resolve it. Do not resend.'; end if;
     if exists(select 1 from public.simple_payout_receipts where provider=c.provider and transaction_reference=ref)
       or exists(select 1 from public.manual_payout_receipts where provider=c.provider and transaction_reference=ref)
       or exists(select 1 from public.b2c_callback_events where kind='result' and evidence->>'result_code'='0'
@@ -240,6 +242,32 @@ create trigger simple_payout_guard_existing before insert on public.manual_payou
   for each row execute function public.simple_payout_guard_existing();
 create trigger simple_payout_guard_existing before insert on public.manual_payout_claims
   for each row execute function public.simple_payout_guard_existing();
+
+create function public.simple_payout_guard_commitment() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare prior_debit numeric:=0; next_debit numeric;
+begin
+  if not pg_try_advisory_xact_lock(71110001) then
+    raise exception 'SIMPLE_PAYOUT: Accounting is busy. Retry the commitment after review.'; end if;
+  if not exists(select 1 from public.simple_payout_requests where wedding_id=new.wedding_id
+    and public.simple_payout_state(id)<>'cancelled') then return new; end if;
+  next_debit:=case when (tg_table_name='expenses' and new.status::text in ('approved','paid'))
+    or (tg_table_name='payout_records' and new.status::text in ('requested','approved','sent')) then new.amount_minor else 0 end;
+  if tg_op='UPDATE' then
+    if (new.wedding_id,new.currency) is not distinct from (old.wedding_id,old.currency) then
+      prior_debit:=case when (tg_table_name='expenses' and old.status::text in ('approved','paid'))
+        or (tg_table_name='payout_records' and old.status::text in ('requested','approved','sent')) then old.amount_minor else 0 end;
+    end if;
+  end if;
+  if exists(select 1 from public.weddings where id=new.wedding_id and currency=new.currency)
+    and next_debit-prior_debit>public.simple_payout_available(new.wedding_id) then
+    raise exception 'SIMPLE_PAYOUT: Wedding funds already reserved. This commitment would overdraw them.'; end if;
+  return new;
+end $$;
+create trigger simple_payout_guard_commitment before insert or update on public.expenses
+  for each row execute function public.simple_payout_guard_commitment();
+create trigger simple_payout_guard_commitment before insert or update on public.payout_records
+  for each row execute function public.simple_payout_guard_commitment();
 
 -- Preserve old report/reconcile behavior, adding only new-path conflicts to its
 -- existing committed hold branch. No provider/rail gate is altered.
@@ -295,6 +323,7 @@ begin
       jsonb_build_object('slot',2,'label','Partner 2 phone ending '||right(regexp_replace(coalesce(k.partner2_phone,''),'[^0-9]','','g'),4))),
     'requests',coalesce((select jsonb_agg(to_jsonb(x) order by requested_at desc) from (
       select r.id,r.amount_minor,r.currency,r.partner_slot,r.requested_at,public.simple_payout_state(r.id) status,
+        r.kyc_hash is distinct from public.simple_payout_kyc_hash(r.wedding_id) recipient_changed,
         c.fee_minor,c.sender_id,c.owner_solo,c.claimed_at,x.transaction_reference,
         (select reason from public.simple_payout_events where payout_id=r.id order by id desc limit 1) reason,
         (select jsonb_agg(jsonb_build_object('state',state,'reason',reason,'actor_id',actor_id,'at',created_at) order by id)
