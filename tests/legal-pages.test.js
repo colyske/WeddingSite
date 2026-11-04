@@ -23,6 +23,24 @@ test("privacy policy covers the actual data practices", () => {
     assert.match(html, topic);
 });
 
+test("payment terms distinguish company costs, accepted customer fees and historical contracts", () => {
+  const html = read("terms.html");
+  assert.match(html, /datetime="2026-11-04"/);
+  assert.match(html, /provider transaction costs are company overhead, not a separate deduction or an unknown-fee hold/i);
+  assert.match(html, /Unknown actual provider costs remain unknown/);
+  assert.match(html, /Owner may configure a customer withdrawal processing fee/);
+  assert.match(html, /explicitly confirms the amount received, processing fee and total balance debit/);
+  assert.match(html, /changed quote requires fresh confirmation/);
+  assert.match(html, /no additional customer fee is added at Processing/);
+  assert.match(html, /smaller positive amount is permitted only when.*full remaining available balance/);
+  assert.match(html, /maximum and available-funds limits still apply/);
+  assert.match(html, /zero removes only the platform time delay/);
+  assert.match(html, /Earlier terms described separate provider-fee deductions/);
+  assert.match(html, /does not rewrite saved payment fees or release dates, historical refund allocations, or existing active or paid payout contracts/);
+  assert.doesNotMatch(html, /Provider transaction fees are deducted separately from the couple's balance/);
+  assert.doesNotMatch(html, /current platform commission is 8%/);
+});
+
 test("legal pages are linked from footer, sign-in/sign-up and guest site", () => {
   assert.match(read("footer.js"), /\/privacy\.html/);
   assert.match(read("footer.js"), /\/terms\.html/);

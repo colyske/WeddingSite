@@ -1,4 +1,4 @@
-// Only opaque evidence IDs/digests cross this boundary; never recipient details.
+// Whitelisted IDs, amounts and non-sensitive evidence references; never recipient details.
 const uuid = v => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 const amount = v => Number.isSafeInteger(v) && v > 0;
 const fee = v => Number.isSafeInteger(v) && v >= 0;
@@ -102,7 +102,7 @@ export function manualPayoutCommand(action, body, role) {
   if (action === "simple-action") {
     if (body.solo && role !== "owner") return { status: 403, error: "Only the protected Owner may choose solo processing." };
     if ((body.action === "hold" ? body.reason === null : body.reason !== null) ||
-      (body.action === "processing" ? body.fee === null || !body.recipient_confirmed : body.fee !== null || body.solo) ||
+      (body.action === "processing" ? !body.recipient_confirmed : body.fee !== null || body.solo) ||
       (body.action === "paid" ? body.reference === null : body.reference !== null) ||
       (!["reviewed", "processing"].includes(body.action) && body.recipient_confirmed)) {
       return { status: 400, error: "Confirm only the fields for this payout action." };

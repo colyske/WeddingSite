@@ -12,6 +12,99 @@ Deploying this capability is **not operational availability or activation author
 
 ## Simple offline payout reporting (current couple / staff UI)
 
+### Payment timing and refreshing the balance
+
+For **new** confirmed payments, `202611180001` makes the configured platform
+`payout_hold_days` authoritative for both M-Pesa/Daraja and Paystack. Setting 0
+means no additional platform time delay; setting 1 means one day from the recorded
+provider-paid time. There is no universal provider-specific three-day floor.
+Existing `funds_available_at`, payment/fee records and policies are never rewritten,
+including on a later confirmation replay or policy change.
+
+Zero days is not provider settlement proof, an absence of
+refund/dispute/other obligations, or available portal liquidity. **Provider costs
+are company overhead**, funded from platform revenue, not a deduction or an
+unknown-fee hold on couple entitlement. Unknown actual costs remain NULL/pending
+internally; nothing writes an assumed zero or fake verification. The UI shows
+the customer processing fee, time-held amounts and the next **stored** time-release date.
+Expenses, refund/dispute
+obligations and paid/active payout commitments remain deducted. The displayed
+minimum payout is unchanged.
+
+The wedding balance endpoint and simple request UI use the same authoritative
+simple payout balance, never a legacy estimate or hard-coded available zero.
+**Refresh balance (keep form)** preserves a typed couple request.
+**Refresh balances (keep transaction form)** updates operator balance/hold summaries
+without destroying a typed transaction ID, confirmation or existing Paid form.
+Refresh is read-only and never authorizes or submits a transfer; every mutation
+still checks current server state.
+
+### Bounded finance-policy consistency review (180001)
+
+| Owner setting / surface | Effective enforcement and evidence | Result |
+|---|---|---|
+| Commission basis points, fixed amount/currency | `api/checkout.js` snapshots wallet commission and same-currency fixed amount; live Paystack's SQL quote converts its USD fixed base with immutable FX. The 8-argument confirmation computes from the contribution snapshot, not today's policy. Existing Paystack standard tests cover nondefault commission/FX; configured-hold SQL adds nondefault 667bp + 23 minor and a later policy change. | Preserved. Same-currency-only wallet fixed fees and Paystack USD base are explicitly labelled capabilities, not silent conversions. |
+| Contribution maximum / minimum | Checkout and Paystack quote enforce `max_contribution_minor`; song/bid RPCs and amount presets read the policy cap. There is no Owner-exposed minimum-contribution setting. Positive integer minor units and Daraja whole-KES/mobile/currency validation are fixed input/provider capabilities, not substitutes for a configured minimum. | No newly confirmed override. No provider minima invented or changed. |
+| Payout minimum/maximum and customer processing fee | New simple submissions validate the amount received against platform bounds, with the full-remaining-balance exception below. Fee/min/max/revision are snapshotted at confirmation, stale quotes rejected. Controlled/legacy/B2C gates and historical contracts remain unchanged. | User-directed policy change in 190001; new threshold, zero/nonzero fee, replay and policy-race tests. |
+| Platform payment hold days | Daraja's 8-argument confirmation contained a universal Daraja/Paystack 3-day floor. The 9-argument receipt wrapper and live Daraja recovery / Paystack confirmation delegate to it. Earlier migration definitions also had Paystack-only 3-day logic but are superseded. | **Fixed forward-only**. Tests use 0/1/7 for both providers and preserve stored dates/replay and genuine obligations. Populated-upgrade tests pin the inspected deployed source and exercise mixed LF/CRLF migration input. |
+| Collection provider switches / live collection approvals | Checkout provider availability, persisted-context guards and Daraja/Paystack live approval/standard/split scopes remain independent. Switching collection off prevents new intake, not truthful accounting of an already-created payment. | Preserved; existing live-collection, Paystack standard/split and recovery regressions remain required. |
+| Settlement route / payout switches | Immutable platform-wallet vs direct settlement remains authoritative. Direct/test funds cannot enter payout availability. Historical manual and automatic B2C gates remain OFF/unchanged; simple offline reporting is the separately released user-directed path, not a bypass enabling those rails. | Preserved; no policy activation, fee changes or provider/transfer calls. |
+| Displayed wedding availability | `action=balance` forced zero while the simple UI used the real balance. Legacy calculations omitted new reservations and must not be used as estimates of spendable funds. | **Fixed**: both displays use `simple_payout_status.available_minor`, with separate accurately labelled hold/obligation details and non-destructive refresh tests. |
+
+This review covers the listed Owner-exposed finance settings and their current
+checkout, confirmation/recovery, payout and display paths. It is not a guarantee
+that there are no hard-coded constants elsewhere. Safety caps, supported
+currencies/methods, permissions, idempotency and immutable historical fee snapshots
+are intentional; publication/referral subsystems retain their separate existing
+test coverage and were not redesigned here. External provider entitlements,
+settlement and fee evidence cannot be established by this code review.
+
+### Customer processing fee and minimum exception (190001)
+
+The Owner's **Fees & settings → Customer withdrawal processing fee (KES)** is a
+flat charge on each new simple KES withdrawal. It is customer processing revenue,
+not the actual cost charged by a provider. Upgrade defaults to **0** for backward
+compatibility; no nonzero Production value is chosen by this migration or agent.
+Only the protected Owner can change it through the audited policy RPC.
+
+The couple explicitly confirms **amount received + customer processing fee =
+total balance debit**. Both are atomically reserved at submit, with immutable
+fee/minimum/maximum/policy-revision snapshots. A changed quote is rejected, never
+silently increased; refresh requires reconfirmation. Exact retries preserve the
+accepted quote. Processing adds no new customer fee and does not ask the operator
+to invent a company provider cost. Unknown actual costs remain unknown.
+
+Normally the **amount received** must meet `min_payout_minor`, and total debit
+must fit available funds. A below-minimum amount is permitted **only if total
+debit equals the entire remaining available balance**. This applies both when
+available is below the minimum and when it is at/above the minimum but the
+processing fee makes the received amount smaller. The received amount must
+remain positive and within the maximum. If available cannot cover the fee plus
+a positive payout, no request is possible. **Use full remaining balance after
+processing fee** computes this exact amount; it never submits automatically.
+
+Before Processing, cancellation releases the reserved amount and fee. Holds and
+durable claims retain them; the operational fee summary counts only
+operator-reported Paid as processing revenue, never provider-verified revenue.
+Historical requests have NULL new-policy snapshots and keep their original
+obligations, including any previously claimed transfer fee. They are never
+retroactively charged this new fee, repriced or double charged. Existing immutable
+refund allocations also remain intact; actual refund/dispute holds and ledger
+facts are not erased to hide a deficit.
+
+The superseded provider-fee-attestation proposal is **not shipped**: no new table,
+RPC, UI or requirement to reconcile provider costs exists for couple eligibility.
+The existing KES5 payment's fee stays NULL/pending and its saved November 7 time
+hold remains unchanged. This policy changes entitlement calculations, not that row.
+
+The first attempted 180001 deployment failed before any DDL/data changes with
+SQLSTATE P0001, `Unexpected verified-payment hold predecessor`. Its literal
+multiline match was sensitive to Windows CRLF versus the deployed LF function
+source. The replacement is whitespace-tolerant. Populated tests pin normalized
+source SHA256 `e473cfbb2114df2fc5f679ccc65f5141b74f10d38301d73bc84b6e4036906290`,
+reproduce the old mixed-line-ending failure, and perform full rollback and COMMIT
+with mixed-line-ending migration input while preserving historical rows/overloads.
+
 `202611170001` provides the user-requested **Request → Hold or Processing → Paid**
 path in the existing finance workstream. It does **not** use the older setup
 questionnaire, account scopes, evidence UUIDs, statement registration or separate
@@ -33,12 +126,13 @@ under **Older controlled payouts and historical evidence (advanced)**.
    processing** releases only an unclaimed request. For non-Owner staff, another
    eligible leader must use **Check recipient for another operator** after
    actually reviewing private identity, receiving phone/name and consent.
-3. **Processing**: enter the actual expected transfer fee in KES (including
-   explicit 0 only if genuinely free), confirm the recipient check, and confirm
+3. **Processing**: the new request already has its customer fee fixed and reserved;
+   no provider-cost entry or additional customer charge is added. Only historical
+   contracts retain their old actual-transfer-fee field. Confirm the recipient check, and confirm
    the single durable processing claim. The protected Owner can explicitly
    select audited solo processing; other staff require the independent checker.
    Net/obligations, KYC revision and current actor/reviewer roles are checked
-   again. No fee/default/merchant entitlement is guessed.
+   again. No company provider cost or merchant entitlement is guessed.
 4. After Processing successfully saves, the transaction-ID field and **Confirm
    Paid — operator-reported** action appear immediately for the claimed operator,
    including after reload. Failed Processing never exposes those controls.
@@ -52,12 +146,12 @@ under **Older controlled payouts and historical evidence (advanced)**.
    never resend or cancel/release a claimed transfer. No timeout expires a claim.
 
 Available balance is authoritative verified live wedding-attributable net less
-known collection fees, configured settlement holds, refund/dispute obligations,
+snapshotted platform commission, configured time holds, true refund/dispute obligations,
 expenses, legacy payouts, paid amounts and active reservations on every payout
-path. It excludes direct-settled/test/unknown-fee contributions and referral
+path. It excludes direct-settled/test/unverified contributions and referral
 estimates. It is not a statement assertion or global Paybill liquidity model.
-The operator fee is reserved additionally at Processing and stays consumed after
-Paid. Existing financial writers use the shared serialization lock; legacy and
+New customer processing fees are reserved at submission, not Processing. Company
+provider costs do not reduce couple entitlement. Existing financial writers use the shared serialization lock; legacy and
 automatic admissions/claims cannot spend these reservations.
 Actual refund/dispute holds and ledger debits are preserved, never suppressed
 to make a reservation look funded. A deferred transaction-final check permits valid

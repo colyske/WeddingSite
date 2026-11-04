@@ -35,7 +35,7 @@ test("Owner can review and confirm the default currency; SuperAdmins cannot see 
     free_publications_per_client: 1, contribution_fee_basis_points: 500,
     contribution_fixed_fee_minor: 0, contribution_fixed_fee_currency: "USD",
     max_contribution_minor: 100000000, min_payout_minor: 1000,
-    max_payout_minor: 100000000, payout_hold_days: 3
+    max_payout_minor: 100000000, payout_hold_days: 3, withdrawal_processing_fee_minor: 275
   };
   const context = await browser.newContext();
   await context.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({
@@ -76,6 +76,12 @@ test("Owner can review and confirm the default currency; SuperAdmins cannot see 
   await ownerPage.goto(base);
   await ownerPage.locator('[data-tab="fees"]').click();
   await ownerPage.locator("#default-currency-form").waitFor();
+  assert.equal(await ownerPage.locator("#p-withdrawal-fee").inputValue(), "2.75");
+  await ownerPage.locator("#p-withdrawal-fee").fill("3.25");
+  const feeSave = ownerPage.waitForResponse(response => response.url().includes("action=policies-save"));
+  await ownerPage.locator("#fees-form button[type=submit]").click();
+  await feeSave;
+  assert.equal(calls.find(call => call.action === "policies-save").body.policies.withdrawal_processing_fee_minor, 325);
   assert.equal(await ownerPage.locator("#platform-default-currency").inputValue(), "KES");
   assert.match(await ownerPage.locator("#default-currency-settings").innerText(), /USD remains the canonical publication-fee currency/);
   ownerPage.on("dialog", dialog => dialog.accept());
@@ -91,6 +97,7 @@ test("Owner can review and confirm the default currency; SuperAdmins cannot see 
   await adminPage.locator('[data-tab="fees"]').click();
   await adminPage.locator("#panel").getByRole("heading", { name: "Fees & settings" }).waitFor();
   assert.equal(await adminPage.locator("#default-currency-settings").count(), 0);
+  assert.equal(await adminPage.locator("#p-withdrawal-fee").isDisabled(), true);
   assert.equal(calls.some(call => call.action === "default-currency" && call.method === "GET" && call.role === "superadmin"), false);
   assert.deepEqual(errors, []);
   await context.close();

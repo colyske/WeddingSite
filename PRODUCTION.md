@@ -42,8 +42,11 @@ even in sandbox; do not substitute a real number for a test number.
 The human normal-browser Paystack test on 2026-10-29 succeeded: KES 5 Atoti song
 bid, one settlement event, one song credit and no fulfilment exception. The
 simulated accounting record is 500 minor gross minus 40 platform fee = 460;
-the separate 15 provider fee leaves 445 after both charges. Provider fees are
-borne by the couple, not silently absorbed by the platform. This is **not**
+the separate 15 provider fee left 445 under the then-current test policy.
+Those are historical simulated amounts, not the current platform-wallet
+withdrawal policy: provider costs are now company overhead, and new customer
+withdrawal processing fees must be explicitly quoted and accepted at submission.
+Neither policy rewrites this test's saved accounting. This is **not**
 real collection. Migration012 labels existing/new guest payments `test`,
 prevents relabelling them live, excludes them and their adjustment credits
 from withdrawable balances, and blocks test-funded payout requests/statuses.

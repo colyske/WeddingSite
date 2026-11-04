@@ -16,7 +16,8 @@ test("simple operator API keeps integer units, immutable command fields, leaders
   assert.equal(command.args.p_confirmed, true);
   for (const role of ["client", "admin", "helper"]) assert.equal(manualPayoutCommand("simple-action", action, role).status, 403);
   assert.equal(manualPayoutCommand("simple-action", action, "superadmin").status, 403);
-  for (const patch of [{ confirmed: false }, { fee: 0.1 }, { fee: Number.MAX_SAFE_INTEGER+1 }, { fee: null },
+  assert.equal(manualPayoutCommand("simple-action", { ...action, fee: null }, "owner").args.p_fee, null);
+  for (const patch of [{ confirmed: false }, { fee: 0.1 }, { fee: Number.MAX_SAFE_INTEGER+1 },
     { bank: "unsupported" }, { recipient_confirmed: false }, { reference: "BEFORE-CLAIM" }]) {
     assert.equal(manualPayoutCommand("simple-action", { ...action, ...patch }, "owner").status, 400);
   }
@@ -49,8 +50,11 @@ test("simple operator API keeps integer units, immutable command fields, leaders
     assert.equal(response.statusCode, 201);
     assert.deepEqual(response.data, { payoutId: id, recorded: true });
     assert.deepEqual(calls[0].body, { p_key: id, p_wedding: id, p_amount: 1234, p_partner: 1, p_confirmed: true });
+    assert.equal((await invoke(weddings, "simple-payout-request", { ...request, processingFeeMinor: 100, policyRevision: 0 })).statusCode, 201);
+    assert.deepEqual(calls[0].body, { p_key:id,p_wedding:id,p_amount:1234,p_partner:1,p_confirmed:true,p_processing_fee:100,p_policy_revision:0 });
     for (const patch of [{ amountMinor: 1.5 }, { amountMinor: "1234" }, { partner: 3 }, { confirmed: false },
-      { bankAccount: "unsupported" }, { amountMinor: Number.MAX_SAFE_INTEGER+1 }]) {
+      { bankAccount: "unsupported" }, { amountMinor: Number.MAX_SAFE_INTEGER+1 }, { processingFeeMinor: 100 },
+      { policyRevision: 0 }, { processingFeeMinor: 1.5, policyRevision: 0 }, { processingFeeMinor: 100, policyRevision: -1 }]) {
       assert.equal((await invoke(weddings, "simple-payout-request", { ...request, ...patch })).statusCode, 400);
       assert.equal(calls.length, 0);
     }
