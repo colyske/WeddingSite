@@ -36,7 +36,7 @@ function history(rows, esc, money) {
 export function balanceDetail(data, money) {
   const amount = value => value === undefined || value === null ? "Unavailable" : money(value, data.currency);
   const date = data.next_time_release_at ? new Date(data.next_time_release_at).toLocaleString() : "None scheduled";
-  return `Awaiting verified payment fees: ${amount(data.fee_pending_minor)}. Time hold: ${amount(data.time_held_minor)}; next stored release date: ${date}. ` +
+  return `Awaiting actual payment fees: ${amount(data.fee_pending_minor)}. Time hold: ${amount(data.time_held_minor)}; next stored release date: ${date}. ` +
     `Refund/dispute/expense and legacy obligations: ${amount(data.obligations_minor)}. Payout commitments (including paid and active reservations): ${amount(data.payout_committed_minor)}. ` +
     `Fee and time holds may overlap; do not add these figures. Configured time hold for new confirmed payments: ${data.configured_hold_days ?? "Unavailable"} day(s). ` +
     `Minimum payout: ${amount(data.min_payout_minor)}. A release date or zero-day setting is not settlement proof, verified fees or guaranteed portal liquidity.`;
@@ -156,6 +156,7 @@ export async function mountAdmin(el, { api, money, esc, role, userId }) {
         section.querySelector("[data-balance-deficit]").textContent = w.payouts.deficit_recorded ?
           "Adjustment deficit recorded. Do not send or resend. Claims remain held; report Paid only for an actual completed transfer." : "";
       }
+
       result.textContent = "Balances refreshed. Typed transaction IDs and confirmations are unchanged. Status/actions are checked again by the server; refresh does not authorize a transfer.";
     } catch (error) { result.textContent = "Balance refresh failed: " + error.message; }
     finally { button.disabled = false; }
@@ -225,4 +226,58 @@ export async function mountAdmin(el, { api, money, esc, role, userId }) {
     };
     if (r.claimed_at && r.status !== "paid") buttons.querySelector('[data-do="paid"]')?.click();
   }
+}
+
+export async function mountPaymentFees(el, { api, money, esc }) {
+  const data = await json(api, "/api/admin?action=manual-payout-fees");
+  el.innerHTML = `<h3>Owner: reconcile an actual M-Pesa payment fee</h3>
+    <p>${esc(data.notice)} Use an official account transaction or statement showing the actual fee for the selected payment.
+      Do not guess zero or enter phone numbers, names, credentials or account details.</p>
+    <form data-payment-fee-form>
+      <label>Payment (newest 100 unknown-fee records)<select name="contribution" required><option value="">Choose by date, amount and internal reference</option>
+        ${(data.pending || []).map(c => `<option value="${esc(c.id)}">${esc(new Date(c.paid_at).toLocaleString())} · ${esc(money(c.paid_amount_minor, c.currency))} · ${esc(c.internal_reference)}</option>`).join("")}</select></label>
+      <p data-fee-payment-detail></p>
+      <label>Actual provider fee (KES)<input name="fee" inputmode="decimal" required data-contact-allowed autocomplete="off"></label>
+      <label>Official source<select name="source_kind" required><option value="transaction">Account transaction</option><option value="statement">Account statement</option></select></label>
+      <label>Non-sensitive transaction / statement reference<input name="reference" required maxlength="80"
+        pattern="[A-Za-z][A-Za-z0-9._:-]{2,79}" data-contact-allowed autocomplete="off"></label>
+      <label><input name="actual_zero" type="checkbox"> Only if the fee is 0: the official evidence explicitly shows an actual zero charge.</label>
+      <label><input name="confirmed" type="checkbox" required> I checked the official account evidence for this exact payment and confirm the actual fee.
+        This is my audited statement attestation, not provider API verification. It does not change the stored time hold or authorize a payout.</label>
+      <button type="submit"${data.pending?.length ? "" : " disabled"}>Record actual fee</button>
+    </form><p data-fee-result role="status" aria-live="polite"></p>
+    <details><summary>Immutable fee attestation history</summary>${(data.history || []).map(a => `<p>${esc(a.internal_reference)} · ${esc(money(a.fee_minor, "KES"))}
+      · ${esc(a.source_kind)} ${esc(a.source_reference)} · ${esc(new Date(a.recorded_at).toLocaleString())} · operator-reconciled, not provider API-verified</p>`).join("") || "<p>No fee attestations recorded.</p>"}</details>`;
+  const form = el.querySelector("form"), output = el.querySelector("[data-fee-result]");
+  form.elements.contribution.onchange = () => {
+    const c = data.pending.find(c => c.id === form.elements.contribution.value);
+    el.querySelector("[data-fee-payment-detail]").textContent = c ?
+      `Payment net before provider fee: ${money(c.net_paid_minor, c.currency)}. Stored time-release date: ${c.funds_available_at ? new Date(c.funds_available_at).toLocaleString() : "No additional time hold"}. Fee attestation does not change that date or other holds.` : "";
+  };
+  form.onsubmit = async event => {
+    event.preventDefault();
+    const button = form.querySelector("button");
+    if (button.disabled || !form.elements.confirmed.checked) return;
+    const storage = `owner-payment-fee:${form.elements.contribution.value}`;
+    try {
+      const body = { contribution: form.elements.contribution.value, fee: kesToMinor(form.elements.fee.value),
+        source_kind: form.elements.source_kind.value, reference: form.elements.reference.value.trim().toUpperCase(),
+        actual_zero: form.elements.actual_zero.checked, confirmed: true };
+      if (body.fee === 0 ? !body.actual_zero : body.actual_zero) throw new Error("Confirm actual zero only when official evidence shows a zero fee.");
+      const signature = JSON.stringify(body), pending = JSON.parse(sessionStorage.getItem(storage) || "null");
+      if (pending && signature !== pending.signature) throw new Error("A previous fee attestation needs confirmation. Retry unchanged; refresh fee history before changing values.");
+      body.key = pending?.key || uuid();
+      sessionStorage.setItem(storage, JSON.stringify({ key: body.key, signature }));
+      button.disabled = true;
+      await json(api, "/api/admin?action=manual-payout-fee-attestation", body);
+      sessionStorage.removeItem(storage);
+      await mountPaymentFees(el, { api, money, esc });
+      el.querySelector("[data-fee-result]").textContent = "Actual fee recorded with immutable Owner attestation. Stored time and other holds remain unchanged; no payment or payout was made.";
+      el.parentElement?.querySelector("[data-refresh-balances]")?.click();
+    } catch (error) {
+      if (error.status >= 400 && error.status < 500) sessionStorage.removeItem(storage);
+      output.textContent = error.message;
+      button.disabled = false;
+    }
+  };
 }

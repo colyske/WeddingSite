@@ -14,6 +14,7 @@ begin
   -- Synthetic persisted contexts, never live provider admission or requests.
   alter table public.contributions disable trigger guard_payment_environment;
   alter table public.contributions disable trigger guard_live_payment_context;
+  alter table public.contributions disable trigger guard_paystack_context;
   foreach provider in array array['daraja','paystack'] loop
     foreach days in array array[0,1,7] loop
       update public.platform_policies set payout_hold_days=days where id=true;
@@ -73,9 +74,34 @@ begin
     values(wedding,'Isolated excluded test',1000,1000,1000,0,'KES','paid',true,'daraja','test',false,0,'platform_wallet',at_time),
       (wedding,'Isolated excluded direct',1000,1000,1000,0,'KES','paid',true,'paystack','live',false,0,'paystack_direct',at_time);
   if public.simple_payout_available(wedding)<>18000 then raise exception 'Excluded money credited'; end if;
+  -- Nondefault fee snapshots, policy edits, and shared request bounds.
+  contribution:=extensions.gen_random_uuid();
+  update public.platform_policies set contribution_fee_basis_points=667,contribution_fixed_fee_minor=23,
+    contribution_fixed_fee_currency='KES',min_payout_minor=4321,max_payout_minor=8765,max_contribution_minor=12345 where id=true;
+  insert into public.contributions(id,wedding_id,stream_name,pledged_amount_minor,currency,payment_status,
+    provider_name,payment_environment,provider_reference,platform_fee_basis_points,platform_fixed_fee_minor)
+    values(contribution,wedding,'Isolated fee snapshot',10000,'KES','pending','daraja','test',contribution::text,667,23);
+  -- Confirmation uses the payment's snapshot, never a later platform policy.
+  update public.platform_policies set contribution_fee_basis_points=999,contribution_fixed_fee_minor=77 where id=true;
+  perform public.record_verified_payment('daraja',contribution::text,contribution,10000,'KES',contribution::text,100,at_time);
+  if not exists(select 1 from public.contributions where id=contribution and platform_fee_minor=690 and net_paid_minor=9310)
+    then raise exception 'Nondefault snapshotted commission/fixed fee was overridden'; end if;
+  perform public.manual_payout_check_amount(wedding,'KES',4321);
+  perform public.manual_payout_check_amount(wedding,'KES',8765);
+  begin
+    perform public.manual_payout_check_amount(wedding,'KES',4320);
+    raise exception 'Below minimum accepted';
+  exception when raise_exception then if sqlerrm<>'Payout amount outside configured minimum or maximum.' then raise; end if; end;
+  begin
+    perform public.manual_payout_check_amount(wedding,'KES',8766);
+    raise exception 'Above maximum accepted';
+  exception when raise_exception then if sqlerrm<>'Payout amount outside configured minimum or maximum.' then raise; end if; end;
+  if (public.simple_payout_status(wedding)->>'min_payout_minor')::bigint<>4321
+    or public.simple_payout_available(wedding)<>18000 then raise exception 'Policy display or test-money exclusion inconsistent'; end if;
   set constraints all immediate;
   alter table public.contributions enable trigger guard_payment_environment;
   alter table public.contributions enable trigger guard_live_payment_context;
+  alter table public.contributions enable trigger guard_paystack_context;
   if public.live_payouts_enabled() or public.manual_payouts_enabled() then raise exception 'Payout gate changed'; end if;
 end $$;
 rollback;

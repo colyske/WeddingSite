@@ -37,6 +37,60 @@ without destroying a typed transaction ID, confirmation or existing Paid form.
 Refresh is read-only and never authorizes or submits a transfer; every mutation
 still checks current server state.
 
+### Bounded finance-policy consistency review (180001)
+
+| Owner setting / surface | Effective enforcement and evidence | Result |
+|---|---|---|
+| Commission basis points, fixed amount/currency | `api/checkout.js` snapshots wallet commission and same-currency fixed amount; live Paystack's SQL quote converts its USD fixed base with immutable FX. The 8-argument confirmation computes from the contribution snapshot, not today's policy. Existing Paystack standard tests cover nondefault commission/FX; configured-hold SQL adds nondefault 667bp + 23 minor and a later policy change. | Preserved. Same-currency-only wallet fixed fees and Paystack USD base are explicitly labelled capabilities, not silent conversions. |
+| Contribution maximum / minimum | Checkout and Paystack quote enforce `max_contribution_minor`; song/bid RPCs and amount presets read the policy cap. There is no Owner-exposed minimum-contribution setting. Positive integer minor units and Daraja whole-KES/mobile/currency validation are fixed input/provider capabilities, not substitutes for a configured minimum. | No newly confirmed override. No provider minima invented or changed. |
+| Payout minimum/maximum | Simple submission and Processing call `manual_payout_check_amount`; controlled manual uses the same helper and further reviewed scope limits. Legacy request uses platform bounds but retains its independent OFF gate. B2C uses shared amount checks plus its explicit scope/per-payout/daily policy. SQL tests assert nondefault 4321/8765 boundaries and displayed minimum. | Preserved; Owner hint corrected to say minimum **request amount**, not minimum account balance. |
+| Platform payment hold days | Daraja's 8-argument confirmation contained a universal Daraja/Paystack 3-day floor. The 9-argument receipt wrapper and live Daraja recovery / Paystack confirmation delegate to it. Earlier migration definitions also had Paystack-only 3-day logic but are superseded, not separate live paths. | **Fixed forward-only**. Tests use 0/1/7 for both providers, both overloads, unchanged stored dates/replay, unknown fees and other obligations. No historical conversion. |
+| Collection provider switches / live collection approvals | Checkout provider availability, persisted-context guards and Daraja/Paystack live approval/standard/split scopes remain independent. Switching collection off prevents new intake, not truthful accounting of an already-created payment. | Preserved; existing live-collection, Paystack standard/split and recovery regressions remain required. |
+| Settlement route / payout switches | Immutable platform-wallet vs direct settlement remains authoritative. Direct/test funds cannot enter payout availability. Historical manual and automatic B2C gates remain OFF/unchanged; simple offline reporting is the separately released user-directed path, not a bypass enabling those rails. | Preserved; no policy activation, fee changes or provider/transfer calls. |
+| Displayed wedding availability | `action=balance` forced zero while the simple UI used the real balance. Legacy calculations omitted new reservations and must not be used as estimates of spendable funds. | **Fixed**: both displays use `simple_payout_status.available_minor`, with separate accurately labelled hold/obligation details and non-destructive refresh tests. |
+
+This review covers the listed Owner-exposed finance settings and their current
+checkout, confirmation/recovery, payout and display paths. It is not a guarantee
+that there are no hard-coded constants elsewhere. Safety caps, supported
+currencies/methods, permissions, idempotency and immutable historical fee snapshots
+are intentional; publication/referral subsystems retain their separate existing
+test coverage and were not redesigned here. External provider entitlements,
+settlement and fee evidence cannot be established by this code review.
+
+### Owner: record an actual M-Pesa payment fee (190001)
+
+Daraja STK query supplies `providerFeeMinor: null`; it does not prove a zero fee.
+The adjustment queue is for refunds/disputes, not fee entry. **Owner Back office
+→ Payouts → Reconcile an actual M-Pesa payment fee** provides a separate narrow
+operation. Select the existing payment by readable date, gross amount and internal
+reference, enter the actual KES fee and a non-sensitive official transaction or
+statement reference, and explicitly confirm checking the source for that payment.
+An actual zero additionally requires its own explicit confirmation. No raw UUID,
+phone, account number, credentials or sensitive document is entered. References
+use 3–80 letters/digits/period/underscore/colon/hyphen, start with a letter, contain
+a digit and must not contain nine consecutive digits. If the official reference
+cannot be represented safely, stop; do not fabricate one.
+
+Only the protected Owner can read or mutate this workspace; SuperAdmin, Admin,
+helpers and clients cannot do so, including via direct RPC. Only verified paid
+LIVE Daraja/KES/platform-wallet payments with a pending unknown fee qualify.
+The fee must be within the paid and historical net amount. The append-only
+attestation records the exact contribution, actor, timestamp, actual fee and
+source reference. Exact retries are idempotent; competing or changed writes
+cannot overwrite a known fee. The shared accounting lock serializes fee
+attestation against refunds and payout claims. Later provider confirmation replays
+do not overwrite the known fee.
+
+This is **operator-reconciled, not provider API-verified**. It changes only the
+unknown provider-fee fields and appends the audit/attestation; payment amount,
+currency, provider reference, paid time, stored time-release date and historical
+platform fee remain immutable. The unknown-fee exclusion ends, but the stored
+time hold, refunds/disputes, expenses and existing commitments still apply.
+It sends nothing, fetches no provider and never records a payout. The migration
+itself does not reconcile or edit any existing payment. For E2E testing the actual
+Owner must use official statement evidence themselves; code rollout is not
+permission for an agent to enter a fee or change an existing payment.
+
 `202611170001` provides the user-requested **Request → Hold or Processing → Paid**
 path in the existing finance workstream. It does **not** use the older setup
 questionnaire, account scopes, evidence UUIDs, statement registration or separate

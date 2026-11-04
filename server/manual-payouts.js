@@ -1,4 +1,4 @@
-// Only opaque evidence IDs/digests cross this boundary; never recipient details.
+// Whitelisted IDs, amounts and non-sensitive evidence references; never recipient details.
 const uuid = v => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 const amount = v => Number.isSafeInteger(v) && v > 0;
 const fee = v => Number.isSafeInteger(v) && v >= 0;
@@ -18,6 +18,12 @@ const policyFields = {
 const policyChanges = v => v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0 &&
   Object.entries(v).every(([key, value]) => Object.hasOwn(policyFields, key) && policyFields[key](value));
 const specs = {
+  "fee-attestation": ["owner_record_payment_fee", {
+    key: uuid, contribution: uuid, fee,
+    source_kind: v => ["transaction", "statement"].includes(v),
+    reference: v => typeof v === "string" && /^[A-Z][A-Z0-9._:-]{2,79}$/.test(v) && /[0-9]/.test(v) && !/[0-9]{9}/.test(v),
+    actual_zero: v => typeof v === "boolean"
+  }],
   "simple-action": ["simple_payout_action", {
     id: uuid, key: uuid, action: v => ["hold", "reviewed", "processing", "paid", "cancelled"].includes(v),
     reason: v => v === null || ["recipient_check", "funds_review", "operator_unavailable", "outcome_uncertain", "other_review"].includes(v),
@@ -87,6 +93,7 @@ const specs = {
 export function manualPayoutCommand(action, body, role) {
   if (!["owner", "superadmin"].includes(role)) return { status: 403, error: "Leadership access required." };
   if (action === "policy" && role !== "owner") return { status: 403, error: "Only the protected Owner may configure manual admission." };
+  if (action === "fee-attestation" && role !== "owner") return { status: 403, error: "Only the protected Owner may attest a payment fee." };
   const spec = specs[action];
   if (!spec || !body || typeof body !== "object" || Array.isArray(body) || body.confirmed !== true ||
       Object.keys(body).some(k => k !== "confirmed" && !Object.hasOwn(spec[1], k)) ||
@@ -108,12 +115,15 @@ export function manualPayoutCommand(action, body, role) {
       return { status: 400, error: "Confirm only the fields for this payout action." };
     }
   }
+  if (action === "fee-attestation" && (body.fee === 0 ? !body.actual_zero : body.actual_zero)) {
+    return { status: 400, error: "Zero requires a separate actual-zero confirmation; do not assume a missing fee is zero." };
+  }
   if (action === "review-intent" && (body.decision === "created" ?
     !uuid(body.key) || !uuid(body.custody) || !uuid(body.recipient) || !fee(body.fee) :
     body.key !== null || body.custody !== null || body.recipient !== null || body.fee !== null || body.owner_solo)) {
     return { status: 400, error: "Create requires explicit payout settings; decline accepts none." };
   }
   const args = Object.fromEntries(Object.keys(spec[1]).filter(key => body[key] !== undefined).map(key => [`p_${key}`, body[key]]));
-  if (["policy", "review-intent", "simple-action"].includes(action)) args.p_confirmed = true;
+  if (["policy", "review-intent", "simple-action", "fee-attestation"].includes(action)) args.p_confirmed = true;
   return { rpc: spec[0], args };
 }

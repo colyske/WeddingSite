@@ -412,7 +412,7 @@
         ${extendedPolicy ? `${f("p-fixed-fee", "Optional fixed commission", p.contribution_fixed_fee_minor, "Wallet payments apply this only in the policy currency. Live Paystack requires a USD base and converts it at immutable quoted FX.")}<label for="p-fixed-currency">Fixed commission currency</label><input id="p-fixed-currency" type="text" minlength="3" maxlength="3" pattern="[A-Za-z]{3}" value="${esc(p.contribution_fixed_fee_currency || "USD")}" required><span class="fine">Live Paystack holds a nonzero non-USD fixed-fee policy; historical payments and other providers are not converted or repriced.</span>` : '<p class="fine">Fixed commission and settlement-hold controls will appear after the financial policy migration is validated and applied.</p>'}
         ${f("p-max", "Max single contribution", p.max_contribution_minor, "Safety cap per payment.")}
         ${f("p-max-payout", "Maximum withdrawal", p.max_payout_minor, "Per-request limit; available balance and holds are checked separately.")}
-        ${extendedPolicy ? `${f("p-min-payout", "Minimum withdrawal", p.min_payout_minor, "Minimum eligible net balance required for a withdrawal request.")}${g("p-hold-days", "Settlement hold (days)", p.payout_hold_days, "Funds remain unavailable until this hold and provider settlement are satisfied.")}` : ""}
+        ${extendedPolicy ? `${f("p-min-payout", "Minimum withdrawal", p.min_payout_minor, "Minimum amount per payout request; available funds and other holds are checked separately.")}${g("p-hold-days", "Platform payment hold (days)", p.payout_hold_days, "For new confirmed payments only. 0 means no platform time delay. Existing stored dates stay unchanged; verified fees, other holds and portal liquidity still matter. This is not provider settlement proof.")}` : ""}
         <button type="submit"${owner ? "" : " disabled"}>${owner ? "Save settings" : "Owner access required"}</button></fieldset></form>
         <p class="fine">Only the protected Owner can change platform fee and payout policies. SuperAdmins can view these settings; regular Admins cannot access them. Transaction eligibility and fee calculation are enforced server-side.</p>
         ${extendedPolicy ? `<details><summary>Recent policy versions (${history.length})</summary>${history.length ? history.map((h) => `<article class="policy-version"><strong>${date(h.changed_at)}</strong><pre>${esc(JSON.stringify({ old: h.old_values, new: h.new_values }, null, 2))}</pre></article>`).join("") : '<p class="fine">No policy changes have been recorded yet.</p>'}</details>` : ""}`;
@@ -531,6 +531,7 @@
       if (workspace) workspace.requestDetails = manual.requests || [];
       cache.manualWorkspace = workspace;
       el.innerHTML = `<h2>Payouts / withdrawals</h2><section id="simple-payout-admin"></section>
+        ${role === "owner" ? '<section id="owner-payment-fees"></section>' : ""}
         <details id="advanced-payout-history"><summary>Older controlled payouts and historical evidence (advanced)</summary>
         <section id="manual-payout-control"><h3>Controlled manual external payouts: ${manual.enabled ? "enabled" : "OFF"}</h3>
           <p>This manual control never changes automatic B2C policy or sends money. Code readiness does not authorize use of a funded merchant rail. Operators transfer only outside this site in the official authorized portal, after a durable execution claim. Never resend an uncertain transfer.</p>
@@ -564,6 +565,10 @@
       const simple = await import("./simple-payouts.js");
       try { await simple.mountAdmin(el.querySelector("#simple-payout-admin"), { api: WS.api, money: WS.money, esc, role }); }
       catch { el.querySelector("#simple-payout-admin").textContent = "Simple payout service unavailable. Refresh before making any transfer; old history remains available below."; }
+      if (role === "owner") {
+        try { await simple.mountPaymentFees(el.querySelector("#owner-payment-fees"), { api: WS.api, money: WS.money, esc }); }
+        catch { el.querySelector("#owner-payment-fees").textContent = "Payment fee reconciliation unavailable. Refresh later; do not assume an unknown fee is zero."; }
+      }
     },
     async b2c(el) {
       await window.B2CBackoffice.mount(el, role === "owner");

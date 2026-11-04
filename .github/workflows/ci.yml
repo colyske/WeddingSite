@@ -60,6 +60,8 @@ jobs:
         run: node tests/db/simple-payout-upgrade.mjs
       - name: Commit configured payment holds without rewriting existing payment history
         run: node tests/db/configured-payment-holds-upgrade.mjs
+      - name: Commit Owner fee attestation without changing any payment fees or history
+        run: node tests/db/owner-payment-fees-upgrade.mjs
       - name: Apply all migrations to a fresh database
         run: supabase db reset --local --no-seed
       - name: Lint the migrated schema
@@ -116,6 +118,8 @@ jobs:
         run: node tests/db/manual-payout-shared.mjs
       - name: Test simple offline operator reporting with rollback
         run: node tests/db/simple-payouts.mjs
+      - name: Test protected Owner statement fee attestation without retaining fixtures
+        run: node tests/db/owner-payment-fees.mjs
       - name: Race real manual policy, requests, claims and deactivation
         env:
           MANUAL_PAYOUT_TEST_DB_CONTAINER: supabase_db_weddingsite
@@ -126,7 +130,13 @@ jobs:
         env:
           MANUAL_PAYOUT_TEST_DB_CONTAINER: supabase_db_weddingsite
         run: node tests/db/simple-payout-concurrency.mjs
-      - name: Stop local Supabase
+      - name: Reset isolated database before Owner fee concurrency
+        run: supabase db reset --local --no-seed
+      - name: Race Owner fee attestations against replays, refunds and claims
+        env:
+          MANUAL_PAYOUT_TEST_DB_CONTAINER: supabase_db_weddingsite
+        run: node tests/db/owner-payment-fees-concurrency.mjs
+      - name: Stop fee test Supabase
         if: always()
         run: supabase stop --no-backup
 

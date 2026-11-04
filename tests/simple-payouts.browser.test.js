@@ -60,7 +60,7 @@ test("simple mobile couple retry and operator Processing reveals transaction ID 
     assert.equal(await page.locator('[name="amount"]').inputValue(), "12.34");
     assert.equal(await page.locator('[name="partner"]').inputValue(), "1");
     assert.match(await page.locator("[data-simple-balance]").innerText(), /98.76/);
-    assert.match(await page.locator("[data-simple-balance-detail]").innerText(), /Awaiting verified payment fees: KES 4.56/);
+    assert.match(await page.locator("[data-simple-balance-detail]").innerText(), /Awaiting actual payment fees: KES 4.56/);
     assert.match(await page.locator("[data-simple-balance-detail]").innerText(), /0 day\(s\)/);
     await page.locator('[name="confirmed"]').check(); await page.getByRole("button", { name: "Request payout", exact: true }).click();
     await page.locator("[data-simple-result]").filter({ hasText: "ambiguous" }).waitFor();
