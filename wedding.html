@@ -2471,6 +2471,11 @@
             ...(histData.manualWithdrawals || []).map(w => ({ ...w, manual: true })),
             ...(histData.withdrawals || [])
           ];
+          const oldHistory = $("old-payout-history");
+          if (oldHistory && (intents.some(i => i.status === "pending") || withdrawals.some(w =>
+            w.staff_reason || ["requested", "approved", "executing", "uncertain", "reported", "resolution_proposed"].includes(w.status)))) {
+            oldHistory.open = true;
+          }
           if (withdrawals.length === 0) return;
           $("withdrawals-body").innerHTML = withdrawals.map(w => `
             <tr style="border-bottom: 1px solid #ddd;">
