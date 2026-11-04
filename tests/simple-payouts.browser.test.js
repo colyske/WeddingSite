@@ -18,7 +18,7 @@ test("simple mobile couple retry and operator Processing reveals transaction ID 
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     try { browser = await chromium.launch({ channel: "msedge" }); } catch { browser = await chromium.launch(); }
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-    let rows = [], state = "requested", failRequest = true, failProcessing = true;
+    let rows = [], state = "requested", failRequest = true, failProcessing = true, deficit = false;
     const requests = [], actions = [];
     const id = "550e8400-e29b-41d4-a716-446655440000";
     const row = () => ({ id, amount_minor: 1234, currency: "KES", partner_slot: 1, status: state,
@@ -27,14 +27,14 @@ test("simple mobile couple retry and operator Processing reveals transaction ID 
     await page.route("**/api/**", route => {
       const action = new URL(route.request().url()).searchParams.get("action");
       if (action === "simple-payout-status") return route.fulfill({ json: { currency: "KES", available_minor: 10000,
-        supported: true, kyc_complete: true, recipients: [{ slot: 1, label: "Partner 1 phone ending 0001" }], requests: rows } });
+        deficit_recorded: deficit, supported: true, kyc_complete: true, recipients: [{ slot: 1, label: "Partner 1 phone ending 0001" }], requests: rows } });
       if (action === "simple-payout-request") {
         requests.push(route.request().postDataJSON());
         if (failRequest) { failRequest = false; return route.fulfill({ status: 503, json: { error: "Synthetic ambiguous request" } }); }
         rows = [row()]; return route.fulfill({ json: { payoutId: id, recorded: true } });
       }
       if (action === "manual-payout-simple") return route.fulfill({ json: { notice: "Operator reporting only",
-        weddings: [{ id, label: "Fixture wedding", payouts: { currency: "KES", available_minor: 8766, requests: [row()] } }] } });
+        weddings: [{ id, label: "Fixture wedding", payouts: { currency: "KES", deficit_recorded: deficit, deficit_minor: deficit ? 100 : 0, available_minor: 8766, requests: [row()] } }] } });
       if (action === "manual-payout-simple-action") {
         const body = route.request().postDataJSON(); actions.push(body);
         if (failProcessing) { failProcessing = false; return route.fulfill({ status: 409, json: { error: "Synthetic claim rejected" } }); }
@@ -84,5 +84,12 @@ test("simple mobile couple retry and operator Processing reveals transaction ID 
     assert.equal(actions.at(-1).reference, "REAL-TEST-REFERENCE");
     assert.equal(await page.locator('[name="reference"]').count(), 0);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    deficit = true;
+    await mount("admin");
+    await page.getByRole("alert").filter({ hasText: "Adjustment deficit recorded" }).waitFor();
+    assert.equal(await page.locator('[name="reference"]').count(), 0, "Deficit must not rewrite a terminal Paid record");
+    await mount("couple");
+    await page.getByRole("alert").filter({ hasText: "recorded payout-funding deficit" }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "Request payout", exact: true }).isDisabled(), true);
   } finally { await browser?.close(); await new Promise(resolve => server.close(resolve)); }
 });

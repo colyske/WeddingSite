@@ -30,7 +30,7 @@ function history(rows, esc, money) {
     ${r.recipient_changed && !["paid", "cancelled"].includes(r.status) ? `<p role="alert">Identity or recipient details changed after this request. Do not send to the updated details on this claim. ${r.claimed_at ? "Hold if not already sent; only the claimed operator may report an already completed transfer to the originally checked recipient." : "Cancel before Processing and request again with the correct details."}</p>` : ""}
     ${r.transaction_reference ? `<p>Transaction ID: <strong>${esc(r.transaction_reference)}</strong>. Reported by the operator, not provider-verified or statement-reconciled.</p>` : ""}
     ${r.claimed_at && r.status !== "paid" ? "<p>Never send again, cancel or release because of a timeout. The existing operator must confirm the outcome.</p>" : ""}
-    <details><summary>Status history</summary>${(r.history || []).map(e => `<p>${esc(labels[e.state] || e.state)}${e.reason ? ` · ${esc(reasons[e.reason])}` : ""} · ${esc(new Date(e.at).toLocaleString())}</p>`).join("")}</details>
+    <details><summary>Status history</summary>${(r.history || []).map(e => `<p>${esc(labels[e.state] || e.state)}${e.reason ? ` · ${esc(reasons[e.reason])}` : ""}${e.system_event ? " · automatic accounting Hold (not a human action)" : ""} · ${esc(new Date(e.at).toLocaleString())}</p>`).join("")}</details>
   </article>`).join("") : "<p>No payout requests yet.</p>";
 }
 export async function mountCouple(el, { weddingId, api, money, esc }) {
