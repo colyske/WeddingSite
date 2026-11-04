@@ -67,12 +67,13 @@ assert.equal(await sql(`select count(*) from public.simple_payout_claims where p
 await sql(`update public.contributions set provider_fee_pending=false where id='${ids.contribution}';`);
 for (const kind of ["refund","dispute"]) {
   const adjustment = randomUUID();
+  const unreserved = await sql(`select public.simple_payout_available('${ids.wedding}');`);
   const writer = await held(`insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
     amount_minor,currency,status,hold_minor) values('paystack','${kind}','${adjustment}','${ids.contribution}',
-    '${ids.wedding}',15000,'KES','pending',15000);`);
+    '${ids.wedding}',${unreserved},'KES','pending',${unreserved});`);
   const name = randomUUID();
   const denied = assert.rejects(sql(`begin; set local statement_timeout='20s'; set local application_name='${name}';
-    ${actor(ids.owner)} select ${action(feeId,"processing",randomUUID(),0)}; commit;`), /Balance changed/);
+    ${actor(ids.owner)} select ${action(feeId,"processing",randomUUID(),1)}; commit;`), /Balance changed/);
   try { await wait(name,"advisory",writer.name); } finally { writer.control.release(); }
   await Promise.all([writer.task,denied]);
   await sql(`update public.payment_adjustments set status='failed',hold_minor=0 where provider_adjustment_id='${adjustment}';`);
@@ -127,6 +128,29 @@ for(let i=0;i<2;i++){
   const id=uuid(await run(ids.client,request(randomUUID(),1000,i===0 ? ids.wedding : otherWedding)));
   await run(ids.owner,action(id,"processing",randomUUID(),0)); reported.push(id);
 }
+// Claim wins the shared lock first. The actual refund waits, then persists a
+// deficit rather than pretending the durable claim disappeared or rejecting fact.
+const deficitPayout=uuid(await run(ids.client,request()));
+const unreserved=await sql(`select public.simple_payout_available('${ids.wedding}');`);
+const claimWriter=await held(`${actor(ids.owner)} select ${action(deficitPayout,"processing",randomUUID(),0)};`);
+const refundWaiter=randomUUID(), adjustment=randomUUID();
+const refund=sql(`begin; set local statement_timeout='20s'; set local application_name='${refundWaiter}';
+  select pg_advisory_xact_lock(71110001);
+  insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
+    amount_minor,currency,status,hold_minor) values('paystack','refund','${adjustment}','${ids.contribution}',
+    '${ids.wedding}',${Number(unreserved)+1},'KES','pending',${Number(unreserved)+1}); commit;`);
+try { await wait(refundWaiter,"advisory",claimWriter.name); } finally { claimWriter.control.release(); }
+await Promise.all([claimWriter.task,refund]);
+assert.equal(await sql(`select public.simple_payout_state('${deficitPayout}');`),"hold");
+assert.equal(await sql(`select count(*) from public.simple_payout_claims where payout_id='${deficitPayout}';`),"1");
+assert.equal(await sql(`select count(*) from public.payment_adjustments where provider_adjustment_id='${adjustment}';`),"1");
+assert.equal(await sql(`select max(deficit_minor) from public.simple_payout_deficits where wedding_id='${ids.wedding}';`),"1");
+await assert.rejects(run(ids.client,request()),/recorded adjustment deficit/);
+await assert.rejects(run(ids.owner,action(deficitPayout,"cancelled")),/already been claimed/);
+const deficitPaidKey=randomUUID();
+await run(ids.owner,action(deficitPayout,"paid",deficitPaidKey,null,deficitPayout));
+await run(ids.owner,action(deficitPayout,"paid",deficitPaidKey,null,deficitPayout));
+assert.equal(await sql(`select count(*) from public.simple_payout_deficits where wedding_id='${ids.wedding}';`),"1");
 const ref = randomUUID();
 const outcomes = await Promise.all(reported.map(id=>run(ids.owner,action(id,"paid",randomUUID(),null,ref))));
 assert.equal(outcomes.filter(x=>x.includes('"conflict": true')).length,1);

@@ -18,7 +18,9 @@ create table public.simple_payout_events (
   action_key uuid not null unique,
   state text not null check(state in ('requested','hold','reviewed','processing','paid','cancelled')),
   reason text check(reason in ('recipient_check','funds_review','operator_unavailable','outcome_uncertain','other_review')),
-  actor_id uuid not null references public.profiles(id),
+  actor_id uuid references public.profiles(id),
+  system_event boolean not null default false,
+  check ((system_event and actor_id is null) or (not system_event and actor_id is not null)),
   created_at timestamptz not null default clock_timestamp()
 );
 create table public.simple_payout_claims (
@@ -50,9 +52,18 @@ create table public.simple_payout_incidents (
   created_at timestamptz not null default clock_timestamp(),
   unique(payout_id,provider,transaction_reference)
 );
+create table public.simple_payout_deficits (
+  id bigint generated always as identity primary key,
+  wedding_id uuid not null references public.weddings(id),
+  source_kind text not null check(source_kind in ('payment_adjustments','financial_adjustment_ledger')),
+  source_id text not null,
+  deficit_minor numeric not null check(deficit_minor>0),
+  recorded_at timestamptz not null default clock_timestamp(),
+  unique(wedding_id,source_kind,source_id,deficit_minor)
+);
 do $$ declare t text; begin
   foreach t in array array['simple_payout_requests','simple_payout_events','simple_payout_claims',
-    'simple_payout_receipts','simple_payout_incidents'] loop
+    'simple_payout_receipts','simple_payout_incidents','simple_payout_deficits'] loop
     execute format('alter table public.%I enable row level security',t);
     execute format('revoke all on public.%I from public,anon,authenticated,service_role',t);
     execute format('create trigger simple_payout_immutable before update or delete on public.%I
@@ -77,9 +88,9 @@ begin
   perform 1 from public.weddings where id=p_wedding for update;
   perform 1 from public.wedding_kyc where wedding_id=p_wedding for share;
 end $$;
-create function public.simple_payout_available(p_wedding uuid,p_exclude uuid default null,p_old_exclude uuid default null)
-returns bigint language sql stable security definer set search_path='' as $$
-  select greatest(coalesce((select sum(c.net_paid_minor::numeric-c.provider_fee_minor)
+create function public.simple_payout_balance_raw(p_wedding uuid,p_exclude uuid default null,p_old_exclude uuid default null)
+returns numeric language sql stable security definer set search_path='' as $$
+  select coalesce((select sum(c.net_paid_minor::numeric-c.provider_fee_minor)
     from public.contributions c join public.weddings w on w.id=c.wedding_id
     where c.wedding_id=p_wedding and c.currency=w.currency and c.payment_environment='live'
       and c.settlement_route='platform_wallet' and c.payment_status='paid' and c.verified_provider_payment
@@ -93,7 +104,11 @@ returns bigint language sql stable security definer set search_path='' as $$
       and r.id is distinct from p_old_exclude and public.manual_payout_state(r.id) not in ('cancelled','not_transferred')),0)
     - coalesce((select sum(r.amount_minor::numeric+coalesce(c.fee_minor,0)) from public.simple_payout_requests r
       left join public.simple_payout_claims c on c.payout_id=r.id where r.wedding_id=p_wedding
-      and r.id is distinct from p_exclude and public.simple_payout_state(r.id)<>'cancelled'),0),0)::bigint
+      and r.id is distinct from p_exclude and public.simple_payout_state(r.id)<>'cancelled'),0)
+$$;
+create function public.simple_payout_available(p_wedding uuid,p_exclude uuid default null,p_old_exclude uuid default null)
+returns bigint language sql stable security definer set search_path='' as $$
+  select greatest(public.simple_payout_balance_raw(p_wedding,p_exclude,p_old_exclude),0)::bigint
 $$;
 
 create function public.simple_payout_submit(p_key uuid,p_wedding uuid,p_amount bigint,p_partner integer,p_confirmed boolean)
@@ -111,6 +126,8 @@ begin
       (p_wedding,auth.uid(),p_amount,p_partner) then raise exception 'SIMPLE_PAYOUT: Request retry changed. Refresh history.'; end if;
     return prior.id;
   end if;
+  if exists(select 1 from public.simple_payout_deficits where wedding_id=p_wedding) then
+    raise exception 'SIMPLE_PAYOUT: A recorded adjustment deficit requires review. Existing claims remain held; do not create or resend a payout.'; end if;
   if not public.kyc_is_complete(p_wedding) then raise exception 'PAYOUT_KYC_REQUIRED: Complete both partners identity details and consent first.'; end if;
   select case when p_partner=1 then partner1_phone else partner2_phone end into phone from public.wedding_kyc where wedding_id=p_wedding;
   if not exists(select 1 from public.weddings where id=p_wedding and currency='KES')
@@ -173,6 +190,8 @@ begin
   end if;
   if p_action='processing' then
     if c.payout_id is not null then raise exception 'SIMPLE_PAYOUT: Already claimed. Do not send again; record Paid or Hold the existing claim.'; end if;
+    if exists(select 1 from public.simple_payout_deficits where wedding_id=r.wedding_id) then
+      raise exception 'SIMPLE_PAYOUT: A recorded adjustment deficit requires review. Keep existing claims held; do not send.'; end if;
     if p_fee is null or p_fee<0 or not p_recipient_confirmed
       or not public.kyc_is_complete(r.wedding_id) or r.kyc_hash is distinct from public.simple_payout_kyc_hash(r.wedding_id) then
       raise exception 'SIMPLE_PAYOUT: Enter the actual expected fee and check the unchanged recipient/consent before Processing.'; end if;
@@ -226,6 +245,8 @@ begin
   end if;
   if tg_table_name='manual_payout_requests' then r:=new;
   else select * into strict r from public.manual_payout_requests where id=new.payout_id; end if;
+  if exists(select 1 from public.simple_payout_deficits where wedding_id=r.wedding_id) then
+    raise exception 'SIMPLE_PAYOUT: A recorded adjustment deficit holds new payout admission and execution.'; end if;
   if tg_table_name='manual_payout_claims' and exists(
     select 1 from public.simple_payout_incidents i join public.manual_payout_custody a on a.provider=i.provider
       where a.id=r.custody_id) then
@@ -268,6 +289,34 @@ create trigger simple_payout_guard_commitment before insert or update on public.
   for each row execute function public.simple_payout_guard_commitment();
 create trigger simple_payout_guard_commitment before insert or update on public.payout_records
   for each row execute function public.simple_payout_guard_commitment();
+
+-- A refund can move from a hold to an immutable ledger debit in one transaction.
+-- Check its final accounting, not the temporary hold-plus-debit intermediate state.
+create function public.simple_payout_guard_adjustment() returns trigger
+language plpgsql security definer set search_path='' as $$
+declare balance numeric; payout record;
+begin
+  if not pg_try_advisory_xact_lock(71110001) then
+    raise exception 'SIMPLE_PAYOUT: Accounting is busy. Retry the adjustment after review.'; end if;
+  balance:=public.simple_payout_balance_raw(new.wedding_id);
+  if exists(select 1 from public.simple_payout_requests where wedding_id=new.wedding_id
+      and public.simple_payout_state(id)<>'cancelled') and balance<0 then
+    insert into public.simple_payout_deficits(wedding_id,source_kind,source_id,deficit_minor)
+      values(new.wedding_id,tg_table_name,new.id::text,-balance) on conflict do nothing;
+    for payout in select id from public.simple_payout_requests r
+      where wedding_id=new.wedding_id and public.simple_payout_state(r.id) not in ('paid','cancelled','hold') loop
+      insert into public.simple_payout_events(payout_id,action_key,state,reason,system_event)
+        values(payout.id,extensions.gen_random_uuid(),'hold','funds_review',true);
+    end loop;
+  end if;
+  return null;
+end $$;
+create constraint trigger simple_payout_guard_adjustment
+  after insert or update on public.payment_adjustments deferrable initially deferred
+  for each row execute function public.simple_payout_guard_adjustment();
+create constraint trigger simple_payout_guard_adjustment
+  after insert on public.financial_adjustment_ledger deferrable initially deferred
+  for each row execute function public.simple_payout_guard_adjustment();
 
 -- Preserve old report/reconcile behavior, adding only new-path conflicts to its
 -- existing committed hold branch. No provider/rail gate is altered.
@@ -317,6 +366,8 @@ begin
     and (client_owner_id=auth.uid() or public.current_platform_role() in ('owner','superadmin'))) then
     raise exception 'SIMPLE_PAYOUT: Wedding access required.'; end if;
   select jsonb_build_object('currency',w.currency,'available_minor',public.simple_payout_available(w.id),
+    'deficit_minor',greatest(-public.simple_payout_balance_raw(w.id),0),
+    'deficit_recorded',exists(select 1 from public.simple_payout_deficits where wedding_id=w.id),
     'kyc_complete',public.kyc_is_complete(w.id),'supported',w.currency='KES',
     'recipients',jsonb_build_array(
       jsonb_build_object('slot',1,'label','Partner 1 phone ending '||right(regexp_replace(coalesce(k.partner1_phone,''),'[^0-9]','','g'),4)),
@@ -326,7 +377,7 @@ begin
         r.kyc_hash is distinct from public.simple_payout_kyc_hash(r.wedding_id) recipient_changed,
         c.fee_minor,c.sender_id,c.owner_solo,c.claimed_at,x.transaction_reference,
         (select reason from public.simple_payout_events where payout_id=r.id order by id desc limit 1) reason,
-        (select jsonb_agg(jsonb_build_object('state',state,'reason',reason,'actor_id',actor_id,'at',created_at) order by id)
+        (select jsonb_agg(jsonb_build_object('state',state,'reason',reason,'actor_id',actor_id,'system_event',system_event,'at',created_at) order by id)
           from public.simple_payout_events where payout_id=r.id) history
       from public.simple_payout_requests r left join public.simple_payout_claims c on c.payout_id=r.id
         left join public.simple_payout_receipts x on x.payout_id=r.id where r.wedding_id=w.id order by requested_at desc limit 100

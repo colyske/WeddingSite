@@ -79,6 +79,65 @@ do $$ declare p uuid:=pg_temp.simple_request(9000); begin
     (select id from mr_ids where key='recipient')),'already committed');
 end $$;
 rollback to simple_crosspath;
+savepoint simple_refund_after_claim;
+do $$ declare p uuid:=pg_temp.simple_request(); a uuid:=extensions.gen_random_uuid(); b uuid:=extensions.gen_random_uuid();
+  w uuid:=(select id from mr_ids where key='wedding'); c uuid:=(select id from mr_ids where key='contribution');
+  available bigint; v_key uuid:=extensions.gen_random_uuid(); begin
+  perform pg_temp.actor('owner');
+  perform pg_temp.simple_action(p,'processing',extensions.gen_random_uuid(),null,true,100);
+  available:=public.simple_payout_available(w);
+  insert into public.payment_adjustments(id,provider,adjustment_kind,provider_adjustment_id,
+    contribution_id,wedding_id,amount_minor,currency,status,hold_minor)
+    values(a,'paystack','refund',a::text,c,w,100,'KES','pending',100);
+  set constraints simple_payout_guard_adjustment immediate;
+  if public.simple_payout_available(w)<>available-100 then raise exception 'Valid unreserved refund blocked or miscounted'; end if;
+  set constraints simple_payout_guard_adjustment deferred;
+  -- Processing an already reserved refund must replace its hold, not double debit.
+  insert into public.financial_adjustment_ledger(adjustment_id,wedding_id,contribution_id,entry_type,couple_net_delta_minor,
+    currency,allocation,provider,provider_adjustment_id)
+    values(a,w,c,'refund',-100,'KES','couple','paystack',a::text);
+  update public.payment_adjustments set status='processed',hold_minor=0 where id=a;
+  set constraints simple_payout_guard_adjustment immediate;
+  if public.simple_payout_available(w)<>available-100 then raise exception 'Hold to ledger refund double counted'; end if;
+  set constraints simple_payout_guard_adjustment deferred;
+  insert into public.payment_adjustments(id,provider,adjustment_kind,provider_adjustment_id,
+    contribution_id,wedding_id,amount_minor,currency,status,hold_minor)
+    values(b,'paystack','refund',b::text,c,w,available,'KES','failed',0);
+  insert into public.financial_adjustment_ledger(adjustment_id,wedding_id,contribution_id,
+    entry_type,couple_net_delta_minor,currency,allocation,provider,provider_adjustment_id)
+    values(b,w,c,'refund_reviewed',-available,'KES','couple','paystack',b::text);
+  set constraints simple_payout_guard_adjustment immediate;
+  if not exists(select 1 from public.financial_adjustment_ledger where adjustment_id=b)
+    or not exists(select 1 from public.simple_payout_deficits where wedding_id=w and deficit_minor=100)
+    or public.simple_payout_available(w)<>0 then raise exception 'Actual refund/deficit accounting lost'; end if;
+  if not exists(select 1 from public.simple_payout_claims where payout_id=p)
+    or public.simple_payout_state(p)<>'hold'
+    or not exists(select 1 from public.simple_payout_events where payout_id=p and state='hold' and system_event and actor_id is null)
+    then raise exception 'Refund failed to retain and hold claimed payout'; end if;
+  perform pg_temp.reject('select pg_temp.simple_request()','recorded adjustment deficit');
+  perform pg_temp.reject(format('select pg_temp.simple_action(%L,''cancelled'')',p),'already been claimed');
+  perform pg_temp.simple_action(p,'paid',v_key,p::text);
+  perform pg_temp.simple_action(p,'paid',v_key,p::text);
+  if public.simple_payout_state(p)<>'paid' or not exists(select 1 from public.simple_payout_deficits where wedding_id=w) then
+    raise exception 'Actual Paid replay erased deficit or failed'; end if;
+end $$;
+rollback to simple_refund_after_claim;
+savepoint simple_adjustment_hold_after_claim;
+do $$ declare p uuid:=pg_temp.simple_request(); a uuid:=extensions.gen_random_uuid();
+  w uuid:=(select id from mr_ids where key='wedding'); c uuid:=(select id from mr_ids where key='contribution'); available bigint;
+begin
+  perform pg_temp.actor('owner'); perform pg_temp.simple_action(p,'processing',extensions.gen_random_uuid(),null,true,100);
+  available:=public.simple_payout_available(w);
+  insert into public.payment_adjustments(id,provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
+    amount_minor,currency,status,hold_minor) values(a,'paystack','dispute',a::text,c,w,100,'KES','open',100);
+  set constraints simple_payout_guard_adjustment immediate;
+  update public.payment_adjustments set hold_minor=available+1,amount_minor=available+1 where id=a;
+  if public.simple_payout_state(p)<>'hold'
+    or not exists(select 1 from public.payment_adjustments where id=a and hold_minor=available+1)
+    or not exists(select 1 from public.simple_payout_deficits where wedding_id=w and deficit_minor=1) then
+    raise exception 'Actual adjustment update did not persist deficit/hold'; end if;
+end $$;
+rollback to simple_adjustment_hold_after_claim;
 savepoint simple_old_receipt;
 do $$ declare p uuid:=pg_temp.simple_request(); reference text; v_key uuid:=extensions.gen_random_uuid(); begin
   perform pg_temp.actor('owner');

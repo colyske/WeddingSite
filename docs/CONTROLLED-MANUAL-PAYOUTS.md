@@ -59,6 +59,15 @@ estimates. It is not a statement assertion or global Paybill liquidity model.
 The operator fee is reserved additionally at Processing and stays consumed after
 Paid. Existing financial writers use the shared serialization lock; legacy and
 automatic admissions/claims cannot spend these reservations.
+Actual refund/dispute holds and ledger debits are preserved, never suppressed
+to make a reservation look funded. A deferred transaction-final check permits valid
+hold-to-ledger conversion without double counting; adjustments within unreserved
+balance still work. If an adjustment exhausts entitlement, an append-only deficit
+incident and explicit system funds-review Hold block new requests/Processing across
+payout paths. Existing claims/fees remain reserved without release or resend.
+Paid can still truthfully report an already completed transfer, retaining the
+deficit incident. No ordinary incident-clearance shortcut is supplied.
+This is internal accounting, not protection against external chargebacks.
 
 Request/action keys survive ambiguous browser retries. All financial records and
 actor/status events are append-only. A normalized transaction ID is conservatively

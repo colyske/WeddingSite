@@ -39,6 +39,7 @@ export async function mountCouple(el, { weddingId, api, money, esc }) {
   const data = await json(api, url);
   let pending = JSON.parse(sessionStorage.getItem(storage) || "null");
   el.innerHTML = `<h3>Request a payout</h3>
+    ${data.deficit_recorded ? '<p role="alert">A refund or dispute created a recorded payout-funding deficit. Requests and new Processing are held for review. Existing claims are not released; never resend. Paid remains the operator’s report of an actual completed transfer.</p>' : ""}
     <p>Available wedding balance: <strong data-simple-balance>${esc(money(data.available_minor, data.currency))}</strong>.
       This excludes fees, holds, expenses and existing payout reservations. It is not a bank liquidity guarantee.</p>
     <p>Request → Hold or Processing → Paid. We do not send money automatically. Paid means the operator reports sending it and records the transaction ID.</p>
@@ -49,7 +50,7 @@ export async function mountCouple(el, { weddingId, api, money, esc }) {
       <label>Send to<select name="partner" required><option value="">Choose your existing partner phone</option>
         ${(data.recipients || []).map(r => `<option value="${r.slot}">${esc(r.label)}</option>`).join("")}</select></label>
       <label><input name="confirmed" type="checkbox" required> I consent to payment to this partner’s existing phone after staff checks it. My request reserves the amount; the operator confirms any additional transfer fee before Processing.</label>
-      <button type="submit"${!data.supported || !data.kyc_complete ? " disabled" : ""}>Request payout</button>
+      <button type="submit"${!data.supported || !data.kyc_complete || data.deficit_recorded ? " disabled" : ""}>Request payout</button>
     </form><p data-simple-result role="status" aria-live="polite"></p>
     <h3>Your payout requests</h3><div data-simple-history>${history(data.requests || [], esc, money)}</div>`;
   const form = el.querySelector("form"), result = el.querySelector("[data-simple-result]");
@@ -102,6 +103,7 @@ export async function mountAdmin(el, { api, money, esc, role, userId }) {
       Fees are entered, never assumed. Processing reserves internal exposure, not bank funds; check portal liquidity externally.</p>
     <p data-simple-result role="status" aria-live="polite"></p>
     ${(data.weddings || []).map(w => `<section><h3>${esc(w.label)}</h3>
+      ${w.payouts.deficit_recorded ? `<p role="alert">Adjustment deficit recorded. Current shortfall: ${esc(money(w.payouts.deficit_minor, w.payouts.currency))}. New requests/Processing are blocked pending incident review. Existing claims/reservations remain held; do not send or resend. Record Paid only for an actual completed transfer.</p>` : ""}
       <p>Available for new requests: ${esc(money(w.payouts.available_minor, w.payouts.currency))}.
         <a href="/wedding.html?id=${encodeURIComponent(w.id)}#kyc-section">Open private recipient / identity details</a></p>
       ${history(w.payouts.requests || [], esc, money)}</section>`).join("") || "<p>No couple payout requests yet.</p>"}`;
