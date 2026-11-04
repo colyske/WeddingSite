@@ -11,24 +11,24 @@ create function pg_temp.simple_action(p uuid,a text,k uuid default extensions.ge
   select public.simple_payout_action(p,k,a,case when a='hold' then 'other_review' else null end,fee,reference,solo,
     a in ('reviewed','processing'),true)
 $$;
-do $$ declare p uuid; p2 uuid; key uuid:=extensions.gen_random_uuid(); ref text; result jsonb; before_balance bigint;
+do $$ declare p uuid; p2 uuid; v_key uuid:=extensions.gen_random_uuid(); ref text; result jsonb; before_balance bigint;
 begin
   before_balance:=public.simple_payout_available((select id from mr_ids where key='wedding'));
   if before_balance<>15800 then raise exception 'Wrong verified net/prior commitment baseline: %',before_balance; end if;
   perform pg_temp.actor('client');
-  p:=public.simple_payout_submit(key,(select id from mr_ids where key='wedding'),1000,1,true);
-  if p is distinct from public.simple_payout_submit(key,(select id from mr_ids where key='wedding'),1000,1,true) then raise exception 'Request replay duplicated'; end if;
-  perform pg_temp.reject(format('select public.simple_payout_submit(%L,%L,1001,1,true)',key,
+  p:=public.simple_payout_submit(v_key,(select id from mr_ids where key='wedding'),1000,1,true);
+  if p is distinct from public.simple_payout_submit(v_key,(select id from mr_ids where key='wedding'),1000,1,true) then raise exception 'Request replay duplicated'; end if;
+  perform pg_temp.reject(format('select public.simple_payout_submit(%L,%L,1001,1,true)',v_key,
     (select id from mr_ids where key='wedding')),'retry changed');
   if public.simple_payout_available((select id from mr_ids where key='wedding'))<>before_balance-1000 then raise exception 'Request did not reserve exactly'; end if;
   perform pg_temp.actor('owner');
   perform pg_temp.reject(format('select pg_temp.simple_action(%L,''paid'',extensions.gen_random_uuid(),''NO-CLAIM'')',p),'claimed operator');
   perform pg_temp.simple_action(p,'hold');
   if public.simple_payout_state(p)<>'hold' then raise exception 'Hold lost'; end if;
-  key:=extensions.gen_random_uuid();
-  perform pg_temp.simple_action(p,'processing',key,null,true,100);
-  perform pg_temp.simple_action(p,'processing',key,null,true,100);
-  perform pg_temp.reject(format('select pg_temp.simple_action(%L,''processing'',%L,null,true,101)',p,key),'retry changed');
+  v_key:=extensions.gen_random_uuid();
+  perform pg_temp.simple_action(p,'processing',v_key,null,true,100);
+  perform pg_temp.simple_action(p,'processing',v_key,null,true,100);
+  perform pg_temp.reject(format('select pg_temp.simple_action(%L,''processing'',%L,null,true,101)',p,v_key),'retry changed');
   perform pg_temp.reject(format('select pg_temp.simple_action(%L,''cancelled'')',p),'already been claimed');
   perform pg_temp.simple_action(p,'hold');
   ref:=p::text;
@@ -45,8 +45,8 @@ begin
   perform pg_temp.actor('maker');
   perform pg_temp.reject(format('select pg_temp.simple_action(%L,''paid'',extensions.gen_random_uuid(),''OTHER-SENDER'')',p2),'claimed operator');
   perform pg_temp.actor('checker');
-  key:=extensions.gen_random_uuid(); perform pg_temp.simple_action(p2,'paid',key,p2::text);
-  perform pg_temp.simple_action(p2,'paid',key,p2::text);
+  v_key:=extensions.gen_random_uuid(); perform pg_temp.simple_action(p2,'paid',v_key,p2::text);
+  perform pg_temp.simple_action(p2,'paid',v_key,p2::text);
   insert into mr_ids values('simple_paid',p),('simple_normal',p2);
 end $$;
 -- Own obligations reduce availability; other weddings and test/direct funds do not add it.
@@ -76,6 +76,28 @@ do $$ declare p uuid:=pg_temp.simple_request(9000); begin
     (select id from mr_ids where key='recipient')),'already committed');
 end $$;
 rollback to simple_crosspath;
+savepoint simple_old_receipt;
+do $$ declare p uuid:=pg_temp.simple_request(); reference text; v_key uuid:=extensions.gen_random_uuid(); begin
+  perform pg_temp.actor('owner');
+  perform pg_temp.simple_action(p,'processing',extensions.gen_random_uuid(),null,true,0);
+  select transaction_reference into strict reference from public.manual_payout_receipts
+    where payout_id=(select id from mr_ids where key='normal');
+  if not (pg_temp.simple_action(p,'paid',v_key,reference)->>'conflict')::boolean then
+    raise exception 'Old receipt reused on simple path'; end if;
+  if not (pg_temp.simple_action(p,'paid',v_key,reference)->>'conflict')::boolean then
+    raise exception 'Duplicate incident retry was not idempotent'; end if;
+  if public.simple_payout_state(p)<>'hold'
+    or not exists(select 1 from public.simple_payout_claims where payout_id=p)
+    or exists(select 1 from public.simple_payout_receipts where payout_id=p) then
+    raise exception 'Duplicate ID lost claim/reservation or marked Paid'; end if;
+  perform pg_temp.reject(format('select pg_temp.simple_action(%L,''cancelled'')',p),'already been claimed');
+end $$;
+rollback to simple_old_receipt;
+savepoint simple_preserve_paid;
+insert into public.expenses(wedding_id,category,description,amount_minor,currency,status)
+  values((select id from mr_ids where key='wedding'),'Fixture','Immutable paid history',100,'KES','paid');
+select pg_temp.reject('update public.expenses set amount_minor=0 where description=''Immutable paid history''','cannot be rewritten');
+rollback to simple_preserve_paid;
 -- Simple receipt -> old manual report must commit the same retained incident.
 do $$ declare p uuid; e uuid; begin
   perform pg_temp.actor('owner'); perform pg_temp.policy('{"enabled":true}');
@@ -88,8 +110,8 @@ do $$ declare p uuid; e uuid; begin
   if not exists(select 1 from public.manual_payout_account_holds where payout_id=p) then raise exception 'Cross-path incident rolled back'; end if;
   perform pg_temp.policy('{"enabled":false}');
 end $$;
--- Old receipt -> new Paid is held, not fabricated as reconciled or released.
-do $$ declare p uuid:=pg_temp.simple_request(); key uuid:=extensions.gen_random_uuid(); reference text; begin
+-- Existing incident blocks a fresh claim, while unclaimed cancellation stays safe.
+do $$ declare p uuid:=pg_temp.simple_request(); begin
   perform pg_temp.actor('owner');
   -- Rollback only this synthetic legacy incident so we can obtain a fresh claim.
   perform pg_temp.reject(format('select pg_temp.simple_action(%L,''processing'',extensions.gen_random_uuid(),null,true,0)',p),'Conflicting transaction IDs');

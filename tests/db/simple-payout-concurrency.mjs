@@ -65,6 +65,18 @@ try { await wait(feeWaiter,"transactionid",feeWriter.name); } finally { feeWrite
 await Promise.all([feeWriter.task,deniedFee]);
 assert.equal(await sql(`select count(*) from public.simple_payout_claims where payout_id='${feeId}';`),"0");
 await sql(`update public.contributions set provider_fee_pending=false where id='${ids.contribution}';`);
+for (const kind of ["refund","dispute"]) {
+  const adjustment = randomUUID();
+  const writer = await held(`insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
+    amount_minor,currency,status,hold_minor) values('paystack','${kind}','${adjustment}','${ids.contribution}',
+    '${ids.wedding}',15000,'KES','pending',15000);`);
+  const name = randomUUID();
+  const denied = assert.rejects(sql(`begin; set local statement_timeout='20s'; set local application_name='${name}';
+    ${actor(ids.owner)} select ${action(feeId,"processing",randomUUID(),0)}; commit;`), /Balance changed/);
+  try { await wait(name,"advisory",writer.name); } finally { writer.control.release(); }
+  await Promise.all([writer.task,denied]);
+  await sql(`update public.payment_adjustments set status='failed',hold_minor=0 where provider_adjustment_id='${adjustment}';`);
+}
 // Role revocation while the action waits on the shared financial lock.
 await run(ids.maker,action(feeId,"reviewed",randomUUID(),null,null,false));
 const roleWriter = await held("select pg_advisory_xact_lock(71110001);");
@@ -77,6 +89,16 @@ try {
 } finally { roleWriter.control.release(); }
 await Promise.all([roleWriter.task,deniedRole]);
 await sql(`update public.profiles set platform_role='superadmin' where id='${ids.checker}';`);
+const reviewerWriter = await held("select pg_advisory_xact_lock(71110001);");
+const reviewerWaiter = randomUUID();
+const deniedReviewer = assert.rejects(sql(`begin; set local statement_timeout='20s'; set local application_name='${reviewerWaiter}';
+  ${actor(ids.checker)} select ${action(feeId,"processing",randomUUID(),0,null,false)}; commit;`), /Another eligible leader/);
+try {
+  await wait(reviewerWaiter,"advisory",reviewerWriter.name);
+  await sql(`update public.profiles set platform_role='client' where id='${ids.maker}';`);
+} finally { reviewerWriter.control.release(); }
+await Promise.all([reviewerWriter.task,deniedReviewer]);
+await sql(`update public.profiles set platform_role='superadmin' where id='${ids.maker}';`);
 const claims = await Promise.allSettled([run(ids.owner,action(feeId,"processing",randomUUID(),100)),run(ids.owner,action(feeId,"processing",randomUUID(),100))]);
 assert.equal(claims.filter(x => x.status==="fulfilled").length,1,"One durable claim, never expires");
 const paidKey = randomUUID();
