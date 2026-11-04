@@ -87,6 +87,11 @@ test("manual payout API rejects nonleaders, preserves token, surfaces OFF and re
     if (url.pathname === "/rest/v1/rpc/manual_payout_report") return Response.json(false);
     if (url.pathname === "/rest/v1/rpc/manual_payout_history") return Response.json([{ id, status: "reported", amount_minor: 1000, currency: "KES" }]);
     if (url.pathname === "/rest/v1/rpc/withdrawable_balance") return Response.json([{ available_minor: 9000, held_minor: 100 }]);
+    if (url.pathname === "/rest/v1/rpc/simple_payout_status") return Response.json({
+      available_minor: 3456, fee_pending_minor: 456, time_held_minor: 456, obligations_minor: 100,
+      payout_committed_minor: 1000, configured_hold_days: 0, min_payout_minor: 1000,
+      next_time_release_at: "2026-11-07T07:33:46Z"
+    });
     if (url.pathname === "/rest/v1/rpc/manual_payout_balance") return Response.json({
       enabled: false, available_minor: 0, statement_backed_minor: 5000,
       reserved_minor: payoutState === "paid" ? 0 : 1000, spent_minor: payoutState === "paid" ? 1000 : 0,
@@ -161,8 +166,12 @@ test("manual payout API rejects nonleaders, preserves token, surfaces OFF and re
     for (payoutState of ["requested", "uncertain", "paid"]) {
       const balance = await invoke("balance", {}, "GET", weddings);
       assert.equal(balance.statusCode, 200);
-      assert.equal(balance.data.available_minor, 0);
-      assert.equal(balance.data.legacy_nonwithdrawable_estimate_minor, 9000);
+      assert.equal(balance.data.available_minor, 3456);
+      assert.equal(balance.data.legacy_nonwithdrawable_estimate_minor, undefined);
+      assert.equal(balance.data.fee_pending_minor, 456);
+      assert.equal(balance.data.time_held_minor, 456);
+      assert.equal(balance.data.configured_hold_days, 0);
+      assert.equal(calls.some(c => c.path === "/rest/v1/rpc/withdrawable_balance"), false);
       assert.equal(balance.data.manual.reserved_minor, payoutState === "paid" ? 0 : 1000);
       assert.equal(balance.data.manual.spent_minor, payoutState === "paid" ? 1000 : 0);
     }

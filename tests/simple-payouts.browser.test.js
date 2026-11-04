@@ -18,7 +18,9 @@ test("simple mobile couple retry and operator Processing reveals transaction ID 
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     try { browser = await chromium.launch({ channel: "msedge" }); } catch { browser = await chromium.launch(); }
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-    let rows = [], state = "requested", failRequest = true, failProcessing = true, deficit = false;
+    let rows = [], state = "requested", failRequest = true, failProcessing = true, deficit = false, balance = 10000;
+    const breakdown = { fee_pending_minor: 456, time_held_minor: 456, obligations_minor: 100, payout_committed_minor: 1000,
+      next_time_release_at: "2026-11-07T07:33:46Z", configured_hold_days: 0, min_payout_minor: 1000 };
     const requests = [], actions = [];
     const id = "550e8400-e29b-41d4-a716-446655440000";
     const row = () => ({ id, amount_minor: 1234, currency: "KES", partner_slot: 1, status: state,
@@ -26,7 +28,7 @@ test("simple mobile couple retry and operator Processing reveals transaction ID 
       transaction_reference: state==="paid" ? "REAL-TEST-REFERENCE" : null, history: [] });
     await page.route("**/api/**", route => {
       const action = new URL(route.request().url()).searchParams.get("action");
-      if (action === "simple-payout-status") return route.fulfill({ json: { currency: "KES", available_minor: 10000,
+      if (action === "simple-payout-status") return route.fulfill({ json: { ...breakdown, currency: "KES", available_minor: balance,
         deficit_recorded: deficit, supported: true, kyc_complete: true, recipients: [{ slot: 1, label: "Partner 1 phone ending 0001" }], requests: rows } });
       if (action === "simple-payout-request") {
         requests.push(route.request().postDataJSON());
@@ -34,7 +36,7 @@ test("simple mobile couple retry and operator Processing reveals transaction ID 
         rows = [row()]; return route.fulfill({ json: { payoutId: id, recorded: true } });
       }
       if (action === "manual-payout-simple") return route.fulfill({ json: { notice: "Operator reporting only",
-        weddings: [{ id, label: "Fixture wedding", payouts: { currency: "KES", deficit_recorded: deficit, deficit_minor: deficit ? 100 : 0, available_minor: 8766, requests: [row()] } }] } });
+        weddings: [{ id, label: "Fixture wedding", payouts: { ...breakdown, currency: "KES", deficit_recorded: deficit, deficit_minor: deficit ? 100 : 0, available_minor: balance, requests: [row()] } }] } });
       if (action === "manual-payout-simple-action") {
         const body = route.request().postDataJSON(); actions.push(body);
         if (failProcessing) { failProcessing = false; return route.fulfill({ status: 409, json: { error: "Synthetic claim rejected" } }); }
@@ -52,6 +54,14 @@ test("simple mobile couple retry and operator Processing reveals transaction ID 
     }, { mode, id });
     await mount("couple");
     await page.locator('[name="amount"]').fill("12.34"); await page.locator('[name="partner"]').selectOption("1");
+    balance = 9876;
+    await page.getByRole("button", { name: "Refresh balance (keep form)", exact: true }).click();
+    await page.locator("[data-simple-result]").filter({ hasText: "Balance refreshed" }).waitFor();
+    assert.equal(await page.locator('[name="amount"]').inputValue(), "12.34");
+    assert.equal(await page.locator('[name="partner"]').inputValue(), "1");
+    assert.match(await page.locator("[data-simple-balance]").innerText(), /98.76/);
+    assert.match(await page.locator("[data-simple-balance-detail]").innerText(), /Awaiting verified payment fees: KES 4.56/);
+    assert.match(await page.locator("[data-simple-balance-detail]").innerText(), /0 day\(s\)/);
     await page.locator('[name="confirmed"]').check(); await page.getByRole("button", { name: "Request payout", exact: true }).click();
     await page.locator("[data-simple-result]").filter({ hasText: "ambiguous" }).waitFor();
     assert.equal(await page.locator('[name="amount"]').getAttribute("readonly"), "");
@@ -76,6 +86,15 @@ test("simple mobile couple retry and operator Processing reveals transaction ID 
     await page.locator('[name="reference"]').waitFor();
     assert.equal(await page.locator('[name="reference"]').isVisible(), true);
     await page.locator('[name="reference"]').fill("REAL-TEST-REFERENCE");
+    await page.locator('[name="confirmed"]').check();
+    balance = 8765;
+    await page.getByRole("button", { name: "Refresh balances (keep transaction form)", exact: true }).click();
+    await page.locator("[data-simple-result]").filter({ hasText: "Balances refreshed" }).waitFor();
+    assert.equal(await page.locator('[name="reference"]').inputValue(), "REAL-TEST-REFERENCE");
+    assert.equal(await page.locator('[name="confirmed"]').isChecked(), true);
+    assert.match(await page.locator("[data-balance-amount]").innerText(), /87.65/);
+    assert.equal(actions.length, 2, "Read-only refresh never submits Paid");
+    await page.locator('[name="confirmed"]').uncheck();
     await page.getByRole("button", { name: "Confirm Paid — operator-reported", exact: true }).click();
     assert.equal(actions.length, 2, "Paid needs explicit confirmation");
     await page.locator('[name="confirmed"]').check();

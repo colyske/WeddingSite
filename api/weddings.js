@@ -872,15 +872,16 @@ export default async function handler(req, res) {
         }
       }
       if (action === "balance") {
-        const rows = await supabaseRequest("/rest/v1/rpc/withdrawable_balance", { ...opts, method: "POST", body: { p_wedding_id: weddingId, p_currency: currency } });
-        const manual = await supabaseRequest("/rest/v1/rpc/manual_payout_balance", {
-          ...opts, method: "POST", body: { p_wedding: weddingId }
-        });
-        const r = rows?.[0] || {};
+        const [simple, manual] = await Promise.all([
+          supabaseRequest("/rest/v1/rpc/simple_payout_status", { ...opts, method: "POST", body: { p_wedding: weddingId } }),
+          supabaseRequest("/rest/v1/rpc/manual_payout_balance", { ...opts, method: "POST", body: { p_wedding: weddingId } })
+        ]);
         return sendJson(res, 200, {
-          currency, available_minor: 0, legacy_nonwithdrawable_estimate_minor: Number(r.available_minor || 0),
-          manual, settling_minor: Number(r.settling_minor || 0),
-          held_minor: Number(r.held_minor || 0), next_available_at: r.next_available_at || null
+          currency, available_minor: simple.available_minor, manual,
+          fee_pending_minor: simple.fee_pending_minor, time_held_minor: simple.time_held_minor,
+          obligations_minor: simple.obligations_minor, payout_committed_minor: simple.payout_committed_minor,
+          next_time_release_at: simple.next_time_release_at, configured_hold_days: simple.configured_hold_days,
+          min_payout_minor: simple.min_payout_minor, deficit_recorded: simple.deficit_recorded
         });
       }
       if (action === "withdrawals") {

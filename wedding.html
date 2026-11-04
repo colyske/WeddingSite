@@ -495,12 +495,13 @@
         <div id="paystack-settlement-rows" aria-live="polite"></div>
       </section>
       <div id="payout-balance" style="padding: 1.5rem; background: #f3faf3; border-radius: 8px; margin-bottom: 1.5rem;">
-        <p class="fine" style="margin: 0 0 0.5rem;">Couple self-service withdrawal (not enabled):</p>
+        <p class="fine" style="margin: 0 0 0.5rem;">Available for a simple payout request (same authoritative balance as above):</p>
         <p style="margin: 0; font-size: 1.5rem; font-weight: bold; color: #244b3a;">
           <span id="balance-display">$0.00</span>
         </p>
-        <p class="fine" style="margin: 0.6rem 0 0;">Settling: <strong id="settling-display">$0.00</strong>
-          &middot; Held for fee/refund/dispute review: <strong id="held-display">$0.00</strong></p>
+        <p class="fine" style="margin: 0.6rem 0 0;">Time-held (not settlement proof): <strong id="settling-display">$0.00</strong>
+          &middot; Awaiting verified payment fees: <strong id="held-display">$0.00</strong></p>
+        <p id="payout-availability-detail" class="fine">Authoritative fees, time holds, obligations and payout commitments are being checked.</p>
         <p id="manual-balance-detail" class="fine">Statement backing, reservations, reconciled spending and unknown funds are being checked. Estimates are not spendable.</p>
         <p class="fine" style="margin: 0.75rem 0 0; color: #666;">
           💡 Amounts exclude pending or failed payments. Refunds, open disputes and unconfirmed payment fees reduce available funds until they are resolved. Transfer holds also apply.
@@ -2433,8 +2434,13 @@
         const balData = await balRes.json();
         if (balRes.ok) {
           $("balance-display").textContent = WS.money(balData.available_minor || 0, balData.currency);
-          $("settling-display").textContent = WS.money(balData.settling_minor || 0, balData.currency);
-          $("held-display").textContent = WS.money(balData.held_minor || 0, balData.currency);
+          $("settling-display").textContent = WS.money(balData.time_held_minor ?? 0, balData.currency);
+          $("held-display").textContent = WS.money(balData.fee_pending_minor ?? 0, balData.currency);
+          const availability = $("payout-availability-detail");
+          if (availability) {
+            const simple = await import("./simple-payouts.js");
+            availability.textContent = simple.balanceDetail(balData, WS.money);
+          }
           const manual = balData.manual;
           $("manual-payout-status").textContent = manual?.enabled ?
             "Staff manual admission is currently ready. Requests are reviewed, never instant or automatically sent. Attributable settled net, verified recipient and exact transfer evidence remain required; Owner solo processing is explicitly audited. Merchant liquidity is checked externally, not guaranteed." :

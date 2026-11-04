@@ -12,6 +12,31 @@ Deploying this capability is **not operational availability or activation author
 
 ## Simple offline payout reporting (current couple / staff UI)
 
+### Payment timing and refreshing the balance
+
+For **new** confirmed payments, `202611180001` makes the configured platform
+`payout_hold_days` authoritative for both M-Pesa/Daraja and Paystack. Setting 0
+means no additional platform time delay; setting 1 means one day from the recorded
+provider-paid time. There is no universal provider-specific three-day floor.
+Existing `funds_available_at`, payment/fee records and policies are never rewritten,
+including on a later confirmation replay or policy change.
+
+Zero days is not provider settlement proof, verified fees, an absence of
+refund/dispute/other obligations, or available portal liquidity. Unknown payment
+fees still exclude that contribution from available funds. The UI shows pending
+fees, time-held amounts and the next **stored** time-release date separately;
+these categories can overlap and must not be added. Expenses, refund/dispute
+obligations and paid/active payout commitments remain deducted. The displayed
+minimum payout is unchanged.
+
+The wedding balance endpoint and simple request UI use the same authoritative
+simple payout balance, never a legacy estimate or hard-coded available zero.
+**Refresh balance (keep form)** preserves a typed couple request.
+**Refresh balances (keep transaction form)** updates operator balance/hold summaries
+without destroying a typed transaction ID, confirmation or existing Paid form.
+Refresh is read-only and never authorizes or submits a transfer; every mutation
+still checks current server state.
+
 `202611170001` provides the user-requested **Request → Hold or Processing → Paid**
 path in the existing finance workstream. It does **not** use the older setup
 questionnaire, account scopes, evidence UUIDs, statement registration or separate

@@ -33,15 +33,37 @@ function history(rows, esc, money) {
     <details><summary>Status history</summary>${(r.history || []).map(e => `<p>${esc(labels[e.state] || e.state)}${e.reason ? ` · ${esc(reasons[e.reason])}` : ""}${e.system_event ? " · automatic accounting Hold (not a human action)" : ""} · ${esc(new Date(e.at).toLocaleString())}</p>`).join("")}</details>
   </article>`).join("") : "<p>No payout requests yet.</p>";
 }
+export function balanceDetail(data, money) {
+  const amount = value => value === undefined || value === null ? "Unavailable" : money(value, data.currency);
+  const date = data.next_time_release_at ? new Date(data.next_time_release_at).toLocaleString() : "None scheduled";
+  return `Awaiting verified payment fees: ${amount(data.fee_pending_minor)}. Time hold: ${amount(data.time_held_minor)}; next stored release date: ${date}. ` +
+    `Refund/dispute/expense and legacy obligations: ${amount(data.obligations_minor)}. Payout commitments (including paid and active reservations): ${amount(data.payout_committed_minor)}. ` +
+    `Fee and time holds may overlap; do not add these figures. Configured time hold for new confirmed payments: ${data.configured_hold_days ?? "Unavailable"} day(s). ` +
+    `Minimum payout: ${amount(data.min_payout_minor)}. A release date or zero-day setting is not settlement proof, verified fees or guaranteed portal liquidity.`;
+}
+function updateCoupleBalance(el, data, money) {
+  el.querySelector("[data-simple-balance]").textContent = money(data.available_minor, data.currency);
+  el.querySelector("[data-simple-balance-detail]").textContent = balanceDetail(data, money);
+  el.querySelector("[data-simple-deficit]").textContent = data.deficit_recorded ?
+    "A refund or dispute created a recorded payout-funding deficit. Requests and new Processing are held for review. Existing claims are not released; never resend." : "";
+  const legacy = el.closest("#withdrawals-section");
+  if (legacy) {
+    legacy.querySelector("#balance-display").textContent = money(data.available_minor, data.currency);
+    legacy.querySelector("#settling-display").textContent = money(data.time_held_minor, data.currency);
+    legacy.querySelector("#held-display").textContent = money(data.fee_pending_minor, data.currency);
+    legacy.querySelector("#payout-availability-detail").textContent = balanceDetail(data, money);
+  }
+}
 export async function mountCouple(el, { weddingId, api, money, esc }) {
   const url = `/api/weddings?action=simple-payout-status&weddingId=${encodeURIComponent(weddingId)}`;
   const storage = `simple-payout-request:${weddingId}`;
-  const data = await json(api, url);
+  let data = await json(api, url);
   let pending = JSON.parse(sessionStorage.getItem(storage) || "null");
   el.innerHTML = `<h3>Request a payout</h3>
-    ${data.deficit_recorded ? '<p role="alert">A refund or dispute created a recorded payout-funding deficit. Requests and new Processing are held for review. Existing claims are not released; never resend. Paid remains the operator’s report of an actual completed transfer.</p>' : ""}
+    <p data-simple-deficit role="alert"></p>
     <p>Available wedding balance: <strong data-simple-balance>${esc(money(data.available_minor, data.currency))}</strong>.
       This excludes fees, holds, expenses and existing payout reservations. It is not a bank liquidity guarantee.</p>
+    <p data-simple-balance-detail></p><button type="button" data-refresh-balance>Refresh balance (keep form)</button>
     <p>Request → Hold or Processing → Paid. We do not send money automatically. Paid means the operator reports sending it and records the transaction ID.</p>
     ${!data.supported ? '<p role="alert">This simple path currently supports KES/M-Pesa only. Contact support for other receiving methods. Do not enter bank details here.</p>' : ""}
     ${!data.kyc_complete ? '<p role="alert">Complete both partners’ <a href="#kyc-section">private identity details and consent</a> before requesting.</p>' : ""}
@@ -54,6 +76,18 @@ export async function mountCouple(el, { weddingId, api, money, esc }) {
     </form><p data-simple-result role="status" aria-live="polite"></p>
     <h3>Your payout requests</h3><div data-simple-history>${history(data.requests || [], esc, money)}</div>`;
   const form = el.querySelector("form"), result = el.querySelector("[data-simple-result]");
+  updateCoupleBalance(el, data, money);
+  el.querySelector("[data-refresh-balance]").onclick = async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      data = await json(api, url);
+      updateCoupleBalance(el, data, money);
+      form.querySelector("button").disabled = !data.supported || !data.kyc_complete || data.deficit_recorded;
+      result.textContent = "Balance refreshed. Your typed request is unchanged; fees and holds still apply.";
+    } catch (error) { result.textContent = "Balance refresh failed: " + error.message; }
+    finally { button.disabled = false; }
+  };
   if (pending) {
     form.elements.amount.value = minorToKes(pending.amountMinor);
     form.elements.partner.value = String(pending.partner);
@@ -98,15 +132,34 @@ export async function mountAdmin(el, { api, money, esc, role, userId }) {
   const data = await json(api, "/api/admin?action=manual-payout-simple");
   userId = data.actor_id || userId;
   el.innerHTML = `<h3>Simple manual payouts</h3>
+    <button type="button" data-refresh-balances>Refresh balances (keep transaction form)</button>
     <p>Choose Hold or Processing. After sending once outside this site, enter the transaction ID and explicitly confirm Paid.</p>
     <p class="fine">${esc(data.notice)} Other staff need a second eligible reviewer. The protected Owner may explicitly process solo.
       Fees are entered, never assumed. Processing reserves internal exposure, not bank funds; check portal liquidity externally.</p>
     <p data-simple-result role="status" aria-live="polite"></p>
-    ${(data.weddings || []).map(w => `<section><h3>${esc(w.label)}</h3>
-      ${w.payouts.deficit_recorded ? `<p role="alert">Adjustment deficit recorded. Current shortfall: ${esc(money(w.payouts.deficit_minor, w.payouts.currency))}. New requests/Processing are blocked pending incident review. Existing claims/reservations remain held; do not send or resend. Record Paid only for an actual completed transfer.</p>` : ""}
-      <p>Available for new requests: ${esc(money(w.payouts.available_minor, w.payouts.currency))}.
+    ${(data.weddings || []).map(w => `<section data-balance-wedding="${esc(w.id)}"><h3>${esc(w.label)}</h3>
+      <p data-balance-deficit role="alert">${w.payouts.deficit_recorded ? `Adjustment deficit recorded. Current shortfall: ${esc(money(w.payouts.deficit_minor, w.payouts.currency))}. New requests/Processing are blocked pending incident review. Existing claims/reservations remain held; do not send or resend. Record Paid only for an actual completed transfer.` : ""}</p>
+      <p>Available for new requests: <strong data-balance-amount>${esc(money(w.payouts.available_minor, w.payouts.currency))}</strong>.
         <a href="/wedding.html?id=${encodeURIComponent(w.id)}#kyc-section">Open private recipient / identity details</a></p>
+      <p data-balance-detail>${esc(balanceDetail(w.payouts, money))}</p>
       ${history(w.payouts.requests || [], esc, money)}</section>`).join("") || "<p>No couple payout requests yet.</p>"}`;
+  el.querySelector("[data-refresh-balances]").onclick = async event => {
+    const button = event.currentTarget, result = el.querySelector("[data-simple-result]");
+    button.disabled = true;
+    try {
+      const fresh = await json(api, "/api/admin?action=manual-payout-simple");
+      for (const section of el.querySelectorAll("[data-balance-wedding]")) {
+        const w = fresh.weddings.find(w => w.id === section.dataset.balanceWedding);
+        if (!w) throw new Error("Request history changed. Preserve your transaction ID and reload before deciding.");
+        section.querySelector("[data-balance-amount]").textContent = money(w.payouts.available_minor, w.payouts.currency);
+        section.querySelector("[data-balance-detail]").textContent = balanceDetail(w.payouts, money);
+        section.querySelector("[data-balance-deficit]").textContent = w.payouts.deficit_recorded ?
+          "Adjustment deficit recorded. Do not send or resend. Claims remain held; report Paid only for an actual completed transfer." : "";
+      }
+      result.textContent = "Balances refreshed. Typed transaction IDs and confirmations are unchanged. Status/actions are checked again by the server; refresh does not authorize a transfer.";
+    } catch (error) { result.textContent = "Balance refresh failed: " + error.message; }
+    finally { button.disabled = false; }
+  };
   const rows = (data.weddings || []).flatMap(w => w.payouts.requests || []);
   for (const article of el.querySelectorAll("[data-simple-id]")) {
     const r = rows.find(row => row.id === article.dataset.simpleId);
