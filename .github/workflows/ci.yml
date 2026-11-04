@@ -62,6 +62,8 @@ jobs:
         run: node tests/db/configured-payment-holds-upgrade.mjs
       - name: Commit withdrawal fee snapshots without repricing historical contracts
         run: node tests/db/withdrawal-policy-upgrade.mjs
+      - name: Commit private recipient snapshots on populated history and test DDL rollback
+        run: node tests/db/payout-recipient-upgrade.mjs
       - name: Apply all migrations to a fresh database
         run: supabase db reset --local --no-seed
       - name: Lint the migrated schema
@@ -118,6 +120,8 @@ jobs:
         run: node tests/db/manual-payout-shared.mjs
       - name: Test customer fee quotes, thresholds, snapshots and company overhead
         run: node tests/db/withdrawal-policy.mjs
+      - name: Test private payout recipients, actual-name confirmation and durable uncertain Holds
+        run: node tests/db/payout-recipient.mjs
       - name: Race real manual policy, requests, claims and deactivation
         env:
           MANUAL_PAYOUT_TEST_DB_CONTAINER: supabase_db_weddingsite

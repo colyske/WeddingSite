@@ -103,8 +103,8 @@ export function manualPayoutCommand(action, body, role) {
     if (body.solo && role !== "owner") return { status: 403, error: "Only the protected Owner may choose solo processing." };
     if ((body.action === "hold" ? body.reason === null : body.reason !== null) ||
       (body.action === "processing" ? !body.recipient_confirmed : body.fee !== null || body.solo) ||
-      (body.action === "paid" ? body.reference === null : body.reference !== null) ||
-      (!["reviewed", "processing"].includes(body.action) && body.recipient_confirmed)) {
+      (body.action === "paid" ? body.reference === null || !body.recipient_confirmed : body.reference !== null) ||
+      (!["reviewed", "processing", "paid"].includes(body.action) && body.recipient_confirmed)) {
       return { status: 400, error: "Confirm only the fields for this payout action." };
     }
   }

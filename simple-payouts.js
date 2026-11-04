@@ -28,12 +28,23 @@ function history(rows, esc, money) {
       ${r.processing_fee_minor !== null && r.processing_fee_minor !== undefined ?
         ` · customer processing fee ${esc(money(r.processing_fee_minor, r.currency))} · total debit ${esc(money(r.amount_minor+r.processing_fee_minor, r.currency))} (fixed at request)` :
         r.fee_minor !== null && r.fee_minor !== undefined ? ` · historical transfer fee ${esc(money(r.fee_minor, r.currency))}` : " · historical fee contract; checked before Processing"}</p>
+    ${recipientDetail(r, esc, money)}
     ${r.reason ? `<p role="status">${esc(reasons[r.reason] || "Staff review needed")}. Reservation retained.</p>` : ""}
+    ${r.recipient_outcome_held ? '<p role="alert">Hold — do not resend or mark Paid. Recipient/transfer outcome is uncertain. Request reversal through the official M-Pesa/provider support channel. This site cannot reverse a transfer; the claim and reservation remain retained.</p>' : ""}
     ${r.recipient_changed && !["paid", "cancelled"].includes(r.status) ? `<p role="alert">Identity or recipient details changed after this request. Do not send to the updated details on this claim. ${r.claimed_at ? "Hold if not already sent; only the claimed operator may report an already completed transfer to the originally checked recipient." : "Cancel before Processing and request again with the correct details."}</p>` : ""}
     ${r.transaction_reference ? `<p>Transaction ID: <strong>${esc(r.transaction_reference)}</strong>. Reported by the operator, not provider-verified or statement-reconciled.</p>` : ""}
     ${r.claimed_at && r.status !== "paid" ? "<p>Never send again, cancel or release because of a timeout. The existing operator must confirm the outcome.</p>" : ""}
     <details><summary>Status history</summary>${(r.history || []).map(e => `<p>${esc(labels[e.state] || e.state)}${e.reason ? ` · ${esc(reasons[e.reason])}` : ""}${e.system_event ? " · automatic accounting Hold (not a human action)" : ""} · ${esc(new Date(e.at).toLocaleString())}</p>`).join("")}</details>
   </article>`).join("") : "<p>No payout requests yet.</p>";
+}
+function recipientDetail(r, esc, money) {
+  return r.recipient?.expected_name && r.recipient?.phone ?
+    `<p data-recipient-detail>Amount recipient receives: <strong>${esc(money(r.amount_minor, r.currency))}</strong>.
+      Expected recipient name: <strong>${esc(r.recipient.expected_name)}</strong>.
+      Destination M-Pesa phone: <strong>${esc(r.recipient.phone)}</strong>.
+      ${r.recipient.source === "unchanged_legacy_kyc" ? "Original details proven by unchanged request KYC hash." : "Immutable request recipient snapshot."}
+      Expected name is supplied identity information, not provider-verified identity.</p>` :
+    '<p data-recipient-detail role="alert">Original recipient name/phone cannot be established. Do not send or mark Paid. Hold any existing claim; do not resend. An unclaimed request may be cancelled and requested again with confirmed details.</p>';
 }
 export function balanceDetail(data, money) {
   const amount = value => value === undefined || value === null ? "Unavailable" : money(value, data.currency);
@@ -79,13 +90,22 @@ export async function mountCouple(el, { weddingId, api, money, esc }) {
       <button type="button" data-drain-balance>Use full remaining balance after processing fee</button>
       <p data-withdrawal-quote></p>
       <label>Send to<select name="partner" required><option value="">Choose your existing partner phone</option>
-        ${(data.recipients || []).map(r => `<option value="${r.slot}">${esc(r.label)}</option>`).join("")}</select></label>
-      <label><input name="confirmed" type="checkbox" required> I confirm the displayed amount I receive, customer processing fee and total balance debit, and consent to this partner’s existing phone. The fee is fixed at my request; no additional customer fee is added at Processing.</label>
+        ${(data.recipients || []).map(r => `<option value="${r.slot}">${esc(r.expected_name || r.label)} — ${esc(r.phone || "Phone unavailable")}</option>`).join("")}</select></label>
+      <p data-selected-recipient></p>
+      <label><input name="confirmed" type="checkbox" required> I confirm the displayed expected recipient name and full M-Pesa phone, amount I receive, customer processing fee and total balance debit, and consent to this destination. The fee is fixed at my request; no additional customer fee is added at Processing.</label>
       <button type="submit"${!data.supported || !data.kyc_complete || data.deficit_recorded ? " disabled" : ""}>Request payout</button>
     </form><p data-simple-result role="status" aria-live="polite"></p>
     <h3>Your payout requests</h3><div data-simple-history>${history(data.requests || [], esc, money)}</div>`;
   const form = el.querySelector("form"), result = el.querySelector("[data-simple-result]");
   const submit = form.querySelector('button[type="submit"]');
+  const updateRecipient = () => {
+    const r = data.recipients?.find(r => r.slot === Number(form.elements.partner.value));
+    const stale = pending && pending.recipientHash !== data.recipient_hash;
+    el.querySelector("[data-selected-recipient]").textContent = stale ?
+      "The recipient version changed after your pending request. Never substitute edited details. Retry the original request unchanged to establish its outcome; a new request requires refreshed consent." :
+      r?.expected_name && r?.phone ? `Expected recipient: ${r.expected_name}. Destination M-Pesa phone: ${r.phone}. This name is not provider-verified.` :
+      "Select a recipient with an established expected name and full phone.";
+  };
   const updateQuote = () => {
     const fee = pending?.processingFeeMinor ?? data.withdrawal_processing_fee_minor ?? 0;
     let amount;
@@ -95,7 +115,7 @@ export async function mountCouple(el, { weddingId, api, money, esc }) {
       `Total balance debit: ${amount === null ? "Enter an amount" : money(amount+fee, data.currency)}. Provider costs are company overhead.`;
   };
   form.elements.amount.oninput = () => { form.elements.confirmed.checked = false; updateQuote(); };
-  form.elements.partner.onchange = () => { form.elements.confirmed.checked = false; };
+  form.elements.partner.onchange = () => { form.elements.confirmed.checked = false; updateRecipient(); };
   el.querySelector("[data-drain-balance]").onclick = () => {
     if (pending) return;
     const amount = data.available_minor-(data.withdrawal_processing_fee_minor ?? 0);
@@ -111,10 +131,17 @@ export async function mountCouple(el, { weddingId, api, money, esc }) {
     try {
       const fresh = await json(api, url);
       if (!pending && (data.policy_revision !== fresh.policy_revision ||
-        data.withdrawal_processing_fee_minor !== fresh.withdrawal_processing_fee_minor)) form.elements.confirmed.checked = false;
+        data.withdrawal_processing_fee_minor !== fresh.withdrawal_processing_fee_minor ||
+        data.recipient_hash !== fresh.recipient_hash)) form.elements.confirmed.checked = false;
       data = fresh;
+      const selected = form.elements.partner.value;
+      form.elements.partner.innerHTML = '<option value="">Choose your existing partner phone</option>' +
+        (data.recipients || []).map(r => `<option value="${r.slot}">${esc(r.expected_name || r.label)} — ${esc(r.phone || "Phone unavailable")}</option>`).join("");
+      form.elements.partner.value = selected;
+      updateRecipient();
       updateCoupleBalance(el, data, money);
       updateQuote();
+      updateRecipient();
       submit.disabled = !data.supported || !data.kyc_complete || data.deficit_recorded;
       result.textContent = "Balance refreshed. Your typed request is unchanged; fees and holds still apply.";
     } catch (error) { result.textContent = "Balance refresh failed: " + error.message; }
@@ -136,13 +163,16 @@ export async function mountCouple(el, { weddingId, api, money, esc }) {
       if (!pending) {
         const amountMinor = kesToMinor(form.elements.amount.value), partner = Number(form.elements.partner.value);
         if (amountMinor<=0 || ![1, 2].includes(partner)) throw new Error("Choose a positive amount and an existing partner recipient.");
+        const recipient = data.recipients?.find(r => r.slot === partner);
+        if (!recipient?.expected_name || !recipient?.phone || !data.recipient_hash)
+          throw new Error("Refresh recipient details before confirming the expected name and phone.");
         const processingFeeMinor = data.withdrawal_processing_fee_minor ?? 0;
         const total = amountMinor+processingFeeMinor;
         if (!Number.isSafeInteger(total) || total>data.available_minor) throw new Error("Amount plus processing fee exceeds your available balance.");
         if (amountMinor<(data.min_payout_minor ?? 0) && total!==data.available_minor)
           throw new Error("A below-minimum amount must drain the full remaining balance including the processing fee.");
         if (data.max_payout_minor !== undefined && amountMinor>data.max_payout_minor) throw new Error("Amount exceeds the configured maximum payout.");
-        pending = { key: uuid(), amountMinor, partner, confirmed: true,
+        pending = { key: uuid(), amountMinor, partner, confirmed: true, recipientHash: data.recipient_hash,
           ...(Number.isSafeInteger(data.policy_revision) ? { processingFeeMinor, policyRevision: data.policy_revision } : {}) };
         sessionStorage.setItem(storage, JSON.stringify(pending));
       }
@@ -209,23 +239,27 @@ export async function mountAdmin(el, { api, money, esc, role, userId }) {
     const buttons = document.createElement("div");
     buttons.className = "acts";
     buttons.innerHTML = `<button type="button" data-do="hold">Hold</button>
-      ${!r.claimed_at ? '<button type="button" data-do="processing">Processing</button><button type="button" data-do="reviewed">Check recipient for another operator</button><button type="button" data-do="cancelled">Cancel before processing</button>' :
-      (!userId || userId === r.sender_id ? '<button type="button" data-do="paid">Record Paid</button>' : '<p>The claimed operator must report Paid. Do not send again.</p>')}`;
+      ${!r.claimed_at ? `<button type="button" data-do="processing"${!r.recipient || r.recipient_changed || r.recipient_outcome_held ? " disabled" : ""}>Processing</button><button type="button" data-do="reviewed"${!r.recipient || r.recipient_changed || r.recipient_outcome_held ? " disabled" : ""}>Check recipient for another operator</button><button type="button" data-do="cancelled">Cancel before processing</button>` :
+      (!userId || userId === r.sender_id ? `<button type="button" data-do="paid"${!r.recipient || r.recipient_outcome_held ? " disabled" : ""}>Record Paid</button><button type="button" data-do="uncertain">Recipient mismatch / uncertain transfer — Hold</button>` : '<p>The claimed operator must report Paid. Do not send again.</p>')}`;
     article.append(buttons);
     buttons.onclick = event => {
-      const action = event.target.closest("[data-do]")?.dataset.do;
-      if (!action) return;
+      const target = event.target.closest("[data-do]");
+      if (!target || target.disabled) return;
+      const uncertain = target.dataset.do === "uncertain";
+      const action = uncertain ? "hold" : target.dataset.do;
       article.querySelector("[data-simple-action]")?.remove();
       const form = document.createElement("form");
       form.dataset.simpleAction = action;
       form.innerHTML = `<h4>${esc(action === "paid" ? "Report the completed transfer" : action === "processing" ? "Claim Processing before sending" : action === "reviewed" ? "Check recipient" : action === "cancelled" ? "Cancel and release this unclaimed reservation" : "Put this request on Hold")}</h4>
-        ${action === "hold" ? `<label>Reason<select name="reason" required>${Object.entries(reasons).map(([v, label]) => `<option value="${v}">${esc(label)}</option>`).join("")}</select></label>` : ""}
+        ${["processing", "reviewed", "paid"].includes(action) ? recipientDetail(r, esc, money) : ""}
+        ${action === "hold" ? `<label>Reason<select name="reason" required${uncertain ? " disabled" : ""}>${Object.entries(reasons).map(([v, label]) => `<option value="${v}"${uncertain && v === "outcome_uncertain" ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
+          <p>For a recipient mismatch or uncertain completed transfer, choose transfer outcome uncertain. Do not resend. Request reversal through the official M-Pesa/provider support channel. This retains the claim and reservation and blocks Paid; it does not reverse money.</p>` : ""}
         ${action === "processing" ? `${r.processing_fee_minor === null || r.processing_fee_minor === undefined ?
           '<label>Historical contract: actual expected transfer fee (KES; enter 0 only if actually free)<input name="fee" inputmode="decimal" required data-contact-allowed autocomplete="off"></label>' :
           `<p>Customer processing fee ${esc(money(r.processing_fee_minor,r.currency))} was fixed at submission. Do not enter or add a provider cost; unknown company costs remain unknown.</p>`}
           ${role === "owner" ? '<label><input type="checkbox" name="solo"> I explicitly choose audited protected-Owner solo processing.</label>' : ""}` : ""}
         ${["processing", "reviewed"].includes(action) ? '<label><input type="checkbox" name="recipient" required> I checked this partner’s actual receiving phone/name against their private identity details and consent. I am not claiming provider verification.</label>' : ""}
-        ${action === "paid" ? '<label>Actual transaction ID<input name="reference" required maxlength="120" pattern="[A-Za-z0-9][A-Za-z0-9._:-]{0,119}" data-contact-allowed autocomplete="off"></label>' : ""}
+        ${action === "paid" ? '<label>Actual transaction ID<input name="reference" required maxlength="120" pattern="[A-Za-z0-9][A-Za-z0-9._:-]{0,119}" data-contact-allowed autocomplete="off"></label><label><input type="checkbox" name="recipient" required> I compared the actual transaction recipient name and destination phone against the expected name and full M-Pesa phone displayed above; both match. This is my manual confirmation, not automated/provider identity verification.</label><p>If the name differs or you are unsure, do not confirm Paid. Choose Recipient mismatch / uncertain transfer — Hold and request reversal through the official provider. Never resend.</p>' : ""}
         <label><input name="confirmed" type="checkbox" required> ${action === "paid" ? `I personally sent exactly ${esc(money(r.amount_minor, r.currency))}, with the recorded fee, to the checked recipient and confirm this transaction ID. This is my report, not provider verification.` :
         action === "processing" ? "Create one durable claim. This site sends nothing; I will transfer once externally only under my authorization and will never blindly resend." :
         action === "hold" ? "Keep the reservation and any existing processing claim; this does not authorize another send." :
@@ -236,7 +270,8 @@ export async function mountAdmin(el, { api, money, esc, role, userId }) {
       form.onsubmit = async e => {
         e.preventDefault();
         const button = form.querySelector("button"), output = form.querySelector("[data-action-result]");
-        if (button.disabled || !form.elements.confirmed.checked) return;
+        if (button.disabled || !form.elements.confirmed.checked ||
+          (["paid", "processing", "reviewed"].includes(action) && !form.elements.recipient?.checked)) return;
         try {
           const body = { id: r.id, action, reason: form.elements.reason?.value || null,
             fee: action === "processing" && (r.processing_fee_minor === null || r.processing_fee_minor === undefined) ? kesToMinor(form.elements.fee.value) : null,

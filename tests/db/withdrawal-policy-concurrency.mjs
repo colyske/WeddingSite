@@ -35,7 +35,8 @@ const run=(id,expr)=>sql(`begin;set local statement_timeout='20s';${actor(id)}se
 const uuid=output=>output.split("\n").find(x=>/^[0-9a-f-]{36}$/.test(x)&&!Object.values(ids).includes(x));
 await run(ids.owner,`public.admin_save_policies('{"withdrawal_processing_fee_minor":100,"min_payout_minor":1000,"max_payout_minor":10000}')`);
 const revision=Number(await sql("select withdrawal_policy_revision from public.platform_policies where id=true;"));
-const request=(key=randomUUID(),amount=1000,fee=100,rev=revision)=>`public.simple_payout_submit('${key}','${ids.wedding}',${amount},1,true,${fee},${rev})`;
+const request=(key=randomUUID(),amount=1000,fee=100,rev=revision)=>`public.simple_payout_submit('${key}','${ids.wedding}',${amount},1,true,${fee},${rev},
+  (public.simple_payout_status('${ids.wedding}')->>'recipient_hash'))`;
 const claim=p=>`public.simple_payout_action('${p}','${randomUUID()}','processing',null,null,null,true,true,true)`;
 const available=()=>sql(`select public.simple_payout_available('${ids.wedding}');`).then(Number);
 const baseline=await available(),key=randomUUID();
@@ -67,7 +68,7 @@ try{await wait(name,writer.name);}finally{writer.control.release();}
 await writer.task;assert.match((await stale)?.message,/quote changed/);
 assert.equal(await available(),baseline-10200,"Stale quote made no reservation");
 assert.equal(await run(ids.client,request(key)),replay[0],"Policy change does not reprice replay");
-await assert.rejects(run(ids.client,`public.simple_payout_submit('${randomUUID()}','${ids.wedding}',1000,1,true)`),/quote changed/);
+await assert.rejects(run(ids.client,`public.simple_payout_submit('${randomUUID()}','${ids.wedding}',1000,1,true)`),/permission denied/);
 const newRevision=Number(await sql("select withdrawal_policy_revision from public.platform_policies where id=true;"));
 const next=uuid(await run(ids.client,request(randomUUID(),1000,200,newRevision)));
 const beforeRefund=await available(),refund=beforeRefund+100;
@@ -82,7 +83,7 @@ await refundWriter.task;assert.match((await pendingClaim)?.message,/recorded adj
 assert.equal(await sql(`select public.simple_payout_balance_raw('${ids.wedding}');`),"-100");
 assert.equal(await sql(`select count(*) from public.simple_payout_claims where payout_id='${p}';`),"1");
 assert.equal(await sql(`select public.simple_payout_state('${p}');`),"hold");
-const paidKey=randomUUID(),paid=`public.simple_payout_action('${p}','${paidKey}','paid',null,null,'CUSTOMER-RACE1',false,false,true)`;
+const paidKey=randomUUID(),paid=`public.simple_payout_action('${p}','${paidKey}','paid',null,null,'CUSTOMER-RACE1',false,true,true)`;
 await run(ids.owner,paid);await run(ids.owner,paid);
 assert.equal(await sql(`select public.simple_payout_balance_raw('${ids.wedding}');`),"-100","Actual Paid and replay never erase deficit or release fee reservation");
 assert.equal(await sql(`select count(*) from public.simple_payout_receipts where payout_id='${p}';`),"1");

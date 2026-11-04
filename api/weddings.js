@@ -842,7 +842,8 @@ export default async function handler(req, res) {
       }
       if (action === "simple-payout-request") {
         if (!methodOnly(req, res, "POST")) return;
-        if (Object.keys(body).some(k => !["key", "amountMinor", "partner", "confirmed", "weddingId", "processingFeeMinor", "policyRevision"].includes(k)) ||
+        if (Object.keys(body).some(k => !["key", "amountMinor", "partner", "confirmed", "weddingId", "processingFeeMinor", "policyRevision", "recipientHash"].includes(k)) ||
+          !/^[0-9a-f]{64}$/.test(body.recipientHash || "") ||
           !UUID.test(String(body.key || "")) || !Number.isSafeInteger(body.amountMinor) || body.amountMinor<=0 ||
           ((body.processingFeeMinor !== undefined || body.policyRevision !== undefined) &&
             (!Number.isSafeInteger(body.processingFeeMinor) || body.processingFeeMinor<0 ||
@@ -852,8 +853,8 @@ export default async function handler(req, res) {
         }
         const id = await supabaseRequest("/rest/v1/rpc/simple_payout_submit", {
           ...opts, method: "POST", body: { p_key: body.key, p_wedding: weddingId, p_amount: body.amountMinor,
-            p_partner: body.partner, p_confirmed: true,
-            ...(body.processingFeeMinor === undefined ? {} : { p_processing_fee: body.processingFeeMinor, p_policy_revision: body.policyRevision }) }
+            p_partner: body.partner, p_confirmed: true, p_recipient_hash: body.recipientHash,
+            p_processing_fee: body.processingFeeMinor ?? null, p_policy_revision: body.policyRevision ?? null }
         });
         return sendJson(res, 201, { payoutId: id, recorded: true });
       }
