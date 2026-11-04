@@ -12,6 +12,39 @@ Deploying this capability is **not operational availability or activation author
 
 ## Simple offline payout reporting (current couple / staff UI)
 
+### Private destination and actual recipient-name confirmation (200001)
+
+The authorized couple and Owner/superadmin operator views show the **full M-Pesa
+phone, expected recipient name and amount received** together. New request consent
+is bound to the displayed KYC version; edits require refreshed, explicit consent.
+Hashless submit overloads are internal-only; older clients must refresh before
+creating a request rather than consenting silently to edited details.
+An append-only private recipient snapshot is captured atomically with the request.
+The same original destination is shown before Processing and alongside the
+transaction-ID/Paid form after claim and reload, never silently replaced by edited
+partner details. Expected names come from supplied identity details, **not
+provider-verified identity**. No public/helper/admin access is added; snapshot
+tables and internal resolution functions are not directly readable by API roles.
+
+Legacy requests are not backfilled by migration. Original fields can be proven
+only when the full current KYC row exactly matches the request's original immutable
+hash; that proof is labelled and frozen on recipient check/Processing. A missing
+or differing hash with no stored snapshot blocks Processing **and Paid**. An
+unclaimed request may be cancelled and requested again. An already claimed
+unknown destination must remain reserved, with Hold/do-not-resend guidance; it
+cannot be cancelled/released or guessed from current partner details.
+
+Before Paid, the claimed sender must explicitly attest that the **actual
+transaction recipient name and destination phone match** the displayed expected
+name/phone, separately from confirming the amount and transaction ID. This is a
+manual operator report, not automated verification. **Recipient mismatch /
+uncertain transfer - Hold** records an append-only uncertain outcome and retains
+the single claim and reservation. It blocks subsequent Paid, even after another
+Hold reason or reload; checking a box cannot clear it. Request reversal through
+the official M-Pesa/provider support channel. The site does not reverse money,
+fabricate success, release balances or authorize resending. Provider transaction-ID
+conflict and refund/deficit protections remain in place.
+
 ### Payment timing and refreshing the balance
 
 For **new** confirmed payments, `202611180001` makes the configured platform

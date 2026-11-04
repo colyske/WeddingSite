@@ -46,8 +46,8 @@ begin
   if (select fee_minor from public.simple_payout_claims where payout_id=p) is not null
     or (select processing_fee_minor from public.simple_payout_requests where id=p)<>100 then raise exception 'Provider cost faked or customer fee repriced'; end if;
   request_key:=extensions.gen_random_uuid();
-  perform public.simple_payout_action(p,request_key,'paid',null,null,'CUSTOMER-FEE1',false,false,true);
-  perform public.simple_payout_action(p,request_key,'paid',null,null,'CUSTOMER-FEE1',false,false,true);
+  perform public.simple_payout_action(p,request_key,'paid',null,null,'CUSTOMER-FEE1',false,true,true);
+  perform public.simple_payout_action(p,request_key,'paid',null,null,'CUSTOMER-FEE1',false,true,true);
   if public.simple_payout_available(w)<>0 then raise exception 'Paid/replay double charged'; end if;
   if (public.simple_payout_balance_details(w)->>'withdrawal_processing_revenue_minor')::bigint<>100 or
     (public.simple_payout_balance_details(w)->>'withdrawal_processing_reserved_minor')::bigint<>0 then
@@ -58,7 +58,7 @@ begin
   set constraints all immediate;
   if public.simple_payout_balance_raw(w)<>-100 or not exists(select 1 from public.simple_payout_deficits where wedding_id=w)
     or public.simple_payout_state(p)<>'paid' then raise exception 'Actual refund erased or Paid claim released'; end if;
-  perform public.simple_payout_action(p,request_key,'paid',null,null,'CUSTOMER-FEE1',false,false,true);
+  perform public.simple_payout_action(p,request_key,'paid',null,null,'CUSTOMER-FEE1',false,true,true);
   perform public.admin_save_policies('{"withdrawal_processing_fee_minor":100,"min_payout_minor":1000}');
   w:=pg_temp.withdrawal_wedding(1000);
   perform pg_temp.reject(format('select pg_temp.withdrawal(%L,899)',w),'drain the full');
