@@ -1,4 +1,7 @@
 -- Synthetic fixtures only, inside the readiness/withdrawal test transaction.
+alter table public.contributions disable trigger guard_payment_environment;
+alter table public.contributions disable trigger guard_live_payment_context;
+alter table public.contributions disable trigger guard_paystack_context;
 do $$ declare w uuid; p uuid; p2 uuid; h text; k uuid:=extensions.gen_random_uuid(); before_balance bigint; detail jsonb;
 begin
   perform pg_temp.actor('owner');
@@ -84,3 +87,10 @@ end $$;
 set local role authenticated;
 select pg_temp.reject('select public.simple_payout_status((select id from mr_ids where key=''private_recipient_wedding''))','Wedding access required');
 reset role;
+set local role anon;
+select pg_temp.reject('select public.simple_payout_status(null)','permission denied');
+select pg_temp.reject('select public.simple_payout_workspace()','permission denied');
+reset role;
+alter table public.contributions enable trigger guard_payment_environment;
+alter table public.contributions enable trigger guard_live_payment_context;
+alter table public.contributions enable trigger guard_paystack_context;

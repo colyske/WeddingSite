@@ -52,7 +52,7 @@ begin
   detail:=public.simple_payout_recipient(p);
   if detail->>'expected_name'<>'Fixture One' or detail->>'phone'<>'254700000001'
     or detail->>'source'<>'unchanged_legacy_kyc' then raise exception 'Exact unchanged hash failed original proof'; end if;
-  perform public.simple_payout_action(p,extensions.gen_random_uuid(),'processing',null,0,null,true,true,true);
+  perform public.simple_payout_action(p,extensions.gen_random_uuid(),'reviewed',null,null,null,false,true,true);
   if not exists(select 1 from public.simple_payout_recipients where payout_id=p and source='unchanged_legacy_kyc') then
     raise exception 'Original checked legacy recipient not frozen'; end if;
   update public.wedding_kyc set partner1_phone='254722222222' where wedding_id=(select id from mr_ids where key='wedding');
