@@ -23,6 +23,13 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
     page.on("pageerror", error => console.error("Manual operator browser error:", error.message));
     page.setDefaultTimeout(10000);
     await page.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "fixture", r: "superadmin" })));
+    await page.addInitScript(() => {
+      new MutationObserver(() => {
+        for (const id of ["advanced-payout-history", "old-payout-history"]) {
+          const el = document.getElementById(id); if (el && !el.open) el.open = true;
+        }
+      }).observe(document, { childList: true, subtree: true });
+    });
     await page.route("https://**", route => route.fulfill({ body: "" }));
     let role = "superadmin", writes = 0, payoutState = "requested", enabled = false, ready = false;
     const policyWrites = [];
@@ -270,7 +277,7 @@ test("manual payout leadership UI is explicitly OFF, no legacy sent or accidenta
     // no fabricated provider calls or a second implementation of balance logic.
     const loader = wedding.slice(wedding.indexOf("async function loadWithdrawals()"), wedding.indexOf("// Couple request intent"));
     const coupleForm = wedding.slice(wedding.indexOf('<form id="manual-intent-form">'), wedding.indexOf('<fieldset id="withdrawal-form"'));
-    await page.setContent(coupleForm + '<p id="manual-payout-status"></p><span id="balance-display"></span><span id="settling-display"></span><span id="held-display"></span><p id="manual-balance-detail"></p><table><tbody id="withdrawals-body"></tbody></table><p id="no-withdrawals"></p>');
+    await page.setContent(coupleForm + '<section id="simple-payout-couple"></section><p id="manual-payout-status"></p><span id="balance-display"></span><span id="settling-display"></span><span id="held-display"></span><p id="manual-balance-detail"></p><table><tbody id="withdrawals-body"></tbody></table><p id="no-withdrawals"></p>');
     for (payoutState of ["requested", "uncertain", "paid"]) {
       await page.evaluate(async code => {
         const run = new Function("WS", "$", "weddingId", code + ";return loadWithdrawals();");

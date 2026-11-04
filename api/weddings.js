@@ -826,7 +826,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (["balance", "withdraw", "withdrawals", "manual-payout-intent", "guests-import", "guests-list", "fundraising", "fundraising-save", "campaigns", "campaigns-save", "sponsor-enquiries", "sponsor-enquiry-review"].includes(action)) {
+    if (["simple-payout-status", "simple-payout-request", "balance", "withdraw", "withdrawals", "manual-payout-intent", "guests-import", "guests-list", "fundraising", "fundraising-save", "campaigns", "campaigns-save", "sponsor-enquiries", "sponsor-enquiry-review"].includes(action)) {
       const weddingId = String(req.query.weddingId || body.weddingId || "");
       if (!UUID.test(weddingId)) return sendJson(res, 400, { error: "Invalid wedding." });
       const owned = await supabaseRequest(
@@ -834,6 +834,25 @@ export default async function handler(req, res) {
       if (!owned?.length) return sendJson(res, 404, { error: "Wedding not found." });
       const currency = owned[0].currency;
 
+      if (action === "simple-payout-status") {
+        if (!methodOnly(req, res, "GET")) return;
+        return sendJson(res, 200, await supabaseRequest("/rest/v1/rpc/simple_payout_status", {
+          ...opts, method: "POST", body: { p_wedding: weddingId }
+        }));
+      }
+      if (action === "simple-payout-request") {
+        if (!methodOnly(req, res, "POST")) return;
+        if (Object.keys(body).some(k => !["key", "amountMinor", "partner", "confirmed", "weddingId"].includes(k)) ||
+          !UUID.test(String(body.key || "")) || !Number.isSafeInteger(body.amountMinor) || body.amountMinor<=0 ||
+          ![1, 2].includes(body.partner) || body.confirmed!==true) {
+          return sendJson(res, 400, { error: "Confirm a valid amount and one existing partner recipient. No bank details or notes are accepted." });
+        }
+        const id = await supabaseRequest("/rest/v1/rpc/simple_payout_submit", {
+          ...opts, method: "POST", body: { p_key: body.key, p_wedding: weddingId, p_amount: body.amountMinor,
+            p_partner: body.partner, p_confirmed: true }
+        });
+        return sendJson(res, 201, { payoutId: id, recorded: true });
+      }
       if (action === "manual-payout-intent") {
         if (!methodOnly(req, res, "POST")) return;
         if (Object.keys(body).some(k => !["key", "amountMinor", "confirmed", "weddingId"].includes(k)) ||
@@ -1056,6 +1075,14 @@ export default async function handler(req, res) {
     }
     return sendJson(res, 404, { error: "Unknown action." });
   } catch (error) {
+    if (action.startsWith("simple-payout-")) {
+      console.error("simple payout request failed", action, error.status || "database_rejection");
+      const message = String(error.message || "");
+      if (/SIMPLE_PAYOUT:|PAYOUT_KYC_REQUIRED:/.test(message)) return sendJson(res, 409, {
+        error: message.split(/SIMPLE_PAYOUT:|PAYOUT_KYC_REQUIRED:/)[1].trim().slice(0, 400)
+      });
+      return sendJson(res, 503, { error: "Payout service unavailable. Refresh history before retrying with the same request key." });
+    }
     // Log full error for debugging but never expose secrets
     const errorMsg = error.message || error.toString();
     console.error("weddings endpoint error:", {

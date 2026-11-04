@@ -530,7 +530,8 @@
       const [{ payouts }, manual, workspace] = await Promise.all([get("payouts"), get("manual-payouts"), get("manual-payout-workspace").catch(() => null)]);
       if (workspace) workspace.requestDetails = manual.requests || [];
       cache.manualWorkspace = workspace;
-      el.innerHTML = `<h2>Payouts / withdrawals</h2>
+      el.innerHTML = `<h2>Payouts / withdrawals</h2><section id="simple-payout-admin"></section>
+        <details id="advanced-payout-history"><summary>Older controlled payouts and historical evidence (advanced)</summary>
         <section id="manual-payout-control"><h3>Controlled manual external payouts: ${manual.enabled ? "enabled" : "OFF"}</h3>
           <p>This manual control never changes automatic B2C policy or sends money. Code readiness does not authorize use of a funded merchant rail. Operators transfer only outside this site in the official authorized portal, after a durable execution claim. Never resend an uncertain transfer.</p>
           <p>${esc(manual.verification)}</p>
@@ -558,8 +559,11 @@
           const acts = [];
           if (["requested", "approved"].includes(p.status)) acts.push(btn("Cancel legacy request", `data-ps="cancelled" data-id="${esc(p.id)}"`));
           return `<tr><td>${date(p.requested_at)}</td><td>${esc(p.couple_names)} <a href="/wedding.html?id=${encodeURIComponent(p.wedding_id)}#kyc-section">KYC details</a></td><td>${esc(WS.money(Number(p.amount_minor), p.currency, false))}</td><td>${esc(p.status)}</td><td>${esc(p.note || "")}</td><td class="acts">${acts.join(" ") || "-"}</td></tr>`;
-        }));
+        })) + "</details>";
       manualSetup.mountSetup(el, { workspace, weddings: workspace?.weddings || [], role, esc });
+      const simple = await import("./simple-payouts.js");
+      try { await simple.mountAdmin(el.querySelector("#simple-payout-admin"), { api: WS.api, money: WS.money, esc, role }); }
+      catch { el.querySelector("#simple-payout-admin").textContent = "Simple payout service unavailable. Refresh before making any transfer; old history remains available below."; }
     },
     async b2c(el) {
       await window.B2CBackoffice.mount(el, role === "owner");

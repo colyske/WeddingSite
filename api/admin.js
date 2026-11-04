@@ -60,6 +60,7 @@ async function defaultCurrencyView(code) {
 const GET_ACTIONS = {
   "manual-payouts": async t => rpc("manual_payout_overview", t),
   "manual-payout-workspace": async t => rpc("manual_payout_workspace", t),
+  "manual-payout-simple": async t => rpc("simple_payout_workspace", t),
   "referral-policy": async t => ({ policy: await rpc("referral_admin_policy", t) }),
   "referral-history": async t => ({ history: await rpc("referral_admin_history", t) }),
   "referral-ledger": async (t, q) => {
@@ -354,6 +355,9 @@ export default async function handler(req, res) {
     else console.error("admin endpoint failed", action, String(error?.message || "").slice(0, 300));
     if (action === "payout-status" && error.message?.includes("PAYOUT_KYC_REQUIRED")) {
       return sendJson(res, 409, { error: "Complete KYC to receive your payout.", kycRequired: true });
+    }
+    if (action === "manual-payout-simple-action" && error.message?.includes("SIMPLE_PAYOUT:")) {
+      return sendJson(res, 409, { error: error.message.split("SIMPLE_PAYOUT:")[1].trim().slice(0, 400) });
     }
     const [status, message] = safeMessage(error);
     return sendJson(res, status, { error: message });

@@ -10,6 +10,75 @@ append-only operating-policy chain and guarded protected-Owner activation/readin
 Its only deployment row is OFF, with no scope, fees, limits or evidence defaults.
 Deploying this capability is **not operational availability or activation authorization**.
 
+## Simple offline payout reporting (current couple / staff UI)
+
+`202611170001` provides the user-requested **Request → Hold or Processing → Paid**
+path in the existing finance workstream. It does **not** use the older setup
+questionnaire, account scopes, evidence UUIDs, statement registration or separate
+reconciliation as prerequisites. It does not activate or call B2C, any provider,
+or the historical manual gate. The original controlled records/contracts remain
+under **Older controlled payouts and historical evidence (advanced)**.
+
+**What to do**
+
+1. Couple: open **Payouts & Withdrawals**, enter an amount in KES no greater than
+   the displayed available wedding balance, choose one of the existing partners'
+   masked receiving phones, and explicitly consent. **Request payout** reserves
+   that amount atomically. No bank details, documents or opaque IDs are entered.
+   Existing private KYC/consent is required. Currently this path supports KES /
+   M-Pesa to a Kenyan partner phone; unsupported methods/currencies have an
+   explicit support message, not invented bank storage or FX.
+2. Owner/staff: open **Payouts → Simple manual payouts**. **Hold** records a clear
+   reason visible to the couple and retains the reservation. **Cancel before
+   processing** releases only an unclaimed request. For non-Owner staff, another
+   eligible leader must use **Check recipient for another operator** after
+   actually reviewing private identity, receiving phone/name and consent.
+3. **Processing**: enter the actual expected transfer fee in KES (including
+   explicit 0 only if genuinely free), confirm the recipient check, and confirm
+   the single durable processing claim. The protected Owner can explicitly
+   select audited solo processing; other staff require the independent checker.
+   Net/obligations, KYC revision and current actor/reviewer roles are checked
+   again. No fee/default/merchant entitlement is guessed.
+4. After Processing successfully saves, the transaction-ID field and **Confirm
+   Paid — operator-reported** action appear immediately for the claimed operator,
+   including after reload. Failed Processing never exposes those controls.
+   The site sends nothing. The authorized operator checks liquidity and transfers
+   once externally using their official authorized portal.
+5. After actually sending exactly the requested amount with the recorded fee to
+   the checked recipient, enter the actual transaction ID and explicitly confirm
+   Paid. It means **OPERATOR-REPORTED**, not provider-verified or statement-
+   reconciled. A transaction ID without an existing claim and its sender cannot
+   mark Paid. If the result is uncertain, use **Hold → Transfer outcome uncertain**;
+   never resend or cancel/release a claimed transfer. No timeout expires a claim.
+
+Available balance is authoritative verified live wedding-attributable net less
+known collection fees, configured settlement holds, refund/dispute obligations,
+expenses, legacy payouts, paid amounts and active reservations on every payout
+path. It excludes direct-settled/test/unknown-fee contributions and referral
+estimates. It is not a statement assertion or global Paybill liquidity model.
+The operator fee is reserved additionally at Processing and stays consumed after
+Paid. Existing financial writers use the shared serialization lock; legacy and
+automatic admissions/claims cannot spend these reservations.
+Actual refund/dispute holds and ledger debits are preserved, never suppressed
+to make a reservation look funded. A deferred transaction-final check permits valid
+hold-to-ledger conversion without double counting; adjustments within unreserved
+balance still work. If an adjustment exhausts entitlement, an append-only deficit
+incident and explicit system funds-review Hold block new requests/Processing across
+payout paths. Existing claims/fees remain reserved without release or resend.
+Paid can still truthfully report an already completed transfer, retaining the
+deficit incident. No ordinary incident-clearance shortcut is supplied.
+This is internal accounting, not protection against external chargebacks.
+
+Request/action keys survive ambiguous browser retries. All financial records and
+actor/status events are append-only. A normalized transaction ID is conservatively
+unique **provider-wide**, including existing manual/B2C receipts; without collecting
+account identifiers this deliberately rejects ambiguity rather than inventing a
+merchant binding. Cross-path receipt conflicts retain the claim/reservation and
+create a persistent incident/provider hold; no ordinary release/resend action is
+provided. Existing successful B2C callback IDs also block conflicting Paid reports.
+This intentionally distinguishes operational reporting from the older independent
+evidence/reconciliation control plane; neither history is relabelled as the other.
+
 ## Shared Paybill: current manual setup (no global bank balance)
 
 `202611160001` adds an **explicit new manual-only shared-account scope**. A Paybill
