@@ -887,6 +887,8 @@ export default async function handler(req, res) {
           next_time_release_at: simple.next_time_release_at, configured_hold_days: simple.configured_hold_days,
           min_payout_minor: simple.min_payout_minor, max_payout_minor: simple.max_payout_minor,
           withdrawal_processing_fee_minor: simple.withdrawal_processing_fee_minor,
+          withdrawal_processing_revenue_minor: simple.withdrawal_processing_revenue_minor,
+          withdrawal_processing_reserved_minor: simple.withdrawal_processing_reserved_minor,
           policy_revision: simple.policy_revision, provider_costs_company_overhead: simple.provider_costs_company_overhead,
           deficit_recorded: simple.deficit_recorded
         });

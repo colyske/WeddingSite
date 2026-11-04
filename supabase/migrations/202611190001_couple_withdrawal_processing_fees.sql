@@ -77,8 +77,9 @@ begin
   if found then
     if (prior.wedding_id,prior.requested_by,prior.amount_minor,prior.partner_slot) is distinct from
       (p_wedding,auth.uid(),p_amount,p_partner)
-      or (p_processing_fee is not null and p_processing_fee is distinct from prior.processing_fee_minor)
-      or (p_policy_revision is not null and p_policy_revision is distinct from prior.policy_revision) then
+      or (p_processing_fee is null and p_policy_revision is null and coalesce(prior.processing_fee_minor,0)<>0)
+      or ((p_processing_fee is not null or p_policy_revision is not null) and
+        (p_processing_fee,p_policy_revision) is distinct from (prior.processing_fee_minor,prior.policy_revision)) then
       raise exception 'SIMPLE_PAYOUT: Request retry changed. Refresh history.'; end if;
     return prior.id;
   end if;
@@ -146,6 +147,10 @@ do $$ declare definition text; updated text; begin
   updated:=replace(updated,'greatest(c.net_paid_minor-coalesce(c.provider_fee_minor,0),0)','c.net_paid_minor');
   updated:=replace(updated,'''configured_hold_days'',',
     '''provider_costs_company_overhead'',true,
+    ''withdrawal_processing_revenue_minor'',coalesce((select sum(r.processing_fee_minor) from public.simple_payout_requests r
+      where r.wedding_id=p_wedding and public.simple_payout_state(r.id)=''paid''),0),
+    ''withdrawal_processing_reserved_minor'',coalesce((select sum(r.processing_fee_minor) from public.simple_payout_requests r
+      where r.wedding_id=p_wedding and public.simple_payout_state(r.id) not in (''paid'',''cancelled'')),0),
     ''withdrawal_processing_fee_minor'',(select withdrawal_processing_fee_minor from public.platform_policies where id=true),
     ''policy_revision'',(select withdrawal_policy_revision from public.platform_policies where id=true),
     ''max_payout_minor'',(select max_payout_minor from public.platform_policies where id=true),

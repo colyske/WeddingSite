@@ -43,6 +43,7 @@ export function balanceDetail(data, money) {
     `Awaiting actual payment fees: ${amount(data.fee_pending_minor)}. `) +
     `Time hold: ${amount(data.time_held_minor)}; next stored release date: ${date}. ` +
     `Refund/dispute/expense and legacy obligations: ${amount(data.obligations_minor)}. Payout commitments (including paid and active reservations): ${amount(data.payout_committed_minor)}. ` +
+    (data.provider_costs_company_overhead ? `Customer fees on operator-reported Paid payouts: ${amount(data.withdrawal_processing_revenue_minor)}; reserved, not earned: ${amount(data.withdrawal_processing_reserved_minor)}. These are customer charges, not actual provider costs or provider-verified revenue. ` : "") +
     `Fee and time holds may overlap; do not add these figures. Configured time hold for new confirmed payments: ${data.configured_hold_days ?? "Unavailable"} day(s). ` +
     `Minimum received per payout: ${amount(data.min_payout_minor)}; a below-minimum amount is allowed only when amount plus processing fee drains the full remaining balance. ` +
     `A release date or zero-day setting is not settlement proof or guaranteed portal liquidity.`;

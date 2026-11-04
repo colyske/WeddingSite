@@ -84,7 +84,8 @@ a positive payout, no request is possible. **Use full remaining balance after
 processing fee** computes this exact amount; it never submits automatically.
 
 Before Processing, cancellation releases the reserved amount and fee. Holds and
-durable claims retain them; only Paid represents realized processing revenue.
+durable claims retain them; the operational fee summary counts only
+operator-reported Paid as processing revenue, never provider-verified revenue.
 Historical requests have NULL new-policy snapshots and keep their original
 obligations, including any previously claimed transfer fee. They are never
 retroactively charged this new fee, repriced or double charged. Existing immutable

@@ -12,8 +12,22 @@ function sql(input,onOutput=()=>{},control){
     if(control){control.release=()=>child.stdin.end("commit;\n");child.stdin.write(input);}else child.stdin.end(input);
   });
 }
+const refundSource=randomUUID();
 await sql(readFileSync(new URL("./manual-payout-readiness.sql",import.meta.url),"utf8")
-  .replace(/rollback;\s*$/,()=>"create table public.withdrawal_ci_context as select jsonb_object_agg(key,id) ids from mr_ids; commit;"));
+  .replace(/rollback;\s*$/,()=>`
+    alter table public.contributions disable trigger guard_payment_environment;
+    alter table public.contributions disable trigger guard_live_payment_context;
+    alter table public.contributions disable trigger guard_paystack_context;
+    insert into public.contributions(id,wedding_id,stream_name,pledged_amount_minor,paid_amount_minor,platform_fee_minor,net_paid_minor,
+      platform_fee_basis_points,currency,payment_status,verified_provider_payment,provider_fee_pending,payment_environment,provider_name,paid_at)
+      select '${refundSource}',id,'Isolated refund source, no couple net',20000,20000,20000,0,10000,'KES','paid',true,true,'live','paystack',now()-interval '3 days'
+      from mr_ids where key='wedding';
+    set constraints all immediate;
+    alter table public.contributions enable trigger guard_payment_environment;
+    alter table public.contributions enable trigger guard_live_payment_context;
+    alter table public.contributions enable trigger guard_paystack_context;
+    insert into mr_ids values('refund_source','${refundSource}');
+    create table public.withdrawal_ci_context as select jsonb_object_agg(key,id) ids from mr_ids; commit;`));
 const ids=JSON.parse(await sql("select ids from public.withdrawal_ci_context;"));
 const actor=id=>`set local role authenticated;select set_config('request.jwt.claim.sub','${id}',true);
   select set_config('request.jwt.claim.role','authenticated',true);`;
@@ -59,7 +73,7 @@ const next=uuid(await run(ids.client,request(randomUUID(),1000,200,newRevision))
 const beforeRefund=await available(),refund=beforeRefund+100;
 const refundWriter=await held(`select pg_advisory_xact_lock(71110001);
   insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
-    amount_minor,currency,status,hold_minor) values('paystack','refund','${randomUUID()}','${ids.contribution}','${ids.wedding}',
+    amount_minor,currency,status,hold_minor) values('paystack','refund','${randomUUID()}','${ids.refund_source}','${ids.wedding}',
     ${refund},'KES','pending',${refund});`);
 const claimName=randomUUID(),pendingClaim=sql(`begin;set local statement_timeout='20s';set local application_name='${claimName}';
   ${actor(ids.owner)}select ${claim(next)};commit;`).then(()=>null,e=>e);
