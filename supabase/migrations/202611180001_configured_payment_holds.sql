@@ -1,9 +1,9 @@
 -- Forward-only: stored payment dates, fees, policies and payout gates are untouched.
 do $$ declare definition text; updated text; begin
   definition:=pg_get_functiondef('public.record_verified_payment(text,text,uuid,bigint,text,text,bigint,timestamptz)'::regprocedure);
-  updated:=replace(definition,
-    'select greatest(payout_hold_days, case when p_provider in (''paystack'', ''daraja'') then 3 else 0 end)
-    into hold_days from public.platform_policies where id;',
+  -- Windows migration strings and deployed function bodies can differ in CRLF.
+  updated:=regexp_replace(definition,
+    'select[[:space:]]+greatest\(payout_hold_days, case when p_provider in \(''paystack'', ''daraja''\) then 3 else 0 end\)[[:space:]]+into hold_days from public.platform_policies where id;',
     'select payout_hold_days into strict hold_days from public.platform_policies where id=true;');
   updated:=replace(updated,'make_interval(days => coalesce(hold_days, 3))','make_interval(days => hold_days)');
   if updated=definition or position('greatest(payout_hold_days' in updated)>0

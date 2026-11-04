@@ -60,13 +60,13 @@ jobs:
         run: node tests/db/simple-payout-upgrade.mjs
       - name: Commit configured payment holds without rewriting existing payment history
         run: node tests/db/configured-payment-holds-upgrade.mjs
-      - name: Commit Owner fee attestation without changing any payment fees or history
-        run: node tests/db/owner-payment-fees-upgrade.mjs
+      - name: Commit withdrawal fee snapshots without repricing historical contracts
+        run: node tests/db/withdrawal-policy-upgrade.mjs
       - name: Apply all migrations to a fresh database
         run: supabase db reset --local --no-seed
       - name: Lint the migrated schema
         run: supabase db lint --local --schema public --level error
-      - name: Test configured zero and nonzero payment holds without releasing unknown fees or other holds
+      - name: Test configured payment holds, company provider costs and genuine obligations
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/configured-payment-holds.sql
       - name: Test payout KYC enforcement without retaining fixtures
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/payout-kyc.sql
@@ -116,27 +116,27 @@ jobs:
         run: node tests/db/manual-payout-workspace.mjs
       - name: Test manual shared Paybill attribution and transaction-specific verification
         run: node tests/db/manual-payout-shared.mjs
-      - name: Test simple offline operator reporting with rollback
-        run: node tests/db/simple-payouts.mjs
-      - name: Test protected Owner statement fee attestation without retaining fixtures
-        run: node tests/db/owner-payment-fees.mjs
+      - name: Test customer fee quotes, thresholds, snapshots and company overhead
+        run: node tests/db/withdrawal-policy.mjs
       - name: Race real manual policy, requests, claims and deactivation
         env:
           MANUAL_PAYOUT_TEST_DB_CONTAINER: supabase_db_weddingsite
         run: node tests/db/manual-payout-readiness-concurrency.mjs
       - name: Reset isolated database before simple payout concurrency
-        run: supabase db reset --local --no-seed
+        run: supabase db reset --local --version 202611180001 --no-seed
+      - name: Preserve the released historical simple payout contracts
+        run: node tests/db/simple-payouts.mjs
       - name: Race simple offline requests, claims, fees, actors and transaction IDs
         env:
           MANUAL_PAYOUT_TEST_DB_CONTAINER: supabase_db_weddingsite
         run: node tests/db/simple-payout-concurrency.mjs
-      - name: Reset isolated database before Owner fee concurrency
+      - name: Reset isolated database before withdrawal fee concurrency
         run: supabase db reset --local --no-seed
-      - name: Race Owner fee attestations against replays, refunds and claims
+      - name: Race withdrawal quotes, requests, claims and refund obligations
         env:
           MANUAL_PAYOUT_TEST_DB_CONTAINER: supabase_db_weddingsite
-        run: node tests/db/owner-payment-fees-concurrency.mjs
-      - name: Stop fee test Supabase
+        run: node tests/db/withdrawal-policy-concurrency.mjs
+      - name: Stop isolated Supabase
         if: always()
         run: supabase stop --no-backup
 

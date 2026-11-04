@@ -42,9 +42,9 @@ begin
       raise exception 'Policy edit/replay rewrote stored payment date'; end if;
   end loop;
   -- Two zero-day known-fee payments, four future ones. Not settlement evidence.
-  if public.simple_payout_available(wedding)<>19800 then raise exception 'Zero/nonzero authoritative availability mismatch'; end if;
+  if public.simple_payout_available(wedding)<>20000 then raise exception 'Zero/nonzero authoritative availability mismatch'; end if;
   info:=public.simple_payout_balance_details(wedding);
-  if (info->>'time_held_minor')::bigint<>39600 or (info->>'configured_hold_days')::integer<>0 then
+  if (info->>'time_held_minor')::bigint<>40000 or (info->>'configured_hold_days')::integer<>0 then
     raise exception 'Time hold summary disagrees'; end if;
   foreach provider in array array['daraja','paystack'] loop
     contribution:=extensions.gen_random_uuid();
@@ -55,16 +55,16 @@ begin
     if not exists(select 1 from public.contributions where id=contribution and funds_available_at=at_time
       and provider_fee_pending and provider_fee_minor is null) then raise exception 'Zero hold invented fees'; end if;
   end loop;
-  if public.simple_payout_available(wedding)<>19800 or
+  if public.simple_payout_available(wedding)<>21000 or
     (public.simple_payout_balance_details(wedding)->>'fee_pending_minor')::bigint<>1000 then
-    raise exception 'Unknown-fee funds became available'; end if;
+    raise exception 'Company provider costs reduced couple entitlement'; end if;
   insert into public.expenses(wedding_id,category,description,amount_minor,currency,status)
     values(wedding,'Fixture','Known obligation',800,'KES','approved');
   select id into contribution from hold_ids where kind='confirmed' and hold_days=0 limit 1;
   insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
     amount_minor,currency,status,hold_minor) values('paystack','dispute',extensions.gen_random_uuid()::text,
       contribution,wedding,1000,'KES','open',1000);
-  if public.simple_payout_available(wedding)<>18000 or
+  if public.simple_payout_available(wedding)<>19200 or
     (public.simple_payout_balance_details(wedding)->>'obligations_minor')::bigint<>1800 then
     raise exception 'Zero time hold ignored expense/dispute obligations'; end if;
   -- Test and direct-settled money never become available due to policy=0.
@@ -73,7 +73,7 @@ begin
     provider_fee_pending,provider_fee_minor,settlement_route,funds_available_at)
     values(wedding,'Isolated excluded test',1000,1000,1000,0,'KES','paid',true,'daraja','test',false,0,'platform_wallet',at_time),
       (wedding,'Isolated excluded direct',1000,1000,1000,0,'KES','paid',true,'paystack','live',false,0,'paystack_direct',at_time);
-  if public.simple_payout_available(wedding)<>18000 then raise exception 'Excluded money credited'; end if;
+  if public.simple_payout_available(wedding)<>19200 then raise exception 'Excluded money credited'; end if;
   -- Nondefault fee snapshots, policy edits, and shared request bounds.
   contribution:=extensions.gen_random_uuid();
   update public.platform_policies set contribution_fee_basis_points=667,contribution_fixed_fee_minor=23,
@@ -97,7 +97,7 @@ begin
     raise exception 'Above maximum accepted';
   exception when raise_exception then if sqlerrm<>'Payout amount outside configured minimum or maximum.' then raise; end if; end;
   if (public.simple_payout_status(wedding)->>'min_payout_minor')::bigint<>4321
-    or public.simple_payout_available(wedding)<>18000 then raise exception 'Policy display or test-money exclusion inconsistent'; end if;
+    or public.simple_payout_available(wedding)<>19200 then raise exception 'Policy display or test-money exclusion inconsistent'; end if;
   set constraints all immediate;
   alter table public.contributions enable trigger guard_payment_environment;
   alter table public.contributions enable trigger guard_live_payment_context;

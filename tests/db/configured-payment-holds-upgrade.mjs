@@ -14,7 +14,22 @@ create temporary table hold_core as select oid,proacl::text grants from pg_proc
 do $$ declare t text; begin for t in select tablename from pg_tables where schemaname='public' loop
   execute format('insert into hold_before select %L,to_jsonb(x) from public.%I x',t,t);
 end loop; end $$;
-begin; ${migration} rollback;
+do $$ declare definition text; crlf_pattern text; begin
+  if (select encode(extensions.digest(replace(prosrc,chr(13),''),'sha256'),'hex') from pg_proc
+    where oid='public.record_verified_payment(text,text,uuid,bigint,text,text,bigint,timestamptz)'::regprocedure)
+    <>'e473cfbb2114df2fc5f679ccc65f5141b74f10d38301d73bc84b6e4036906290' then
+    raise exception 'Populated predecessor differs from inspected deployed confirmation source'; end if;
+  definition:=replace(pg_get_functiondef('public.record_verified_payment(text,text,uuid,bigint,text,text,bigint,timestamptz)'::regprocedure),chr(13),'');
+  crlf_pattern:='select greatest(payout_hold_days, case when p_provider in (''paystack'', ''daraja'') then 3 else 0 end)'||chr(13)||chr(10)||
+    '    into hold_days from public.platform_policies where id;';
+  begin
+    if position(crlf_pattern in definition)=0 then raise exception 'Unexpected verified-payment hold predecessor'; end if;
+    raise exception 'Mixed-line-ending predecessor did not reproduce';
+  exception when raise_exception then
+    if sqlerrm<>'Unexpected verified-payment hold predecessor' or sqlstate<>'P0001' then raise; end if;
+  end;
+end $$;
+begin; ${migration.replace(/\r?\n/g,"\r\n")} rollback;
 do $$ begin if to_regprocedure('public.simple_payout_balance_details(uuid)') is not null then
   raise exception 'Rollback failed'; end if; end $$;
 begin; ${migration}

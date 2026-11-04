@@ -842,14 +842,18 @@ export default async function handler(req, res) {
       }
       if (action === "simple-payout-request") {
         if (!methodOnly(req, res, "POST")) return;
-        if (Object.keys(body).some(k => !["key", "amountMinor", "partner", "confirmed", "weddingId"].includes(k)) ||
+        if (Object.keys(body).some(k => !["key", "amountMinor", "partner", "confirmed", "weddingId", "processingFeeMinor", "policyRevision"].includes(k)) ||
           !UUID.test(String(body.key || "")) || !Number.isSafeInteger(body.amountMinor) || body.amountMinor<=0 ||
+          ((body.processingFeeMinor !== undefined || body.policyRevision !== undefined) &&
+            (!Number.isSafeInteger(body.processingFeeMinor) || body.processingFeeMinor<0 ||
+             !Number.isSafeInteger(body.policyRevision) || body.policyRevision<0)) ||
           ![1, 2].includes(body.partner) || body.confirmed!==true) {
           return sendJson(res, 400, { error: "Confirm a valid amount and one existing partner recipient. No bank details or notes are accepted." });
         }
         const id = await supabaseRequest("/rest/v1/rpc/simple_payout_submit", {
           ...opts, method: "POST", body: { p_key: body.key, p_wedding: weddingId, p_amount: body.amountMinor,
-            p_partner: body.partner, p_confirmed: true }
+            p_partner: body.partner, p_confirmed: true,
+            ...(body.processingFeeMinor === undefined ? {} : { p_processing_fee: body.processingFeeMinor, p_policy_revision: body.policyRevision }) }
         });
         return sendJson(res, 201, { payoutId: id, recorded: true });
       }
@@ -881,7 +885,10 @@ export default async function handler(req, res) {
           fee_pending_minor: simple.fee_pending_minor, time_held_minor: simple.time_held_minor,
           obligations_minor: simple.obligations_minor, payout_committed_minor: simple.payout_committed_minor,
           next_time_release_at: simple.next_time_release_at, configured_hold_days: simple.configured_hold_days,
-          min_payout_minor: simple.min_payout_minor, deficit_recorded: simple.deficit_recorded
+          min_payout_minor: simple.min_payout_minor, max_payout_minor: simple.max_payout_minor,
+          withdrawal_processing_fee_minor: simple.withdrawal_processing_fee_minor,
+          policy_revision: simple.policy_revision, provider_costs_company_overhead: simple.provider_costs_company_overhead,
+          deficit_recorded: simple.deficit_recorded
         });
       }
       if (action === "withdrawals") {

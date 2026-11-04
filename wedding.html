@@ -500,11 +500,11 @@
           <span id="balance-display">$0.00</span>
         </p>
         <p class="fine" style="margin: 0.6rem 0 0;">Time-held (not settlement proof): <strong id="settling-display">$0.00</strong>
-          &middot; Awaiting actual payment fees: <strong id="held-display">$0.00</strong></p>
+          &middot; Customer withdrawal processing fee: <strong id="held-display">$0.00</strong></p>
         <p id="payout-availability-detail" class="fine">Authoritative fees, time holds, obligations and payout commitments are being checked.</p>
         <p id="manual-balance-detail" class="fine">Statement backing, reservations, reconciled spending and unknown funds are being checked. Estimates are not spendable.</p>
         <p class="fine" style="margin: 0.75rem 0 0; color: #666;">
-          💡 Amounts exclude pending or failed payments. Refunds, open disputes and unconfirmed payment fees reduce available funds until they are resolved. Transfer holds also apply.
+          💡 Amounts exclude pending or failed payments. True couple refunds, disputes, expenses, stored time holds and payout commitments reduce availability. Provider costs are company overhead, not a deduction or unknown-fee hold on your balance.
         </p>
       </div>
 
@@ -2435,7 +2435,7 @@
         if (balRes.ok) {
           $("balance-display").textContent = WS.money(balData.available_minor || 0, balData.currency);
           $("settling-display").textContent = WS.money(balData.time_held_minor ?? 0, balData.currency);
-          $("held-display").textContent = WS.money(balData.fee_pending_minor ?? 0, balData.currency);
+          $("held-display").textContent = WS.money(balData.withdrawal_processing_fee_minor ?? 0, balData.currency);
           const availability = $("payout-availability-detail");
           if (availability) {
             const simple = await import("./simple-payouts.js");

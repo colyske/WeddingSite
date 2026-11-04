@@ -412,7 +412,9 @@
         ${extendedPolicy ? `${f("p-fixed-fee", "Optional fixed commission", p.contribution_fixed_fee_minor, "Wallet payments apply this only in the policy currency. Live Paystack requires a USD base and converts it at immutable quoted FX.")}<label for="p-fixed-currency">Fixed commission currency</label><input id="p-fixed-currency" type="text" minlength="3" maxlength="3" pattern="[A-Za-z]{3}" value="${esc(p.contribution_fixed_fee_currency || "USD")}" required><span class="fine">Live Paystack holds a nonzero non-USD fixed-fee policy; historical payments and other providers are not converted or repriced.</span>` : '<p class="fine">Fixed commission and settlement-hold controls will appear after the financial policy migration is validated and applied.</p>'}
         ${f("p-max", "Max single contribution", p.max_contribution_minor, "Safety cap per payment.")}
         ${f("p-max-payout", "Maximum withdrawal", p.max_payout_minor, "Per-request limit; available balance and holds are checked separately.")}
-        ${extendedPolicy ? `${f("p-min-payout", "Minimum withdrawal", p.min_payout_minor, "Minimum amount per payout request; available funds and other holds are checked separately.")}${g("p-hold-days", "Platform payment hold (days)", p.payout_hold_days, "For new confirmed payments only. 0 means no platform time delay. Existing stored dates stay unchanged; verified fees, other holds and portal liquidity still matter. This is not provider settlement proof.")}` : ""}
+        ${extendedPolicy ? `${f("p-min-payout", "Minimum withdrawal received", p.min_payout_minor, "Below-minimum amounts are allowed only when the received amount plus customer processing fee drains the full remaining balance.")}${g("p-hold-days", "Platform payment hold (days)", p.payout_hold_days, "For new confirmed payments only. 0 means no platform time delay. Existing stored dates stay unchanged; true couple obligations and portal liquidity still matter. Provider costs are company overhead, not couple deductions.")}` : ""}
+        ${Object.hasOwn(p,"withdrawal_processing_fee_minor") ? f("p-withdrawal-fee","Customer withdrawal processing fee (KES)",p.withdrawal_processing_fee_minor,
+          "Flat customer processing revenue per new simple KES withdrawal, fixed and reserved at couple confirmation. 0 means no customer charge. Provider costs are separate company overhead and may remain unknown. Existing requests are never repriced.") : ""}
         <button type="submit"${owner ? "" : " disabled"}>${owner ? "Save settings" : "Owner access required"}</button></fieldset></form>
         <p class="fine">Only the protected Owner can change platform fee and payout policies. SuperAdmins can view these settings; regular Admins cannot access them. Transaction eligibility and fee calculation are enforced server-side.</p>
         ${extendedPolicy ? `<details><summary>Recent policy versions (${history.length})</summary>${history.length ? history.map((h) => `<article class="policy-version"><strong>${date(h.changed_at)}</strong><pre>${esc(JSON.stringify({ old: h.old_values, new: h.new_values }, null, 2))}</pre></article>`).join("") : '<p class="fine">No policy changes have been recorded yet.</p>'}</details>` : ""}`;
@@ -509,7 +511,7 @@
             <button type="submit">Resolve publication entitlement</button></form>` : ""}</article>`).join("")}
         </section>`);
       el.insertAdjacentHTML("beforeend", `<form id="refund-policy-form"><h3>Refund fee allocation</h3>
-        <p class="fine">This applies to new payments only. “Couple” assigns the full provider-confirmed refund to the wedding balance. “Platform” reimburses the couple for the known original platform and provider fees proportionally; unknown provider fees remain held. “Manual review” is the safest default and keeps refund amounts unavailable until an Admin records an allocation.</p>
+        <p class="fine">This applies to new payments only; historical allocations are never rewritten. “Couple” assigns the provider-confirmed refund to the wedding balance. “Platform” uses the existing proportional fee-reimbursement allocation; missing refund evidence may require review. “Manual review” keeps actual refund obligations held until an allocation is recorded. Normal company provider costs never reduce simple payout entitlement.</p>
         <label for="refund-allocation">Default allocation</label><select id="refund-allocation"${owner ? "" : " disabled"}>
           ${[["manual_review", "Manual review (recommended)"], ["couple", "Couple absorbs the full refund"], ["platform", "Platform absorbs known fees"]]
             .map(([value, label]) => `<option value="${value}"${refundAllocation === value ? " selected" : ""}>${label}</option>`).join("")}
@@ -531,7 +533,6 @@
       if (workspace) workspace.requestDetails = manual.requests || [];
       cache.manualWorkspace = workspace;
       el.innerHTML = `<h2>Payouts / withdrawals</h2><section id="simple-payout-admin"></section>
-        ${role === "owner" ? '<section id="owner-payment-fees"></section>' : ""}
         <details id="advanced-payout-history"><summary>Older controlled payouts and historical evidence (advanced)</summary>
         <section id="manual-payout-control"><h3>Controlled manual external payouts: ${manual.enabled ? "enabled" : "OFF"}</h3>
           <p>This manual control never changes automatic B2C policy or sends money. Code readiness does not authorize use of a funded merchant rail. Operators transfer only outside this site in the official authorized portal, after a durable execution claim. Never resend an uncertain transfer.</p>
@@ -565,10 +566,6 @@
       const simple = await import("./simple-payouts.js");
       try { await simple.mountAdmin(el.querySelector("#simple-payout-admin"), { api: WS.api, money: WS.money, esc, role }); }
       catch { el.querySelector("#simple-payout-admin").textContent = "Simple payout service unavailable. Refresh before making any transfer; old history remains available below."; }
-      if (role === "owner") {
-        try { await simple.mountPaymentFees(el.querySelector("#owner-payment-fees"), { api: WS.api, money: WS.money, esc }); }
-        catch { el.querySelector("#owner-payment-fees").textContent = "Payment fee reconciliation unavailable. Refresh later; do not assume an unknown fee is zero."; }
-      }
     },
     async b2c(el) {
       await window.B2CBackoffice.mount(el, role === "owner");
@@ -871,7 +868,8 @@
           max_contribution_minor: mn("p-max"),
           min_payout_minor: mn("p-min-payout"),
           max_payout_minor: mn("p-max-payout"),
-          payout_hold_days: n("p-hold-days")
+          payout_hold_days: n("p-hold-days"),
+          withdrawal_processing_fee_minor: mn("p-withdrawal-fee")
         };
         for (const k of Object.keys(policies)) if (policies[k] === undefined || Number.isNaN(policies[k])) delete policies[k];
         try { await post("policies-save", { policies }); toast("Settings saved."); } catch (err) { toast(err.message, true); }

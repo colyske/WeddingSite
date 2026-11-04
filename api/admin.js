@@ -61,7 +61,6 @@ const GET_ACTIONS = {
   "manual-payouts": async t => rpc("manual_payout_overview", t),
   "manual-payout-workspace": async t => rpc("manual_payout_workspace", t),
   "manual-payout-simple": async t => rpc("simple_payout_workspace", t),
-  "manual-payout-fees": async t => rpc("owner_payment_fee_workspace", t),
   "referral-policy": async t => ({ policy: await rpc("referral_admin_policy", t) }),
   "referral-history": async t => ({ history: await rpc("referral_admin_history", t) }),
   "referral-ledger": async (t, q) => {
@@ -111,11 +110,10 @@ const text = value => typeof value === "string" ? value.trim() : "";
 const ROLES = new Set(["client", "admin", "superadmin"]);
 const PAYOUT_STATUSES = new Set(["approved", "sent", "cancelled"]);
 const LEADERSHIP_ACTIONS = new Set(["overview", "ledger", "payouts", "payout-status", "manual-payouts", "audit", "policies", "refund-policy", "payment-controls", "policy-history", "set-role", "payment-controls-save", "paystack-settlement", "paystack-publication-adjustments"]);
-const OWNER_ACTIONS = new Set(["manual-payout-fees", "manual-payout-fee-attestation", "policies-save", "refund-policy-save", "default-currency", "default-currency-save", "daraja-readiness", "daraja-approval", "paystack-readiness", "paystack-policy", "paystack-settlement-mode", "paystack-destination", "paystack-publication-resolution"]);
+const OWNER_ACTIONS = new Set(["policies-save", "refund-policy-save", "default-currency", "default-currency-save", "daraja-readiness", "daraja-approval", "paystack-readiness", "paystack-policy", "paystack-settlement-mode", "paystack-destination", "paystack-publication-resolution"]);
 
 function safeMessage(error) {
   const m = String(error?.message || "");
-  if (/PAYMENT_FEE:/.test(m)) return [409, m.split("PAYMENT_FEE:")[1].trim().slice(0, 400)];
   if (/MANUAL_PAYOUT_BLOCKED:/.test(m)) return [409, "Manual admission is OFF or not ready. Inspect reviewed policy and evidence; legacy Mark sent is unavailable."];
   if (/MANUAL_POLICY_(BLOCKED|CONFLICT):/.test(m)) return [409, "Manual policy is incomplete, stale or outside reviewed scope. Refresh readiness; no approval or execution was recorded."];
   if (/MANUAL_INTENT_/.test(m)) return [409, "The couple request changed or was already reviewed. Refresh the queue; no new payout was created."];
