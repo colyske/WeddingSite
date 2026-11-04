@@ -480,6 +480,8 @@
     <!-- Withdrawals / Payouts -->
     <div id="withdrawals-section" class="card" hidden>
       <h2>💰 Payouts & Withdrawals</h2>
+      <section id="simple-payout-couple" aria-live="polite">Loading payout balance and requests...</section>
+      <details id="old-payout-history"><summary>Older payout requests and accounting history</summary>
       <p class="notice" id="manual-payout-status">Manual admission status is being checked. Manual requests are staff-controlled and require separately reviewed operational readiness. A request is not a payment: review, an external execution claim, a unique receipt and statement reconciliation are required. Staff need two distinct authorized actors; the protected Owner may explicitly use audited solo manual mode. Uncertain transfers stay held; payment is never instant. Test payments and direct-settled funds cannot be withdrawn here.</p>
       <p class="notice" id="payout-kyc-notice" role="status">Add both partners&rsquo; private identity details before requesting a payout. <a href="#kyc-section">Complete identity details</a>. Publishing is not blocked.</p>
       
@@ -554,6 +556,7 @@
         </table>
         <p id="no-withdrawals" class="fine">No withdrawal requests yet.</p>
       </div>
+      </details>
     </div>
     </details>
   </div>
@@ -2418,6 +2421,12 @@
 
     // Load withdrawals
     async function loadWithdrawals() {
+      try {
+        const simple = await import("./simple-payouts.js");
+        await simple.mountCouple($("simple-payout-couple"), { weddingId, api: WS.api, money: WS.money, esc: WS.esc });
+      } catch {
+        $("simple-payout-couple").textContent = "Payout balance unavailable. Refresh before requesting; do not assume a payment was made.";
+      }
       try {
         // Load balance
         const balRes = await WS.api(`/api/weddings?action=balance&weddingId=${encodeURIComponent(weddingId)}`);

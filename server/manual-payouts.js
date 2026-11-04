@@ -18,6 +18,12 @@ const policyFields = {
 const policyChanges = v => v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0 &&
   Object.entries(v).every(([key, value]) => Object.hasOwn(policyFields, key) && policyFields[key](value));
 const specs = {
+  "simple-action": ["simple_payout_action", {
+    id: uuid, key: uuid, action: v => ["hold", "reviewed", "processing", "paid", "cancelled"].includes(v),
+    reason: v => v === null || ["recipient_check", "funds_review", "operator_unavailable", "outcome_uncertain", "other_review"].includes(v),
+    fee: v => v === null || fee(v), reference: v => v === null || typeof v === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/.test(v),
+    solo: v => typeof v === "boolean", recipient_confirmed: v => typeof v === "boolean"
+  }],
   "shared-account": ["manual_payout_register_shared_account", { account: uuid, currency, evidence: uuid }],
   "attribute-settlement": ["manual_payout_attribute_settlement", {
     contribution: uuid, custody: uuid, line: uuid, settled: amount, at: timestamp, evidence: uuid
@@ -93,12 +99,21 @@ export function manualPayoutCommand(action, body, role) {
   if (body.owner_solo === true && role !== "owner") {
     return { status: 403, error: "Only the protected Owner may explicitly select solo manual mode." };
   }
+  if (action === "simple-action") {
+    if (body.solo && role !== "owner") return { status: 403, error: "Only the protected Owner may choose solo processing." };
+    if ((body.action === "hold" ? body.reason === null : body.reason !== null) ||
+      (body.action === "processing" ? body.fee === null || !body.recipient_confirmed : body.fee !== null || body.solo) ||
+      (body.action === "paid" ? body.reference === null : body.reference !== null) ||
+      (!["reviewed", "processing"].includes(body.action) && body.recipient_confirmed)) {
+      return { status: 400, error: "Confirm only the fields for this payout action." };
+    }
+  }
   if (action === "review-intent" && (body.decision === "created" ?
     !uuid(body.key) || !uuid(body.custody) || !uuid(body.recipient) || !fee(body.fee) :
     body.key !== null || body.custody !== null || body.recipient !== null || body.fee !== null || body.owner_solo)) {
     return { status: 400, error: "Create requires explicit payout settings; decline accepts none." };
   }
   const args = Object.fromEntries(Object.keys(spec[1]).filter(key => body[key] !== undefined).map(key => [`p_${key}`, body[key]]));
-  if (["policy", "review-intent"].includes(action)) args.p_confirmed = true;
+  if (["policy", "review-intent", "simple-action"].includes(action)) args.p_confirmed = true;
   return { rpc: spec[0], args };
 }

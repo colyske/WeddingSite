@@ -56,6 +56,8 @@ jobs:
         run: node tests/db/manual-payout-workspace-upgrade.mjs
       - name: Commit manual shared-account attribution without converting history or changing B2C
         run: node tests/db/manual-payout-shared-upgrade.mjs
+      - name: Commit simple operator reporting on populated history without activating old gates
+        run: node tests/db/simple-payout-upgrade.mjs
       - name: Apply all migrations to a fresh database
         run: supabase db reset --local --no-seed
       - name: Lint the migrated schema
@@ -108,10 +110,18 @@ jobs:
         run: node tests/db/manual-payout-workspace.mjs
       - name: Test manual shared Paybill attribution and transaction-specific verification
         run: node tests/db/manual-payout-shared.mjs
+      - name: Test simple offline operator reporting with rollback
+        run: node tests/db/simple-payouts.mjs
       - name: Race real manual policy, requests, claims and deactivation
         env:
           MANUAL_PAYOUT_TEST_DB_CONTAINER: supabase_db_weddingsite
         run: node tests/db/manual-payout-readiness-concurrency.mjs
+      - name: Reset isolated database before simple payout concurrency
+        run: supabase db reset --local --no-seed
+      - name: Race simple offline requests, claims, fees, actors and transaction IDs
+        env:
+          MANUAL_PAYOUT_TEST_DB_CONTAINER: supabase_db_weddingsite
+        run: node tests/db/simple-payout-concurrency.mjs
       - name: Stop local Supabase
         if: always()
         run: supabase stop --no-backup
