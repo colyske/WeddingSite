@@ -26,7 +26,7 @@ end $$;
 alter table public.contributions disable trigger guard_payment_environment;
 alter table public.contributions disable trigger guard_live_payment_context;
 alter table public.contributions disable trigger guard_paystack_context;
-do $$ declare w uuid; known uuid; held uuid; p uuid; key uuid; revision bigint; available bigint; fingerprint text; source uuid;
+do $$ declare w uuid; known uuid; held uuid; p uuid; request_key uuid; revision bigint; available bigint; fingerprint text; source uuid;
 begin
   perform pg_temp.actor('maker');
   perform pg_temp.reject('select public.admin_save_policies(''{"withdrawal_processing_fee_minor":100}'')','protected Owner');
@@ -45,9 +45,9 @@ begin
   perform public.simple_payout_action(p,extensions.gen_random_uuid(),'processing',null,null,null,true,true,true);
   if (select fee_minor from public.simple_payout_claims where payout_id=p) is not null
     or (select processing_fee_minor from public.simple_payout_requests where id=p)<>100 then raise exception 'Provider cost faked or customer fee repriced'; end if;
-  key:=extensions.gen_random_uuid();
-  perform public.simple_payout_action(p,key,'paid',null,null,'CUSTOMER-FEE1',false,false,true);
-  perform public.simple_payout_action(p,key,'paid',null,null,'CUSTOMER-FEE1',false,false,true);
+  request_key:=extensions.gen_random_uuid();
+  perform public.simple_payout_action(p,request_key,'paid',null,null,'CUSTOMER-FEE1',false,false,true);
+  perform public.simple_payout_action(p,request_key,'paid',null,null,'CUSTOMER-FEE1',false,false,true);
   if public.simple_payout_available(w)<>0 then raise exception 'Paid/replay double charged'; end if;
   if (public.simple_payout_balance_details(w)->>'withdrawal_processing_revenue_minor')::bigint<>100 or
     (public.simple_payout_balance_details(w)->>'withdrawal_processing_reserved_minor')::bigint<>0 then
@@ -58,7 +58,7 @@ begin
   set constraints all immediate;
   if public.simple_payout_balance_raw(w)<>-100 or not exists(select 1 from public.simple_payout_deficits where wedding_id=w)
     or public.simple_payout_state(p)<>'paid' then raise exception 'Actual refund erased or Paid claim released'; end if;
-  perform public.simple_payout_action(p,key,'paid',null,null,'CUSTOMER-FEE1',false,false,true);
+  perform public.simple_payout_action(p,request_key,'paid',null,null,'CUSTOMER-FEE1',false,false,true);
   perform public.admin_save_policies('{"withdrawal_processing_fee_minor":100,"min_payout_minor":1000}');
   w:=pg_temp.withdrawal_wedding(1000);
   perform pg_temp.reject(format('select pg_temp.withdrawal(%L,899)',w),'drain the full');
@@ -81,14 +81,14 @@ begin
   if public.simple_payout_available(w)<>10000 or public.simple_payout_available(known)<>10000 or public.simple_payout_available(held)<>0 then
     raise exception 'Known/unknown provider cost changed entitlement or bypassed time hold'; end if;
   select id,encode(extensions.digest(to_jsonb(c)::text,'sha256'),'hex') into source,fingerprint from public.contributions c where wedding_id=w;
-  key:=extensions.gen_random_uuid();
+  request_key:=extensions.gen_random_uuid();
   select withdrawal_policy_revision into revision from public.platform_policies where id=true;
-  p:=public.simple_payout_submit(key,w,1000,1,true,100,revision);
-  perform pg_temp.reject(format('select public.simple_payout_submit(%L,%L,1000,1,true)',key,w),'Request retry changed');
+  p:=public.simple_payout_submit(request_key,w,1000,1,true,100,revision);
+  perform pg_temp.reject(format('select public.simple_payout_submit(%L,%L,1000,1,true)',request_key,w),'Request retry changed');
   perform pg_temp.actor('owner');
   perform public.admin_save_policies('{"min_payout_minor":2000}'); -- Same transaction and fee: revision still changes.
   perform pg_temp.actor('client');
-  if p is distinct from public.simple_payout_submit(key,w,1000,1,true,100,revision) then raise exception 'Replay repriced an existing request'; end if;
+  if p is distinct from public.simple_payout_submit(request_key,w,1000,1,true,100,revision) then raise exception 'Replay repriced an existing request'; end if;
   perform pg_temp.reject(format('select public.simple_payout_submit(extensions.gen_random_uuid(),%L,2000,1,true,100,%s)',w,revision),'quote changed');
   if fingerprint is distinct from (select encode(extensions.digest(to_jsonb(c)::text,'sha256'),'hex') from public.contributions c where id=source) then
     raise exception 'Fee policy mutated actual provider costs/payment history'; end if;
