@@ -24,7 +24,7 @@ const actor = id => `set local role authenticated; select set_config('request.jw
   select set_config('request.jwt.claim.role','authenticated',true);`;
 const run = (id, expr) => sql(`begin; set local statement_timeout='20s'; ${actor(id)} select ${expr}; commit;`);
 const uuid = text => text.split("\n").find(x => /^[0-9a-f-]{36}$/.test(x) && !Object.values(ids).includes(x));
-const request = (key = randomUUID(), amount = 1000) => `public.simple_payout_submit('${key}','${ids.wedding}',${amount},1,true)`;
+const request = (key = randomUUID(), amount = 1000, wedding = ids.wedding) => `public.simple_payout_submit('${key}','${wedding}',${amount},1,true)`;
 const action = (id, state, key = randomUUID(), fee = null, reference = null, solo = true) => `public.simple_payout_action(
   '${id}','${key}','${state}',${state==="hold" ? "'outcome_uncertain'" : "null"},${fee},${reference ? `'${reference}'` : "null"},
   ${state==="processing" && solo},${["processing","reviewed"].includes(state)},true)`;
@@ -105,8 +105,27 @@ const paidKey = randomUUID();
 await Promise.all([run(ids.owner,action(feeId,"paid",paidKey,null,feeId)),run(ids.owner,action(feeId,"paid",paidKey,null,feeId))]);
 assert.equal(await sql(`select count(*) from public.simple_payout_receipts where payout_id='${feeId}';`),"1");
 const reported = [];
+const otherWedding = randomUUID(), otherContribution = randomUUID();
+await sql(`begin;
+  insert into public.weddings(id,client_owner_id,couple_names,currency,wedding_date)
+    values('${otherWedding}','${ids.client}','Second isolated wedding','KES',current_date+30);
+  insert into public.wedding_kyc select (jsonb_populate_record(null::public.wedding_kyc,
+    to_jsonb(k)||jsonb_build_object('wedding_id','${otherWedding}'))).*
+    from public.wedding_kyc k where wedding_id='${ids.wedding}';
+  alter table public.contributions disable trigger guard_payment_environment;
+  alter table public.contributions disable trigger guard_live_payment_context;
+  insert into public.contributions(id,wedding_id,stream_name,pledged_amount_minor,paid_amount_minor,
+    platform_fee_minor,net_paid_minor,currency,payment_status,verified_provider_payment,provider_fee_pending,
+    provider_fee_minor,payment_environment,provider_name,paid_at)
+    values('${otherContribution}','${otherWedding}','Second isolated net',20000,20000,0,20000,'KES',
+      'paid',true,false,0,'live','daraja',now()-interval '3 days');
+  set constraints all immediate;
+  alter table public.contributions enable trigger guard_payment_environment;
+  alter table public.contributions enable trigger guard_live_payment_context;
+commit;`);
 for(let i=0;i<2;i++){
-  const id=uuid(await run(ids.client,request())); await run(ids.owner,action(id,"processing",randomUUID(),0)); reported.push(id);
+  const id=uuid(await run(ids.client,request(randomUUID(),1000,i===0 ? ids.wedding : otherWedding)));
+  await run(ids.owner,action(id,"processing",randomUUID(),0)); reported.push(id);
 }
 const ref = randomUUID();
 const outcomes = await Promise.all(reported.map(id=>run(ids.owner,action(id,"paid",randomUUID(),null,ref))));
@@ -116,4 +135,4 @@ assert.equal(await sql("select count(*) from public.simple_payout_incidents;"),"
 const heldId=await sql(`select payout_id from public.simple_payout_incidents;`);
 await assert.rejects(run(ids.owner,action(heldId,"cancelled")),/already been claimed/);
 await sql(`do $$ begin if public.live_payouts_enabled() then raise exception 'B2C gate changed'; end if; end $$;`);
-console.log("Simple two-connection replay/overdraw/cancel-claim/fee-race/revoked-actor/single-claim/Paid-replay/duplicate-ID retained-hold tests passed.");
+console.log("Simple two-connection replay/overdraw/cancel-claim/fee/refund/dispute/revoked-actor-and-reviewer/single-claim/Paid-replay/cross-wedding duplicate-ID retained-hold tests passed.");
