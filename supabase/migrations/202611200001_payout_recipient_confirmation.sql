@@ -65,7 +65,7 @@ begin
     raise exception 'SIMPLE_PAYOUT: Wedding owner access required.'; end if;
   select * into prior from public.simple_payout_requests where request_key=p_key;
   if p_recipient_hash is null or p_recipient_hash is distinct from
-    case when prior.id is not null then prior.kyc_hash else public.simple_payout_kyc_hash(p_wedding) end then
+    (case when prior.id is not null then prior.kyc_hash else public.simple_payout_kyc_hash(p_wedding) end) then
     raise exception 'SIMPLE_PAYOUT: Recipient changed. Refresh and explicitly reconfirm the expected name and phone.'; end if;
   return public.simple_payout_submit(p_key,p_wedding,p_amount,p_partner,p_confirmed,p_processing_fee,p_policy_revision);
 end $$;
