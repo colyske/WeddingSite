@@ -22,7 +22,7 @@ async function json(api, url, body) {
   return data;
 }
 function history(rows, esc, money) {
-  return rows.length ? rows.map(r => `<article class="card" data-simple-id="${esc(r.id)}">
+  return rows.length ? rows.map(r => `<article class="card" style="overflow-wrap:anywhere;min-width:0" data-simple-id="${esc(r.id)}">
     <h4>${esc(money(r.amount_minor, r.currency))} · ${esc(labels[r.status] || "Review required")}</h4>
     <p>Partner ${esc(r.partner_slot)} · ${esc(new Date(r.requested_at).toLocaleDateString())}
       ${r.fee_minor !== null && r.fee_minor !== undefined ? ` · transfer fee ${esc(money(r.fee_minor, r.currency))}` : " · fee confirmed by the operator before Processing"}</p>
@@ -79,7 +79,7 @@ export async function mountCouple(el, { weddingId, api, money, esc }) {
       sessionStorage.removeItem(storage);
       pending = null;
       await mountCouple(el, { weddingId, api, money, esc });
-      el.querySelector("[data-simple-result]").textContent = "Payout requested. The amount is reserved; staff will Hold or start Processing.";
+      el.querySelector("[data-simple-result]").textContent = "Payout requested. Current status and reservations are shown below; retrying never creates a second request.";
     } catch (error) {
       if (pending && error.status >= 400 && error.status < 500) {
         sessionStorage.removeItem(storage);

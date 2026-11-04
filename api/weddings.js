@@ -851,7 +851,7 @@ export default async function handler(req, res) {
           ...opts, method: "POST", body: { p_key: body.key, p_wedding: weddingId, p_amount: body.amountMinor,
             p_partner: body.partner, p_confirmed: true }
         });
-        return sendJson(res, 201, { payoutId: id, reserved: true });
+        return sendJson(res, 201, { payoutId: id, recorded: true });
       }
       if (action === "manual-payout-intent") {
         if (!methodOnly(req, res, "POST")) return;

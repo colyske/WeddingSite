@@ -47,7 +47,7 @@ test("simple operator API keeps integer units, immutable command fields, leaders
     const request = { key: id, amountMinor: 1234, partner: 1, confirmed: true };
     const response = await invoke(weddings, "simple-payout-request", request);
     assert.equal(response.statusCode, 201);
-    assert.deepEqual(response.data, { payoutId: id, reserved: true });
+    assert.deepEqual(response.data, { payoutId: id, recorded: true });
     assert.deepEqual(calls[0].body, { p_key: id, p_wedding: id, p_amount: 1234, p_partner: 1, p_confirmed: true });
     for (const patch of [{ amountMinor: 1.5 }, { amountMinor: "1234" }, { partner: 3 }, { confirmed: false },
       { bankAccount: "unsupported" }, { amountMinor: Number.MAX_SAFE_INTEGER+1 }]) {

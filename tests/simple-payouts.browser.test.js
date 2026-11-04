@@ -31,7 +31,7 @@ test("simple mobile couple retry and operator Processing reveals transaction ID 
       if (action === "simple-payout-request") {
         requests.push(route.request().postDataJSON());
         if (failRequest) { failRequest = false; return route.fulfill({ status: 503, json: { error: "Synthetic ambiguous request" } }); }
-        rows = [row()]; return route.fulfill({ json: { payoutId: id, reserved: true } });
+        rows = [row()]; return route.fulfill({ json: { payoutId: id, recorded: true } });
       }
       if (action === "manual-payout-simple") return route.fulfill({ json: { notice: "Operator reporting only",
         weddings: [{ id, label: "Fixture wedding", payouts: { currency: "KES", available_minor: 8766, requests: [row()] } }] } });
