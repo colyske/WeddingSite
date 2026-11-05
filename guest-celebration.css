@@ -132,7 +132,8 @@ body.guest-page #registry { background: color-mix(in srgb, var(--gold) 9%, var(-
 .guest-page .camp-bar { height: 18px; border-radius: 20px; margin: 1rem 0 .65rem; background: #e4e6d9; border: 1px solid #8a937f; overflow: hidden; }
 .guest-page .camp-bar > span { height: 100%; border-radius: inherit; background: repeating-linear-gradient(115deg, transparent 0 13px, #ffffff1a 13px 15px), linear-gradient(90deg, var(--green), var(--sage)); min-width: 0; position: relative; transition: none; }
 .guest-page .camp-bar > span::after { content: ""; position: absolute; inset: 3px 4px 3px auto; width: 10px; border-radius: 50%; background: #fff5; }
-.guest-page .fund-bar { display: flex; }
+.guest-page .fund-bar { display: flex; position: relative; height: 28px; margin: 1.4rem 0 1.1rem; border: 1px solid #a68d55; background: #e4e6d9; box-shadow: 0 0 0 3px #fffcf6, 0 0 0 4px #d8c99e, 0 5px 12px #69542c17, inset 0 2px 4px #493b2526; }
+.guest-page .fund-bar::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(180deg, #fff7, transparent 48%, #493b2514), linear-gradient(110deg, transparent 20%, #ffffff1a 42%, transparent 64%); box-shadow: inset 0 1px 1px #fff9, inset 0 -2px 3px #493b251a; pointer-events: none; }
 .guest-page .fund-bar > span { display: block; flex: none; border-radius: 0; }
 .guest-page .fund-bar > span::after { display: none; }
 .guest-page .camp-total { font-size: .85rem; color: #555b53; }

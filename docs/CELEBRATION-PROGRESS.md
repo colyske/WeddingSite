@@ -32,7 +32,9 @@ remain visible separately. The legend uses largest-remainder rounding to
 reconcile to 100.0%; segment widths always use unrounded proportions. Zero is
 entirely neutral. No explicit goal means the existing no-goal progress presentation.
 The user-selected fallback retains the existing polished progress-bar styling
-with five distinct source colours and matching legend swatches. Labels remain
+with five distinct source colours and matching legend swatches. Segments sit
+inside a generously sized pill track with a static ivory/gold frame and soft
+dimensional highlight; decorative layers never change segment widths. Labels remain
 outside the bar, with accessible textual totals and legend. No cake geometry,
 chart switcher, animation or new dependency is shipped. Existing `givingProgress`
 remains unchanged for other cards.

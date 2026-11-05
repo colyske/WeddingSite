@@ -199,6 +199,10 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
         return bounds.left >= card.left && bounds.right <= card.right && el.scrollWidth <= el.clientWidth;
       }), "the literal percentage and goal caption fit entirely inside the card");
       assert.doesNotMatch(await page.locator(".fund-note").innerText(), /sample|illustrative|demo/i);
+      assert.ok(await page.locator(".fund-bar").evaluate(bar =>
+        [...bar.children].every(segment => Math.abs(segment.getBoundingClientRect().width -
+          bar.clientWidth * parseFloat(segment.style.width) / 100) < .1)),
+      "decorative frame/highlight preserves exact segment widths, including small sources");
       if (width <= 768) {
         assert.ok(await page.locator(".sticky-nav").evaluate(nav => nav.getBoundingClientRect().height <= 90), "compact closed mobile header");
         const toggle = page.locator("#wedding-nav-toggle");
@@ -237,6 +241,22 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
       if (process.env.WEDDING_SCREENSHOTS) await page.locator(".campaign").screenshot({
         path: join(process.env.WEDDING_SCREENSHOTS, `fund-bar-zero-${width}.png`)
       });
+    }
+    for (const width of [320, 375, 1280]) {
+      await page.setViewportSize({ width, height: 2600 });
+      for (const goal of [50000000, 40000000]) {
+        await page.evaluate(goal => {
+          const progress = { currency: "KES", goal_minor: goal, raised_minor: 50000000, remaining_minor: 0,
+            sources: ["gifts", "songs", "registry", "sponsors", "vip"].map((key, i) =>
+              ({ key, amount_minor: [20000000, 5000000, 15000000, 5000000, 5000000][i] })) };
+          document.querySelector(".celebration-fund").outerHTML = WSCelebrationFund.render(progress, "KES", WS.money);
+        }, goal);
+        assert.equal(await page.locator(".fund-bar").getAttribute("aria-valuenow"), "100");
+        assert.match(await page.locator(".fund-bar").getAttribute("aria-valuetext"), goal === 40000000 ? /125%/ : /100%/);
+        assert.equal(await page.locator('.fund-bar [data-source="remaining"]').count(), 0);
+        assert.deepEqual(await page.locator(".fund-bar > span").evaluateAll(items => items.map(item => parseFloat(item.style.width))), [40, 10, 30, 10, 10]);
+        assert.equal(await page.locator(".fund-bar").evaluate(el => getComputedStyle(el, "::after").animationName), "none");
+      }
     }
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.locator(".wedding-skip").focus();
