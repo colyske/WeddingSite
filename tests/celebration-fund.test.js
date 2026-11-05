@@ -25,7 +25,7 @@ test("zero is a fully empty outline; exact and over goal use actual shares witho
   const zero = fixture([0, 0, 0, 0, 0]);
   assert.equal(model(zero, "KES").rows.at(-1).percent, 100);
   assert.doesNotMatch(render(zero, "KES", money), /data-source=/);
-  assert.match(render(zero, "KES", money), /first slice/);
+  assert.match(render(zero, "KES", money), /Ready for a little celebration/);
   for (const goal of [10000, 5000]) {
     const data = fixture([10000, 0, 0, 0, 0], goal);
     const m = model(data, "KES");
@@ -59,7 +59,9 @@ test("reject mixed currencies, malformed aggregates and overlapping or missing s
 test("accessible text carries totals, remaining, sources and unclipped completion without color alone", () => {
   const html = render(fixture([10, 20, 30, 40, 50], 100), "KES", money, true);
   assert.match(html, /role="progressbar".*aria-valuetext="150% of goal. Raised KES 1.50 toward KES 1.00. Remaining KES 0.00. Illustrative sample."/);
-  assert.match(html, /svg viewBox="0 0 320 290" aria-hidden="true"/);
+  assert.match(html, /svg viewBox="0 0 320 270" aria-hidden="true"/);
+  assert.match(html, /class="cake-top" transform="translate\(0 26\) scale\(1 .6\)"/);
+  assert.equal((html.match(/data-source=/g) || []).length, 5, "each honest circular sector is projected once, never extruded separately");
   for (const label of ["Gifts & fundraisers", "Song bids", "Registry gifts", "Sponsorship", "VIP", "Remaining"]) {
     assert.ok(html.includes(label));
   }

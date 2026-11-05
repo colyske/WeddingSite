@@ -30,7 +30,9 @@ angles show shares of the actual total, and the true total and completion
 remain visible separately. The legend uses largest-remainder rounding to
 reconcile to 100.0%; angles always use unrounded proportions. Zero is entirely
 empty. No explicit goal means the existing no-goal progress presentation.
-The SVG uses an undistorted circular top with shallow side layers; all labels
+The SVG computes true circular sectors, then projects the entire top together
+with one vertical perspective scale. Neutral cream side bands, piped frosting
+and an attached stand are decorative, not extra data. All labels
 are outside the plot, with accessible textual totals and legend. It has no
 animation or dependency. Existing `givingProgress` remains for other cards.
 
