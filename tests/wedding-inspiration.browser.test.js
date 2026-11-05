@@ -178,6 +178,7 @@ test("public style entry opens unpaid native customization; legacy catalogue red
     wedding.couple_names = "Our saved names";
     wedding.slug = "our-saved-address";
     await page.goto(`${base}/wedding.html?id=${wedding.id}#step=couple`);
+    await page.reload();
     await page.locator("#guide-heading-couple").waitFor();
     await page.locator("#couple-names").fill("Changed names");
     assert.equal(await page.locator("#wedding-slug").inputValue(), "our-saved-address", "existing named drafts are never renamed automatically");
