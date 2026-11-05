@@ -1605,7 +1605,8 @@ const payIntent = WSPaymentIntent.create({ name: slug });
       const key = `${id}:0`, wording = window.WSGuestPublicContent;
       if (wording && Object.hasOwn(wording, key)) {
         if (h.textContent !== wording[key]) h.textContent = wording[key];
-        h.hidden = !wording[key].trim();
+        const hidden = !wording[key].trim();
+        if (h.hidden !== hidden) h.hidden = hidden;
       } else if (h.innerHTML !== m[1]) h.innerHTML = m[1];
       s.dataset.label = m[0];
     });

@@ -109,7 +109,7 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       assert.equal(await frame.locator(".preview-edit:disabled").count(), 0, "editor controls remain actionable");
       if (process.env.INTERACTIVE_EVIDENCE_DIR) {
         await mkdir(process.env.INTERACTIVE_EVIDENCE_DIR, { recursive: true });
-        await frame.locator("#wedding-content").screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `prefilled-site-${viewport.width}.png`) });
+        await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `prefilled-site-${viewport.width}.png`), animations: "disabled", timeout: 60000 });
       }
       await frame.locator("#story .preview-edit").click();
       await page.locator('[data-page-content="story:0"]').fill("How we met");
@@ -142,6 +142,7 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
         await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `editor-${viewport.width}.png`) });
       }
       const color = page.locator("#color-inputs input[type=color]").first();
+      await page.locator('[data-page-content="details:0"]').fill("");
       await color.fill("#662244");
       await color.dispatchEvent("input");
       await page.locator("[data-guide-save]").click();
@@ -151,6 +152,7 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       await page.reload({ waitUntil: "domcontentloaded" });
       await frame.locator("#story h2").filter({ hasText: "How we met" }).waitFor();
       assert.match(await frame.locator("#story").innerText(), /Our own true story/);
+      assert.equal(await frame.locator("#details h2").isHidden(), true, "cleared optional heading stays removed after reload");
       assert.equal(await frame.locator(".lookbook-art").first().evaluate(element => getComputedStyle(element).fill), "rgb(102, 34, 68)");
       await page.keyboard.press("Escape");
       await frame.locator("#details .preview-edit").click();
