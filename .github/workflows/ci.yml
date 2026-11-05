@@ -164,15 +164,26 @@ jobs:
       - run: npm run check
       - run: npm run check:interactive
       - run: npm run check:referrals
-      - run: npm test
+      - name: Run tests and capture exact-head interactive and Celebration Fund evidence
         env:
           INTERACTIVE_EVIDENCE_DIR: ${{ runner.temp }}/interactive-evidence
+          WEDDING_SCREENSHOTS: ${{ runner.temp }}/celebration-fund-evidence
+        run: |
+          mkdir -p "$WEDDING_SCREENSHOTS"
+          npm test
       - name: Upload interactive desktop and mobile evidence
         uses: actions/upload-artifact@v4
         with:
           name: interactive-creation-evidence
           path: ${{ runner.temp }}/interactive-evidence
           if-no-files-found: error
+      - name: Upload exact-head Celebration Fund screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: celebration-fund-evidence
+          path: ${{ runner.temp }}/celebration-fund-evidence
+          if-no-files-found: warn
       - name: Capture exact-head starter mobile evidence
         if: github.event_name == 'push'
         env:

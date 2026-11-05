@@ -253,12 +253,21 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
             sources: ["gifts", "songs", "registry", "sponsors", "vip"].map((key, i) =>
               ({ key, amount_minor: [20000000, 5000000, 15000000, 5000000, 5000000][i] })) };
           document.querySelector(".celebration-fund").outerHTML = WSCelebrationFund.render(progress, "KES", WS.money);
+          document.querySelectorAll(".camp-ms li").forEach((li, i) => {
+            const reached = 20000000 >= [15000000, 30000000][i];
+            li.classList.toggle("done", reached);
+            li.querySelector("[aria-hidden]").textContent = reached ? "\u2611" : "\u2610";
+            li.querySelector(".sr-only").textContent = reached ? " (reached)" : " (not yet reached)";
+          });
         }, goal);
         assert.equal(await page.locator(".fund-bar").getAttribute("aria-valuenow"), "100");
         assert.match(await page.locator(".fund-bar").getAttribute("aria-valuetext"), goal === 40000000 ? /125%/ : /100%/);
         assert.equal(await page.locator('.fund-bar [data-source="remaining"]').count(), 0);
         assert.deepEqual(await page.locator(".fund-bar > span").evaluateAll(items => items.map(item => parseFloat(item.style.width))), [40, 10, 30, 10, 10]);
         assert.equal(await page.locator(".fund-bar").evaluate(el => getComputedStyle(el, "::after").animationName), "none");
+        if (process.env.WEDDING_SCREENSHOTS) await page.locator(".campaign").screenshot({
+          path: join(process.env.WEDDING_SCREENSHOTS, `fund-bar-${goal === 40000000 ? "over" : "full"}-${width}.png`)
+        });
       }
     }
     await page.setViewportSize({ width: 1280, height: 800 });
