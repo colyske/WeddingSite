@@ -20,7 +20,7 @@ as $$
       when 'sponsor' then 'sponsors'
       when 'sponsor_featured_bid' then 'sponsors'
       when 'vip' then 'vip'
-    end as source, public.displayable_contribution_amount(c.id) as amount
+    end as source, c.stream_id, public.displayable_contribution_amount(c.id) as amount
     from campaign p join public.contributions c on c.wedding_id = p.wedding_id and c.currency = p.currency
     where c.payment_status = 'paid' and c.verified_provider_payment
       and c.payment_environment = 'live' and c.action_completed_at is not null
@@ -38,6 +38,8 @@ as $$
   select jsonb_build_object(
     'campaign_id', p.id, 'currency', p.currency, 'goal_minor', p.goal_minor,
     'raised_minor', t.raised, 'remaining_minor', greatest(0, p.goal_minor - t.raised),
+    'campaign_raised_minor', (select coalesce(sum(amount), 0)::bigint from payments
+      where source = 'gifts' and stream_id = p.id),
     'completion_percent', case when p.goal_minor > 0 then round(100.0 * t.raised / p.goal_minor, 1) else 0 end,
     'sources', t.sources
   ) from campaign p cross join totals t;

@@ -6,7 +6,7 @@ test("fundraising API uses the authoritative aggregate for only its parent and m
   const saved = Object.fromEntries(["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"].map(key => [key, process.env[key]]));
   Object.assign(process.env, { SUPABASE_URL: "https://cake.test", SUPABASE_ANON_KEY: "test", SUPABASE_SERVICE_ROLE_KEY: "test" });
   let disabled = false, fail = false;
-  const aggregate = { campaign_id: "main", currency: "KES", goal_minor: 10000, raised_minor: 6000, remaining_minor: 4000, sources: [] };
+  const aggregate = { campaign_id: "main", currency: "KES", goal_minor: 50000000, raised_minor: 18000000, campaign_raised_minor: 9525000, remaining_minor: 32000000, sources: [] };
   const calls = [];
   t.mock.method(globalThis, "fetch", async url => {
     const u = new URL(url);
@@ -17,7 +17,7 @@ test("fundraising API uses the authoritative aggregate for only its parent and m
     if (name === "get_public_wedding") data = [{ id: "cake-wedding" }];
     else if (name === "get_public_fundraising") data = { tiers: [], sponsors: [], vip: null };
     else if (name === "get_public_campaigns") data = [
-      { id: "main", raised_minor: 1000, milestones: [{ id: "one", target_minor: 5000, reached: false }, { id: "two", target_minor: 8000, reached: false }] },
+      { id: "main", raised_minor: 9525000, milestones: [{ id: "one", target_minor: 15000000, reached: false }, { id: "two", target_minor: 30000000, reached: false }] },
       { id: "another", raised_minor: 500, milestones: [] }
     ];
     else if (name === "get_public_sponsor_auction") data = { enabled: false };
@@ -41,11 +41,19 @@ test("fundraising API uses the authoritative aggregate for only its parent and m
     const res = await request();
     assert.equal(res.code, 200);
     assert.deepEqual(res.body.celebration, aggregate);
-    assert.equal(res.body.campaigns[0].raised_minor, 6000);
-    assert.equal(res.body.campaigns[0].milestones[0].reached, true);
+    assert.equal(res.body.campaigns[0].raised_minor, 18000000);
+    assert.equal(res.body.campaigns[0].milestones[0].reached, false, "other-source umbrella raised never attains a stream milestone");
     assert.equal(res.body.campaigns[0].milestones[1].reached, false);
     assert.equal(res.body.campaigns[1].raised_minor, 500);
     assert.ok(calls.includes("get_public_celebration_progress"));
+    aggregate.raised_minor = 50000000;
+    aggregate.campaign_raised_minor = 20000000;
+    aggregate.remaining_minor = 0;
+    const full = await request();
+    assert.equal(full.body.campaigns[0].raised_minor, 50000000);
+    assert.equal(full.body.campaigns[0].milestones[0].reached, true);
+    assert.equal(full.body.campaigns[0].milestones[1].reached, false, "full umbrella never marks300k Music reached when parent raised200k");
+    assert.equal(full.body.campaigns[1].raised_minor, 500);
     disabled = true;
     const hidden = await request();
     assert.deepEqual(hidden.body.campaigns, []);

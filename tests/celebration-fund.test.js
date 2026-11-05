@@ -77,4 +77,8 @@ test("read-only showcase source totals match campaign, registry, song bids, spon
   assert.equal(sources.songs, showcaseBids.reduce((n, row) => n + row.bid_amount_minor, 0));
   assert.equal(sources.sponsors, showcaseFundraising.sponsors.reduce((n, row) => n + row.amount_minor, 0));
   assert.equal(sources.vip, showcaseFundraising.vip.seats_sold * showcaseFundraising.vip.price_minor);
+  assert.ok(data.campaign_raised_minor <= sources.gifts);
+  for (const milestone of showcaseFundraising.campaigns[0].milestones) {
+    assert.equal(milestone.reached, data.campaign_raised_minor >= milestone.target_minor);
+  }
 });

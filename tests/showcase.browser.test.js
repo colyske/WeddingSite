@@ -70,6 +70,7 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     assert.match(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuetext"), /180,000.*500,000.*320,000.*Illustrative/);
     assert.equal(await page.locator(".cake-legend li").count(), 6);
     assert.equal(await page.locator(".fund-cake path[data-source]").count(), 5);
+    assert.equal(await page.locator(".camp-ms li.done").count(), 0, "source-aggregated raised does not attain stream-only milestones");
     assert.match(await page.locator(".cake-legend").innerText(), /Remaining[\s\S]*320,000[\s\S]*64.0%/);
     assert.equal(await page.locator(".cake-legend .cake-share").evaluateAll(items =>
       items.reduce((sum, item) => sum + Math.round(parseFloat(item.textContent) * 10), 0)), 1000);
@@ -178,9 +179,15 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
       assert.ok(new Set(metrics.surfaces).size >= 3, "sections are visually differentiated");
       assert.ok(await page.locator(".cake-legend li").evaluateAll(rows => rows.every(row => {
         const cells = [...row.children].map(cell => cell.getBoundingClientRect());
-        return cells.every((cell, i) => !i || cell.left >= cells[i - 1].right - 1) &&
+        return cells.every((cell, i) => !i || cell.top >= cells[i - 1].bottom - 1 || cell.left >= cells[i - 1].right - 1) &&
           row.scrollWidth <= row.clientWidth;
       })), "source labels, amounts and percentages never overlap, including mobile");
+      assert.ok(await page.locator(".cake-legend strong").evaluateAll(items => items.every(el => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const lines = [...range.getClientRects()];
+        return new Set(lines.map(rect => Math.round(rect.top))).size === 1;
+      })), "monetary values retain every digit on one line, including320px Remaining");
       assert.ok(await page.locator(".cake-heading .giving-percent").evaluate(el => {
         const bounds = el.getBoundingClientRect(), card = el.closest(".campaign").getBoundingClientRect();
         return bounds.left >= card.left && bounds.right <= card.right && el.scrollWidth <= el.clientWidth;
@@ -208,6 +215,24 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
       }
     }
     await page.emulateMedia({ reducedMotion: "reduce" });
+    for (const width of [320, 375]) {
+      await page.setViewportSize({ width, height: 2600 });
+      await page.evaluate(() => {
+        const zero = { currency: "KES", goal_minor: 50000000, raised_minor: 0, remaining_minor: 50000000,
+          sources: ["gifts", "songs", "registry", "sponsors", "vip"].map(key => ({ key, amount_minor: 0 })) };
+        document.querySelector(".celebration-fund").outerHTML = WSCelebrationFund.render(zero, "KES", WS.money);
+      });
+      assert.ok(await page.locator(".cake-legend li").evaluateAll(rows => rows.every(row => {
+        const amount = row.querySelector("strong"), percent = row.querySelector(".cake-share");
+        const a = amount.getBoundingClientRect(), p = percent.getBoundingClientRect();
+        return p.left - a.right >= 6 && getComputedStyle(amount).textAlign === "right" &&
+          getComputedStyle(percent).textAlign === "right" && row.scrollWidth <= row.clientWidth;
+      })), "zero-source money and percentage retain a visible grid gap at320/375");
+      if (process.env.WEDDING_SCREENSHOTS) await page.locator(".campaign").screenshot({
+        path: join(process.env.WEDDING_SCREENSHOTS, `cake-zero-${width}.png`)
+      });
+    }
+    await page.setViewportSize({ width: 1280, height: 800 });
     await page.locator(".wedding-skip").focus();
     await page.keyboard.press("Enter");
     assert.equal(await page.evaluate(() => document.activeElement.id), "wedding-content", "skip link transfers keyboard focus to main");

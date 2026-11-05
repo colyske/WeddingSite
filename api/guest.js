@@ -402,7 +402,7 @@ export default async function handler(req, res) {
         ...(result || { tiers: [], vip: null, sponsors: [] }),
         campaigns: features.giving === false ? [] : (campaigns || []).map(c => c.id !== celebration?.campaign_id ? c : {
           ...c, raised_minor: celebration.raised_minor,
-          milestones: (c.milestones || []).map(m => ({ ...m, reached: celebration.raised_minor >= m.target_minor }))
+          milestones: (c.milestones || []).map(m => ({ ...m, reached: celebration.campaign_raised_minor >= m.target_minor }))
         }),
         celebration: features.giving === false ? null : celebration,
         sponsorAuction: features.featured_sponsors === false ? { enabled: false } : sponsorAuction || { enabled: false }

@@ -4,8 +4,9 @@ The cake consumes `get_public_celebration_progress(slug)`, never a sum of the
 campaign, registry, leaderboard, sponsor or VIP display totals. The first enabled
 fundraising stream in the wedding's current currency (ordered by `sort_order`,
 `created_at`, then ID) supplies the explicit goal and unchanged contribution
-target. Its milestones use the same aggregate. Other campaign cards remain
-campaign-specific.
+target. Its milestones retain stream-scoped attainment: `campaign_raised_minor`
+counts only adjusted fundraiser payments to that exact parent stream, not the
+other-source umbrella total. Other campaign cards remain campaign-specific.
 
 Each contribution is counted once across the wedding: fundraiser payments
 (including milestone-attributed payments and other fundraisers), song bids,

@@ -54,6 +54,7 @@ declare payload jsonb := public.get_public_celebration_progress('cake-progress')
 begin
   if payload->>'campaign_id' <> '62000000-0000-4000-8000-000000000221'
     or (payload->>'raised_minor')::bigint <> 215000
+    or (payload->>'campaign_raised_minor')::bigint <> 10000
     or (payload->>'remaining_minor')::bigint <> 85000
     or (payload->>'completion_percent')::numeric <> 71.7
     or payload->>'currency' <> 'KES' then raise exception 'Authoritative aggregate/selection failed: %', payload; end if;
@@ -89,6 +90,8 @@ from (values
 do $$ begin
   if (public.get_public_celebration_progress('cake-progress')->>'raised_minor')::bigint <> 207700 then
     raise exception 'Refund/dispute/hold currency semantics differ from public contracts'; end if;
+  if (public.get_public_celebration_progress('cake-progress')->>'campaign_raised_minor')::bigint <> 7000 then
+    raise exception 'Milestone stream amount includes another fundraiser or another source'; end if;
 end $$;
 update public.payment_adjustments set status = case when adjustment_kind = 'dispute' then 'won' else 'failed' end,
   hold_minor = 0 where provider_adjustment_id in ('cake-adjustment-2','cake-adjustment-3','cake-adjustment-4','cake-adjustment-5');
