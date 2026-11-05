@@ -33,6 +33,35 @@
         mirror.textContent = notice.textContent;
       }).observe($("notice"), { attributes: true, childList: true, characterData: true, subtree: true });
       const status = $("interactive-state");
+      const pageContent = { ...(wedding.page_content || {}) };
+      let wordingSeeded = false;
+      const sectionSteps = {
+        welcome: "couple", story: "couple", details: "theme", venues: "venues", prewedding: "venues",
+        campaigns: "campaigns", registry: "giving", rsvp: "guests", bids: "giving", ledger: "extras",
+        "sponsor-tiers": "giving", "vip-section": "giving", sponsors: "giving", "info-section": "extras", guestbook: "extras"
+      };
+      for (const field of WSWeddingContent.fields) {
+        const group = document.createElement("label");
+        group.dataset.pageSection = field.section;
+        group.dataset.guideSegment = "page-wording";
+        group.append(document.createTextNode(`Page ${field.selector.includes("h2") ? "heading" : "wording"} (optional; clear to remove)`));
+        const input = document.createElement("textarea");
+        input.dataset.pageContent = field.key;
+        input.maxLength = 2000;
+        input.rows = 2;
+        input.value = pageContent[field.key] || "";
+        input.addEventListener("input", () => { pageContent[field.key] = input.value; });
+        group.append(input);
+        document.querySelector(`[data-guide-step="${sectionSteps[field.section]}"]`).append(group);
+      }
+      const review = document.createElement("label");
+      review.innerHTML = '<input type="checkbox" id="creation-content-reviewed"> I have replaced sample partner and venue details, chosen our own date and time zone, and reviewed the story, programme, guest guidance and offerings. No demo activity belongs to us.';
+      review.querySelector("input").checked = wedding.creation_content_reviewed === true;
+      document.querySelector('[data-guide-step="review"]').append(review);
+      window.WSInteractiveWedding.contentPatch = () => ({
+        pageContent, creationContentReviewed: review.querySelector("input").checked
+      });
+      guide.saved(true);
       let dataPromise;
       function refresh() {
         dataPromise = (async () => {
@@ -45,8 +74,9 @@
         const frame = surface.querySelector("iframe");
         frame.src = `/guest.html?preview=1&revision=${Date.now()}`;
       }
-      function open(step) {
+      function open(step, section) {
         if (!dialog.open) dialog.showModal();
+        dialog.querySelectorAll("[data-page-section]").forEach(group => { group.hidden = group.dataset.pageSection !== section; });
         dialog.querySelector("[data-close-warning]").hidden = true;
         const target = document.querySelector(`[data-guide-step="${step}"]`);
         guide.reveal(target);
@@ -61,8 +91,14 @@
       }
       window.WSInteractiveGuest = {
         data: () => dataPromise,
-        edit: step => {
-          if (["couple", "date", "money", "venues", "guests", "theme", "giving", "campaigns", "extras"].includes(step)) open(step);
+        edit: (step, section) => {
+          if (["couple", "date", "money", "venues", "guests", "theme", "giving", "campaigns", "extras"].includes(step)) open(step, section);
+        },
+        wording: defaults => {
+          for (const input of dialog.querySelectorAll("[data-page-content]")) {
+            if (!Object.hasOwn(pageContent, input.dataset.pageContent)) input.value = defaults[input.dataset.pageContent] || "";
+          }
+          if (!wordingSeeded) { guide.adoptSaved("page-wording"); wordingSeeded = true; }
         }
       };
       dialog.querySelector("[data-close-editor]").addEventListener("click", close);
@@ -89,6 +125,7 @@
           frame.contentWindow.WSTheme?.apply(palette);
         }
         const document = frame.contentDocument;
+        if (event.target.dataset.pageContent && document) WSWeddingContent.apply(document, pageContent);
         if (document?.getElementById("couple-names") && event.target.id === "couple-names") {
           document.getElementById("couple-names").textContent = event.target.value || "Wedding";
         }

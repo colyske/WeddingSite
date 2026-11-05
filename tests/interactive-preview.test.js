@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import weddings from "../api/weddings.js";
 import { interactivePreview, creationFundPreset, permanentFeatures } from "../server/interactive-preview.js";
 import { publicWeddingStyle } from "../server/wedding-style.js";
+import { interactiveStarter } from "../server/interactive-starter.js";
+import { showcase, showcaseFundraising, showcaseExtras } from "../server/showcase.js";
 
 const owner = "550e8400-e29b-41d4-a716-446655440000";
 const id = "550e8400-e29b-41d4-a716-446655440001";
@@ -55,6 +57,16 @@ test("interactive create uses the transactional initializer, stable key, blank d
     assert.equal(create.body.p_input.currency, "EUR");
     assert.equal(create.body.p_input.coupleNames, "");
     assert.deepEqual(create.body.p_input.starterSetup.features, permanentFeatures);
+    assert.equal(create.body.p_input.starterSetup.content.travel, showcaseExtras.travel);
+    assert.deepEqual(create.body.p_input.starterSetup.content.faq, showcaseExtras.faq);
+    assert.equal(create.body.p_input.starterSetup.registry[0].description, showcase.registry[0].description);
+    assert.equal(create.body.p_input.starterSetup.tiers[0].perks, showcaseFundraising.tiers[0].perks);
+    assert.equal(create.body.p_input.starterSetup.vip.description, showcaseFundraising.vip.description);
+    assert.equal(create.body.p_input.starterSetup.campaigns[0].purpose, showcaseFundraising.campaigns[0].purpose);
+    assert.equal(create.body.p_input.venues.length, showcase.venues.length);
+    assert.equal(create.body.p_input.venues.every(item => !item.eventDate && item.address.startsWith("Sample venue:")), true);
+    assert.equal(create.body.p_input.welcomeStory.includes("[Partner one]"), true);
+    assert.equal(create.body.p_input.weddingDate, null);
     assert.equal(calls.some(call => /collection|checkout|payment/.test(call.path)), false);
   } finally {
     globalThis.fetch = oldFetch;
@@ -62,6 +74,29 @@ test("interactive create uses the transactional initializer, stable key, blank d
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
   }
+});
+
+test("full fictional editorial placeholders exclude identities and activity; wording is plain-text allowlisted", async () => {
+  const style = await publicWeddingStyle("showcase-wedding");
+  const seed = interactiveStarter(globalThis.WSStarterSetup.normalize({ ...style.setup, reviewed: true }, "KES"));
+  const structure = globalThis.WSStarterSetup.structure(seed.setup);
+  const preview = interactivePreview({ interactive_creation: true, starter_structure: structure }, [{
+    id, name: "Saved goal", goal_minor: 10000,
+    milestones: [{ name: "First stage", target_minor: 5000, reached: true, private_note: "SECRET" }]
+  }]);
+  assert.equal(preview.fundraising.campaigns.length, 2, "priced and unpriced goal structures are both visible");
+  assert.equal(preview.fundraising.campaigns[0].milestones[0].reached, false);
+  assert.equal(preview.fundraising.campaigns[1].milestones[0].name, showcaseFundraising.campaigns[0].milestones[0].name);
+  assert.equal(preview.fundraising.draftVip.title, showcaseFundraising.vip.title);
+  assert.equal("seats_total" in preview.fundraising.draftVip, false);
+  assert.equal(preview.site.wedding.registry[0].amount_raised_minor, 0);
+  assert.deepEqual(preview.fundraising.sponsors, []);
+  assert.equal(JSON.stringify(preview).includes("SECRET"), false);
+  assert.equal(JSON.stringify(seed).includes("Azure Bloom Studio"), false);
+  assert.equal(JSON.stringify(seed).includes("contact_email"), false);
+  assert.deepEqual(globalThis.WSWeddingContent.normalize({ "story:0": "", "welcome:1": "Our next chapter" }),
+    { "story:0": "", "welcome:1": "Our next chapter" });
+  assert.throws(() => globalThis.WSWeddingContent.normalize({ private: "not allowed" }));
 });
 
 test("real preview handler requires authorization, owner filtering and read-only no-store projection", async () => {

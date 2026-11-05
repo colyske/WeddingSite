@@ -18,7 +18,7 @@ insert into supabase_migrations.schema_migrations(version,name,statements)
 commit;
 do $$ declare t text; changed boolean; projection text; begin
 for t in select distinct kind from interactive_before loop
-  projection := case when t='weddings' then 'to_jsonb(x)-''interactive_creation''' else 'to_jsonb(x)' end;
+  projection := case when t='weddings' then 'to_jsonb(x)-''interactive_creation''-''page_content''-''creation_content_reviewed''' else 'to_jsonb(x)' end;
   execute format('select exists((select payload from interactive_before where kind=%L except select %s from public.%I x)
     union all (select %s from public.%I x except select payload from interactive_before where kind=%L))',
     t,projection,t,projection,t,t) into changed;

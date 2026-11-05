@@ -138,6 +138,7 @@
       if (data.faq && data.faq.length) h += "<h3>Questions guests ask</h3>" + data.faq.map(function (f) { return "<details><summary>" + esc(f.q) + "</summary><p>" + esc(f.a) + "</p></details>"; }).join("");
       s.innerHTML = h;
       before.parentNode.insertBefore(s, before);
+      if (window.WSWeddingContent) WSWeddingContent.apply(document, wedding.page_content);
     }
     var g = $("guestbook");
     if (!g) {
@@ -150,6 +151,7 @@
       '<form id="wish-form"><label for="wish-name">Your name *</label><input id="wish-name" maxlength="80" required>' +
       '<label for="wish-text">Your wish *</label><textarea id="wish-text" rows="3" maxlength="500" required></textarea>' +
       '<button type="submit">Send wish</button></form><div id="wish-items">' + (wishes || '<p class="fine">Be the first to leave a wish.</p>') + "</div>";
+    if (window.WSWeddingContent) WSWeddingContent.apply(document, wedding.page_content);
     $("wish-form").addEventListener("submit", function (e) {
       e.preventDefault();
       fetch("/api/guest?action=wish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug: slug, name: $("wish-name").value, message: $("wish-text").value }) })

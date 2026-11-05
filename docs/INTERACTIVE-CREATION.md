@@ -50,3 +50,29 @@ service-only save wrapper. A stale pre-change editor cannot restore/relabel an
 old goal after invalidation. Currency-change saves keep the server-preserved
 unpriced structure and reload controls instead of overwriting it with a
 pre-change client snapshot.
+
+## Editable showcase content
+
+The revised creation experience seeds the platform-authored fictional showcase
+story (with explicit partner placeholders), attire/travel/FAQ, all seven
+programme/activity structures, and the gift, fund, milestone, sponsor-package
+and VIP descriptions. Names, address, accounting currency, wedding date and
+time zone remain couple-owned fundamentals. Event dates are blank and venue
+addresses are explicitly `Sample venue:` placeholders. Publication requires
+replacement of sample partner/venue details and an explicit saved content review.
+Arbitrary public weddings still expose only reusable configuration, not their
+personal writing.
+
+Shared section headings and editorial introductions can be replaced or cleared
+in the section dialog; saved `page_content` is plain-text and allowlisted.
+System payment/privacy explanations are not editable policy. The shared
+lookbook uses original palette-coloured SVG outfit illustrations, not third-party
+photographs; editing/removing palette colours updates/removes those looks.
+The existing optional public HTTPS cover-photo control remains available.
+
+Unpriced offering scaffolds appear only in the private projection with no
+invented stock or balances. Saved milestone definitions/targets remain visible,
+but reached state and all activity stay zero. E-card, sharing and seating
+surfaces are visible, explicitly system-managed inactive previews: no valid
+QR ticket, booked seat, sponsor endorsement, contact or payment is seeded.
+The final KYC/publication workflow stays outside the guest frame.

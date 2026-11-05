@@ -64,7 +64,7 @@ begin
     if not blocked then raise exception 'Immutable creation mode could be cleared'; end if;
     if w.currency='EUR' then
       blocked := false;
-      begin update public.weddings set published_at=now() where id=w.id;
+      begin update public.weddings set published_at=now(),creation_content_reviewed=true where id=w.id;
       exception when raise_exception then blocked := sqlerrm like 'Keep at least one visible fund%'; end;
       if not blocked then raise exception 'Unpriced fund bypassed publication invariant'; end if;
     end if;

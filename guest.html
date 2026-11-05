@@ -478,6 +478,7 @@
 
   <script src="tz.js"></script>
   <script src="guest-schedule.js"></script>
+  <script src="wedding-content.js"></script>
   <script src="guest-preview.js"></script>
   <script src="theme-colors.js"></script>
   <script src="site-urls.js"></script>
@@ -584,6 +585,7 @@
       }
 
       document.title = `${wedding.couple_names || "Wedding"} — Wedding`;
+      window.WSGuestPublicContent = wedding.page_content || {};
       document.dispatchEvent(new CustomEvent("ws:wedding", { detail: wedding }));
       if (wedding.cover_image_url) {
         const cover = safeUrl(wedding.cover_image_url);
@@ -713,6 +715,7 @@
       if (!wedding.is_past) startCountdown();
       if (payIntent.heldPaymentId && !params.get("paymentReturn")) params.set("paymentReturn", payIntent.heldPaymentId);
       if (!window.WSGuestPreview) await handlePaymentReturn();
+      WSWeddingContent.apply(document, wedding.page_content);
       document.dispatchEvent(new CustomEvent("ws:preview-ready"));
     } catch (err) {
       console.error("Load failed:", err);
@@ -725,7 +728,10 @@
     return (w.palette || []).filter(c => /^#[0-9a-f]{6}$/i.test(c)).map((c, i) => {
       const defaults = { "#244b3a": "Forest Green", "#a9b5a2": "Eucalyptus Sage", "#be9b52": "Royal Gold", "#eee8d9": "Ivory" };
       const name = String(names[i] || "").trim() || defaults[c.toLowerCase()] || `Colour ${c.toUpperCase()}`;
-      return `<figure><span style="background: ${c};"></span><figcaption>${esc(name)} <small>(${esc(c.toUpperCase())})</small></figcaption></figure>`;
+      const garment = i % 2 === 0
+        ? '<path d="m52 14-16 7-14 25 15 9 10-17-5 76h56l-5-76 10 17 15-9-14-25-16-7-8 13h-20Z"/><path d="M70 29v85m-23-40h46" fill="none" stroke="#fff" stroke-width="2"/>'
+        : '<path d="m53 15-13 9 9 30-23 61h88L91 54l9-30-13-9-17 15Z"/><path d="M49 54h42M70 32v22" fill="none" stroke="#fff" stroke-width="2"/>';
+      return `<figure><svg class="lookbook-art" viewBox="0 0 140 130" aria-hidden="true" focusable="false" style="fill:${c}">${garment}</svg><span style="background: ${c};"></span><figcaption>${esc(name)} <small>(${esc(c.toUpperCase())})</small></figcaption></figure>`;
     }).join("");
   }
   function directionsUrl(v) {
@@ -786,7 +792,7 @@
         $("tiers-display").innerHTML = data.tiers.map(tier => `
           <div style="border: 2px solid var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
             <h3 style="margin: 0 0 0.5rem; color: var(--gold);">${esc(tier.name)}</h3>
-            <p style="margin: 0 0 1rem; font-size: 1.3rem; font-weight: 700; color: var(--green);">${WS.money(tier.min_amount_minor, wedding.currency || "USD", false)}</p>
+            <p style="margin: 0 0 1rem; font-size: 1.3rem; font-weight: 700; color: var(--green);">${tier.min_amount_minor == null && window.WSGuestPreview ? "Preview offering - set your price" : WS.money(tier.min_amount_minor, wedding.currency || "USD", false)}</p>
             <p style="margin: 0; font-size: 0.9rem; color: #5a5f5a;">${esc(tier.perks)}</p>
             ${wedding.is_past ? "" : `<button type="button" class="buy-btn" data-buy="sponsor" data-ref="${esc(tier.id)}" data-min="${tier.min_amount_minor}" data-label="${esc(tier.name)} sponsorship">Become a sponsor</button>`}
           </div>
@@ -1559,7 +1565,8 @@ const payIntent = WSPaymentIntent.create({ name: slug });
     });
   });
 
-  loadWedding();
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", loadWedding, { once: true });
+  else loadWedding();
 })();
   </script>
   <div class="prop-row" data-props="ringsLine,cake,bouquet,dove,bell2" style="background:var(--green-deep);margin:0;padding:1.6rem 0 0;color:#e1cf9f"></div>
@@ -1595,7 +1602,11 @@ const payIntent = WSPaymentIntent.create({ name: slug });
       const h = s.querySelector(":scope > h2"); if (!h) return;
       const m = (window.WSLang && window.WSLang.section(id)) || MAP[id];
       if (!s.dataset.ed) { const p = document.createElement("p"); p.className = "sec-label"; s.insertBefore(p, h); s.dataset.ed = "1"; }
-      if (h.innerHTML !== m[1]) h.innerHTML = m[1];
+      const key = `${id}:0`, wording = window.WSGuestPublicContent;
+      if (wording && Object.hasOwn(wording, key)) {
+        if (h.textContent !== wording[key]) h.textContent = wording[key];
+        h.hidden = !wording[key].trim();
+      } else if (h.innerHTML !== m[1]) h.innerHTML = m[1];
       s.dataset.label = m[0];
     });
     document.querySelectorAll("section[data-ed]").forEach(s => {

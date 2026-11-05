@@ -254,3 +254,4 @@ body[data-private-preview] [data-edit-section] { position: relative; cursor: poi
 .preview-edit:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
 body.guest-page[data-private-preview] button.preview-edit { width: auto; min-height: 44px; max-width: 100%; padding: .5rem .75rem !important; margin: .5rem 0; background: #fffaf0 !important; color: #244b3a !important; border: 1px solid #795b20 !important; font: 600 .85rem/1.2 sans-serif; letter-spacing: .01em; text-transform: none; }
 body[data-private-preview] > .announcement { display: none; }
+.guest-page .lookbook-art { display: block; width: min(140px, 100%); height: 130px; margin: 0 auto .5rem; stroke: var(--ink); stroke-width: 1; }

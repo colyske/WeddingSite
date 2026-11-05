@@ -63,6 +63,12 @@
       { id: "faq", label: "Answer common guest questions",
         complete: Array.isArray(wedding.faq) && wedding.faq.length > 0, anchor: "extras" },
     ].map(item => ({ ...item, required: false }));
+    if (wedding.interactive_creation) publishRequired.push({
+      id: "creation-content-reviewed", label: "Replace sample partner and venue details, then confirm your content review",
+      complete: wedding.creation_content_reviewed === true && !/\[Partner /.test(wedding.welcome_story || "") &&
+        !venues.some(venue => (venue.address || "").startsWith("Sample venue:")),
+      anchor: "review", required: true
+    });
     const items = [...publishRequired, ...optional];
     const requiredReady = publishRequired.every(item => item.complete) && !wedding.archived_at;
     return { items, requiredReady, nextStep: items.find(item => !item.complete) || null };

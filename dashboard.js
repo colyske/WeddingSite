@@ -151,6 +151,8 @@
     if (!item) return;
     $("inspiration-selection-copy").textContent = pendingStarter
       ? "Your existing names and saved answers have not been replaced. Choose explicitly whether to use this new starting point."
+      : selectedStarter.source?.styleSlug === "showcase-wedding"
+        ? "The platform's fictional showcase wording, programme and offering descriptions start as editable placeholders. Replace sample details before publishing; no guests, payments, sponsor identities, accounts or valid passes are copied."
       : selectedStarter.inspirationId
         ? "Author-owned fictional inspiration, not customers, donations or paid sponsorships. Examples are illustrative and editable."
         : "Public reusable configuration only: colours, event types/order, shared venue groups, RSVP choices, features and unpriced sponsor/gift/goal structures. Public visibility is not permission to copy personal content: neutral editable prompts replace original writing, identities, locations and instructions.";

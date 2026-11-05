@@ -98,7 +98,7 @@
         <label for="welcome-story">A short welcome story <span class="fine">(needed before publishing)</span>
           <button type="button" class="link" id="ai-story-btn" style="margin-left: 0.5rem; font-weight: normal;">Explore story starters</button>
         </label>
-        <textarea id="welcome-story" maxlength="500" rows="4" placeholder="Tell guests what makes this day special, in a few sentences…" data-publish-required></textarea>
+        <textarea id="welcome-story" maxlength="2000" rows="6" placeholder="Tell guests what makes this day special, in a few sentences…" data-publish-required></textarea>
         <label for="cover-image-url">Cover photo URL <span class="fine">(optional)</span></label>
         <input id="cover-image-url" type="url" maxlength="2048" placeholder="https://…">
         <p class="fine">Use a public HTTPS link to a photo you have permission to share. Your photo host may have its own access settings.</p>
@@ -577,6 +577,7 @@
   <script src="share.js"></script>
   <script src="setup-progress.js"></script>
   <script src="guided-setup.js"></script>
+  <script src="wedding-content.js"></script>
   <script src="interactive-wedding.js"></script>
   <script>
 (async () => {
@@ -1931,6 +1932,7 @@
             coupleNames: $("couple-names").value,
             slug: $("couple-names").value.trim() ? $("wedding-slug").value : window.__wedding?.slug,
             welcomeStory: $("welcome-story").value,
+            ...(window.WSInteractiveWedding?.contentPatch?.() || {}),
             coverImageUrl: $("cover-image-url").value,
             guestInstructions: $("guest-instructions").value,
             weddingDate: $("wedding-date").value,
@@ -2025,7 +2027,7 @@
         if (sectionSaveErrors.length) {
           notice(`Wedding details saved. ${sectionSaveErrors.join(" and ")} could not be saved, so those answers are still on this page.`, true);
         } else {
-          notice(currencyChanged ? "Currency saved. Affected amounts are cleared, not converted. Set your goals and prices again in the selected currency." : "Your wedding details and setup answers are saved.");
+          notice(currencyChanged && window.__wedding?.interactive_creation ? "Currency saved. Affected amounts are cleared, not converted. Set your goals and prices again in the selected currency." : "Your wedding details and setup answers are saved.");
           weddingGuide?.saved(answersUnchanged);
           document.dispatchEvent(new CustomEvent("ws:wedding-saved"));
         }
