@@ -12,3 +12,19 @@
 .interactive-dialog [data-guide-state] { font-weight: 600; }
 body[data-interactive-editor] > .wrap > #title { font-size: 1.6rem; }
 body[data-interactive-editor]:not([data-finishing]) :is(#kyc-section, #withdrawals-section, #rsvps-section, #bids-section, #seating-section, #engage-section, #published-section) { display: none; }
+body[data-interactive-editor] > .wrap { max-width: none; width: 100%; padding: 0; margin: 0; }
+body[data-interactive-editor] > .wrap > .top { display: flex; flex-direction: row; align-items: center; min-height: 0; padding: .4rem .75rem; margin: 0; }
+body[data-interactive-editor] .top .brand-logo, body[data-interactive-editor] #title { display: none; }
+body[data-interactive-editor] .top > div { width: 100%; justify-content: space-between; gap: .4rem !important; }
+body[data-interactive-editor]:not([data-finishing]) { overflow: hidden; }
+body[data-interactive-editor]:not([data-finishing]) > .wrap { height: 100dvh; display: flex; flex-direction: column; }
+body[data-interactive-editor]:not([data-finishing]) :is(#wedding-workspace, [data-guide-publish]) { display: none; }
+body[data-interactive-editor]:not([data-finishing]) > footer { display: none; }
+.interactive-surface { margin: 0; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.interactive-surface iframe { flex: 1; min-height: 0; }
+.interactive-toolbar { gap: .4rem; padding: .45rem .75rem; }
+.interactive-toolbar button { min-height: 44px; padding: .5rem .7rem; font-size: .85rem; }
+@media (max-width: 600px) {
+  .interactive-toolbar p { flex-basis: 100%; font-size: .8rem; line-height: 1.3; }
+  .interactive-toolbar button { flex: 1; font-size: .75rem; }
+}

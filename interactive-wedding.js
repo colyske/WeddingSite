@@ -79,30 +79,55 @@
         refresh();
         if (!guide.dirty()) dialog.close();
       });
-      $("edit-form").addEventListener("input", () => {
+      function liveInput(event) {
         status.textContent = "Unsaved changes. Save in the section editor to update your site.";
         const frame = surface.querySelector("iframe");
         if (dialog.querySelector('[data-guide-step="theme"]:not([hidden])')) {
+          if (event.target.closest("#color-inputs")) $("apply-colors-btn").click();
           const palette = JSON.parse($("palette-preview").dataset.palette || "[]");
           frame.contentWindow.WSTheme?.apply(palette);
         }
-      });
+        const document = frame.contentDocument;
+        if (document?.getElementById("couple-names") && event.target.id === "couple-names") {
+          document.getElementById("couple-names").textContent = event.target.value || "Wedding";
+        }
+        if (document?.getElementById("welcome-story") && event.target.id === "welcome-story") {
+          document.getElementById("welcome-story").textContent = event.target.value;
+        }
+      }
+      $("edit-form").addEventListener("input", liveInput);
+      $("edit-form").addEventListener("change", liveInput);
       // Private identity fields stay in the authenticated parent, never in the frame bundle.
       $("kyc-form").addEventListener("input", () => { $("kyc-form").dataset.unsaved = "true"; });
       document.addEventListener("ws:kyc-saved", () => { delete $("kyc-form").dataset.unsaved; });
       window.addEventListener("beforeunload", event => {
         if ($("kyc-form").dataset.unsaved) { event.preventDefault(); event.returnValue = ""; }
       });
-      document.addEventListener("hashchange", () => {
+      function fromLocation() {
+        const step = [...$("edit-form").querySelectorAll("[data-guide-step]")]
+          .find(section => location.hash === `#step=${section.dataset.guideStep}`);
+        if (step) {
+          if (["review", "publication", "team"].includes(step.dataset.guideStep)) document.body.dataset.finishing = "true";
+          open(step.dataset.guideStep);
+          return;
+        }
         const target = document.getElementById(location.hash.slice(1));
         if (target?.closest("#edit-form")) open(target.closest("[data-guide-step]")?.dataset.guideStep || "review");
-      });
+        else if (target?.closest("#wedding-workspace") && !guide.dirty()) {
+          document.body.dataset.finishing = "true";
+          $("wedding-workspace").open = true;
+          dialog.close();
+          target.scrollIntoView();
+        }
+      }
+      window.addEventListener("hashchange", fromLocation);
       for (const id of ["feature-giving", "feature-sponsors", "feature-featured-sponsors", "feature-song-requests", "feature-vip-seating"]) {
         $(id).checked = true;
         $(id).disabled = true;
       }
       refresh();
       if (!wedding.couple_names?.trim()) open("couple");
+      else if (location.hash && location.hash !== "#step=couple") fromLocation();
     }
   };
 })();

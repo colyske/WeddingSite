@@ -155,7 +155,7 @@
         ? "Author-owned fictional inspiration, not customers, donations or paid sponsorships. Examples are illustrative and editable."
         : "Public reusable configuration only: colours, event types/order, shared venue groups, RSVP choices, features and unpriced sponsor/gift/goal structures. Public visibility is not permission to copy personal content: neutral editable prompts replace original writing, identities, locations and instructions.";
     if (selectedStarter && !pendingStarter) $("inspiration-selection-copy").textContent +=
-      " Your private guide opens next. Source prices stay pending in their original currency until you review them in the guide; payment availability does not block personalization.";
+      " Your interactive private preview opens next. The Celebration fund uses only the KES showcase goal or a matching-currency template preset; otherwise enter a goal yourself. No guest activity or payment readiness is copied.";
   }
   async function chooseStarter(item, { restore = false } = {}) {
     selectedStarter = item; pendingStarter = null;
@@ -270,7 +270,7 @@
   function renderSubmit() {
     $("create-submit").disabled = state.submitting || !!state.created || starterLoading;
     $("create-submit").textContent = state.created
-      ? "Draft created" : state.submitting ? "Creating your draft…" : "Create draft and continue setup";
+      ? "Draft created" : state.submitting ? "Creating your draft…" : "Create my private preview";
   }
 
   function renderCreated() {

@@ -8,7 +8,8 @@ begin
   foreach c in array array['KES','EUR'] loop
     insert into interactive_fixture values(uid,extensions.gen_random_uuid(),jsonb_build_object(
       'slug','interactive-test-'||lower(c),'coupleNames','','currency',c,'maxCapacity',150,
-      'palette',jsonb_build_array('#244b3a'),'venues','[]'::jsonb,'starterDeferred',true,'referral',null,
+      'palette',jsonb_build_array('#244b3a'),'paletteNames','[]'::jsonb,'timeZone','Africa/Nairobi',
+      'venues','[]'::jsonb,'starterDeferred',true,'referral',null,
       'starterSetup','{
         "currency":"KES","reviewed":true,"features":{"giving":true,"sponsors":true,"featured_sponsors":true,"song_requests":true,"vip_seating":true},
         "rsvp":{"feeMinor":0,"extraGuestFeeMinor":0,"premiumDietFeeMinor":0,"premiumDietOptions":[]},
@@ -79,6 +80,27 @@ begin
   if public.interactive_fund_preset('EUR','{"currency":"EUR","campaigns":[{"goalMinor":12300}]}')<>12300 or
     public.interactive_fund_preset('EUR','{"currency":"KES","campaigns":[{"goalMinor":12300}]}') is not null then
     raise exception 'Same-currency preset contract failed';
+  end if;
+end $$;
+set local role service_role;
+select set_config('request.jwt.claim.role','service_role',true);
+do $$
+declare wid uuid := (select (result->>'weddingId')::uuid from interactive_fixture where payload->>'currency'='EUR');
+  blocked boolean := false;
+begin
+  begin perform public.save_interactive_fundraising_campaigns(wid,
+    '[{"name":"Stale KES goal","goal_minor":50000000,"enabled":true,"milestones":[]}]','KES');
+  exception when raise_exception then blocked := sqlerrm like 'Your wedding currency changed%'; end;
+  if not blocked then raise exception 'Stale currency goal was relabelled'; end if;
+  perform public.save_interactive_fundraising_campaigns(wid,
+    '[{"name":"Explicit EUR goal","goal_minor":120000,"enabled":true,"milestones":[]}]','EUR');
+end $$;
+reset role;
+do $$
+declare wid uuid := (select (result->>'weddingId')::uuid from interactive_fixture where payload->>'currency'='EUR');
+begin
+  if not exists(select 1 from public.fundraising_streams where wedding_id=wid and currency='EUR' and goal_minor=120000) then
+    raise exception 'Explicit same-currency goal was not saved';
   end if;
 end $$;
 rollback;

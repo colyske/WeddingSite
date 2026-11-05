@@ -18,6 +18,7 @@ export function interactivePreview(wedding, campaigns = []) {
     "extra_guest_fee_minor", "premium_diet_fee_minor", "premium_diet_options"
   ]);
   site.is_preview = true;
+  site.interactive_creation = wedding.interactive_creation === true;
   site.revenue_features = wedding.interactive_creation ? permanentFeatures : wedding.revenue_features;
   site.venues = (wedding.venues || []).map(row => pick(row, [
     "id", "name", "event_time", "event_date", "map_link", "description", "is_main", "kind", "address", "sort_order"

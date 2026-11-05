@@ -8,7 +8,7 @@ import { interactivePreview } from "../server/interactive-preview.js";
 
 const id = "550e8400-e29b-41d4-a716-446655440001";
 const structure = { tiers: [], registry: [], vip: null, featured: null, campaigns: [] };
-test("interactive desktop/mobile renderer edits, saves, isolates guest activity and protects dialogs", { timeout: 120000 }, async () => {
+test("interactive desktop/mobile renderer edits, saves, isolates guest activity and protects dialogs", { timeout: 240000 }, async () => {
   const server = http.createServer(async (req, res) => {
     try {
       const path = new URL(req.url, "http://localhost").pathname;
@@ -24,7 +24,8 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
     const base = `http://127.0.0.1:${server.address().port}`;
     for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
       let wedding = {
-        id, slug: "amina-and-david", couple_names: "Amina & David", currency: "KES",
+        id, slug: viewport.width > 600 ? "internal-draft" : "amina-and-david",
+        couple_names: viewport.width > 600 ? "" : "Amina & David", currency: "KES",
         wedding_date: null, welcome_story: "", palette: ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"],
         palette_names: [], time_zone: "Africa/Nairobi", venues: [], registry: [], tiers: [],
         interactive_creation: true, starter_structure: structuredClone(structure), published_at: null
@@ -63,6 +64,14 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       });
       await page.goto(`${base}/wedding.html?id=${id}`);
       const frame = page.frameLocator(".interactive-surface iframe");
+      if (!wedding.couple_names) {
+        await page.locator(".interactive-dialog").waitFor({ state: "visible" });
+        assert.equal(await page.locator("#wedding-address").isVisible(), false, "internal draft address is not suggested before names");
+        await page.locator("#couple-names").fill("Amina & David");
+        assert.match(await page.locator("#slug-preview").innerText(), /amina-and-david\.joinourwedding\.site/);
+        await page.locator("[data-guide-save]").click();
+        await page.waitForFunction(() => !document.querySelector(".interactive-dialog").open);
+      }
       await frame.locator("#couple-names").filter({ hasText: "Amina & David" }).waitFor();
       await frame.locator("#campaigns .preview-edit").waitFor();
       assert.equal(await frame.locator("#bids").isVisible(), true);
@@ -74,9 +83,13 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       await page.keyboard.press("Escape");
       assert.equal(await page.locator(".interactive-dialog").evaluate(element => element.open), true);
       assert.match(await page.locator("[data-close-warning]").innerText(), /Unsaved/);
+      await page.locator("[data-close-editor]").focus();
+      await page.keyboard.press("Shift+Tab");
+      assert.equal(await page.evaluate(() => Boolean(document.activeElement.closest(".interactive-dialog"))), true, "native modal traps focus");
       await page.locator("#wedding-slug").fill("taken-address");
       await page.locator("[data-guide-save]").click();
       await page.locator("#notice").filter({ hasText: "already taken" }).waitFor();
+      assert.match(await page.locator("[data-editor-notice]").innerText(), /already taken/);
       assert.equal(await page.locator(".interactive-dialog").evaluate(element => element.open), true);
       await page.locator("#wedding-slug").fill("our-manual-address");
       await page.locator("[data-guide-save]").click();
@@ -86,6 +99,10 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       await frame.locator("#details .preview-edit").click();
       await page.locator(".interactive-dialog").waitFor({ state: "visible" });
       assert.equal(await page.locator('[data-guide-step="theme"]').isVisible(), true);
+      if (process.env.INTERACTIVE_EVIDENCE_DIR) {
+        await mkdir(process.env.INTERACTIVE_EVIDENCE_DIR, { recursive: true });
+        await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `editor-${viewport.width}.png`) });
+      }
       const color = page.locator("#color-inputs input[type=color]").first();
       await color.fill("#662244");
       await color.dispatchEvent("input");

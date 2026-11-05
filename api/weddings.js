@@ -100,7 +100,7 @@ const loadWeddingDetails = async (weddings, opts) => {
     supabaseRequest(`/rest/v1/sponsor_tiers?wedding_id=${inFilter}&select=id,wedding_id,name,min_amount_minor,perks,sort_order&order=sort_order.asc`, opts),
     supabaseRequest(`/rest/v1/vip_offers?wedding_id=${inFilter}&select=id,wedding_id,title,description,seats_total,seats_sold,price_minor`, opts),
     supabaseRequest(`/rest/v1/guest_site_content?wedding_id=${inFilter}&select=wedding_id,story_draft,story_approved,travel_notes,travel_approved`, opts),
-    supabaseRequest(`/rest/v1/fundraising_streams?wedding_id=${inFilter}&select=id,wedding_id,enabled`, opts),
+    supabaseRequest(`/rest/v1/fundraising_streams?wedding_id=${inFilter}&select=id,wedding_id,enabled,goal_minor,currency`, opts),
     supabaseRequest("/rest/v1/rpc/get_wedding_setup_status", {
       ...opts, method: "POST", body: { p_wedding_ids: ids }
     }),
@@ -998,6 +998,9 @@ export default async function handler(req, res) {
       }
       if (action === "campaigns-save") {
         if (!methodOnly(req, res, "POST")) return;
+        if (owned[0].interactive_creation && body.currency !== currency) {
+          return sendJson(res, 409, { error: "Your wedding currency changed. Reload the fund editor and enter its amounts again; no goal was converted." });
+        }
         const minor = v => Math.round(Number(v) * 100);
         const okAmt = n => Number.isSafeInteger(n) && n > 0 && n <= 100000000000;
         const list = Array.isArray(body.campaigns) ? body.campaigns.slice(0, 6) : [];
@@ -1020,7 +1023,10 @@ export default async function handler(req, res) {
         if (owned[0].interactive_creation && !payload.some(campaign => campaign.enabled)) {
           return sendJson(res, 400, { error: "Keep at least one visible celebration fund with a positive goal. Edit the existing fund instead of removing it." });
         }
-        await supabaseRequest("/rest/v1/rpc/save_fundraising_campaigns", { service: true, method: "POST", body: { p_wedding_id: weddingId, p_payload: payload } });
+        await supabaseRequest(`/rest/v1/rpc/${owned[0].interactive_creation ? "save_interactive_fundraising_campaigns" : "save_fundraising_campaigns"}`, {
+          service: true, method: "POST", body: { p_wedding_id: weddingId, p_payload: payload,
+            ...(owned[0].interactive_creation ? { p_expected_currency: body.currency } : {}) }
+        });
         return sendJson(res, 200, { saved: true });
       }
       if (action === "fundraising-save") {

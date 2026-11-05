@@ -27,12 +27,14 @@
       validText(venue.name) && validText(venue.event_time) && validDate(venue.event_date) && validText(venue.address));
     const supportedCurrency = capabilities.some(currency =>
       currency.code === wedding.currency && Array.isArray(currency.methods) && currency.methods.length > 0);
-    const hasFundraisingRoute = supportedCurrency && (
+    const hasFundraisingRoute = supportedCurrency && (wedding.interactive_creation
+      ? campaigns.some(campaign => campaign.enabled !== false && campaign.currency === wedding.currency && Number(campaign.goal_minor) > 0)
+      : (
       features.song_requests === true ||
       features.giving !== false && (registry.length > 0 || campaigns.some(campaign => campaign.enabled !== false)) ||
       features.sponsors !== false && tiers.length > 0 ||
       features.vip_seating !== false && Number(wedding.vip?.price_minor) > 0
-    );
+    ));
     const publishRequired = [
       { id: "couple-names", label: "Add the couple names and a site address",
         complete: validText(wedding.couple_names) && validSlug(wedding.slug), anchor: "couple" },
@@ -42,8 +44,10 @@
         complete: hasEvent, anchor: "venues" },
       { id: "welcome-story", label: "Write a short welcome story",
         complete: validText(wedding.welcome_story), anchor: "couple" },
-      { id: "fundraising-route", label: "Set up a fundraising option in a currency with a configured guest-payment option",
-        complete: hasFundraisingRoute, anchor: supportedCurrency ? "giving" : "money",
+      { id: "fundraising-route", label: wedding.interactive_creation
+        ? "Keep a visible celebration fund with a positive goal in your wedding currency and a configured guest-payment option"
+        : "Set up a fundraising option in a currency with a configured guest-payment option",
+        complete: hasFundraisingRoute, anchor: supportedCurrency ? wedding.interactive_creation ? "campaigns" : "giving" : "money",
         help: supportedCurrency ? "A guest-payment option is configured for this currency; payout readiness is separate." :
           "No live guest-payment option is currently ready for this currency. We never convert amounts or enable payment methods automatically." }
     ].map(item => ({ ...item, required: true }));

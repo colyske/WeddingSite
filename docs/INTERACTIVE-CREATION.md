@@ -44,3 +44,9 @@ permanent revenue flags and a positive, same-currency visible fund for published
 interactive weddings; the existing publication/payment checks remain
 authoritative. The new additive migration must be applied before deploying code
 that selects `interactive_creation`.
+
+Fund saves carry the editor's expected currency and lock the wedding row in the
+service-only save wrapper. A stale pre-change editor cannot restore/relabel an
+old goal after invalidation. Currency-change saves keep the server-preserved
+unpriced structure and reload controls instead of overwriting it with a
+pre-change client snapshot.

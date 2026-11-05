@@ -1997,7 +1997,9 @@
           updateCurrencyLabels(data.wedding.currency || $("currency").value);
         }
         const sectionSaveErrors = [];
-        await saveUnpricedStructure(structure);
+        const currencyChanged = data.wedding?.currency && data.wedding.currency !== currencyBeforeSave;
+        if (!currencyChanged) await saveUnpricedStructure(structure);
+        if (currencyChanged) await loadCampaigns();
         for (const [label, saveSection, dirty] of [
           ["fundraising campaigns", saveCampaigns, campaignsDirty],
           ["travel details and questions", saveExtras, extrasDirty]
@@ -2009,7 +2011,7 @@
             sectionSaveErrors.push(label);
           }
         }
-        if (data.wedding?.currency && data.wedding.currency !== currencyBeforeSave) {
+        if (currencyChanged) {
           try {
             await loadCollectionCurrencies(data.wedding.currency);
             await loadPayoutMethods();
@@ -2017,12 +2019,13 @@
             console.error("Receiving options refresh failed:", error);
             $("payout-method-help").textContent = "Your wedding currency was saved, but receiving options could not be refreshed. Reload this page to check them.";
           }
+          await loadWedding();
         }
         if (window.WSSetupProgress && data.wedding) window.WSSetupProgress.render($("setup-progress"), data.wedding);
         if (sectionSaveErrors.length) {
           notice(`Wedding details saved. ${sectionSaveErrors.join(" and ")} could not be saved, so those answers are still on this page.`, true);
         } else {
-          notice("Your wedding details and setup answers are saved.");
+          notice(currencyChanged ? "Currency saved. Affected amounts are cleared, not converted. Set your goals and prices again in the selected currency." : "Your wedding details and setup answers are saved.");
           weddingGuide?.saved(answersUnchanged);
           document.dispatchEvent(new CustomEvent("ws:wedding-saved"));
         }
@@ -2303,6 +2306,8 @@
         const r = await WS.api(`/api/weddings?action=campaigns&weddingId=${encodeURIComponent(weddingId)}`); const d = await r.json();
         if (!r.ok) throw new Error(d.error || "Could not load fundraising campaigns.");
         campaignCurrency = d.currency || "USD";
+        window.__wedding = { ...window.__wedding, campaigns: (d.campaigns || []).map(c => ({ ...c, currency: campaignCurrency })) };
+        if (window.WSSetupProgress) window.WSSetupProgress.render($("setup-progress"), window.__wedding);
         $("campaign-list").innerHTML = "";
         [...(d.campaigns || []), ...(unpricedStructure()?.campaigns || [])].forEach(c => $("campaign-list").appendChild(campaignCard(c)));
         if (!$("campaign-list").children.length) $("campaign-list").appendChild(campaignCard());
@@ -2354,7 +2359,7 @@
         purpose: c.querySelector(".cp-purpose").value, enabled: window.__wedding?.interactive_creation || c.querySelector(".cp-enabled").checked,
         milestones: [...c.querySelectorAll(".ms-row")].map(m => ({ id: m.dataset.id || null, name: m.querySelector(".ms-name").value, target: m.querySelector(".ms-target").value, description: m.querySelector(".ms-desc").value }))
       }));
-      const res = await WS.api("/api/weddings?action=campaigns-save", { method: "POST", body: JSON.stringify({ weddingId, campaigns }) });
+      const res = await WS.api("/api/weddings?action=campaigns-save", { method: "POST", body: JSON.stringify({ weddingId, campaigns, currency: campaignCurrency }) });
       const out = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(out.error || "Could not save fundraising campaigns.");
       $("campaign-status").textContent = "Campaigns saved.";

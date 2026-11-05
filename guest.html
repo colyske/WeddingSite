@@ -685,6 +685,10 @@
       }
 
       // RSVP & Bids
+      if (wedding.interactive_creation && !(wedding.registry || []).length) {
+        $("registry").hidden = false;
+        $("no-registry").textContent = "No priced registry gifts are currently offered. You can support the celebration fund instead.";
+      }
       if ($("currency-display")) $("currency-display").textContent = wedding.currency || "USD";
       if (wedding.is_past) {
         $("past-banner").hidden = false;
@@ -790,6 +794,10 @@
       }
 
       // Display VIP offer
+      if (wedding.interactive_creation && !(data.tiers || []).length) {
+        $("sponsor-tiers").hidden = false;
+        $("tiers-display").textContent = "No sponsor packages are currently configured. Custom sponsorship remains subject to available payment options.";
+      }
       if (data.vip) {
         const v = data.vip;
         $("vip-section").hidden = !features.vip_seating;
@@ -807,6 +815,10 @@
         `;
       }
 
+      if (wedding.interactive_creation && !data.vip) {
+        $("vip-section").hidden = false;
+        $("vip-display").textContent = "VIP seating is not currently offered. No seats are available to purchase.";
+      }
       // Display corporate sponsors
       const auction = data.sponsorAuction;
       const featuredLabel = auction?.status === "closed" ? "Featured sponsor" : "Current leading bid";

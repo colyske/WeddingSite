@@ -48,6 +48,26 @@ end $$;
 revoke all on function public.create_interactive_wedding(uuid,jsonb) from public,anon;
 grant execute on function public.create_interactive_wedding(uuid,jsonb) to authenticated;
 
+create function public.save_interactive_fundraising_campaigns(
+  p_wedding_id uuid,p_payload jsonb,p_expected_currency text
+) returns void language plpgsql security definer set search_path = '' set row_security = off
+as $$
+declare w public.weddings;
+begin
+  if auth.role() is distinct from 'service_role' then raise exception 'Service role required.'; end if;
+  select * into w from public.weddings where id=p_wedding_id for update;
+  if not found or not w.interactive_creation or w.currency is distinct from p_expected_currency then
+    raise exception 'Your wedding currency changed. Reload and enter fund amounts again.';
+  end if;
+  if not exists(select 1 from jsonb_array_elements(p_payload) c
+    where (c->>'enabled')::boolean and (c->>'goal_minor')::bigint>0) then
+    raise exception 'Keep at least one visible celebration fund with a positive goal.';
+  end if;
+  perform public.save_fundraising_campaigns(p_wedding_id,p_payload);
+end $$;
+revoke all on function public.save_interactive_fundraising_campaigns(uuid,jsonb,text) from public,anon,authenticated;
+grant execute on function public.save_interactive_fundraising_campaigns(uuid,jsonb,text) to service_role;
+
 create function public.protect_interactive_revenue() returns trigger
 language plpgsql set search_path = ''
 as $$
@@ -84,3 +104,17 @@ revoke all on function public.check_published_interactive_fund() from public,ano
 create constraint trigger check_published_interactive_fund
   after insert or update or delete on public.fundraising_streams
   deferrable initially deferred for each row execute function public.check_published_interactive_fund();
+
+-- Extend the existing public allowlist with a harmless renderer mode flag.
+create or replace function public.get_public_wedding_site(p_slug text) returns jsonb
+language sql stable security definer set search_path = ''
+as $$
+  select site.payload || jsonb_build_object(
+    'interactive_creation',w.interactive_creation,
+    'revenue_features',w.revenue_features,
+    'registry',case when (w.revenue_features->>'giving')::boolean
+      then coalesce(site.payload->'registry','[]'::jsonb) else '[]'::jsonb end
+  )
+  from (select public.get_public_wedding_site_before_revenue_features(p_slug) payload) site
+  join public.weddings w on w.id=(site.payload->>'id')::uuid
+$$;
