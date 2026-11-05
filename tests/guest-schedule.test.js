@@ -73,6 +73,18 @@ test("configured timezone controls the date boundary including DST and date-line
   assert.equal(entry.boundary, Date.parse("2026-11-02T05:00:00Z"));
 });
 
+test("public guest, e-card and verification pages share the existing platform icons", async () => {
+  for (const file of ["guest.html", "ecard.html", "verify.html"]) {
+    const html = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    assert.match(html, /<link rel="icon" type="image\/png" sizes="120x120" href="\/assets\/brand\/icon-120\.png">/);
+    assert.match(html, /<link rel="apple-touch-icon" sizes="120x120" href="\/assets\/brand\/icon-120\.png">/);
+  }
+  const image = await readFile(new URL("../assets/brand/icon-120.png", import.meta.url));
+  assert.equal(image.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+  assert.equal(image.readUInt32BE(16), 120);
+  assert.equal(image.readUInt32BE(20), 120);
+});
+
 test("guest renderer refreshes on boundaries/resume and cleans timers/listeners; mobile stationery stays accessible", async () => {
   const server = http.createServer(async (req, res) => {
     try {
@@ -98,6 +110,8 @@ test("guest renderer refreshes on boundaries/resume and cleans timers/listeners;
     await page.goto(`http://127.0.0.1:${server.address().port}/guest.html?slug=qa-couple`);
     const rows = page.locator("#venues-display .sched-row");
     await rows.first().waitFor();
+    assert.equal(await page.locator('link[rel="icon"]').getAttribute("href"), "/assets/brand/icon-120.png");
+    assert.equal(await page.locator('link[rel="apple-touch-icon"]').getAttribute("href"), "/assets/brand/icon-120.png");
     assert.match(await rows.nth(1).textContent(), /Ceremony/);
     assert.equal(await page.locator(".schedule-current").count(), 0);
     assert.equal(await page.locator("#prewedding-display .schedule-status").textContent(), "Completed");
@@ -127,6 +141,7 @@ test("guest renderer refreshes on boundaries/resume and cleans timers/listeners;
         animation: getComputedStyle(row).animationName, transition: getComputedStyle(row).transitionDuration
       };
     });
+
     assert.ok(metrics.contrast >= 4.5);
     assert.equal(metrics.markerLeft, "0px");
     assert.notEqual(metrics.markerTransform, "none", "diamond marker remains in its gutter");
