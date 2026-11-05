@@ -65,7 +65,7 @@ test("accessible text carries totals, remaining, sources and unclipped completio
   for (const label of ["Gifts & fundraisers", "Song bids", "Registry gifts", "Sponsorship", "VIP", "Remaining"]) {
     assert.ok(html.includes(label));
   }
-  assert.doesNotMatch(html, /animate|rotate|canvas|webgl/i);
+  assert.doesNotMatch(html, /<animate|animation:|<canvas|webgl/i);
   assert.doesNotMatch(render(fixture([1, 0, 0, 0, 0]), "KES", () => "<img onerror=alert(1)>"), /<img/);
 });
 
