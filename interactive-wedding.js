@@ -225,6 +225,19 @@
       };
       dialog.querySelector("[data-close-editor]").addEventListener("click", close);
       dialog.addEventListener("cancel", event => { event.preventDefault(); close(); });
+      dialog.addEventListener("keydown", event => {
+        if (event.key !== "Tab") return;
+        const controls = [...dialog.querySelectorAll('button, input, select, textarea, a[href], [tabindex]')]
+          .filter(element => !element.disabled && element.tabIndex >= 0 && element.getClientRects().length);
+        const first = controls[0], last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      });
       surface.querySelector("[data-edit-basics]").addEventListener("click", () => open("couple"));
       surface.querySelector("[data-edit-currency]").addEventListener("click", () => open("money"));
       surface.querySelector("[data-finish]").addEventListener("click", () => {

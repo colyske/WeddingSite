@@ -202,6 +202,8 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       await page.locator("[data-close-editor]").focus();
       await page.keyboard.press("Shift+Tab");
       assert.equal(await page.evaluate(() => Boolean(document.activeElement.closest(".interactive-dialog"))), true, "native modal traps focus");
+      await page.keyboard.press("Tab");
+      assert.equal(await page.locator("[data-close-editor]").evaluate(element => document.activeElement === element), true, "forward Tab wraps from the final control back to the dialog");
       if (process.env.INTERACTIVE_EVIDENCE_DIR) {
         await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `story-editor-${viewport.width}.png`), animations: "disabled", timeout: 60000 });
       }
