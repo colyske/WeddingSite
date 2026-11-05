@@ -475,6 +475,7 @@
   <audio id="background-music" loop style="display: none;"></audio>
 
   <script src="tz.js"></script>
+  <script src="guest-schedule.js"></script>
   <script src="theme-colors.js"></script>
   <script src="site-urls.js"></script>
   <script src="share.js"></script>
@@ -537,6 +538,7 @@
   if (!slug) return notice("Wedding not found.", true);
 
   let wedding = null;
+  let stopSchedule = null;
   let audioEnabled = false;
   let sponsorPackageCount = 0;
   let sponsorAuctionOpen = false;
@@ -656,6 +658,8 @@
         $("venues-zone").textContent = "Times are shown in " + zone.replace(/_/g, " ") + (startMs != null ? " (" + WSTime.abbreviation(zone, startMs) + ")" : "") + ".";
         $("venues-display").innerHTML = mainVenues.map(v => venueRow(v, wedding)).join("");
       }
+      if (stopSchedule) stopSchedule();
+      stopSchedule = WSSchedule.mount(wedding);
       // Registry & Crowdfunding
       if (wedding.registry && wedding.registry.length > 0) {
         $("registry").hidden = false;
@@ -724,15 +728,16 @@
   }
   function venueRow(v, w) {
     const zone = w.time_zone || WSTime.DEFAULT_ZONE;
-    const day = String(v.event_date || w.wedding_date || "").slice(0, 10);
-    const ms = day ? WSTime.zonedToUtc(day, v.event_time || "12:00:00", zone) : null;
-    const dateText = ms != null ? WSTime.formatDate(ms, zone) : "";
-    const timeText = v.event_time && ms != null ? WSTime.formatTime(ms, zone) : "";
+    const day = WSSchedule.date(v.event_date || (v.kind !== "pre" ? w.wedding_date : null));
+    const validZone = WSTime.validZone(zone);
+    const ms = validZone ? WSSchedule.instant(day, v.event_time, zone) : null;
+    const dateMs = day && validZone ? WSTime.zonedToUtc(day, "12:00", zone) : null;
+    const dateText = dateMs != null ? WSTime.formatDate(dateMs, zone) : "";
+    const timeText = ms != null ? WSTime.formatTime(ms, zone) : "";
     const href = directionsUrl(v);
-    const lapsed = ms != null && ms < Date.now();
     const eventType = v.event_type || (v.kind === "pre" ? "Pre-wedding gathering" : "Wedding day");
-    return `<div class="sched-row venue-card">
-      <div class="sched-time">${timeText ? esc(timeText).replace(/\s?(AM|PM)$/i, " <small>$1</small>") : "&mdash;"}${dateText ? `<span class="sched-date">${esc(dateText)}</span>` : ""}${lapsed ? '<span class="event-lapsed">Completed</span>' : ""}</div>
+    return `<div class="sched-row venue-card" data-schedule-index="${w.venues.indexOf(v)}">
+      <div class="sched-time">${timeText ? esc(timeText).replace(/\s?(AM|PM)$/i, " <small>$1</small>") : "Time TBA"}${dateText ? `<span class="sched-date">${esc(dateText)}</span>` : '<span class="sched-date">Date TBA</span>'}<span class="schedule-status" role="status" hidden></span></div>
       <div class="sched-body">
         <p class="fine">${esc(eventType)}</p>
         <h3>${esc(v.name)}${v.is_main ? " <small>(main ceremony)</small>" : ""}</h3>

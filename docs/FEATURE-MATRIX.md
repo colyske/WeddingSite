@@ -68,11 +68,13 @@ Swahili currently covers the guest site only, not organizer pages. Seating looku
 | Premium dietary fee | Editor: premium options + fee; standard options stay free | Premium group in the dietary select | Ledger line | Couple, admins |
 | Palette names and hex | Editor palette: name each colour | "Wedding theme - colour palette" label, `Name (#HEX)` | `weddings.palette_names` | Public |
 | Pre-wedding events | Editor: event type "Before the wedding" plus street address | "Before the wedding" section, time, name, address, Get directions (Google Maps) | `venues.kind`, `venues.address` | Public |
-| The Celebration timeline | Editor: wedding-day events | Time, name, address, Get directions | `venues` | Public |
+| The Celebration timeline | Editor: wedding-day events | Time, name, address, Get directions; wedding-local scheduled current/completed badges | `venues` | Public |
 | Admin fees in major units | Owner configures 2-decimal major units, with a conversion note; SuperAdmin can view | - | Stored as minor units | SuperAdmin and Owner see; Owner only can write |
 | Admin per-wedding metrics | "Metrics" button on each wedding | - | `admin_wedding_metrics()` | Admin, owner |
 | Pagination and search | Weddings, users, ledger, audit: search, 20 per page (10/20/50/100) | - | Client-side over newest 500 rows | Admin, owner |
 | Active admin tab | Highlighted tab, `aria-selected` | - | - | Admin, owner |
+
+Schedule badges use the wedding's configured time zone, not the viewer's. Past dated events are completed; timed events are current from their start until the next distinct start on that local date, or local midnight for the last event. Equal starts share an interval without changing stored order. An optional `event_end_time` supplied to the renderer takes precedence; the current venue schema/editor does not store end times, and this feature adds no migration. Missing/invalid times never imply current activity; a missing pre-wedding date is not inferred from the wedding date. Status refreshes at boundaries, at least every 30 seconds while visible, and on tab/page resume, without replacing focused links. "Current in schedule" describes the plan, not attendance or live progress.
 
 ## Paid featured sponsor campaign
 
