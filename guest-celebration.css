@@ -66,7 +66,7 @@ body.guest-page #venues { background: var(--green-deep) !important; }
 .guest-page #venues .celebration-art { --gold: #d7bc7f; --paper: #fffcf6; }
 .guest-page #venues-display { margin-top: 3rem; gap: 0 !important; }
 .guest-page .sched-row { position: relative; grid-template-columns: minmax(160px, .7fr) 2fr; padding: 1.75rem 0 1.75rem 2rem; gap: 2rem; }
-.guest-page .sched-row::before { content: ""; position: absolute; left: 0; top: 2.3rem; width: 9px; height: 9px; border: 2px solid var(--honey); border-radius: 50%; background: var(--green-deep); }
+.guest-page .sched-row::before { content: ""; position: absolute; left: 0; top: 2.3rem; width: 8px; height: 8px; border: 0; border-radius: 0; background: var(--honey); transform: rotate(45deg); }
 .guest-page .sched-time { font-size: 2rem; }
 .guest-page .sched-body h3 { font-size: 1.6rem; }
 .guest-page .sched-body p { font-size: .95rem; }
@@ -74,7 +74,7 @@ body.guest-page #venues { background: var(--green-deep) !important; }
 body.guest-page #prewedding { background: var(--paper) !important; }
 .guest-page #prewedding-display { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 2.5rem !important; margin-top: 3rem; }
 .guest-page #prewedding .sched-row { grid-template-columns: 1fr; gap: .75rem; border: 0; border-top: 1px solid #c9cbbb; }
-.guest-page #prewedding .sched-row::before { background: var(--paper); border-color: var(--rose-ink); }
+.guest-page #prewedding .sched-row::before { background: var(--rose-ink); }
 .guest-page #prewedding .sched-date { color: #555b53; }
 
 body.guest-page #campaigns { background: var(--blush) !important; }

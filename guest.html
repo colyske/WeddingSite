@@ -819,7 +819,7 @@
         return heading + WSSponsorCards.render(sponsor, { currency, featured });
       }).join("");
       const placeholder = `<article class="sponsor-sample">
-        <p class="eyebrow">Your brand here</p>
+        <p class="eyebrow">${wedding.is_showcase ? "Your brand here" : "Sample advert &middot; your brand here"}</p>
         <div class="sponsor-emblem" aria-hidden="true">✦</div>
         <h3>Bloom &amp; Celebrate</h3>
         <p>Beautiful details.<br>Unforgettable celebrations.</p>

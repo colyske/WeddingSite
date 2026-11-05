@@ -126,7 +126,7 @@ test("guided drafts: skip, tab resume, one create, server resume on another devi
     const createWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     assert.ok(createWidth <= 320, `draft creation fits the narrow mobile viewport (${createWidth}px)`);
     await page.click("#create-submit");
-    await page.waitForURL(`**/wedding.html?id=${id}&slug=amina-and-joseph#step=couple`, { waitUntil: "domcontentloaded" });
+    await page.waitForURL(`**/wedding.html?id=${id}#step=couple`, { waitUntil: "domcontentloaded" });
     await page.locator("#guide-heading-couple").waitFor();
     assert.equal(calls.filter(call => call.action === "create").length, 1, "the guide handoff creates exactly one draft");
     assert.equal(calls.find(call => call.action === "create").body.coupleNames, "Amina & Joseph");

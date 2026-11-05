@@ -44,6 +44,12 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     assert.equal(await page.locator("#song-request-presets").count(), 0);
     assert.equal(await page.locator("#demo-contribution-amount").count(), 0, "the public wedding site has no organizer demo controls");
     assert.equal(await page.locator("#venues-display > *").count(), 2);
+    const markers = await page.locator("#venues .sched-row, #prewedding .sched-row").evaluateAll(rows => rows.map(row => {
+      const style = getComputedStyle(row, "::before");
+      return { radius: style.borderRadius, border: style.borderWidth, transform: style.transform, content: style.content };
+    }));
+    assert.ok(markers.every(m => m.radius === "0px" && m.border === "0px" && m.transform !== "none" && m.content === '""'),
+      "venue markers are decorative filled diamonds, never O-like hollow circles or text");
     assert.match(await page.locator("#ledger-body").innerText(), /Song bid[\s\S]*2,500[\s\S]*A friend/);
     assert.doesNotMatch(await page.locator("#ledger-body").innerText(), /NaN|\$/);
     assert.ok(await page.locator(".showcase-banner").isVisible());
