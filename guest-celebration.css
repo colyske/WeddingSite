@@ -84,6 +84,7 @@ body.guest-page #registry { background: color-mix(in srgb, var(--gold) 9%, var(-
 .guest-page :is(.campaign, .registry-gift) h3 { font-size: 1.8rem; }
 .guest-page :is(.campaign, .registry-gift) > p { max-width: 45rem; }
 .guest-page .giving-progress { margin: 1.75rem 0; }
+.guest-page .camp-ms-heading { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #ccc9b8; color: var(--ink); }
 .guest-page .giving-total { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; color: var(--green); }
 .guest-page .giving-total small { display: block; font: 600 .68rem/1.5 var(--sans, Arial, sans-serif); color: #555b53; letter-spacing: .12em; text-transform: uppercase; }
 .guest-page .giving-total strong { display: block; font: 400 clamp(1.8rem, 4vw, 2.8rem)/1.4 var(--serif, Georgia, serif); }

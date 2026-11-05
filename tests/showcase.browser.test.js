@@ -6,6 +6,7 @@ import { extname, join } from "node:path";
 import { chromium } from "playwright";
 import guest from "../api/guest.js";
 import checkout from "../api/checkout.js";
+import { showcaseFundraising } from "../server/showcase.js";
 
 test("showcase is complete, read-only and compact at 320/375/768/1280px", async () => {
   const server = http.createServer(async (req, res) => {
@@ -66,6 +67,21 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
       assert.equal(await page.locator(`#${id} > .celebration-art svg`).count(), 1, `${id} has a single bespoke illustration`);
     }
     assert.equal(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuenow"), "36");
+    for (const campaign of showcaseFundraising.campaigns) {
+      const card = page.locator(`[data-campaign="${campaign.id}"]`);
+      const primary = card.locator(".camp-give button");
+      assert.equal(await primary.count(), 1);
+      assert.equal(await primary.getAttribute("data-ref"), campaign.id);
+      assert.equal(await primary.getAttribute("data-milestone"), null);
+      assert.ok(await primary.evaluate(button => !!(button.closest(".camp-give").compareDocumentPosition(button.closest(".campaign").querySelector(".camp-ms")) & Node.DOCUMENT_POSITION_FOLLOWING)),
+        "parent contribution action precedes nested milestones");
+      for (const milestone of campaign.milestones) {
+        const action = card.locator(`[data-milestone="${milestone.id}"]`);
+        assert.equal(await action.count(), 1);
+        assert.equal(await action.getAttribute("data-ref"), campaign.id);
+        assert.equal(await action.textContent(), `Contribute to ${milestone.name}`);
+      }
+    }
     assert.equal(await page.locator("#registry [role=progressbar]").getAttribute("aria-valuenow"), "30");
     assert.match(await page.locator("#registry [role=progressbar]").getAttribute("aria-valuetext"), /60,000.*200,000.*illustrative/);
     const onboarding = new URL(await page.locator(".showcase-create").getAttribute("href"), base);
