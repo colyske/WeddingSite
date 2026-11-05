@@ -161,15 +161,18 @@
       nav.sticky-nav .nav-links a { display:flex; align-items:center; justify-content:center; min-height:32px; padding:.2rem 0; font-size:.68rem; letter-spacing:.02em; white-space:nowrap; }
     }
   </style>
+  <link rel="stylesheet" href="guest-celebration.css">
 </head>
-<body class="guest-page">
+<body class="guest-page" id="top">
+  <a class="wedding-skip" href="#wedding-content">Skip to wedding</a>
   <!-- Sticky navbar with glassmorphism -->
   <nav class="sticky-nav">
     <div class="logo-section">
       <div class="monogram" id="monogram" style="background: var(--gold);"></div>
       <span class="brand" id="nav-couple">Our Wedding</span>
     </div>
-    <ul class="nav-links">
+    <button id="wedding-nav-toggle" type="button" aria-expanded="false" aria-controls="wedding-nav-links">Explore <span aria-hidden="true">+</span></button>
+    <ul class="nav-links" id="wedding-nav-links">
       <li><a href="#story">Story</a></li>
       <li><a href="#details">Details</a></li>
       <li><a href="#rsvp">RSVP</a></li>
@@ -183,11 +186,11 @@
     </div>
   </nav>
 
-  <div class="wrap">
+  <main class="wrap" id="wedding-content" tabindex="-1">
     <p id="notice" class="notice" role="status" hidden></p>
 
     <!-- Hero with countdown -->
-    <section class="hero" data-no-divider data-prop-hero="couple">
+    <section class="hero" id="welcome" data-no-divider>
       <div class="hero-image" aria-hidden="true"></div>
       <div class="hero-shade" aria-hidden="true"></div>
       <div class="hero-content">
@@ -249,7 +252,7 @@
     <!-- Fundraising campaigns -->
     <section id="campaigns" class="card" hidden>
       <h2>A gift for our next chapter</h2>
-      <p class="fine">Optional. If you would like to help, choose a fundraiser below. No gift is ever expected. Payment is collected on the spot through the configured test checkout.</p>
+      <p class="fine">Your presence is the greatest gift. If you would like to help with our next chapter, choose a fundraiser below. No gift is ever expected.</p>
       <div id="campaigns-display"></div>
     </section>
 
@@ -440,7 +443,7 @@
         <p id="ecard-date" style="margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--gold); font-weight: 600;"></p>
       </div>
     </section>
-  </div>
+  </main>
 
   <div id="toast" role="status" aria-live="polite" hidden></div>
   <dialog id="pay-dialog">
@@ -503,6 +506,17 @@
       .map(platform => [platform, $(`${prefix}-social-${platform}`).value.trim()])));
   }
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  function givingProgress(name, raised, target) {
+    const currency = wedding.currency || "USD";
+    const amount = WS.money(raised, currency, false);
+    const demo = "Raised";
+    const goal = WS.money(target, currency, false);
+    const pct = target > 0 ? Math.floor(Math.min(100, Math.max(0, raised / target * 100)) * 10) / 10 : 0;
+    return `<div class="giving-progress">
+      <div class="giving-total"><span><small>${demo}</small><strong>${amount}</strong></span>${target > 0 ? `<span class="giving-percent">${pct}<small>% of goal</small></span>` : ""}</div>
+      ${target > 0 ? `<div class="camp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="${esc(name)} progress" aria-valuetext="${esc(`${amount} of ${goal}${wedding.is_showcase ? " (illustrative sample)" : ""}`)}"><span style="width:${pct}%"></span></div><p class="camp-total">Toward a goal of <strong>${goal}</strong></p>` : '<p class="camp-total">No fundraising goal set.</p>'}
+    </div>`;
+  }
   const safeUrl = value => {
     try {
       const url = new URL(value);
@@ -552,15 +566,15 @@
         const banner = document.createElement("aside");
         banner.className = "showcase-banner";
         banner.setAttribute("role", "note");
-        banner.textContent = "Fictional showcase - all sample amounts and guests are illustrative. Payments, RSVPs, passes and messages are disabled.";
-        document.querySelector(".sticky-nav").after(banner);
+        banner.textContent = "Demo";
+        document.querySelector(".logo-section").append(banner);
         $("ecard").hidden = false;
-        $("ecard-guest-name").textContent = "Sample Guest";
+        $("ecard-guest-name").textContent = "Our dear guest";
         $("qrcode").textContent = "SAMPLE PASS - NOT VALID FOR ENTRY";
         $("pass-status").textContent = "Illustration only; no QR credential is issued.";
         $("ecard").querySelector("p.fine").textContent = "Illustrative e-card layout. This sample is not valid for admission.";
         $("qrcode").nextElementSibling.textContent = "No scannable guest credential in this showcase.";
-        $("seating").insertAdjacentHTML("beforeend", '<p class="notice">Sample Guest A &mdash; Garden Table, seat 4 (illustration only).</p>');
+        $("seating").insertAdjacentHTML("beforeend", '<p class="notice">Garden Table &mdash; seat 4</p>');
       }
 
       document.title = `${wedding.couple_names || "Wedding"} — Wedding`;
@@ -649,21 +663,15 @@
         $("registry-list").innerHTML = wedding.registry.map(item => {
           const raised = item.amount_raised_minor || 0;
           const target = item.target_amount_minor || 0;
-          const percentage = target > 0 ? Math.min(100, Math.round((raised / target) * 100)) : 0;
           return `
-            <div style="border-left: 4px solid var(--sage); padding: 1rem; background: #f8f9f7; border-radius: 4px;">
+            <article class="registry-gift">
               <h3 style="margin: 0 0 0.5rem; color: var(--green);">${esc(item.name)}</h3>
               ${item.category ? `<p style="margin: 0 0 0.5rem; color: var(--gold); font-size: 0.9rem; font-weight: 600;">${esc(item.category)}</p>` : ""}
               ${item.description ? `<p style="margin: 0 0 0.75rem; color: #5a5f5a; font-size: 0.95rem;">${esc(item.description)}</p>` : ""}
-              <div style="margin: 0.75rem 0; background: #e3dcc7; height: 8px; border-radius: 4px; overflow: hidden;">
-                <div style="background: var(--gold); height: 100%; width: ${percentage}%; transition: width 0.3s ease;"></div>
-              </div>
-              <p style="margin: 0.5rem 0 0; color: var(--gold); font-weight: 600; font-size: 0.95rem;">
-                ${WS.money(raised, wedding.currency || "USD", true)} of ${WS.money(target, wedding.currency || "USD", true)}
-              </p>
+              ${givingProgress(item.name, raised, target)}
               ${item.notes ? `<p style="margin: 0.5rem 0 0; font-size: 0.9rem; color: #5a5f5a;">${esc(item.notes)}</p>` : ""}
               ${wedding.is_past ? "" : `<button type="button" class="buy-btn" data-buy="registry" data-ref="${esc(item.id)}" data-label="${esc(item.name)}">Choose an amount to contribute</button>`}
-            </div>
+            </article>
           `;
         }).join("");
       }
@@ -750,12 +758,10 @@
       if (camps.length) {
         const cur = wedding.currency || "USD";
         $("campaigns-display").innerHTML = camps.map(c => {
-          const pct = c.goal_minor > 0 ? Math.min(100, Math.round(c.raised_minor / c.goal_minor * 100)) : 0;
           return `<article class="campaign" data-campaign="${esc(c.id)}">
             <h3>${esc(c.name)}</h3>
             ${c.purpose && c.purpose !== c.name ? `<p>${esc(c.purpose)}</p>` : ""}
-            <div class="camp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="${esc(c.name)} progress"><span style="width:${pct}%"></span></div>
-            <p class="camp-total"><strong>${pct}%</strong> of ${WS.money(c.goal_minor, cur, false)} · ${WS.money(c.raised_minor, cur, false)} raised</p>
+            ${givingProgress(c.name, c.raised_minor, c.goal_minor)}
             ${c.milestones.length ? `<ul class="camp-ms">${c.milestones.map(m => `<li class="${m.reached ? "done" : ""}"><span aria-hidden="true">${m.reached ? "☑" : "☐"}</span> <span><strong>${esc(m.name)}</strong> · ${WS.money(m.target_minor, cur, false)}${m.description ? `<br><small>${esc(m.description)}</small>` : ""}<span class="sr-only">${m.reached ? " (reached)" : " (not yet reached)"}</span>${wedding.is_past ? "" : `<br><button type="button" class="link" data-buy="fund" data-ref="${esc(c.id)}" data-milestone="${esc(m.id)}" data-label="${esc(c.name)} · ${esc(m.name)}">Contribute to this milestone</button>`}</span></li>`).join("")}</ul>` : ""}
             ${wedding.is_past ? "" : `<div class="camp-give"><button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-label="${esc(c.name)}">Choose an amount to contribute</button></div>`}
           </article>`;
@@ -813,7 +819,7 @@
         return heading + WSSponsorCards.render(sponsor, { currency, featured });
       }).join("");
       const placeholder = `<article class="sponsor-sample">
-        <p class="eyebrow">Sample advert · your brand here</p>
+        <p class="eyebrow">Your brand here</p>
         <div class="sponsor-emblem" aria-hidden="true">✦</div>
         <h3>Bloom &amp; Celebrate</h3>
         <p>Beautiful details.<br>Unforgettable celebrations.</p>
@@ -1584,6 +1590,7 @@ const payIntent = WSPaymentIntent.create({ name: slug });
 })();
 </script>  <script src="i18n.js"></script>
   <script src="guest-extras.js"></script>
+  <script src="guest-celebration.js"></script>
   <script src="footer.js"></script>
 <script src="/feedback.js"></script>
 </body>

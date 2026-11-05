@@ -87,9 +87,13 @@
         <label for="couple-names">Couple names <span style="color: #d9534f; font-weight: bold;" title="Required">*</span></label>
         <input id="couple-names" type="text" maxlength="120" required aria-required="true">
 
-        <label for="wedding-slug">Wedding URL <span class="fine" style="font-weight: normal; color: #7a8580;">weddingsite.com/<strong id="slug-preview"></strong></span></label>
-        <input id="wedding-slug" type="text" maxlength="80" placeholder="e.g. sarah-and-john" pattern="[a-z0-9\-]+" title="Use only lowercase letters, numbers, and hyphens">
+        <div id="wedding-address" hidden>
+        <label for="wedding-slug">Wedding address</label>
+        <input id="wedding-slug" type="text" maxlength="80" placeholder="e.g. sarah-and-john" pattern="[a-z0-9\-]+" title="Use only lowercase letters, numbers, and hyphens" aria-describedby="slug-preview address-help">
+        <p id="slug-preview" class="fine" hidden></p>
+        <p id="address-help" class="fine">Suggested address, not reserved until saved. Your guest page is available only after publishing.</p>
         <p class="fine" id="slug-error" style="color: #d9534f; display: none; margin-top: 0.5rem;"></p>
+        </div>
 
         <label for="welcome-story">A short welcome story <span class="fine">(needed before publishing)</span>
           <button type="button" class="link" id="ai-story-btn" style="margin-left: 0.5rem; font-weight: normal;">Explore story starters</button>
@@ -664,6 +668,16 @@
     $("team-management-link").href = `/team.html?weddingId=${encodeURIComponent(weddingId || "")}`;
     $("team-setup-link").href = `/team.html?weddingId=${encodeURIComponent(weddingId || "")}`;
     const setGuestSiteLink = (slug, published) => {
+      const visible = Boolean($("couple-names").value.trim() && slug);
+      $("guest-site-url").hidden = !visible;
+      $("view-guest-site").hidden = !visible;
+      $("share-panel").hidden = !visible;
+      if (!visible) {
+        $("guest-site-url").textContent = "";
+        $("view-guest-site").removeAttribute("href");
+        $("share-panel").replaceChildren();
+        return;
+      }
       const guestUrl = WSShare.guestUrl(slug || "");
       $("guest-site-url").textContent = `Guest site: ${guestUrl}`;
       $("view-guest-site").href = guestUrl;
@@ -1478,8 +1492,9 @@
         $("couple-names").value = w.couple_names || "";
         $("starter-review-note").hidden = !w.starter_review_note;
         $("starter-review-note").querySelector("[data-starter-review-note]").textContent = w.starter_review_note || "";
-        $("wedding-slug").value = w.slug || "";
-        $("slug-preview").textContent = w.slug || "wedding";
+        suggestAddress = !w.couple_names?.trim();
+        $("wedding-slug").value = suggestAddress ? "" : w.slug || "";
+        updateAddressPreview();
         $("welcome-story").value = w.welcome_story || "";
         const features = w.revenue_features || {};
         $("feature-giving").checked = features.giving !== false;
@@ -1731,10 +1746,28 @@
       }
     }
 
-    // Slug preview and validation
-    $("wedding-slug").addEventListener("input", e => {
-      const slug = e.target.value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
-      $("slug-preview").textContent = slug || "wedding";
+    // Unnamed starter drafts have an internal address, never presented as the couple's link.
+    let suggestAddress = false;
+    function updateAddressPreview() {
+      const names = $("couple-names").value.trim();
+      $("wedding-address").hidden = !names;
+      if (!names) {
+        $("slug-preview").hidden = true;
+        setGuestSiteLink("", false);
+        return;
+      }
+      const slug = $("wedding-slug").value.trim().toLowerCase();
+      const valid = WSSite.isSubdomainSlug(slug);
+      $("slug-preview").hidden = !valid;
+      $("slug-preview").textContent = valid ? `https://${slug}.${WSSite.BASE}/` : "";
+    }
+    $("couple-names").addEventListener("input", () => {
+      if (suggestAddress) $("wedding-slug").value = WSSite.suggestSlug($("couple-names").value);
+      updateAddressPreview();
+    });
+    $("wedding-slug").addEventListener("input", () => {
+      suggestAddress = false;
+      updateAddressPreview();
       $("slug-error").style.display = "none";
     });
 
@@ -1745,8 +1778,8 @@
         $("slug-error").style.display = "block";
         return;
       }
-      if (!/^[a-z0-9-]{3,80}$/.test(slug)) {
-        $("slug-error").textContent = "Use 3-80 lowercase letters, numbers, and hyphens only.";
+      if (!WSSite.isSubdomainSlug(slug)) {
+        $("slug-error").textContent = "Choose an unreserved address with 3-63 lowercase letters, numbers or hyphens, beginning and ending with a letter or number.";
         $("slug-error").style.display = "block";
         return;
       }
@@ -1764,6 +1797,12 @@
       e.preventDefault();
       if ($("edit-form").dataset.submitting) return;
       if (weddingGuide && !weddingGuide.validate()) return;
+      const address = $("wedding-slug").value.trim().toLowerCase();
+      const unchangedAddress = window.__wedding?.couple_names?.trim() && address === window.__wedding.slug;
+      if ($("couple-names").value.trim() && !unchangedAddress && !WSSite.isSubdomainSlug(address)) {
+        focusInvalidField("wedding-slug");
+        return notice("Choose an unreserved wedding address with 3-63 lowercase letters, numbers or hyphens.", true);
+      }
       const payoutWasUnavailable = $("payout-method").disabled;
       if ($("featured-sponsor-enabled").checked) {
         const invalid = featuredFields.map(id => $(id)).find(input => !input.checkValidity());
@@ -1888,7 +1927,7 @@
           body: JSON.stringify({
             weddingId,
             coupleNames: $("couple-names").value,
-            slug: $("wedding-slug").value,
+            slug: $("couple-names").value.trim() ? $("wedding-slug").value : window.__wedding?.slug,
             welcomeStory: $("welcome-story").value,
             coverImageUrl: $("cover-image-url").value,
             guestInstructions: $("guest-instructions").value,
@@ -1935,7 +1974,12 @@
           return notice(data.error || "Could not save wedding.", true);
         }
         const answersUnchanged = weddingGuide?.unchangedSinceSave();
-        if (data.wedding?.slug) setGuestSiteLink(data.wedding.slug, !!data.wedding.published_at);
+        if (data.wedding?.slug) {
+          suggestAddress = !data.wedding.couple_names?.trim();
+          if (answersUnchanged) $("wedding-slug").value = suggestAddress ? "" : data.wedding.slug;
+          updateAddressPreview();
+          setGuestSiteLink(data.wedding.slug, !!data.wedding.published_at);
+        }
         if (data.wedding) {
           if (answersUnchanged) {
             [[submittedVenueItems, ".venue-id", data.wedding.venues],

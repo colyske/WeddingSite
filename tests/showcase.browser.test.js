@@ -44,9 +44,22 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     assert.equal(await page.locator("#song-request-presets").count(), 0);
     assert.equal(await page.locator("#demo-contribution-amount").count(), 0, "the public wedding site has no organizer demo controls");
     assert.equal(await page.locator("#venues-display > *").count(), 2);
-    assert.match(await page.locator("#ledger-body").innerText(), /Song bid[\s\S]*2,500[\s\S]*Sample Guest A/);
+    assert.match(await page.locator("#ledger-body").innerText(), /Song bid[\s\S]*2,500[\s\S]*A friend/);
     assert.doesNotMatch(await page.locator("#ledger-body").innerText(), /NaN|\$/);
     assert.ok(await page.locator(".showcase-banner").isVisible());
+    assert.equal(await page.locator(".showcase-banner").innerText(), "Demo");
+    assert.doesNotMatch(await page.locator("#welcome-story").innerText(), /sample|fictional/i);
+    assert.match(await page.locator("#welcome-story").innerText(), /borrowed watering can/);
+    assert.equal(await page.locator("#wedding-content section.card").count(), await page.locator("section.card").count(),
+      "every content band belongs to the main landmark");
+    for (const id of ["welcome", "story", "details", "venues", "prewedding", "campaigns", "registry", "rsvp",
+      "bids", "ledger", "sponsor-tiers", "vip-section", "sponsors", "seating", "share-section", "info-section", "guestbook", "ecard"]) {
+      assert.equal(await page.locator(`#${id} > .celebration-art svg`).count(), 1, `${id} has a single bespoke illustration`);
+    }
+    assert.equal(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuenow"), "36");
+    assert.equal(await page.locator("#registry [role=progressbar]").getAttribute("aria-valuenow"), "30");
+    assert.match(await page.locator("#registry [role=progressbar]").getAttribute("aria-valuetext"), /60,000.*200,000.*illustrative/);
+    assert.match(await page.locator(".showcase-create").getAttribute("href"), /dashboard\.html\?style=showcase-wedding#step=couple$/);
     await page.locator("#reuse-wedding-style a").waitFor();
     assert.equal(await page.locator("#reuse-wedding-style a").getAttribute("href"), "/dashboard.html?style=showcase-wedding#step=couple");
     assert.ok(await page.locator("#pay-submit").isDisabled());
@@ -97,10 +110,38 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
       assert.ok(metrics.field.every(Boolean), "labels beside fields");
       assert.equal(metrics.songFields.length, 3);
       assert.ok(metrics.songFields.every(Boolean), "song request labels remain beside their inputs");
-      assert.equal(new Set(metrics.songCells).size, 1, "song title, artist and paid total share one row");
+      if (width > 640) assert.equal(new Set(metrics.songCells).size, 1, "desktop song title, artist and paid total align");
+      else {
+        assert.equal(metrics.songCells[0], metrics.songCells[2], "song title and paid total align on mobile");
+        assert.ok(metrics.songCells[1] > metrics.songCells[0], "mobile artist has its own readable line");
+      }
       assert.ok(new Set(metrics.surfaces).size >= 3, "sections are visually differentiated");
+      if (width <= 768) {
+        assert.ok(await page.locator(".sticky-nav").evaluate(nav => nav.getBoundingClientRect().height <= 90), "compact closed mobile header");
+        const toggle = page.locator("#wedding-nav-toggle");
+        await toggle.click();
+        assert.equal(await toggle.getAttribute("aria-expanded"), "true");
+        await page.keyboard.press("Escape");
+        assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+        assert.ok(await toggle.evaluate(el => el === document.activeElement));
+        await toggle.click();
+        await page.locator('#wedding-nav-links a[href="#bids"]').click();
+        assert.equal(await toggle.getAttribute("aria-expanded"), "false");
+        assert.equal(await page.evaluate(() => document.activeElement.id), "bids");
+      }
       if (process.env.WEDDING_SCREENSHOTS) await page.screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `showcase-${width}.png`), fullPage: true });
     }
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.locator(".wedding-skip").focus();
+    await page.keyboard.press("Enter");
+    assert.equal(await page.evaluate(() => document.activeElement.id), "wedding-content", "skip link transfers keyboard focus to main");
+    assert.equal(await page.locator(".hero .celebration-art").evaluate(el => getComputedStyle(el).animationName), "none");
+    await page.locator("#rsvp-form").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(100);
+    assert.ok(await page.locator(".showcase-create").isHidden(), "floating CTA never obscures the form");
+    await page.locator(".ws-promo").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(100);
+    assert.ok(await page.locator(".showcase-create").isHidden(), "floating CTA never obscures the footer");
     assert.deepEqual(errors, []);
     // Exercise local input validation without enabling or submitting sample actions.
     const message = await page.locator("#song-request-title").evaluate(el => {

@@ -1,0 +1,240 @@
+/* Public wedding stationery: all accents follow the couple's contrast-adjusted palette. */
+body.guest-page {
+  --petal: color-mix(in srgb, #f3c9c5 80%, var(--gold));
+  --rose: #ce807e;
+  --rose-ink: #753b43;
+  --honey: #e0be7b;
+  --leaf: color-mix(in srgb, var(--sage) 65%, #a9b5a2);
+  --blush: #f9eeeb;
+  --ink: #293a31;
+  --paper: #fffcf6;
+  --section-pad: max(1.25rem, calc((100% - 1120px) / 2));
+  line-height: 1.65;
+}
+.guest-page .orn-layer { display: none; }
+.guest-page .wedding-skip { position: fixed; top: .5rem; left: 1rem; z-index: 2000; padding: .8rem 1rem; background: #fff; transform: translateY(-160%); }
+.guest-page .wedding-skip:focus { transform: none; }
+.guest-page nav.sticky-nav { padding: .75rem 4vw !important; min-height: 76px; gap: 1rem; z-index: 100; }
+.guest-page nav.sticky-nav .logo-section { gap: .75rem; min-width: 0; }
+.guest-page nav.sticky-nav .brand { font-size: 1.1rem; line-height: 1.25; }
+.guest-page nav.sticky-nav .monogram { border: 1px solid var(--gold); border-radius: 50% !important; width: 42px !important; height: 42px !important; flex-shrink: 0; font-size: 1.1rem !important; }
+.guest-page nav.sticky-nav .nav-links { gap: 1.15rem; }
+.guest-page nav.sticky-nav .nav-links a { display: flex; align-items: center; min-height: 44px; font-size: .65rem; letter-spacing: .08em; }
+.guest-page nav.sticky-nav .controls { gap: .3rem; }
+.guest-page nav.sticky-nav .controls .audio-toggle { width: 44px !important; height: 44px !important; min-height: 44px !important; padding: .4rem !important; margin: 0; font-size: .8rem; border-radius: 50% !important; }
+.guest-page #wedding-nav-toggle { display: none; }
+.guest-page .showcase-banner { flex-shrink: 0; font-size: .65rem; padding: .15rem .5rem; line-height: 1.5; background: #fff3d4; border: 1px solid #bba663; border-radius: 20px; letter-spacing: .04em; font-weight: 600; }
+.guest-page .wrap { padding-top: 0; padding-bottom: 0; }
+.guest-page .hero { min-height: 540px; }
+.guest-page .hero-content { padding: 65px 0 75px; }
+.guest-page .hero h1#couple-names { max-width: 850px; }
+.guest-page .hero .btn { margin-top: .5rem; }
+.guest-page .hero .prop-hero { max-width: 210px; opacity: .65; }
+.guest-page .hero > .celebration-art { --gold: #e0be7b; --leaf: #b0bda0; --petal: #f3c9c5; top: auto; bottom: 1.5rem; right: 6%; width: 260px; z-index: 0; opacity: .9; }
+.guest-page .countdown-band { padding: 25px 5vw; }
+.guest-page .countdown-band .countdown-value { font-size: 2.4rem; }
+.guest-page .countdown-band .countdown-label { color: #e8ebdd !important; }
+
+body.guest-page section.card {
+  position: relative; isolation: isolate; overflow: hidden;
+  padding: clamp(3.5rem, 6vw, 6rem) var(--section-pad) !important;
+  border: 0 !important;
+}
+body.guest-page section.card > h2 { font-size: clamp(2.4rem, 4.5vw, 3.8rem); max-width: 720px; margin: 0 0 1.5rem; line-height: 1.08; }
+body.guest-page section.card > .fine { max-width: 42rem; font-size: .95rem; line-height: 1.75; }
+.guest-page .sec-label { font-size: .7rem; font-weight: 600; letter-spacing: .17em; margin-bottom: 1.1rem !important; }
+.guest-page .sec-label span { display: inline-flex; align-items: center; justify-content: center; border: 1px solid currentColor; border-radius: 50%; width: 30px; height: 30px; margin-right: .65rem; color: var(--gold); letter-spacing: 0; }
+.guest-page :is(section, aside)[id] { scroll-margin-top: 100px; }
+.guest-page .celebration-art { position: absolute; width: clamp(170px, 23vw, 290px); top: 3rem; right: var(--section-pad); pointer-events: none; z-index: -1; }
+.guest-page .celebration-art svg { width: 100%; height: auto; display: block; }
+.guest-page section:has(> .celebration-art) > :is(h2, .sec-label, p) { max-width: min(65%, 44rem); }
+.guest-page button, .guest-page .btn { min-height: 44px; border-radius: 6px !important; letter-spacing: .06em; line-height: 1.4; }
+.guest-page button:disabled { border: 1px dashed #7b8376 !important; background: #e9ece3 !important; color: #495244 !important; cursor: not-allowed; }
+.guest-page :is(input, select, textarea) { border-radius: 6px !important; background: var(--paper) !important; }
+.guest-page summary { cursor: pointer; min-height: 44px; padding: .7rem 0; }
+
+body.guest-page #story { background: var(--paper) !important; padding-top: 4rem !important; padding-bottom: 4rem !important; }
+.guest-page #welcome-story { max-width: min(48rem, calc(100% - 260px)); background: none; border: 0; padding: 0 0 0 1.5rem; border-left: 2px solid var(--rose); font: 1.2rem/1.9 var(--serif, Georgia, serif); white-space: pre-line; }
+.guest-page #story .celebration-art { top: auto; bottom: 3rem; width: 230px; }
+body.guest-page #details { background: color-mix(in srgb, var(--sage) 10%, var(--paper)) !important; }
+.guest-page #palette-preview { margin-top: 2.5rem; gap: clamp(.5rem, 2.5vw, 2rem); }
+.guest-page #palette-preview figure > span { min-height: 90px; aspect-ratio: 1.7; border-radius: 70px 70px 0 0 !important; border: 1px solid #87927f; position: relative; }
+.guest-page #palette-preview figcaption { margin-top: .8rem; font-size: .85rem; }
+.guest-page #attire-notes-display { margin-top: 2rem; }
+
+body.guest-page #venues { background: var(--green-deep) !important; }
+.guest-page #venues .celebration-art { --gold: #d7bc7f; --paper: #fffcf6; }
+.guest-page #venues-display { margin-top: 3rem; gap: 0 !important; }
+.guest-page .sched-row { position: relative; grid-template-columns: minmax(160px, .7fr) 2fr; padding: 1.75rem 0 1.75rem 2rem; gap: 2rem; }
+.guest-page .sched-row::before { content: ""; position: absolute; left: 0; top: 2.3rem; width: 9px; height: 9px; border: 2px solid var(--honey); border-radius: 50%; background: var(--green-deep); }
+.guest-page .sched-time { font-size: 2rem; }
+.guest-page .sched-body h3 { font-size: 1.6rem; }
+.guest-page .sched-body p { font-size: .95rem; }
+.guest-page .sched-body .link { display: inline-block; padding: .4rem 0; text-decoration: underline; }
+body.guest-page #prewedding { background: var(--paper) !important; }
+.guest-page #prewedding-display { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 2.5rem !important; margin-top: 3rem; }
+.guest-page #prewedding .sched-row { grid-template-columns: 1fr; gap: .75rem; border: 0; border-top: 1px solid #c9cbbb; }
+.guest-page #prewedding .sched-row::before { background: var(--paper); border-color: var(--rose-ink); }
+.guest-page #prewedding .sched-date { color: #555b53; }
+
+body.guest-page #campaigns { background: var(--blush) !important; }
+body.guest-page #registry { background: color-mix(in srgb, var(--gold) 9%, var(--paper)) !important; }
+.guest-page :is(#campaigns-display, #registry-list) { margin-top: 3rem; }
+.guest-page :is(.campaign, .registry-gift) { background: var(--paper); border: 1px solid #ccc9b8; border-radius: 18px; padding: clamp(1.25rem, 3vw, 2.5rem); margin: 0 0 1.25rem; box-shadow: 0 6px 0 #00000005; }
+.guest-page :is(.campaign, .registry-gift) h3 { font-size: 1.8rem; }
+.guest-page :is(.campaign, .registry-gift) > p { max-width: 45rem; }
+.guest-page .giving-progress { margin: 1.75rem 0; }
+.guest-page .giving-total { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; color: var(--green); }
+.guest-page .giving-total small { display: block; font: 600 .68rem/1.5 var(--sans, Arial, sans-serif); color: #555b53; letter-spacing: .12em; text-transform: uppercase; }
+.guest-page .giving-total strong { display: block; font: 400 clamp(1.8rem, 4vw, 2.8rem)/1.4 var(--serif, Georgia, serif); }
+.guest-page .giving-percent { text-align: right; font: italic 2.4rem/1 var(--serif, Georgia, serif); }
+.guest-page .giving-percent small { font-style: normal; margin-top: .3rem; }
+.guest-page .camp-bar { height: 18px; border-radius: 20px; margin: 1rem 0 .65rem; background: #e4e6d9; border: 1px solid #8a937f; overflow: hidden; }
+.guest-page .camp-bar > span { height: 100%; border-radius: inherit; background: repeating-linear-gradient(115deg, transparent 0 13px, #ffffff1a 13px 15px), linear-gradient(90deg, var(--green), var(--sage)); min-width: 0; position: relative; transition: none; }
+.guest-page .camp-bar > span::after { content: ""; position: absolute; inset: 3px 4px 3px auto; width: 10px; border-radius: 50%; background: #fff5; }
+.guest-page .camp-total { font-size: .85rem; color: #555b53; }
+.guest-page .camp-ms { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 1rem; margin: 1.5rem 0; }
+.guest-page .camp-ms li { padding: 1rem; border: 1px solid #cbd0c0; border-radius: 10px; background: #f4f4eb; align-items: baseline; font-size: .9rem; }
+.guest-page .camp-ms li.done { background: color-mix(in srgb, var(--sage) 12%, white); }
+.guest-page .camp-ms .link { font-size: .65rem; margin-top: .6rem; text-align: left; }
+.guest-page .registry-gift { border-top: 5px solid var(--rose); }
+
+body.guest-page #rsvp { background: color-mix(in srgb, var(--sage) 14%, var(--paper)) !important; }
+.guest-page #rsvp-form { position: relative; padding: clamp(1.25rem, 3vw, 2.5rem); border: 1px solid #abb6a2; background: var(--paper); border-radius: 80px 80px 12px 12px; margin-top: 3rem; }
+.guest-page #rsvp-form > .field-row:first-child { padding-top: 1rem; }
+.guest-page #rsvp-form > button { width: 100%; margin-top: 1rem; }
+.guest-page #pass-lookup { border-bottom: 1px solid #aeb8a1; padding-bottom: .5rem; }
+body.guest-page #bids { background: #422f3c !important; color: #fffaf0; }
+.guest-page #bids > :is(h2, h2 em, .fine, .sec-label), .guest-page #bids > h2 em, .guest-page #bids > div > h3 { color: #fff0df !important; }
+.guest-page #bids .sec-label span { color: #e0be7b; }
+.guest-page #bids > .celebration-art { --gold: #e0be7b; --leaf: #a9b5a2; --petal: #f3c9c5; }
+.guest-page #bids #leaderboard-table, .guest-page #bids .song-request { color: var(--ink); }
+.guest-page #bids > div:not(.celebration-art) { margin-top: 3rem !important; }
+.guest-page #leaderboard-table { background: var(--paper); border-radius: 14px; overflow: hidden; border-collapse: separate; border-spacing: 0; }
+.guest-page #leaderboard-table th { padding: 1.25rem .75rem !important; background: #ede6d9; }
+.guest-page #leaderboard-table td { padding: 1.25rem .75rem !important; border-bottom: 1px solid #ddd7cb; }
+.guest-page #leaderboard-table .lb-rank { font: italic 1.5rem var(--serif, Georgia, serif); color: var(--rose-ink); }
+.guest-page #leaderboard-table .lb-song { font-family: var(--serif, Georgia, serif); font-size: 1.15rem; }
+body.guest-page #bids .song-request { margin-top: 2rem; padding: 1.5rem; border: 1px solid #c4b5ad; background: var(--paper); border-radius: 12px; }
+body.guest-page #ledger { background: var(--paper) !important; }
+.guest-page #ledger-table { margin-top: 3rem; }
+.guest-page #ledger-table th { padding: 1rem .75rem !important; border-bottom: 2px solid var(--rose); }
+.guest-page #ledger-table td { padding: 1rem .75rem !important; }
+body.guest-page #sponsor-tiers { background: #f0e9d8 !important; }
+.guest-page #tiers-display { margin-top: 3rem; }
+.guest-page #tiers-display > div { background: var(--paper) !important; border: 1px solid var(--gold) !important; border-radius: 70px 70px 10px 10px !important; padding: 2.5rem 1.5rem !important; }
+body.guest-page #vip-section { background: var(--blush) !important; }
+.guest-page #vip-display { margin-top: 3rem; background: var(--paper) !important; border: 1px solid #baad96 !important; border-left: 5px solid var(--gold) !important; border-radius: 10px !important; padding: 2rem !important; }
+body.guest-page #sponsors { background: color-mix(in srgb, var(--sage) 12%, var(--paper)) !important; }
+.guest-page #sponsors-display { margin-top: 3rem; }
+.guest-page .sponsor-ad, .guest-page .sponsor-sample { border-radius: 12px 12px 60px 12px; }
+body.guest-page #seating { background: #f0e9d8 !important; }
+.guest-page #seat-form { max-width: 650px; margin-top: 2rem; }
+body.guest-page #share-section { background: var(--blush) !important; }
+.guest-page #share-main { max-width: 760px; margin-top: 3rem; }
+.guest-page .ws-share-actions { gap: .65rem; margin: .75rem 0; }
+.guest-page .ws-share-actions :is(a, button) { font-size: .65rem; }
+body.guest-page #info-section { background: var(--paper) !important; }
+.guest-page #info-section > h3 { margin-top: 2.5rem; }
+.guest-page #info-section > p { max-width: 750px; }
+.guest-page #info-section > details { border-bottom: 1px solid #c9cbbb; padding: .4rem 0; max-width: 800px; }
+.guest-page #info-section summary { color: var(--green); font-weight: 600; }
+body.guest-page #guestbook { background: color-mix(in srgb, var(--sage) 12%, var(--paper)) !important; }
+.guest-page #wish-form { background: var(--paper); padding: 2rem; border-radius: 12px; border: 1px solid #bcc4af; margin-top: 3rem; }
+.guest-page #wish-items { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 1rem; margin-top: 2rem; }
+.guest-page .wish { background: #fffcf6; border: 0; border-top: 3px solid var(--rose); padding: 1.5rem; margin: 0; border-radius: 0 0 18px 18px; }
+.guest-page .wish footer { font: .8rem var(--sans, Arial, sans-serif); color: #555b53; }
+body.guest-page #ecard { background: #f4e3df !important; }
+.guest-page #ecard-display { max-width: 700px; margin: 3rem auto 1rem; border-radius: 100px 100px 12px 12px !important; padding: 3rem 1.5rem !important; box-shadow: 10px 10px 0 #ba976355 !important; }
+.guest-page #ecard-display a { display: block; color: #fff4d8; padding: .6rem; }
+.guest-page #ecard-display #qrcode { color: #293a31; font-size: .85rem; font-weight: 600; }
+.guest-page #ecard > :not(#ecard-display) { box-shadow: none !important; }
+.guest-page #ecard > .prop-corner { display: none; }
+.guest-page #ecard-share { margin-top: 3rem; }
+.guest-page #ecard-share h3 { font-size: 1.6rem; }
+.guest-page #reuse-wedding-style { margin: 0; background: var(--paper); border: 0; border-top: 1px solid #b9bcae; padding: 3rem var(--section-pad); }
+.guest-page #reuse-wedding-style > p { font-size: .85rem; max-width: 850px; }
+.guest-page .ws-promo { padding: 3rem var(--section-pad); }
+.guest-page .ws-promo::before { content: "With love, always."; display: block; font: italic clamp(2rem, 4vw, 3.5rem)/1.3 var(--serif, Georgia, serif); color: #f4e3df; margin-bottom: 2rem; }
+.guest-page .ws-promo .foot-top { padding: 0; }
+.guest-page .foot-mono { border-radius: 50%; padding: 1rem; }
+.guest-page #ws-site-footer { margin: 0 !important; color: #f0eadc !important; background: var(--green-deep); opacity: 1 !important; }
+.guest-page .showcase-create { position: fixed; z-index: 110; right: 1.25rem; bottom: 1.25rem; display: flex; align-items: center; gap: .6rem; padding: .6rem 1rem .6rem .6rem; min-height: 48px; border: 1px solid #d5bda0; border-radius: 60px; background: var(--green-deep); color: #fffaf0; text-decoration: none; font-size: .8rem; box-shadow: 0 4px 20px #152b2526; }
+.guest-page .showcase-create svg { width: 30px; height: 30px; }
+.guest-page .showcase-create:hover { background: var(--green); }
+
+@media (min-width: 960px) {
+  .guest-page #rsvp { display: grid; grid-template-columns: .85fr 1.15fr; column-gap: 5rem; align-items: start; }
+  .guest-page #rsvp > :is(.sec-label, h2, p) { grid-column: 1; max-width: none !important; }
+  .guest-page #rsvp > h2 { margin-bottom: 0; }
+  .guest-page #rsvp > .celebration-art { position: relative; grid-column: 1; grid-row: 4; width: 280px; top: auto; right: auto; justify-self: center; }
+  .guest-page #rsvp-form { grid-column: 2; grid-row: 1 / span 5; margin-top: 0; }
+  .guest-page #pass-lookup { grid-column: 2; }
+}
+@media (max-width: 1100px) {
+  .guest-page nav.sticky-nav { display: flex; flex-wrap: wrap; min-height: 64px; padding: .5rem 1rem !important; gap: .5rem; }
+  .guest-page nav.sticky-nav .logo-section { flex: 1; }
+  .guest-page nav.sticky-nav .brand { max-width: 35vw; white-space: normal; font-size: .95rem; }
+  .guest-page nav.sticky-nav .controls { gap: 0; }
+  .guest-page nav.sticky-nav .controls .audio-toggle { font-size: .75rem !important; }
+  .guest-page #wedding-nav-toggle { display: flex; align-items: center; gap: .65rem; font-size: .65rem; margin: 0; padding: .65rem .75rem !important; order: 2; }
+  .guest-page #wedding-nav-toggle[aria-expanded="true"] span { transform: rotate(45deg); }
+  .guest-page nav.sticky-nav .nav-links { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); order: 3; gap: .4rem; padding: .5rem 0; }
+  .guest-page nav.celebration-ready #wedding-nav-toggle[aria-expanded="false"] + .nav-links { display: none; }
+  .guest-page nav.sticky-nav .nav-links a { justify-content: center; min-height: 44px; background: #f0eee6; border-radius: 5px; font-size: .65rem; }
+}
+@media (max-width: 959px) {
+  .guest-page #welcome-story { max-width: none; }
+  .guest-page #story .celebration-art { position: relative; width: 145px; bottom: auto; top: auto; right: auto; margin: 1rem auto 0; }
+}
+@media (max-width: 640px) {
+  .guest-page { --section-pad: 1.25rem; }
+  .guest-page nav.sticky-nav .monogram { display: none; }
+  .guest-page nav.sticky-nav .brand { max-width: 42vw; font-size: .85rem; }
+  .guest-page nav.sticky-nav .controls .audio-toggle { width: 36px !important; min-width: 36px !important; }
+  .guest-page .showcase-banner { font-size: .6rem; }
+  .guest-page .hero { min-height: 440px; }
+  .guest-page .hero-content { padding: 50px 0; }
+  .guest-page .hero .prop-hero { width: 110px; opacity: .25; }
+  .guest-page .hero > .celebration-art { position: absolute; width: 150px; opacity: .3; right: -1rem; bottom: 0; margin: 0; }
+  .guest-page #story .celebration-art { position: relative; width: 145px; bottom: auto; }
+  body.guest-page section.card { padding-top: 3rem !important; padding-bottom: 3rem !important; }
+  body.guest-page section.card > h2 { font-size: 2.3rem; }
+  .guest-page section:has(> .celebration-art) > :is(h2, .sec-label, p) { max-width: 100%; }
+  .guest-page .celebration-art { position: relative; top: auto; right: auto; width: 145px; margin: 1.25rem auto 0; z-index: 0; }
+  .guest-page #palette-preview { gap: .55rem; margin-top: 1.5rem; }
+  .guest-page #palette-preview figure > span { min-height: 74px; }
+  .guest-page #palette-preview figcaption { font-size: .68rem; }
+  .guest-page #palette-preview figcaption small { font-size: .63rem; }
+  .guest-page #prewedding-display { grid-template-columns: 1fr; gap: 0 !important; }
+  .guest-page .sched-row { grid-template-columns: 1fr; gap: .7rem; padding: 1.5rem 0 1.5rem 1.25rem; }
+  .guest-page .sched-time { font-size: 1.7rem; }
+  .guest-page :is(#campaigns-display, #registry-list, #venues-display) { margin-top: 2rem; }
+  .guest-page .giving-total strong { font-size: 1.65rem; }
+  .guest-page .giving-percent { font-size: 2rem; }
+  .guest-page .giving-total small { letter-spacing: .04em; font-size: .62rem; }
+  .guest-page #rsvp-form { border-radius: 38px 38px 10px 10px; padding: 1.25rem; margin-top: 2rem; }
+  .guest-page .field-row { grid-template-columns: minmax(5rem, 32%) minmax(0, 1fr); }
+  .guest-page #leaderboard-table tr { padding: 1rem .75rem; background: var(--paper); grid-template-columns: 1.1rem minmax(0, 1fr) auto !important; gap: .4rem .65rem; }
+  .guest-page #leaderboard-table td { padding: 0 !important; border: 0; }
+  body.guest-page #leaderboard-table .lb-rank { grid-column: 1; grid-row: 1 / span 2; }
+  body.guest-page #leaderboard-table .lb-song { grid-column: 2; grid-row: 1; }
+  body.guest-page #leaderboard-table .lb-artist { grid-column: 2; grid-row: 2; }
+  body.guest-page #leaderboard-table .lb-total { grid-column: 3; grid-row: 1; }
+  body.guest-page #leaderboard-table td.lb-bid { grid-column: 3; grid-row: 2 !important; align-self: start; }
+  body.guest-page #leaderboard-table tr:has(.song-bid-options[open]) td.lb-bid { grid-column: 2 / -1; grid-row: 3 !important; }
+  .guest-page #leaderboard-table .lb-bid button { padding: .5rem .65rem !important; font-size: .65rem; }
+  .guest-page #leaderboard-table .lb-song { font-size: .85rem; }
+  .guest-page #leaderboard-table .lb-rank { font-size: 1rem; }
+  .guest-page #ledger-table :is(td, th) { padding: .75rem .25rem !important; }
+  .guest-page #wish-form { padding: 1.25rem; }
+  .guest-page #ecard-display { border-radius: 55px 55px 10px 10px !important; }
+  .guest-page .ws-share-actions :is(a, button) { flex: 1 1 7rem; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .guest-page *, .guest-page *::before, .guest-page *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media print {
+  .guest-page .celebration-art, .guest-page nav, .guest-page .wedding-skip { display: none; }
+  body.guest-page section.card { break-inside: avoid; padding: 1rem !important; }
+}
