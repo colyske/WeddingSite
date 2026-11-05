@@ -141,7 +141,6 @@ test("guest renderer refreshes on boundaries/resume and cleans timers/listeners;
         animation: getComputedStyle(row).animationName, transition: getComputedStyle(row).transitionDuration
       };
     });
-
     assert.ok(metrics.contrast >= 4.5);
     assert.equal(metrics.markerLeft, "0px");
     assert.notEqual(metrics.markerTransform, "none", "diamond marker remains in its gutter");
