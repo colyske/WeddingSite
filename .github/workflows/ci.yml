@@ -64,7 +64,9 @@ jobs:
         run: node tests/db/withdrawal-policy-upgrade.mjs
       - name: Commit private recipient snapshots on populated history and test DDL rollback
         run: node tests/db/payout-recipient-upgrade.mjs
-      - name: Apply all migrations to a fresh database
+      - name: Commit interactive creation on populated history and verify DDL rollback
+        run: node tests/db/interactive-creation-upgrade.mjs
+      - name: Apply all migrations to a fresh database including interactive creation
         run: supabase db reset --local --no-seed
       - name: Lint the migrated schema
         run: supabase db lint --local --schema public --level error
@@ -108,6 +110,8 @@ jobs:
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/wedding-starter-drafts.sql
       - name: Test unpaid starter creation and atomic deferred review
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/deferred-wedding-starters.sql
+      - name: Test interactive creation, replay, same-currency funds and permanent revenue invariants
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/interactive-creation.sql
       - name: Test Owner default currency audit and unchanged fee/wedding records
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/platform-default-currency.sql
       - name: Test real manual policy activation and OFF outcome accounting with rollback
@@ -154,8 +158,17 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run check
+      - run: npm run check:interactive
       - run: npm run check:referrals
       - run: npm test
+        env:
+          INTERACTIVE_EVIDENCE_DIR: ${{ runner.temp }}/interactive-evidence
+      - name: Upload interactive desktop and mobile evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: interactive-creation-evidence
+          path: ${{ runner.temp }}/interactive-evidence
+          if-no-files-found: error
       - name: Capture exact-head starter mobile evidence
         if: github.event_name == 'push'
         env:

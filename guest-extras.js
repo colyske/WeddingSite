@@ -1,6 +1,7 @@
 /* Guest-site extras: sharing, calendar links, referral tracking, guestbook, FAQ/travel.
    Listens for "ws:wedding" (site loaded) and "ws:pass" (RSVP pass shown) dispatched by guest.html. */
 (function () {
+  var fetch = window.WSGuestFetch || window.fetch.bind(window);
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   var params = new URLSearchParams(location.search);
@@ -119,11 +120,12 @@
   }
 
   function trackVisit() {
+    if (window.WSGuestPreview) return;
     if (wedding?.is_showcase) return;
     var key = "ws-visit:" + slug;
     try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, "1"); } catch (_) {}
     var ref = ""; try { ref = localStorage.getItem("ws-ref:" + slug) || ""; } catch (_) {}
-    fetch("/api/guest?action=visit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug: slug, ref: ref }) }).catch(function () {});
+    if (!window.WSGuestPreview) fetch("/api/guest?action=visit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug: slug, ref: ref }) }).catch(function () {});
   }
 
   function renderExtras(data) {
@@ -136,6 +138,7 @@
       if (data.faq && data.faq.length) h += "<h3>Questions guests ask</h3>" + data.faq.map(function (f) { return "<details><summary>" + esc(f.q) + "</summary><p>" + esc(f.a) + "</p></details>"; }).join("");
       s.innerHTML = h;
       before.parentNode.insertBefore(s, before);
+      if (window.WSWeddingContent) WSWeddingContent.apply(document, wedding.page_content);
     }
     var g = $("guestbook");
     if (!g) {
@@ -148,6 +151,7 @@
       '<form id="wish-form"><label for="wish-name">Your name *</label><input id="wish-name" maxlength="80" required>' +
       '<label for="wish-text">Your wish *</label><textarea id="wish-text" rows="3" maxlength="500" required></textarea>' +
       '<button type="submit">Send wish</button></form><div id="wish-items">' + (wishes || '<p class="fine">Be the first to leave a wish.</p>') + "</div>";
+    if (window.WSWeddingContent) WSWeddingContent.apply(document, wedding.page_content);
     $("wish-form").addEventListener("submit", function (e) {
       e.preventDefault();
       fetch("/api/guest?action=wish", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug: slug, name: $("wish-name").value, message: $("wish-text").value }) })
@@ -162,7 +166,12 @@
     renderMeta();
     renderShare();
     trackVisit();
-    fetch("/api/guest?action=extras&slug=" + encodeURIComponent(slug)).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) { if (d) { renderExtras(d); renderShare(); } }).catch(function () {});
+    fetch("/api/guest?action=extras&slug=" + encodeURIComponent(slug)).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      if (d) {
+        renderExtras(d); renderShare();
+        document.dispatchEvent(new CustomEvent("ws:extras-ready"));
+      }
+    }).catch(function () {});
   });
   document.addEventListener("ws:pass", function (e) {
     if (e.detail && e.detail.refCode) myRef = e.detail.refCode;

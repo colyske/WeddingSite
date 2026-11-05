@@ -1,0 +1,39 @@
+.interactive-surface { margin: 0 calc(50% - 50vw); background: #f7f3ea; }
+.interactive-toolbar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: .8rem 1rem; background: #fffaf0; border-block: 1px solid #d5c6a5; }
+.interactive-toolbar p { flex: 1 1 16rem; margin: 0; }
+.interactive-surface iframe { display: block; width: 100%; height: 82vh; border: 0; }
+.interactive-dialog { width: min(850px, calc(100vw - 2rem)); max-height: 90dvh; padding: 1rem; border: 1px solid #be9b52; border-radius: 12px; box-sizing: border-box; }
+.interactive-dialog::backdrop { background: #10251ec9; }
+.interactive-dialog .guide-jump, .interactive-dialog .guide-meter, .interactive-dialog [data-guide-back],
+.interactive-dialog [data-guide-next], .interactive-dialog [data-guide-skip], .interactive-dialog [data-guide-announcement] { display: none; }
+.interactive-dialog .guide-actions { position: static; }
+.interactive-dialog .card { padding: .7rem; }
+.interactive-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.interactive-dialog [data-guide-state] { font-weight: 600; }
+.interactive-dialog .editor-filter-hidden { display: none !important; }
+.interactive-dialog .guide-buttons { display: flex; justify-content: flex-end; }
+.interactive-dialog .guide-buttons [data-guide-save] { flex: 0 0 auto; min-width: 9rem; white-space: nowrap; }
+.interactive-dialog[data-task] .guide-header > .fine { display: none; }
+.interactive-dialog[data-task] { width: min(640px, calc(100vw - 2rem)); }
+.interactive-dialog[data-task="names"], .interactive-dialog[data-task="address"], .interactive-dialog[data-task="currency"] { width: min(480px, calc(100vw - 2rem)); }
+body[data-interactive-editor] > .wrap > #title { font-size: 1.6rem; }
+body[data-interactive-editor]:not([data-finishing]) :is(#kyc-section, #withdrawals-section, #rsvps-section, #bids-section, #seating-section, #engage-section, #published-section) { display: none; }
+body[data-interactive-editor] > .wrap { max-width: none; width: 100%; padding: 0; margin: 0; }
+body[data-interactive-editor] > .wrap > .top { display: flex; flex-direction: row; align-items: center; min-height: 0; padding: .4rem .75rem; margin: 0; }
+body[data-interactive-editor] .top .brand-logo, body[data-interactive-editor] #title { display: none; }
+body[data-interactive-editor] .top > div { width: 100%; justify-content: space-between; gap: .4rem !important; }
+body[data-interactive-editor]:not([data-finishing]) { overflow: hidden; }
+body[data-interactive-editor]:not([data-finishing]) > .wrap { height: 100dvh; display: flex; flex-direction: column; }
+body[data-interactive-editor]:not([data-finishing]) :is(#wedding-workspace, [data-guide-publish]) { display: none; }
+body[data-interactive-editor]:not([data-finishing]) > footer { display: none; }
+.interactive-surface { margin: 0; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.interactive-surface iframe { flex: 1; min-height: 0; }
+.interactive-toolbar { gap: .4rem; padding: .45rem .75rem; }
+.interactive-toolbar button { min-height: 44px; padding: .5rem .7rem; font-size: .85rem; }
+body[data-interactive-editor] > :is(.announcement, .orn-layer),
+body[data-interactive-editor] > .wrap > .orn-divider { display: none; }
+#interactive-surface .interactive-toolbar button { flex: 0 1 auto; min-height: 44px; width: auto; margin: 0; padding: .5rem .75rem !important; font: 600 .85rem/1.2 sans-serif; letter-spacing: .01em; text-transform: none; white-space: nowrap; overflow-wrap: normal; }
+@media (max-width: 600px) {
+  .interactive-toolbar p { flex-basis: 100%; font-size: .8rem; line-height: 1.3; }
+  .interactive-toolbar button { flex: 1; font-size: .75rem; }
+}

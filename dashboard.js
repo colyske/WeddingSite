@@ -100,9 +100,9 @@
   function renderDraftCurrency() {
     const status = platformCurrency, note = $("create-currency-note");
     const choose = status?.configured === true && !status.supported;
-    $("draft-currency-choice").hidden = !choose;
+    $("draft-currency-choice").hidden = false;
     $("draft-currency-retry").hidden = !(choose && !draftCurrencies.length) && !status?.unavailable;
-    note.textContent = `Your unpaid draft starts in ${draftCurrency()} using your destination defaults, not the source wedding's currency. You can personalize now even if payment support cannot be checked. Matching source amounts require explicit supported-currency review in the guide; a different currency clears every source amount, never converts it. Unpriced structures remain editable.`;
+    note.textContent = "Choose your accounting currency first. KES keeps the showcase Celebration fund goal (KES 500,000), with no raised balance. Other currencies start with an incomplete fund: enter your own positive goal before publishing. Changing currency clears affected amounts, never converts them. Collection and publication still require the existing server checks.";
   }
   async function checkDraftCurrency(force = false) {
     const selected = $("draft-currency").value;
@@ -115,14 +115,14 @@
       draftCurrencies = [];
       platformCurrency = { currency: null, configured: null, supported: false, unavailable: true };
     }
-    $("draft-currency").replaceChildren(new Option("Choose a supported currency", ""),
-      ...draftCurrencies.map(item => new Option(`${item.code} - ${item.name}`, item.code)));
-    if (draftCurrencies.some(item => item.code === selected)) $("draft-currency").value = selected;
+    const names = new Intl.DisplayNames(undefined, { type: "currency" });
+    $("draft-currency").replaceChildren(new Option("Choose your wedding currency", ""),
+      ...WSCurrencies.accountingCodes.map(code => new Option(`${code} - ${names.of(code)}`, code)));
+    $("draft-currency").value = selected || (platformCurrency?.supported ? platformCurrency.currency : "USD");
     renderDraftCurrency();
   }
   function draftCurrency() {
-    if (platformCurrency?.configured === true) return platformCurrency.supported ? platformCurrency.currency : $("draft-currency").value || "USD";
-    return "USD";
+    return $("draft-currency").value;
   }
   function rememberStarter() {
     try { sessionStorage.setItem(starterKey, JSON.stringify({
@@ -151,11 +151,13 @@
     if (!item) return;
     $("inspiration-selection-copy").textContent = pendingStarter
       ? "Your existing names and saved answers have not been replaced. Choose explicitly whether to use this new starting point."
+      : selectedStarter.source?.styleSlug === "showcase-wedding"
+        ? "The platform's fictional showcase wording, programme and offering descriptions start as editable placeholders. Replace sample details before publishing; no guests, payments, sponsor identities, accounts or valid passes are copied."
       : selectedStarter.inspirationId
         ? "Author-owned fictional inspiration, not customers, donations or paid sponsorships. Examples are illustrative and editable."
         : "Public reusable configuration only: colours, event types/order, shared venue groups, RSVP choices, features and unpriced sponsor/gift/goal structures. Public visibility is not permission to copy personal content: neutral editable prompts replace original writing, identities, locations and instructions.";
     if (selectedStarter && !pendingStarter) $("inspiration-selection-copy").textContent +=
-      " Your private guide opens next. Source prices stay pending in their original currency until you review them in the guide; payment availability does not block personalization.";
+      " Your interactive private preview opens next. The Celebration fund uses only the KES showcase goal or a matching-currency template preset; otherwise enter a goal yourself. No guest activity or payment readiness is copied.";
   }
   async function chooseStarter(item, { restore = false } = {}) {
     selectedStarter = item; pendingStarter = null;
@@ -270,7 +272,7 @@
   function renderSubmit() {
     $("create-submit").disabled = state.submitting || !!state.created || starterLoading;
     $("create-submit").textContent = state.created
-      ? "Draft created" : state.submitting ? "Creating your draft…" : "Create draft and continue setup";
+      ? "Draft created" : state.submitting ? "Creating your draft…" : "Create my private preview";
   }
 
   function renderCreated() {
@@ -343,7 +345,7 @@
     if (selectedStarter) Object.assign(payload, selectedStarter.source, {
       currency: fields.currency || draftCurrency(), palette: [...selectedStarter.palette], starterDeferred: true,
       weddingDate: null, location: "", venues: WSStarterSetup.clone(selectedStarter.venues),
-      starterSetup: starterConfig()
+      starterSetup: starterConfig(), interactiveCreation: true
     });
     return payload;
   }
@@ -368,6 +370,7 @@
     state.submitting = true;
     renderSubmit();
     try {
+    await draftCurrencyCheck;
     if (!selectedStarter && !($("include-legacy-answers")?.checked && legacyAnswers?.fields?.currency)) {
       if (!platformCurrency) draftCurrencyCheck = checkDraftCurrency();
       await draftCurrencyCheck;
@@ -375,6 +378,10 @@
     if (!referralReady) {
       try { await loadReferralDisclosure(); }
       catch (error) { return setNotice(`${error.message} Your answers are still on this page.`, "bad"); }
+    }
+    if (!selectedStarter?.submittedPayload && !WSCurrencies.supportsAccounting(draftCurrency())) {
+      $("draft-currency").focus();
+      return setNotice("Choose your wedding currency before opening your private wedding preview.", "bad");
     }
     if (referralDisclosure?.intent_id && !["accept", "decline"].includes($("client-referral-decision").value)) {
       $("client-referral-decision").focus();
