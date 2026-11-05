@@ -145,7 +145,7 @@ test("real preview handler requires authorization, owner filtering and read-only
         milestones: [{ id, name: "Our saved milestone", description: "Our stage", target: "500" }] }]
     });
 
-    test("address availability is owner-authorized, advisory, reservation-safe and exposes no other wedding", async () => {
+    await test("address availability is owner-authorized, advisory, reservation-safe and exposes no other wedding", async () => {
       const previous = { ...process.env }, oldFetch = globalThis.fetch;
       Object.assign(process.env, { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "anon", SUPABASE_SERVICE_ROLE_KEY: "service" });
       let owned = true, globalChecks = 0;
@@ -168,7 +168,7 @@ test("real preview handler requires authorization, owner filtering and read-only
       };
       const run = async (slug, headers = { authorization: "Bearer fixture-owner-token" }) => {
         const res = { code: 0, headers: {}, status(code) { this.code = code; return this; },
-          setHeader(key, value) { this.headers[key] = value; }, end(text) { this.body = JSON.parse(text); } };
+          setHeader(key, value) { this.headers[key] = value; }, json(body) { this.body = body; }, end(text) { this.body = JSON.parse(text); } };
         await weddings({ method: "GET", headers, query: { action: "address-availability", weddingId: id, slug } }, res);
         return res;
       };
