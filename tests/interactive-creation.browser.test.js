@@ -108,6 +108,8 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       if (!wedding.couple_names) {
         await page.locator(".interactive-dialog").waitFor({ state: "visible" });
         assert.equal(await page.locator("#wedding-address").isVisible(), false, "internal draft address is not suggested before names");
+        await frame.locator(".preview-address").waitFor({ state: "attached" });
+        assert.equal(await frame.locator(".preview-address").isHidden(), true, "private renderer does not expose an internal draft address before names");
         if (process.env.INTERACTIVE_EVIDENCE_DIR) {
           await mkdir(process.env.INTERACTIVE_EVIDENCE_DIR, { recursive: true });
           await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `fundamentals-${viewport.width}.png`), animations: "disabled", timeout: 60000 });

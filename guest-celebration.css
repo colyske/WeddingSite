@@ -255,6 +255,7 @@ body[data-private-preview] [data-edit-section] { position: relative; cursor: poi
 body.guest-page[data-private-preview] button.preview-edit { width: auto; min-height: 44px; max-width: 100%; padding: .5rem .75rem !important; margin: .5rem 0; background: #fffaf0 !important; color: #244b3a !important; border: 1px solid #795b20 !important; font: 600 .85rem/1.2 sans-serif; letter-spacing: .01em; text-transform: none; }
 body[data-private-preview] > .announcement { display: none; }
 body[data-private-preview] .preview-address { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; overflow-wrap: anywhere; font-size: .85rem; }
+body[data-private-preview] .preview-address[hidden] { display: none; }
 body.guest-page[data-private-preview] button.preview-edit { width: fit-content; max-width: 100%; }
 body.guest-page[data-private-preview] .preview-address button.preview-edit { display: inline-flex; align-items: center; margin: 0; }
 body.guest-page[data-private-preview] .preview-cover-edit { position: absolute; right: 1rem; bottom: .75rem; z-index: 3; }

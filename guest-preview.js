@@ -122,6 +122,7 @@
     if (!address) {
       address = document.createElement("p");
       address.className = "preview-address";
+      address.hidden = !data.site.wedding.couple_names?.trim();
       const url = document.createElement("span");
       url.textContent = `https://${data.site.wedding.slug}.joinourwedding.site`;
       address.append(url);
