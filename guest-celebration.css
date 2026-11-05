@@ -90,6 +90,39 @@ body.guest-page #registry { background: color-mix(in srgb, var(--gold) 9%, var(-
 .guest-page :is(.campaign, .registry-gift) h3 { font-size: 1.8rem; }
 .guest-page :is(.campaign, .registry-gift) > p { max-width: 45rem; }
 .guest-page .giving-progress { margin: 1.75rem 0; }
+.guest-page .celebration-fund { margin: 1.75rem 0 1rem; color: #293a31; }
+.guest-page .celebration-fund .giving-total { flex-wrap: wrap; }
+.guest-page .celebration-fund .giving-total > span { min-width: 0; max-width: 100%; }
+.guest-page .celebration-fund .giving-total strong { overflow-wrap: anywhere; }
+.guest-page .celebration-fund .giving-percent { overflow-wrap: anywhere; margin-left: auto; }
+.guest-page .fund-goal { margin: 0 0 1.5rem; display: flex; flex-wrap: wrap; gap: .75rem 2rem; }
+.guest-page .fund-goal dt { color: #555b53; font-size: .75rem; }
+.guest-page .fund-goal dd { margin: 0; font-size: 1rem; font-weight: 600; }
+.guest-page .fund-legend-heading { font-size: .8rem; font-weight: 600; margin: 0 0 .5rem; }
+.guest-page .fund-legend-heading span { font-weight: 400; color: #555b53; }
+.guest-page .fund-legend { padding: 0; margin: 0; list-style: none; font-size: .8rem; }
+.guest-page .fund-legend li { display: grid; grid-template-columns: 12px minmax(0, 1fr) auto 3.2rem; align-items: center; gap: .5rem; padding: .6rem 0; border-bottom: 1px solid #e8e2d6; }
+.guest-page .fund-key { width: 12px; height: 12px; background: var(--slice); border: 1px solid #756c60; border-radius: 3px; }
+.guest-page .fund-key-empty { border-style: dashed; }
+.guest-page .fund-legend strong { text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.guest-page .fund-share { text-align: right; font-variant-numeric: tabular-nums; color: #555b53; }
+.guest-page .fund-note { font-size: .72rem; color: #555b53; line-height: 1.6; margin: 1.25rem 0 0; max-width: 52rem; }
+.guest-page .fund-over { padding: .8rem 1rem; border: 1px solid #81a794; border-radius: 8px; background: #edf3ee; font-size: .85rem; }
+.guest-page .celebration-fund + .camp-give .fine { margin: .6rem 0 0; }
+@media (max-width: 640px) {
+  .guest-page .celebration-fund .giving-total { display: block; }
+  .guest-page .celebration-fund .giving-percent { display: block; margin-top: .75rem; text-align: left; font-size: 1.4rem; }
+  .guest-page .celebration-fund .giving-percent small { display: inline; margin-left: .3rem; }
+  .guest-page .fund-legend { font-size: .72rem; }
+  .guest-page .fund-legend li { grid-template-columns: 10px minmax(0, 1fr) minmax(0, 1fr) 2.8rem; gap: .4rem; }
+  .guest-page .fund-key { width: 10px; height: 10px; }
+}
+@media (max-width: 360px) {
+  .guest-page .fund-legend li { grid-template-columns: 10px minmax(0, 1fr) 2.8rem; }
+  .guest-page .fund-legend li > span:nth-child(2) { grid-column: 2 / 4; }
+  .guest-page .fund-legend strong { grid-column: 2; white-space: nowrap; overflow-wrap: normal; }
+  .guest-page .fund-share { grid-column: 3; }
+}
 .guest-page .camp-ms-heading { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #ccc9b8; color: var(--ink); }
 .guest-page .giving-total { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; color: var(--green); }
 .guest-page .giving-total small { display: block; font: 600 .68rem/1.5 var(--sans, Arial, sans-serif); color: #555b53; letter-spacing: .12em; text-transform: uppercase; }
@@ -99,6 +132,10 @@ body.guest-page #registry { background: color-mix(in srgb, var(--gold) 9%, var(-
 .guest-page .camp-bar { height: 18px; border-radius: 20px; margin: 1rem 0 .65rem; background: #e4e6d9; border: 1px solid #8a937f; overflow: hidden; }
 .guest-page .camp-bar > span { height: 100%; border-radius: inherit; background: repeating-linear-gradient(115deg, transparent 0 13px, #ffffff1a 13px 15px), linear-gradient(90deg, var(--green), var(--sage)); min-width: 0; position: relative; transition: none; }
 .guest-page .camp-bar > span::after { content: ""; position: absolute; inset: 3px 4px 3px auto; width: 10px; border-radius: 50%; background: #fff5; }
+.guest-page .fund-bar { display: flex; position: relative; height: 28px; margin: 1.4rem 0 1.1rem; border: 1px solid #a68d55; background: #e4e6d9; box-shadow: 0 0 0 3px #fffcf6, 0 0 0 4px #d8c99e, 0 5px 12px #69542c17, inset 0 2px 4px #493b2526; }
+.guest-page .fund-bar::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(180deg, #fff7, transparent 48%, #493b2514), linear-gradient(110deg, transparent 20%, #ffffff1a 42%, transparent 64%); box-shadow: inset 0 1px 1px #fff9, inset 0 -2px 3px #493b251a; pointer-events: none; }
+.guest-page .fund-bar > span { display: block; flex: none; border-radius: 0; }
+.guest-page .fund-bar > span::after { display: none; }
 .guest-page .camp-total { font-size: .85rem; color: #555b53; }
 .guest-page .camp-ms { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 1rem; margin: 1.5rem 0; }
 .guest-page .camp-ms li { padding: 1rem; border: 1px solid #cbd0c0; border-radius: 10px; background: #f4f4eb; align-items: baseline; font-size: .9rem; }

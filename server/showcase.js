@@ -36,8 +36,17 @@ export const showcaseLedger = [
 ];
 export const showcaseFundraising = {
   allow_in_kind_sponsorship: false,
+  celebration: {
+    campaign_id: id(7), currency: "KES", goal_minor: 50000000, raised_minor: 18000000,
+    remaining_minor: 32000000, completion_percent: 36, campaign_raised_minor: 9525000,
+    sources: [
+      { key: "gifts", amount_minor: 9525000 }, { key: "songs", amount_minor: 475000 },
+      { key: "registry", amount_minor: 6000000 }, { key: "sponsors", amount_minor: 1000000 },
+      { key: "vip", amount_minor: 1000000 }
+    ]
+  },
   campaigns: [{ id: id(7), name: "Celebration fund", purpose: "A garden full of love, a table full of laughter. Help us bring our favourite people together for a day to remember.", goal_minor: 50000000, raised_minor: 18000000,
-    milestones: [{ id: id(8), name: "Garden venue", target_minor: 15000000, reached: true, description: "Space for all our favourite people." },
+    milestones: [{ id: id(8), name: "Garden venue", target_minor: 15000000, reached: false, description: "Space for all our favourite people." },
       { id: id(9), name: "Music & memories", target_minor: 30000000, reached: false, description: "The soundtrack to our first dance and every dance after." }] }],
   tiers: [{ id: id(10), name: "Golden celebration partner", min_amount_minor: 1000000, perks: "A clearly labelled sponsor card and a warm thank-you." }],
   vip: { id: id(11), title: "Garden lounge", description: "A little shade, a lovely garden view, and a special place to soak up every moment.", seats_total: 12, seats_sold: 4, price_minor: 250000 },

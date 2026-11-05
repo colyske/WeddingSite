@@ -93,7 +93,7 @@
       queued = false;
       cta.hidden = false;
       const box = cta.getBoundingClientRect();
-      cta.hidden = [...document.querySelectorAll("form, main button, main .btn, main summary, footer, #welcome-story, #reuse-wedding-style, dialog[open]")]
+      cta.hidden = [...document.querySelectorAll("form, main button, main .btn, main summary, footer, #welcome-story, #reuse-wedding-style, .celebration-fund, dialog[open]")]
         .some(el => {
           const r = el.getBoundingClientRect();
           if (el.matches("footer") && r.top < innerHeight && r.bottom > 0) return true;

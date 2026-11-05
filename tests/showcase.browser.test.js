@@ -67,12 +67,26 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
       assert.equal(await page.locator(`#${id} > .celebration-art svg`).count(), 1, `${id} has a single bespoke illustration`);
     }
     assert.equal(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuenow"), "36");
+    assert.match(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuetext"), /180,000.*500,000.*320,000.*Illustrative/);
+    assert.equal(await page.locator(".fund-legend li").count(), 6);
+    assert.equal(await page.locator(".fund-bar [data-source]").count(), 6);
+    assert.equal(await page.locator(".celebration-fund svg").count(), 0, "fallback ships no unused cake geometry");
+    const segments = await page.locator(".fund-bar [data-source]").evaluateAll(items =>
+      items.map(item => ({ key: item.dataset.source, width: parseFloat(item.style.width), color: item.style.backgroundColor })));
+    assert.ok(Math.abs(segments.reduce((sum, item) => sum + item.width, 0) - 100) < 1e-10);
+    assert.equal(segments.at(-1).key, "remaining");
+    assert.equal(segments.at(-1).width, 64);
+    assert.equal(await page.locator(".camp-ms li.done").count(), 0, "source-aggregated raised does not attain stream-only milestones");
+    assert.match(await page.locator(".fund-legend").innerText(), /Remaining[\s\S]*320,000[\s\S]*64.0%/);
+    assert.equal(await page.locator(".fund-legend .fund-share").evaluateAll(items =>
+      items.reduce((sum, item) => sum + Math.round(parseFloat(item.textContent) * 10), 0)), 1000);
     for (const campaign of showcaseFundraising.campaigns) {
       const card = page.locator(`[data-campaign="${campaign.id}"]`);
       const primary = card.locator(".camp-give button");
       assert.equal(await primary.count(), 1);
       assert.equal(await primary.getAttribute("data-ref"), campaign.id);
       assert.equal(await primary.getAttribute("data-milestone"), null);
+      assert.equal(await primary.textContent(), "Choose an amount to contribute");
       assert.ok(await primary.evaluate(button => !!(button.closest(".camp-give").compareDocumentPosition(button.closest(".campaign").querySelector(".camp-ms")) & Node.DOCUMENT_POSITION_FOLLOWING)),
         "parent contribution action precedes nested milestones");
       for (const milestone of campaign.milestones) {
@@ -169,6 +183,29 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
         assert.ok(metrics.songCells[1] > metrics.songCells[0], "mobile artist has its own readable line");
       }
       assert.ok(new Set(metrics.surfaces).size >= 3, "sections are visually differentiated");
+      assert.ok(await page.locator(".fund-legend li").evaluateAll(rows => rows.every(row => {
+        const cells = [...row.children].map(cell => cell.getBoundingClientRect());
+        return cells.every((cell, i) => !i || cell.top >= cells[i - 1].bottom - 1 || cell.left >= cells[i - 1].right - 1) &&
+          row.scrollWidth <= row.clientWidth;
+      })), "source labels, amounts and percentages never overlap, including mobile");
+      assert.ok(await page.locator(".fund-legend strong").evaluateAll(items => items.every(el => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const lines = [...range.getClientRects()];
+        return new Set(lines.map(rect => Math.round(rect.top))).size === 1;
+      })), "monetary values retain every digit on one line, including320px Remaining");
+      assert.ok(await page.locator(".fund-heading .giving-percent").evaluate(el => {
+        const bounds = el.getBoundingClientRect(), card = el.closest(".campaign").getBoundingClientRect();
+        return bounds.left >= card.left && bounds.right <= card.right && el.scrollWidth <= el.clientWidth;
+      }), "the literal percentage and goal caption fit entirely inside the card");
+      assert.doesNotMatch(await page.locator(".fund-note").innerText(), /sample|illustrative|demo/i);
+      assert.ok(await page.locator(".fund-bar").evaluate(bar => {
+        const style = getComputedStyle(bar);
+        const trackWidth = bar.getBoundingClientRect().width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth);
+        return [...bar.children].every(segment => Math.abs(segment.getBoundingClientRect().width -
+          trackWidth * parseFloat(segment.style.width) / 100) < .1);
+      }),
+      "decorative frame/highlight preserves exact segment widths, including small sources");
       if (width <= 768) {
         assert.ok(await page.locator(".sticky-nav").evaluate(nav => nav.getBoundingClientRect().height <= 90), "compact closed mobile header");
         const toggle = page.locator("#wedding-nav-toggle");
@@ -182,13 +219,63 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
         assert.equal(await toggle.getAttribute("aria-expanded"), "false");
         assert.equal(await page.evaluate(() => document.activeElement.id), "bids");
       }
-      if (process.env.WEDDING_SCREENSHOTS) await page.screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `showcase-${width}.png`), fullPage: true });
+      if (process.env.WEDDING_SCREENSHOTS) {
+        await page.screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `showcase-${width}.png`), fullPage: true });
+        await page.setViewportSize({ width, height: 2600 });
+        await page.locator(".campaign").scrollIntoViewIfNeeded();
+        await page.locator(".campaign").screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `fund-bar-${width}.png`) });
+        await page.setViewportSize({ width, height: 800 });
+      }
     }
     await page.emulateMedia({ reducedMotion: "reduce" });
+    for (const width of [320, 375]) {
+      await page.setViewportSize({ width, height: 2600 });
+      await page.evaluate(() => {
+        const zero = { currency: "KES", goal_minor: 50000000, raised_minor: 0, remaining_minor: 50000000,
+          sources: ["gifts", "songs", "registry", "sponsors", "vip"].map(key => ({ key, amount_minor: 0 })) };
+        document.querySelector(".celebration-fund").outerHTML = WSCelebrationFund.render(zero, "KES", WS.money);
+      });
+      assert.ok(await page.locator(".fund-legend li").evaluateAll(rows => rows.every(row => {
+        const amount = row.querySelector("strong"), percent = row.querySelector(".fund-share");
+        const a = amount.getBoundingClientRect(), p = percent.getBoundingClientRect();
+        return p.left - a.right >= 6 && getComputedStyle(amount).textAlign === "right" &&
+          getComputedStyle(percent).textAlign === "right" && row.scrollWidth <= row.clientWidth;
+      })), "zero-source money and percentage retain a visible grid gap at320/375");
+      if (process.env.WEDDING_SCREENSHOTS) await page.locator(".campaign").screenshot({
+        path: join(process.env.WEDDING_SCREENSHOTS, `fund-bar-zero-${width}.png`)
+      });
+    }
+    for (const width of [320, 375, 1280]) {
+      await page.setViewportSize({ width, height: 2600 });
+      for (const goal of [50000000, 40000000]) {
+        await page.evaluate(goal => {
+          const progress = { currency: "KES", goal_minor: goal, raised_minor: 50000000, remaining_minor: 0,
+            sources: ["gifts", "songs", "registry", "sponsors", "vip"].map((key, i) =>
+              ({ key, amount_minor: [20000000, 5000000, 15000000, 5000000, 5000000][i] })) };
+          document.querySelector(".celebration-fund").outerHTML = WSCelebrationFund.render(progress, "KES", WS.money);
+          document.querySelectorAll(".camp-ms li").forEach((li, i) => {
+            const reached = 20000000 >= [15000000, 30000000][i];
+            li.classList.toggle("done", reached);
+            li.querySelector("[aria-hidden]").textContent = reached ? "\u2611" : "\u2610";
+            li.querySelector(".sr-only").textContent = reached ? " (reached)" : " (not yet reached)";
+          });
+        }, goal);
+        assert.equal(await page.locator(".fund-bar").getAttribute("aria-valuenow"), "100");
+        assert.match(await page.locator(".fund-bar").getAttribute("aria-valuetext"), goal === 40000000 ? /125%/ : /100%/);
+        assert.equal(await page.locator('.fund-bar [data-source="remaining"]').count(), 0);
+        assert.deepEqual(await page.locator(".fund-bar > span").evaluateAll(items => items.map(item => parseFloat(item.style.width))), [40, 10, 30, 10, 10]);
+        assert.equal(await page.locator(".fund-bar").evaluate(el => getComputedStyle(el, "::after").animationName), "none");
+        if (process.env.WEDDING_SCREENSHOTS) await page.locator(".campaign").screenshot({
+          path: join(process.env.WEDDING_SCREENSHOTS, `fund-bar-${goal === 40000000 ? "over" : "full"}-${width}.png`)
+        });
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 800 });
     await page.locator(".wedding-skip").focus();
     await page.keyboard.press("Enter");
     assert.equal(await page.evaluate(() => document.activeElement.id), "wedding-content", "skip link transfers keyboard focus to main");
     assert.equal(await page.locator(".hero .celebration-art").evaluate(el => getComputedStyle(el).animationName), "none");
+    assert.equal(await page.locator(".fund-bar").evaluate(el => getComputedStyle(el).animationName), "none");
     await page.locator("#rsvp-form").scrollIntoViewIfNeeded();
     await page.waitForTimeout(100);
     assert.ok(await page.locator(".showcase-create").isHidden(), "floating CTA never obscures the form");

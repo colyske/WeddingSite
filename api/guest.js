@@ -390,16 +390,21 @@ export default async function handler(req, res) {
       const weddingId = await resolveWeddingId(slug, rpc);
       if (!weddingId) return sendJson(res, 404, { error: "Wedding not found." });
       
-      const [result, campaigns, sponsorAuction, settings] = await Promise.all([
+      const [result, campaigns, sponsorAuction, settings, celebration] = await Promise.all([
         rpc("get_public_fundraising", { p_slug: slug }),
-        rpc("get_public_campaigns", { p_slug: slug }).catch(() => []),
+        rpc("get_public_campaigns", { p_slug: slug }),
         rpc("get_public_sponsor_auction", { p_slug: slug }).catch(() => ({ enabled: false })),
-        supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=revenue_features`, { service: true })
+        supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=revenue_features`, { service: true }),
+        rpc("get_public_celebration_progress", { p_slug: slug })
       ]);
       const features = settings?.[0]?.revenue_features || {};
       return sendJson(res, 200, {
         ...(result || { tiers: [], vip: null, sponsors: [] }),
-        campaigns: features.giving === false ? [] : campaigns || [],
+        campaigns: features.giving === false ? [] : (campaigns || []).map(c => c.id !== celebration?.campaign_id ? c : {
+          ...c, raised_minor: celebration.raised_minor,
+          milestones: (c.milestones || []).map(m => ({ ...m, reached: celebration.campaign_raised_minor >= m.target_minor }))
+        }),
+        celebration: features.giving === false ? null : celebration,
         sponsorAuction: features.featured_sponsors === false ? { enabled: false } : sponsorAuction || { enabled: false }
       });
     }
