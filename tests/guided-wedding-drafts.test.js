@@ -50,7 +50,8 @@ test("draft API uses idempotent transactional creation, explicit clears, omitted
     if (url.pathname === "/rest/v1/rpc/replace_wedding_collection_capabilities") return json(null);
     if (url.pathname === "/rest/v1/rpc/publish_wedding_with_fee") return json(true);
     if (url.pathname === "/rest/v1/rpc/publication_quote") return json({ fee_minor: null, usd_amount_minor: null, currency: "USD", pending_date: true });
-    if (url.pathname === "/rest/v1/weddings") return json([wedding]);
+    if (url.pathname === "/rest/v1/weddings") return json(url.searchParams.get("slug") === "eq.taken-day"
+      ? [{ id: "550e8400-e29b-41d4-a716-446655440099" }] : [wedding]);
     if (url.pathname.startsWith("/rest/v1/")) return json([]);
     throw new Error(`Unexpected external/provider call: ${url}`);
   };
@@ -73,6 +74,18 @@ test("draft API uses idempotent transactional creation, explicit clears, omitted
     res = await run("create", { coupleNames: "Amina & Joseph", requestKey: key });
     assert.equal(res.body.weddingId, id);
     assert.equal(requests.size, 1);
+    assert.equal(wedding.slug, "amina-and-joseph");
+    res = await run("update", { weddingId: id, slug: "taken-day" });
+    assert.equal(res.statusCode, 409);
+    assert.match(res.body.error, /already taken/);
+    assert.equal(wedding.slug, "amina-and-joseph", "a collision cannot rename the saved wedding");
+    res = await run("update", { weddingId: id, slug: "showcase-wedding" });
+    assert.equal(res.statusCode, 400);
+    res = await run("update", { weddingId: id, slug: "not a domain" });
+    assert.equal(res.statusCode, 400);
+    res = await run("update", { weddingId: id, coupleNames: "New names" });
+    assert.equal(res.statusCode, 200);
+    assert.equal(wedding.slug, "amina-and-joseph", "name-only updates never rename existing weddings");
     assert.equal(calls.some(call => call.method === "PATCH"), false, "create and zone/palette writes commit together");
     res = await run("update", { weddingId: id, welcomeStory: "Still making plans." });
     assert.equal(res.statusCode, 200);

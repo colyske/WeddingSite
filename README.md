@@ -8,6 +8,25 @@ read-only fixture served by the application, not a database wedding. Its sample
 contributions, guests and sponsor never enter reporting or payout metrics. Both
 guest writes and checkout are blocked server-side for its reserved slug/ID.
 
+The public template is `guest.html`, enhanced by `guest-celebration.css` and
+`guest-celebration.js`. All public weddings (including new **Use this style**
+drafts after publication) inherit its responsive stationery, inline SVG wedding
+illustrations and data-driven giving bars; the separate legacy `demo.html`
+organizer demonstration is unchanged. Colours use the shared contrast-adjusted
+palette, saved content stays separate from presentation, and reduced motion is
+respected. The floating creation link and compact **Demo** badge appear only on
+the showcase. An unnamed starter's internal address is not displayed or shared;
+entering names suggests a subdomain address, manual changes are retained, and
+only a successful save assigns the requested address after server validation.
+Existing named weddings are never automatically renamed.
+Pre-wedding activity text uses a fixed dark ink on paper rather than theme accents
+to preserve contrast. The showcase's two-line creation CTA opens new-client
+onboarding on the platform domain, retaining the showcase style through account
+verification and sign-in; an existing authenticated client resumes in the dashboard.
+The CTA's free-publication message is qualified by an accessible eligibility note:
+the authoritative publication quote still applies date and account limits, and no
+pricing policy is changed by the template.
+
 Public contribution rows use confirmed `paid_amount_minor`, contribution type,
 consented display name and date; amounts are divided by 100 in the wedding's
 currency. Sponsor social profiles accept only HTTPS links on the named common

@@ -99,7 +99,7 @@ test("couple declines atomically; stale disclosure requires another deliberate d
   assert.equal(await page.inputValue("#client-referral-decision"), "");
   await page.selectOption("#client-referral-decision", "decline");
   await page.click("#create-submit");
-  await page.waitForURL(`**/wedding.html?id=${uuid}&slug=local-couple#step=couple`);
+  await page.waitForURL(`**/wedding.html?id=${uuid}#step=couple`);
   assert.equal(creations.length, 2, "one stale attempt and one confirmed retry create exactly one draft");
   assert.equal(creations[1].referral.decision, "decline");
   assert.equal(creations[1].referral.revision, revision);

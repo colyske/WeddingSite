@@ -51,7 +51,11 @@ test("guest site: share channels, OG tags, referral visit, personal link, guestb
   const page = await context.newPage();
   const wedding = { id: "550e8400-e29b-41d4-a716-446655440000", slug: "a-and-o", couple_names: "Atieno & Otieno", welcome_story: "Hi", wedding_date: "2099-12-12",
     time_zone: "Africa/Nairobi", public_location: "Nairobi", currency: "KES", max_guest_capacity: 100, palette: ["#244b3a", "#be9b52", "#a9b5a2"],
-    venues: [{ id: "1", name: "Chapel", event_time: "14:00:00", is_main: true }], registry: [], accepting_rsvps: true };
+    venues: [{ id: "1", name: "Chapel", event_time: "14:00:00", is_main: true }],
+    registry: [{ id: "gift-1", name: "Actual gift", target_amount_minor: 10000, amount_raised_minor: 2500 },
+      { id: "gift-2", name: "No goal", target_amount_minor: 0, amount_raised_minor: 0 },
+      { id: "gift-3", name: "Over goal", target_amount_minor: 10000, amount_raised_minor: 12500 }],
+    accepting_rsvps: true };
   const calls = { visit: null, wish: null, rsvp: null };
   await page.route("**/api/**", async route => {
     const u = new URL(route.request().url());
@@ -68,6 +72,13 @@ test("guest site: share channels, OG tags, referral visit, personal link, guestb
   await page.route("**/cdnjs.cloudflare.com/**", r => r.fulfill({ contentType: "text/javascript", body: "window.QRCode=function(){}" }));
   await page.goto(`${base}/guest.html?slug=a-and-o&ref=0a1b2c3d`);
   await page.waitForSelector("#share-main");
+  assert.equal(await page.locator(".showcase-create, .showcase-banner").count(), 0, "real weddings have no demo CTA or badge");
+  assert.equal(await page.locator("#registry [role=progressbar]").count(), 2, "an unset goal never invents progress");
+  assert.equal(await page.locator("#registry [role=progressbar]").first().getAttribute("aria-valuenow"), "25");
+  assert.equal(await page.locator("#registry [role=progressbar]").last().getAttribute("aria-valuenow"), "100");
+  assert.match(await page.locator("#registry [role=progressbar]").last().getAttribute("aria-valuetext"), /125.*100/);
+  assert.doesNotMatch(await page.locator("#registry").innerText(), /illustrative|sample/i);
+  assert.equal(await page.locator("#guest-name").isEnabled(), true, "real RSVP remains interactive");
   assert.equal(await page.getAttribute('meta[property="og:title"]', "content"), "Atieno & Otieno are getting married");
   assert.equal(await page.getAttribute('meta[name="twitter:card"]', "content"), "summary_large_image");
   assert.match(await page.getAttribute('meta[property="og:url"]', "content"), /\/guest\.html\?slug=a-and-o$/);

@@ -279,7 +279,7 @@
     element.hidden = false;
     element.innerHTML = `<h2>Your draft is ready</h2><p><strong>${esc(state.created.names)}</strong></p>` +
       `<p>Your answers are saved to your account. Continue in your wedding guide to add the date, venues, guest details and fundraising options.</p>` +
-      `<a class="btn" href="/wedding.html?id=${encodeURIComponent(state.created.weddingId)}&slug=${encodeURIComponent(state.created.slug)}#step=couple">Open your wedding guide</a>`;
+      `<a class="btn" href="/wedding.html?id=${encodeURIComponent(state.created.weddingId)}#step=couple">Open your wedding guide</a>`;
   }
 
   function renderWeddings() {
@@ -302,9 +302,9 @@
         <div class="swatches">${(wedding.palette || []).map(color =>
           `<span style="background:${esc(color)}"></span>`).join("")}</div>
         <div class="card" data-setup-progress="${esc(wedding.id)}" style="margin-top:1rem;padding:1rem"></div>
-        ${WSShare.panelHTML(WSShare.guestUrl(wedding.slug), { title: wedding.couple_names, published: !!wedding.published_at })}
+        ${wedding.couple_names?.trim() ? WSShare.panelHTML(WSShare.guestUrl(wedding.slug), { title: wedding.couple_names, published: !!wedding.published_at }) : ""}
         <div class="row" style="margin-top:1.5rem">
-          <a class="btn" href="/wedding.html?id=${encodeURIComponent(wedding.id)}&slug=${encodeURIComponent(wedding.slug)}#step=couple">Open wedding guide</a>
+          <a class="btn" href="/wedding.html?id=${encodeURIComponent(wedding.id)}#step=couple">Open wedding guide</a>
           ${wedding.published_at ? `<a class="btn" href="${WSShare.guestUrl(wedding.slug)}" target="_blank" rel="noopener">View guest site</a>` : ""}
         </div>
       </div>`).join("");
@@ -313,7 +313,7 @@
       if (target && window.WSSetupProgress) {
         window.WSSetupProgress.render(target, wedding, {
           compact: true,
-          editorUrl: `/wedding.html?id=${encodeURIComponent(wedding.id)}&slug=${encodeURIComponent(wedding.slug)}`
+          editorUrl: `/wedding.html?id=${encodeURIComponent(wedding.id)}`
         });
       }
     }
@@ -423,7 +423,7 @@
       setNotice("Your draft is saved. Opening the wedding guide…", "good");
       renderCreated();
       renderSubmit();
-      location.replace(`/wedding.html?id=${encodeURIComponent(data.weddingId)}&slug=${encodeURIComponent(data.slug)}#step=couple`);
+      location.replace(`/wedding.html?id=${encodeURIComponent(data.weddingId)}#step=couple`);
     } catch (error) {
       console.error("Create wedding failed:", error);
       setNotice(`${error.message || "We could not reach the server."} Please try again; your answers are kept.`, "bad");

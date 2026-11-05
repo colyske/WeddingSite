@@ -46,6 +46,29 @@ async function call(action, { method = "GET", body, origin } = {}) {
   return { ...res, data: JSON.parse(res.body || "{}") };
 }
 
+test("Registration verification retains only a safe onboarding return destination", async () => {
+  configureAuth();
+  for (const [returnTo, expected] of [
+    ["/dashboard.html?style=showcase-wedding#step=couple", "/dashboard.html?style=showcase-wedding#step=couple"],
+    ["https://untrusted.example/collect", "/dashboard.html"]
+  ]) {
+    let signup;
+    globalThis.fetch = async input => {
+      signup = new URL(String(input));
+      return response({ user: { id: "new-client" } });
+    };
+    const result = await call("register", { method: "POST", body: {
+      email: "couple@example.test", password: "a secure long password", confirmPassword: "a secure long password", returnTo
+    } });
+    assert.equal(result.statusCode, 201);
+    assert.equal(signup.pathname, "/auth/v1/signup");
+    const callback = new URL(signup.searchParams.get("redirect_to"));
+    assert.equal(callback.origin, "https://weddingsite-six-bice.vercel.app");
+    assert.equal(callback.pathname, "/signin.html");
+    assert.equal(callback.searchParams.get("next"), expected);
+  }
+});
+
 test("Google status reveals only whether the Supabase provider is enabled", async () => {
   configureAuth();
   let observedApiKey = "";

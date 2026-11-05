@@ -94,7 +94,7 @@ test("create entry makes one idempotent draft request and continues to the share
     submit();
     submit();
   });
-  await page.waitForURL(`**/wedding.html?id=${id}&slug=sarah-john#step=couple`);
+  await page.waitForURL(`**/wedding.html?id=${id}#step=couple`);
   const creates = calls.filter(call => call.action === "create");
   assert.equal(creates.length, 1, "double submission creates only one draft");
   assert.equal(creates[0].body.coupleNames, "Sarah & John");
@@ -119,7 +119,7 @@ test("supported platform default selects destination currency without changing s
   });
   await page.fill("#couple-names", "Amina & Joseph");
   await page.click("#create-submit");
-  await page.waitForURL(`**/wedding.html?id=${id}&slug=default-currency#step=couple`);
+  await page.waitForURL(`**/wedding.html?id=${id}#step=couple`);
   const create = calls.find(call => call.action === "create");
   assert.equal(create.body.currency, "KES");
   assert.equal(create.body.starterSetup.currency, "KES");

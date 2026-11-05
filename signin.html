@@ -233,7 +233,7 @@
       notice("");
       if (!$("reg-password").value) return notice("Enter a password.", true);
       if ($("reg-password").value !== $("reg-confirm").value) return notice("Passwords do not match.", true);
-      const res = await post("register", { email: $("reg-email").value, password: $("reg-password").value, confirmPassword: $("reg-confirm").value });
+      const res = await post("register", { email: $("reg-email").value, password: $("reg-password").value, confirmPassword: $("reg-confirm").value, returnTo });
       const data = await res.json();
       if (!res.ok) return notice(data.error || "Registration failed.", true);
       notice(data.message || "Account created. Check your email to verify and then sign in.", false);
@@ -249,8 +249,8 @@
 
     function toggleForms() {
       const isSignIn = !$("signin-form").hidden;
-      $("signin-form").hidden = !isSignIn;
-      $("register-form").hidden = isSignIn;
+      $("signin-form").hidden = isSignIn;
+      $("register-form").hidden = !isSignIn;
       $("title").textContent = isSignIn ? "Create account" : "Sign in";
       $("toggle-text").innerHTML = isSignIn 
         ? 'Already have an account? <button type="button" class="link" id="show-signin">Sign in</button>'
@@ -265,6 +265,7 @@
     }
 
     $("show-register").addEventListener("click", toggleForms);
+    if (new URLSearchParams(location.search).get("mode") === "register" && $("password-form").hidden && !WS.token()) toggleForms();
 
     async function emailLink(mode) {
       if (!$("email").value) return notice("Enter your email address first.", true);
@@ -278,6 +279,10 @@
       WS.api("/api/auth?action=me").then(async response => {
         const data = response.ok ? await response.json().catch(() => ({})) : {};
         if (response.ok && data.user?.id) {
+          if (new URLSearchParams(location.search).get("mode") === "register") {
+            location.replace(returnTo);
+            return;
+          }
           $("signed-in-email").textContent = data.user.email ? " as " + data.user.email : "";
           $("signed-in-continue").href = returnTo;
           $("signed-in").hidden = false;

@@ -20,6 +20,13 @@
     return label.indexOf(".") < 0 && isSubdomainSlug(label) ? label : "";
   }
   function onWeddingHost() { return Boolean(slugFromHost()); }
+  function suggestSlug(names) {
+    var slug = String(names || "").trim().toLowerCase().replace(/&/g, " and ")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 56).replace(/-+$/g, "");
+    if (!slug) return "";
+    if (RESERVED.includes(slug) || ["guest", "demo", "form-diagnostics", "index", "showcase-wedding"].includes(slug)) slug += "-wedding";
+    return slug.padEnd(3, "x");
+  }
   function currentSlug() {
     return (new URLSearchParams(root.location.search).get("slug") || slugFromHost() || "").toLowerCase();
   }
@@ -41,7 +48,7 @@
   root.WSSite = {
     BASE: BASE, ROOT_ORIGIN: ROOT_ORIGIN, BRAND: "Join Our Wedding",
     isSubdomainSlug: isSubdomainSlug, slugFromHost: slugFromHost, onWeddingHost: onWeddingHost,
-    currentSlug: currentSlug, weddingUrl: weddingUrl, platformUrl: platformUrl
+    currentSlug: currentSlug, weddingUrl: weddingUrl, platformUrl: platformUrl, suggestSlug: suggestSlug
   };
   if (onWeddingHost()) {
     document.addEventListener("DOMContentLoaded", function () {

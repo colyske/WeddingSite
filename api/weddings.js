@@ -44,7 +44,7 @@ const friendlyColorName = hex => {
   }
   return closest[0];
 };
-const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
+const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 56).replace(/-+$/g, "");
 const FIELDS = "id,slug,couple_names,welcome_story,cover_image_url,guest_instructions,starter_review_note,wedding_date,time_zone,public_location,currency,revenue_features,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,faq,travel_info,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted";
 const REVENUE_FEATURES = ["giving", "sponsors", "featured_sponsors", "song_requests", "vip_seating"];
 const DEFAULT_ZONE = "Africa/Nairobi";
@@ -339,7 +339,8 @@ export default async function handler(req, res) {
       }
       if (body.weddingDate !== undefined && body.weddingDate !== null && body.weddingDate !== "" && !validDate(body.weddingDate)) return sendJson(res, 400, { error: "Enter a real wedding date (YYYY-MM-DD), or leave it unanswered." });
       const slugRoot = toSlug(names) || "wedding";
-      const base = isReservedLabel(slugRoot) || isShowcase(slugRoot) ? `${slugRoot}-wedding` : slugRoot;
+      const base = isReservedLabel(slugRoot) || isShowcase(slugRoot) ||
+        ["guest", "demo", "form-diagnostics", "index"].includes(slugRoot) ? `${slugRoot}-wedding` : slugRoot;
       if (body.timeZone !== undefined && body.timeZone !== null && body.timeZone !== "" && !validZone(body.timeZone)) {
         return sendJson(res, 400, { error: "Choose a valid time zone." });
       }
@@ -349,7 +350,7 @@ export default async function handler(req, res) {
           const createBody = {
             p_request_key: body.requestKey,
             p_input: {
-              slug: `${base}${suffix}`.slice(0, 80).padEnd(3, "x"), coupleNames: names,
+              slug: `${base}${suffix}`.slice(0, 63).padEnd(3, "x"), coupleNames: names,
               weddingDate: body.weddingDate || null, location: location || null,
               currency, maxCapacity: capacity, palette, venues, timeZone,
               paletteNames: palette.map(friendlyColorName), referral: body.referral || null,

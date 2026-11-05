@@ -193,7 +193,7 @@ test("Create wedding auto-navigates after success", { skip }, async () => {
   assert.equal(createRequests[0].coupleNames, "Sarah & John");
   assert.deepEqual(createRequests[0].palette, showcaseStyle.palette);
   assert.deepEqual(createRequests[0].venues, showcaseStyle.venues);
-  assert.equal(new URL(page.url()).searchParams.get("slug"), "sarah-john");
+  assert.equal(new URL(page.url()).searchParams.has("slug"), false, "internal address is not exposed in the editor URL");
   await close();
 });
 
