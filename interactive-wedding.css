@@ -10,6 +10,9 @@
 .interactive-dialog .card { padding: .7rem; }
 .interactive-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .interactive-dialog [data-guide-state] { font-weight: 600; }
+.interactive-dialog .editor-filter-hidden { display: none !important; }
+.interactive-dialog[data-task] { width: min(640px, calc(100vw - 2rem)); }
+.interactive-dialog[data-task="names"], .interactive-dialog[data-task="address"], .interactive-dialog[data-task="currency"] { width: min(480px, calc(100vw - 2rem)); }
 body[data-interactive-editor] > .wrap > #title { font-size: 1.6rem; }
 body[data-interactive-editor]:not([data-finishing]) :is(#kyc-section, #withdrawals-section, #rsvps-section, #bids-section, #seating-section, #engage-section, #published-section) { display: none; }
 body[data-interactive-editor] > .wrap { max-width: none; width: 100%; padding: 0; margin: 0; }

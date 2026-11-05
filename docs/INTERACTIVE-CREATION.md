@@ -13,6 +13,15 @@ the dialog and answers open. Unsaved changes prevent returning from a dialog;
 the existing unload warning also protects navigation. Private identity and
 publication remain in the authenticated parent at the final step.
 
+Each tap opens a task-specific editor, not its former wizard group: names,
+address, story and cover are separate; currency excludes payout preferences;
+colours, dress guidance, travel, FAQ, programme groups and individual revenue
+products each have their own scope. Section wording has a separate explicit
+control. Existing form fields remain mounted and saved through the same shared
+validation/save flow, so hiding unrelated fields does not clear their values.
+Hash navigation retains the selected task and the first visible input receives
+focus. Native dialog focus trapping and dirty-close protection remain intact.
+
 The frame reads only an allowlisted server projection through a same-origin
 parent capability. No postMessage listener, preview bearer URL, private wedding
 object, KYC, account details, guest identities or moderation details cross into
@@ -83,6 +92,17 @@ values are debounced, old responses ignored, and checking/available/taken/error
 states are announced accessibly. Existing and archived wedding addresses remain
 occupied; no check reserves an address or replaces the atomic save collision
 check. Manual URLs are never overwritten by the availability check.
+The address editor sits beside the displayed private-preview URL.
+Private edit buttons are placed beside their actual names, date, story,
+palette, dress guidance and offering content instead of in a section toolbar;
+the cover control overlays the image edge and currency sits at the fund summary.
+Responsive wrapping keeps these owner-only controls keyboard accessible.
+
+Preview enhancement is idempotent and runs again when asynchronous extras
+arrive. Late travel/guestbook sections receive edit controls, new guest forms
+are disabled synchronously, and banners, delegated handlers and controls are
+not duplicated. Browser coverage deliberately delays extras beyond the main
+renderer-ready event.
 
 The shared guest DOM groups arrival information first (story/theme/programme,
 pre-wedding activities and travel), then RSVP/pass, giving/registry/music/thanks,

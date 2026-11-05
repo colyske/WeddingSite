@@ -11,7 +11,7 @@
       surface.className = "interactive-surface";
       surface.innerHTML = `<div class="interactive-toolbar">
         <p><strong>Your wedding, as you build it</strong><br><span id="interactive-state" role="status" aria-live="polite">Private preview. Guest actions and visit tracking are disabled.</span></p>
-        <button type="button" data-edit-basics aria-label="Edit couple names and wedding address">Names</button>
+        <button type="button" data-edit-basics aria-label="Edit couple names">Names</button>
         <button type="button" data-edit-currency>Currency</button>
         <button type="button" data-finish aria-label="Finish setup, private identity details and publication review">Finish setup</button>
         </div><iframe title="Your private wedding preview" referrerpolicy="no-referrer"></iframe>`;
@@ -79,7 +79,7 @@
       $("wedding-slug").addEventListener("input", checkAddress);
       checkAddress();
       const pageContent = { ...(wedding.page_content || {}) };
-      let wordingSeeded = false;
+      const wordingSeeded = new Set();
       const sectionSteps = {
         welcome: "couple", story: "couple", details: "theme", venues: "venues", prewedding: "venues",
         campaigns: "campaigns", registry: "giving", rsvp: "guests", bids: "giving", ledger: "extras",
@@ -88,7 +88,7 @@
       for (const field of WSWeddingContent.fields) {
         const group = document.createElement("label");
         group.dataset.pageSection = field.section;
-        group.dataset.guideSegment = "page-wording";
+        group.dataset.guideSegment = `page-wording:${field.key}`;
         group.append(document.createTextNode(`Page ${field.selector.includes("h2") ? "heading" : "wording"} (optional; clear to remove)`));
         const input = document.createElement("textarea");
         input.dataset.pageContent = field.key;
@@ -107,7 +107,7 @@
         pageContent, creationContentReviewed: review.querySelector("input").checked
       });
       guide.saved(true);
-      let dataPromise;
+      let dataPromise, activeEditor;
       function refresh() {
         dataPromise = (async () => {
           const response = await WS.api(`/api/weddings?action=preview&weddingId=${encodeURIComponent(weddingId)}`);
@@ -119,14 +119,87 @@
         const frame = surface.querySelector("iframe");
         frame.src = `/guest.html?preview=1&revision=${Date.now()}`;
       }
-      function open(step, section) {
+      function open(step, section, kind) {
+        if (!section && !kind && dialog.open && activeEditor?.step === step) {
+          ({ section, kind } = activeEditor);
+        }
+        const tasks = {
+          welcome: "names", story: "story", details: "palette", venues: "venues", prewedding: "prewedding",
+          registry: "registry", "sponsor-tiers": "packages", "vip-section": "vip", sponsors: "featured",
+          rsvp: "rsvp", bids: "songs", campaigns: "campaigns", "info-section": "travel", ledger: "wording", guestbook: "wording"
+        };
+        const task = kind || tasks[section] || ({ couple: "names", money: "currency", theme: "palette", guests: "rsvp" })[step];
+        const scopes = {
+          names: ["Edit names", '[data-edit-part="names"]'],
+          address: ["Edit wedding address", "#wedding-address"],
+          story: ["Edit your story", '[data-edit-part="story"]'],
+          cover: ["Edit cover photo", '[data-edit-part="cover"]'],
+          date: ["Wedding date & time zone", '[data-edit-part="date"]'],
+          location: ["Edit location", '[data-edit-part="location"]'],
+          music: ["Background music", '[data-edit-part="music"]'],
+          currency: ["Wedding currency", '[data-edit-part="currency"]'],
+          receiving: ["Receiving preference", '[data-edit-part="receiving"]'],
+          palette: ["Wedding colours & lookbook", '[data-edit-part="palette"]'],
+          attire: ["Dress guidance", "#attire-description"],
+          registry: ["Registry gifts", "#registry-block"],
+          packages: ["Sponsor packages", "#tiers-block"],
+          vip: ["VIP offering", "#vip-block"],
+          featured: ["Featured sponsor placement", "#featured-sponsor-block"],
+          songs: ["Song bidding is always included", "#song-requests-block"],
+          rsvp: ["Guest capacity & welcome", '[data-edit-part="rsvp"]'],
+          fees: ["RSVP fees & meal options", "#rsvp-fees-fieldset"],
+          travel: ["Travel & accommodation", '#travel-info, label[for="travel-info"]'],
+          faq: ["Guest questions", "#faq-rows, #faq-add, #faq-label"],
+          campaigns: ["Celebration funds & milestones", "#campaign-list, #add-campaign, #campaign-status"],
+          prewedding: ["Pre-wedding activities", "#pre-events-list, #add-pre-event, #pre-events-title"],
+          venues: ["Wedding-day programme", "#wedding-day-events-list, #add-venue-btn, #wedding-day-events-title"]
+        };
+        activeEditor = { step, section, kind };
         if (!dialog.open) dialog.showModal();
-        dialog.querySelectorAll("[data-page-section]").forEach(group => { group.hidden = group.dataset.pageSection !== section; });
         dialog.querySelector("[data-close-warning]").hidden = true;
         const target = document.querySelector(`[data-guide-step="${step}"]`);
         guide.reveal(target);
-        target?.querySelector("input:not([disabled]), select:not([disabled]), textarea:not([disabled]), h2")?.focus();
+        dialog.querySelectorAll(".editor-filter-hidden").forEach(element => element.classList.remove("editor-filter-hidden"));
+        dialog.querySelectorAll("[data-page-section]").forEach(group => { group.hidden = false; });
+        if (task && target) {
+          dialog.dataset.task = task;
+          $("interactive-editor-title").textContent = scopes[task]?.[0] || "Edit section wording";
+          const selected = task === "wording"
+            ? [...target.querySelectorAll("[data-page-section]")].filter(group => group.dataset.pageSection === section)
+            : [...target.querySelectorAll(scopes[task][1])];
+          function filter(element) {
+            for (const child of element.children) {
+              const direct = selected.includes(child);
+              const ancestor = selected.some(item => child.contains(item));
+              child.classList.toggle("editor-filter-hidden", !direct && !ancestor);
+              if (!direct && ancestor) filter(child);
+            }
+          }
+          filter(target);
+        } else {
+          delete dialog.dataset.task;
+          $("interactive-editor-title").textContent = "Finish setup & private details";
+        }
+        [...(target?.querySelectorAll("input:not([disabled]), select:not([disabled]), textarea:not([disabled])") || [])]
+          .find(element => element.getClientRects().length)?.focus();
       }
+      window.WSInteractiveWedding.revealField = target => {
+        target = target?.querySelector("input:invalid, select:invalid, textarea:invalid") || target;
+        if (!target || target.getClientRects().length) return;
+        const step = target.closest("[data-guide-step]")?.dataset.guideStep;
+        const product = [
+          ["#registry-block", "registry"], ["#tiers-block", "packages"], ["#vip-block", "vip"],
+          ["#featured-sponsor-block", "featured"], ["#song-requests-block", "songs"],
+          ["#rsvp-fees-fieldset", "fees"], ["#campaign-list", "campaigns"],
+          ["#pre-events-list", "prewedding"], ["#venues-list", "venues"], ["#faq-rows", "faq"]
+        ].find(([selector]) => target.closest(selector));
+        const kind = target.closest("[data-edit-part]")?.dataset.editPart || product?.[1] ||
+          (target.id === "travel-info" ? "travel" : undefined);
+        if (step && kind) open(step, undefined, kind);
+      };
+      window.WSInteractiveWedding.revealInvalid = () => {
+        window.WSInteractiveWedding.revealField($("edit-form").querySelector("input:invalid, select:invalid, textarea:invalid"));
+      };
       function close() {
         if (guide.isSaving() || guide.dirty()) {
           dialog.querySelector("[data-close-warning]").hidden = false;
@@ -136,14 +209,18 @@
       }
       window.WSInteractiveGuest = {
         data: () => dataPromise,
-        edit: (step, section) => {
-          if (["couple", "date", "money", "venues", "guests", "theme", "giving", "campaigns", "extras"].includes(step)) open(step, section);
+        edit: (step, section, kind) => {
+          if (["couple", "date", "money", "venues", "guests", "theme", "giving", "campaigns", "extras"].includes(step)) open(step, section, kind);
         },
         wording: defaults => {
           for (const input of dialog.querySelectorAll("[data-page-content]")) {
-            if (!Object.hasOwn(pageContent, input.dataset.pageContent)) input.value = defaults[input.dataset.pageContent] || "";
+            const key = input.dataset.pageContent;
+            if (!Object.hasOwn(pageContent, key) && Object.hasOwn(defaults, key) && !wordingSeeded.has(key)) {
+              input.value = defaults[key];
+              wordingSeeded.add(key);
+              guide.adoptSaved(input.parentElement.dataset.guideSegment);
+            }
           }
-          if (!wordingSeeded) { guide.adoptSaved("page-wording"); wordingSeeded = true; }
         }
       };
       dialog.querySelector("[data-close-editor]").addEventListener("click", close);
