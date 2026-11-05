@@ -83,3 +83,9 @@ values are debounced, old responses ignored, and checking/available/taken/error
 states are announced accessibly. Existing and archived wedding addresses remain
 occupied; no check reserves an address or replaces the atomic save collision
 check. Manual URLs are never overwritten by the availability check.
+
+The shared guest DOM groups arrival information first (story/theme/programme,
+pre-wedding activities and travel), then RSVP/pass, giving/registry/music/thanks,
+sponsors immediately followed by sponsor packages, VIP/seating, and
+guestbook/sharing. Async extras join that same order, section numbering follows
+the DOM, and existing anchors, controls and focused form state are retained.

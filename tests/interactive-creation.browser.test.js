@@ -115,6 +115,13 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       assert.equal(await frame.getByText("Real activity is empty.", { exact: false }).count(), 0);
       assert.equal(await frame.locator("form button:not(:disabled)").count(), 0, "guest submission/payment buttons are effectively disabled");
       assert.equal(await frame.locator(".preview-edit:disabled").count(), 0, "editor controls remain actionable");
+      const flow = await frame.locator("#wedding-content > section").evaluateAll(sections => sections.map(section => section.id));
+      for (const [before, after] of [["prewedding", "info-section"], ["info-section", "rsvp"], ["rsvp", "ecard"],
+        ["ecard", "campaigns"], ["campaigns", "registry"], ["registry", "bids"], ["bids", "ledger"],
+        ["ledger", "sponsors"], ["sponsors", "sponsor-tiers"], ["sponsor-tiers", "vip-section"], ["seating", "guestbook"], ["guestbook", "share-section"]]) {
+        assert.ok(flow.indexOf(before) < flow.indexOf(after), `${before} precedes ${after} in DOM and tab order`);
+      }
+      assert.equal(flow[flow.indexOf("sponsors") + 1], "sponsor-tiers", "Stand with us immediately follows Our sponsors");
       await frame.getByRole("button", { name: "Currency: KES", exact: true }).click();
       assert.equal(await page.locator('[data-guide-step="money"]').isVisible(), true);
       await page.keyboard.press("Escape");

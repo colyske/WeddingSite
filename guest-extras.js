@@ -166,7 +166,12 @@
     renderMeta();
     renderShare();
     trackVisit();
-    fetch("/api/guest?action=extras&slug=" + encodeURIComponent(slug)).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) { if (d) { renderExtras(d); renderShare(); } }).catch(function () {});
+    fetch("/api/guest?action=extras&slug=" + encodeURIComponent(slug)).then(function (r) { return r.ok ? r.json() : null; }).then(function (d) {
+      if (d) {
+        renderExtras(d); renderShare();
+        document.dispatchEvent(new CustomEvent("ws:extras-ready"));
+      }
+    }).catch(function () {});
   });
   document.addEventListener("ws:pass", function (e) {
     if (e.detail && e.detail.refCode) myRef = e.detail.refCode;

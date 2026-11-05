@@ -33,6 +33,23 @@
       section.append(art);
     }
   }
+  function orderSections() {
+    const main = document.getElementById("wedding-content");
+    const active = document.activeElement;
+    for (const id of [
+      "welcome", "countdown-band", "past-banner", "story", "details", "venues", "prewedding", "info-section",
+      "rsvp", "ecard", "campaigns", "registry", "bids", "ledger", "sponsors", "sponsor-tiers",
+      "vip-section", "seating", "guestbook", "share-section"
+    ]) {
+      const section = document.getElementById(id);
+      if (section?.parentElement === main) main.append(section);
+    }
+    if (active && active !== document.activeElement && main.contains(active)) active.focus({ preventScroll: true });
+    document.dispatchEvent(new CustomEvent("ws:sections-ordered"));
+  }
+  document.addEventListener("ws:preview-ready", orderSections);
+  document.addEventListener("ws:extras-ready", orderSections);
+  orderSections();
   decorate();
   new MutationObserver(decorate).observe(document.getElementById("wedding-content"), { childList: true });
 

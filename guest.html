@@ -206,7 +206,7 @@
       <p class="hero-side" aria-hidden="true">A day for all our people</p>
     </section>
 
-    <section class="countdown-band" aria-label="Countdown">
+    <section class="countdown-band" id="countdown-band" aria-label="Countdown">
       <div class="countdown-intro"><span class="eyebrow">The countdown is on</span><span>Until we say &ldquo;I do&rdquo;</span></div>
       <p class="subtitle" id="countdown-state" hidden aria-live="polite"></p>
       <div class="countdown" id="countdown">
@@ -1618,6 +1618,7 @@ const payIntent = WSPaymentIntent.create({ name: slug });
     });
   }
   document.addEventListener("wslang", run);  new MutationObserver(run).observe(document.body, { attributes: true, attributeFilter: ["hidden"], subtree: true });
+  document.addEventListener("ws:sections-ordered", run);
   document.addEventListener("DOMContentLoaded", run);
 })();
 </script>  <script src="i18n.js"></script>
