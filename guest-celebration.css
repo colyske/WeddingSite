@@ -162,7 +162,7 @@ body.guest-page #ecard { background: #f4e3df !important; }
 .guest-page .showcase-create { position: fixed; z-index: 110; right: 1.25rem; bottom: 1.25rem; display: flex; align-items: center; gap: .6rem; padding: .6rem 1rem .6rem .6rem; min-height: 48px; border: 1px solid #d5bda0; border-radius: 60px; background: var(--green-deep); color: #fffaf0; text-decoration: none; font-size: .8rem; box-shadow: 0 4px 20px #152b2526; }
 .guest-page .showcase-create svg { width: 30px; height: 30px; }
 .guest-page .showcase-create strong, .guest-page .showcase-create small { display: block; line-height: 1.35; color: inherit !important; opacity: 1; }
-.guest-page .showcase-create small { font-size: .75rem; }
+.guest-page .showcase-create small { font-size: .75rem; font-weight: 600; color: #e0be7b !important; }
 .guest-page .showcase-create { background: #203a31; color: #fffaf0 !important; }
 .guest-page .showcase-create:hover { background: #293a31 !important; }
 .guest-page .showcase-create:hover { background: var(--green); }

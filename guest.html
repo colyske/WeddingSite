@@ -570,10 +570,10 @@
         document.querySelector(".logo-section").append(banner);
         $("ecard").hidden = false;
         $("ecard-guest-name").textContent = "Our dear guest";
-        $("qrcode").textContent = "SAMPLE PASS - NOT VALID FOR ENTRY";
-        $("pass-status").textContent = "Illustration only; no QR credential is issued.";
-        $("ecard").querySelector("p.fine").textContent = "Illustrative e-card layout. This sample is not valid for admission.";
-        $("qrcode").nextElementSibling.textContent = "No scannable guest credential in this showcase.";
+        $("qrcode").textContent = "Not valid for entry";
+        $("pass-status").hidden = true;
+        $("ecard").querySelector("p.fine").hidden = true;
+        $("qrcode").nextElementSibling.hidden = true;
         $("seating").insertAdjacentHTML("beforeend", '<p class="notice">Garden Table &mdash; seat 4</p>');
       }
 

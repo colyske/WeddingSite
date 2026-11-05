@@ -54,6 +54,9 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     assert.doesNotMatch(await page.locator("#ledger-body").innerText(), /NaN|\$/);
     assert.ok(await page.locator(".showcase-banner").isVisible());
     assert.equal(await page.locator(".showcase-banner").innerText(), "Demo");
+    assert.equal(await page.locator("#qrcode").innerText(), "Not valid for entry");
+    assert.equal(await page.locator("#qrcode :is(img, canvas, svg)").count(), 0, "demo pass never carries a scannable credential");
+    assert.doesNotMatch(await page.locator("#ecard").innerText(), /illustrat|scannable|sample pass|QR credential/i);
     assert.doesNotMatch(await page.locator("#welcome-story").innerText(), /sample|fictional/i);
     assert.match(await page.locator("#welcome-story").innerText(), /borrowed watering can/);
     assert.equal(await page.locator("#wedding-content section.card").count(), await page.locator("section.card").count(),
@@ -71,7 +74,7 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     assert.equal(onboarding.searchParams.get("next"), "/dashboard.html?style=showcase-wedding#step=couple");
     assert.equal(await page.locator(".showcase-create strong").innerText(), "Create yours");
     assert.equal(await page.locator(".showcase-create small").innerText(), "It’s free!");
-    assert.equal(await page.locator(".showcase-create small").evaluate(el => getComputedStyle(el).color), "rgb(255, 250, 240)");
+    assert.equal(await page.locator(".showcase-create small").evaluate(el => getComputedStyle(el).color), "rgb(224, 190, 123)");
     assert.match(await page.locator(".showcase-create").getAttribute("aria-description"), /eligibility.*before publishing/);
     assert.equal(await page.locator("#prewedding > h2").innerText(), "Pre-wedding activities");
     await page.locator("#reuse-wedding-style a").waitFor();
