@@ -263,7 +263,7 @@ body[data-private-preview] #welcome .hero-content { padding-bottom: 5rem; }
 @media (max-width: 600px) {
   body.guest-page[data-private-preview] nav.sticky-nav { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "logo toggle" "controls controls" "links links"; }
   body[data-private-preview] nav.sticky-nav .logo-section { grid-area: logo; }
-  body[data-private-preview] nav.sticky-nav .brand { max-width: none; }
+  body[data-private-preview] nav.sticky-nav .brand { flex: 1; max-width: none; }
   body[data-private-preview] #wedding-nav-toggle { grid-area: toggle; }
   body[data-private-preview] nav.sticky-nav .controls { grid-area: controls; justify-content: flex-start; }
   body[data-private-preview] #wedding-nav-links { grid-area: links; }
