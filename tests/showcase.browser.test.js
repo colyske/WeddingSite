@@ -199,9 +199,12 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
         return bounds.left >= card.left && bounds.right <= card.right && el.scrollWidth <= el.clientWidth;
       }), "the literal percentage and goal caption fit entirely inside the card");
       assert.doesNotMatch(await page.locator(".fund-note").innerText(), /sample|illustrative|demo/i);
-      assert.ok(await page.locator(".fund-bar").evaluate(bar =>
-        [...bar.children].every(segment => Math.abs(segment.getBoundingClientRect().width -
-          bar.clientWidth * parseFloat(segment.style.width) / 100) < .1)),
+      assert.ok(await page.locator(".fund-bar").evaluate(bar => {
+        const style = getComputedStyle(bar);
+        const trackWidth = bar.getBoundingClientRect().width - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth);
+        return [...bar.children].every(segment => Math.abs(segment.getBoundingClientRect().width -
+          trackWidth * parseFloat(segment.style.width) / 100) < .1);
+      }),
       "decorative frame/highlight preserves exact segment widths, including small sources");
       if (width <= 768) {
         assert.ok(await page.locator(".sticky-nav").evaluate(nav => nav.getBoundingClientRect().height <= 90), "compact closed mobile header");
