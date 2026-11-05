@@ -104,6 +104,7 @@ test("real preview handler requires authorization, owner filtering and read-only
   Object.assign(process.env, { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "anon", SUPABASE_SERVICE_ROLE_KEY: "service" });
   const calls = [];
   let owned = true;
+  let savedFunds = [{ id, name: "Celebration", goal_minor: 50000000, raised_minor: 9999, milestones: [] }];
   globalThis.fetch = async (input, options) => {
     const url = new URL(input);
     calls.push({ url, options });
@@ -113,15 +114,19 @@ test("real preview handler requires authorization, owner filtering and read-only
       assert.equal(url.searchParams.get("client_owner_id"), `eq.${owner}`);
       return json(owned ? [{ id, currency: "KES", couple_names: "A & B", interactive_creation: true, payout: "PRIVATE" }] : []);
     }
-    if (url.pathname === "/rest/v1/fundraising_streams" && url.searchParams.has("enabled")) return json([
-      { id, name: "Celebration", goal_minor: 50000000, raised_minor: 9999 }
-    ]);
+    if (url.pathname.endsWith("/save_interactive_fundraising_campaigns")) {
+      savedFunds = JSON.parse(options.body).p_payload;
+      return json(null);
+    }
+    if (url.pathname === "/rest/v1/fundraising_streams" && url.searchParams.has("enabled")) return json(savedFunds);
+    if (url.pathname === "/rest/v1/fundraising_milestones") return json(savedFunds.flatMap(fund =>
+      fund.milestones.map(item => ({ ...item, stream_id: fund.id, reached: true, internal_note: "PRIVATE" }))));
     return json([]);
   };
-  const run = async headers => {
+  const run = async (headers, action = "preview", body) => {
     const res = { statusCode: 0, headers: {}, status(code) { this.statusCode = code; return this; },
       setHeader(key, value) { this.headers[key] = value; }, json(body) { this.body = body; }, end(text) { this.body = JSON.parse(text); } };
-    await weddings({ method: "GET", headers, query: { action: "preview", weddingId: id } }, res);
+    await weddings({ method: body ? "POST" : "GET", headers, query: { action, weddingId: id }, body }, res);
     return res;
   };
   try {
@@ -132,6 +137,17 @@ test("real preview handler requires authorization, owner filtering and read-only
     assert.equal(res.body.fundraising.campaigns[0].raised_minor, 0);
     assert.equal(JSON.stringify(res.body).includes("PRIVATE"), false);
     assert.equal(calls.some(({ url }) => /visits|contributions|kyc|checkout/.test(url.pathname)), false);
+    const saved = await run({ authorization: "Bearer fixture-owner-token" }, "campaigns-save", {
+      weddingId: id, currency: "KES", campaigns: [{ id, name: "Our saved goal", purpose: "Our plans", goal: "1200",
+        milestones: [{ id, name: "Our saved milestone", description: "Our stage", target: "500" }] }]
+    });
+    assert.equal(saved.statusCode, 200);
+    const reloaded = await run({ authorization: "Bearer fixture-owner-token" });
+    assert.deepEqual(reloaded.body.fundraising.campaigns[0].milestones, [{
+      id, name: "Our saved milestone", description: "Our stage", target_minor: 50000, reached: false
+    }]);
+    assert.equal(reloaded.body.fundraising.campaigns[0].raised_minor, 0);
+    assert.equal(JSON.stringify(reloaded.body).includes("PRIVATE"), false);
     owned = false;
     assert.equal((await run({ authorization: "Bearer fixture" })).statusCode, 404);
   } finally {
