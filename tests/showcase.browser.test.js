@@ -67,12 +67,19 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
       assert.equal(await page.locator(`#${id} > .celebration-art svg`).count(), 1, `${id} has a single bespoke illustration`);
     }
     assert.equal(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuenow"), "36");
+    assert.match(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuetext"), /180,000.*500,000.*320,000.*Illustrative/);
+    assert.equal(await page.locator(".cake-legend li").count(), 6);
+    assert.equal(await page.locator(".fund-cake path[data-source]").count(), 5);
+    assert.match(await page.locator(".cake-legend").innerText(), /Remaining[\s\S]*320,000[\s\S]*64.0%/);
+    assert.equal(await page.locator(".cake-legend .cake-share").evaluateAll(items =>
+      items.reduce((sum, item) => sum + Math.round(parseFloat(item.textContent) * 10), 0)), 1000);
     for (const campaign of showcaseFundraising.campaigns) {
       const card = page.locator(`[data-campaign="${campaign.id}"]`);
       const primary = card.locator(".camp-give button");
       assert.equal(await primary.count(), 1);
       assert.equal(await primary.getAttribute("data-ref"), campaign.id);
       assert.equal(await primary.getAttribute("data-milestone"), null);
+      assert.equal(await primary.textContent(), "Help complete the cake");
       assert.ok(await primary.evaluate(button => !!(button.closest(".camp-give").compareDocumentPosition(button.closest(".campaign").querySelector(".camp-ms")) & Node.DOCUMENT_POSITION_FOLLOWING)),
         "parent contribution action precedes nested milestones");
       for (const milestone of campaign.milestones) {
@@ -169,6 +176,11 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
         assert.ok(metrics.songCells[1] > metrics.songCells[0], "mobile artist has its own readable line");
       }
       assert.ok(new Set(metrics.surfaces).size >= 3, "sections are visually differentiated");
+      assert.ok(await page.locator(".cake-legend li").evaluateAll(rows => rows.every(row => {
+        const cells = [...row.children].map(cell => cell.getBoundingClientRect());
+        return cells.every((cell, i) => !i || cell.left >= cells[i - 1].right - 1) &&
+          row.scrollWidth <= row.clientWidth;
+      })), "source labels, amounts and percentages never overlap, including mobile");
       if (width <= 768) {
         assert.ok(await page.locator(".sticky-nav").evaluate(nav => nav.getBoundingClientRect().height <= 90), "compact closed mobile header");
         const toggle = page.locator("#wedding-nav-toggle");
@@ -182,13 +194,19 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
         assert.equal(await toggle.getAttribute("aria-expanded"), "false");
         assert.equal(await page.evaluate(() => document.activeElement.id), "bids");
       }
-      if (process.env.WEDDING_SCREENSHOTS) await page.screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `showcase-${width}.png`), fullPage: true });
+      if (process.env.WEDDING_SCREENSHOTS) {
+        await page.screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `showcase-${width}.png`), fullPage: true });
+        await page.setViewportSize({ width, height: 1500 });
+        await page.locator(".celebration-fund").screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `cake-${width}.png`) });
+        await page.setViewportSize({ width, height: 800 });
+      }
     }
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.locator(".wedding-skip").focus();
     await page.keyboard.press("Enter");
     assert.equal(await page.evaluate(() => document.activeElement.id), "wedding-content", "skip link transfers keyboard focus to main");
     assert.equal(await page.locator(".hero .celebration-art").evaluate(el => getComputedStyle(el).animationName), "none");
+    assert.equal(await page.locator(".fund-cake").evaluate(el => getComputedStyle(el).animationName), "none");
     await page.locator("#rsvp-form").scrollIntoViewIfNeeded();
     await page.waitForTimeout(100);
     assert.ok(await page.locator(".showcase-create").isHidden(), "floating CTA never obscures the form");
