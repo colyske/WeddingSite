@@ -164,6 +164,7 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       assert.equal(await frame.locator(".preview-address [data-edit-kind=address]").count(), 1);
       assert.equal(await frame.locator("#welcome > [data-edit-kind=cover]").count(), 1);
       assert.equal(await frame.locator("body").evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "contextual controls do not create mobile/desktop overflow");
+      assert.equal(await frame.locator("#nav-couple").evaluate(element => element.getBoundingClientRect().width > 100), true, "contextual music control does not squeeze the mobile couple names");
       const flow = await frame.locator("#wedding-content > section").evaluateAll(sections => sections.map(section => section.id));
       for (const [before, after] of [["prewedding", "info-section"], ["info-section", "rsvp"], ["rsvp", "ecard"],
         ["ecard", "campaigns"], ["campaigns", "registry"], ["registry", "bids"], ["bids", "ledger"],
@@ -179,6 +180,7 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       assert.equal(await page.locator("#couple-names").isVisible(), true);
       assert.equal(await page.locator('#welcome-story, #wedding-slug, #cover-image-url, [data-page-content]').evaluateAll(inputs => inputs.some(input => input.getClientRects().length > 0)), false, "names has no unrelated visible fields");
       assert.equal(await page.locator(".interactive-dialog input:visible, .interactive-dialog select:visible, .interactive-dialog textarea:visible").count(), 1);
+      assert.equal(await page.locator("[data-guide-save]").evaluate(element => element.getBoundingClientRect().width >= 120), true, "focused dialog save label has usable width on mobile");
       await page.locator("#couple-names").fill("Amina & Joseph");
       assert.equal(await page.inputValue("#wedding-slug"), "amina-and-david", "existing named wedding is never auto-renamed");
       if (process.env.INTERACTIVE_EVIDENCE_DIR) {

@@ -11,6 +11,9 @@
 .interactive-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .interactive-dialog [data-guide-state] { font-weight: 600; }
 .interactive-dialog .editor-filter-hidden { display: none !important; }
+.interactive-dialog .guide-buttons { display: flex; justify-content: flex-end; }
+.interactive-dialog .guide-buttons [data-guide-save] { flex: 0 0 auto; min-width: 9rem; white-space: nowrap; }
+.interactive-dialog[data-task] .guide-header > .fine { display: none; }
 .interactive-dialog[data-task] { width: min(640px, calc(100vw - 2rem)); }
 .interactive-dialog[data-task="names"], .interactive-dialog[data-task="address"], .interactive-dialog[data-task="currency"] { width: min(480px, calc(100vw - 2rem)); }
 body[data-interactive-editor] > .wrap > #title { font-size: 1.6rem; }
