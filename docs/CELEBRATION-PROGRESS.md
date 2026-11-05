@@ -32,9 +32,10 @@ remain visible separately. The legend uses largest-remainder rounding to
 reconcile to 100.0%; angles always use unrounded proportions. Zero is entirely
 empty. No explicit goal means the existing no-goal progress presentation.
 The SVG computes true circular sectors, then projects the entire top together
-with one vertical perspective scale. Full-depth source-coloured curved sides
-follow those same angles, with exposed radial cut faces beside the ghost
-remainder. Vanilla, cocoa, caramel, strawberry and red-velvet tones match the
+with one vertical perspective scale. The decorative outer frosting circumference
+stays complete; only exposed internal radial wedge faces descend to the base
+beside the unfilled remaining top. The decorative exterior is not a completion
+indicator. Vanilla, cocoa, caramel, strawberry and red-velvet tones match the
 legend. Icing bands, piped frosting and an attached stand are decorative, not
 extra data. All labels
 are outside the plot, with accessible textual totals and legend. It has no

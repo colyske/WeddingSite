@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import "../celebration-fund.js";
 import { showcaseFundraising, showcase, showcaseBids } from "../server/showcase.js";
 
-const { model, render, wedge, side } = globalThis.WSCelebrationFund;
+const { model, render, wedge, cut } = globalThis.WSCelebrationFund;
 const fixture = (amounts, goal = 10000) => ({
   currency: "KES", goal_minor: goal, raised_minor: amounts.reduce((a, b) => a + b, 0),
   remaining_minor: Math.max(0, goal - amounts.reduce((a, b) => a + b, 0)),
@@ -69,19 +69,17 @@ test("accessible text carries totals, remaining, sources and unclipped completio
   assert.doesNotMatch(render(fixture([1, 0, 0, 0, 0]), "KES", () => "<img onerror=alert(1)>"), /<img/);
 });
 
-test("full-depth visible wedge faces follow honest front-sector intersections; Remaining stays ghost", () => {
-  assert.equal(side(-Math.PI / 2, -.1), "", "back half never draws an occluding front face");
-  assert.equal(side(Math.PI + .1, 1.5 * Math.PI), "", "back half stays behind top");
-  assert.equal(side(-Math.PI / 2, Math.PI / 2), side(0, Math.PI / 2));
-  assert.match(side(0, Math.PI), /L58.00000 158.00000/);
+test("full-depth internal cut faces follow true radial boundaries; outer frosting stays complete", () => {
+  assert.equal(cut(0), "M160 110L262.00000 110.00000L262.00000 158.00000L160 158Z");
   const partial = render(fixture([2000, 1000, 1000, 500, 500]), "KES", money);
-  assert.match(partial, /data-cake-side=/);
+  assert.match(partial, /data-cake-shell="cream"/);
   assert.match(partial, /data-cake-cut="end"/);
-  assert.doesNotMatch(partial, /data-cake-side="remaining"/);
+  assert.doesNotMatch(partial, /<path (?:data-source|data-cake-cut)="[^"]+"[^>]*stroke=/, "wedge colours meet without white separator strokes");
+  assert.doesNotMatch(partial, /data-cake-side=/, "outer wall is never source-coloured or removed");
   const zero = render(fixture([0, 0, 0, 0, 0]), "KES", money);
   assert.doesNotMatch(zero, /data-cake-side|data-cake-cut/);
   const full = render(fixture([4000, 1000, 3000, 1000, 1000]), "KES", money);
-  assert.match(full, /data-cake-side=/);
+  assert.match(full, /data-cake-shell="cream"/);
   assert.doesNotMatch(full, /data-cake-cut=/);
 });
 
