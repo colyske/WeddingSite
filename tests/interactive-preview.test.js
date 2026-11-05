@@ -144,6 +144,55 @@ test("real preview handler requires authorization, owner filtering and read-only
       weddingId: id, currency: "KES", campaigns: [{ id, name: "Our saved goal", purpose: "Our plans", goal: "1200",
         milestones: [{ id, name: "Our saved milestone", description: "Our stage", target: "500" }] }]
     });
+
+    test("address availability is owner-authorized, advisory, reservation-safe and exposes no other wedding", async () => {
+      const previous = { ...process.env }, oldFetch = globalThis.fetch;
+      Object.assign(process.env, { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "anon", SUPABASE_SERVICE_ROLE_KEY: "service" });
+      let owned = true, globalChecks = 0;
+      globalThis.fetch = async (input, options) => {
+        const url = new URL(input);
+        let data = [];
+        if (url.pathname === "/auth/v1/user") data = { id: owner };
+        if (url.pathname === "/rest/v1/weddings") {
+          if (url.searchParams.has("client_owner_id")) {
+            assert.equal(url.searchParams.get("client_owner_id"), `eq.${owner}`);
+            data = owned ? [{ id, slug: "our-saved-address" }] : [];
+          } else {
+            globalChecks++;
+            assert.equal(options.headers.apikey, "service");
+            assert.equal(url.searchParams.get("select"), "id");
+            data = url.searchParams.get("slug") === "eq.taken-address" ? [{ id: owner }] : [];
+          }
+        }
+        return new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json" } });
+      };
+      const run = async (slug, headers = { authorization: "Bearer fixture-owner-token" }) => {
+        const res = { code: 0, headers: {}, status(code) { this.code = code; return this; },
+          setHeader(key, value) { this.headers[key] = value; }, end(text) { this.body = JSON.parse(text); } };
+        await weddings({ method: "GET", headers, query: { action: "address-availability", weddingId: id, slug } }, res);
+        return res;
+      };
+      try {
+        assert.equal((await run("available-address", {})).code, 401);
+        assert.equal((await run("our-saved-address")).body.state, "current");
+        assert.equal(globalChecks, 0, "current address requires no global lookup");
+        for (const slug of ["admin", "guest", "showcase-wedding"]) assert.equal((await run(slug)).body.state, "reserved");
+        assert.equal((await run("-invalid")).body.state, "invalid");
+        assert.equal(globalChecks, 0);
+        const available = await run(" Available-Address ");
+        assert.deepEqual(available.body, { state: "available", available: true, slug: "available-address" });
+        assert.match(available.headers["Cache-Control"], /no-store/);
+        assert.deepEqual((await run("taken-address")).body, { state: "taken", available: false, slug: "taken-address" });
+        owned = false;
+        assert.equal((await run("available-address")).code, 404);
+        assert.equal(globalChecks, 2, "non-owners cannot query addresses through another wedding");
+      } finally {
+        globalThis.fetch = oldFetch;
+        for (const key of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"]) {
+          if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key];
+        }
+      }
+    });
     assert.equal(saved.statusCode, 200);
     const reloaded = await run({ authorization: "Bearer fixture-owner-token" });
     assert.deepEqual(reloaded.body.fundraising.campaigns[0].milestones, [{

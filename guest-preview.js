@@ -36,7 +36,7 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "preview-edit";
-      button.textContent = `Edit ${id === "welcome" ? "welcome" : id === "vip-section" ? "VIP" : id === "sponsor-tiers" ? "packages" : id}`;
+      button.textContent = `Edit ${id === "welcome" ? "names" : id === "vip-section" ? "VIP" : id === "sponsor-tiers" ? "packages" : id}`;
       if (id === "welcome") section.querySelector(".hero-content").prepend(button);
       else section.prepend(button);
     }
@@ -59,6 +59,12 @@
       if (element) defaults[field.key] = element.textContent;
     }
     parent.WSInteractiveGuest.wording(defaults);
+    const currencyButton = document.createElement("button");
+    currencyButton.type = "button";
+    currencyButton.className = "preview-edit";
+    currencyButton.dataset.editStep = "money";
+    currencyButton.textContent = `Currency: ${data.site.wedding.currency}`;
+    document.getElementById("welcome").querySelector(".hero-content").prepend(currencyButton);
     const dateButton = document.createElement("button");
     dateButton.type = "button";
     dateButton.className = "preview-edit";
@@ -67,7 +73,7 @@
     document.getElementById("wedding-date-display")?.after(dateButton);
     const sampleNote = document.createElement("p");
     sampleNote.className = "notice";
-    sampleNote.textContent = "Private preview: fictional showcase wording and sample venues are editable placeholders, not confirmed facts. Real activity is empty. Replace sample details and review your content before publishing.";
+    sampleNote.textContent = "Private preview. Guest actions are disabled. Review your content before publishing.";
     document.getElementById("welcome").before(sampleNote);
     for (const id of ["seating", "ecard", "share-section"]) {
       const section = document.getElementById(id);

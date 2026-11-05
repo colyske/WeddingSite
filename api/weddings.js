@@ -4,7 +4,7 @@ import { referralError } from "../server/referral-errors.js";
 import handleReferrals from "../server/referrals.js";
 import { paymentAdaptersFor } from "./checkout.js";
 import { normalizePhone, isPhoneKeyEmail } from "../server/phone.js";
-import { isReservedLabel } from "../server/site-hosts.js";
+import { isReservedLabel, isSubdomainSlug } from "../server/site-hosts.js";
 import { isShowcase } from "../server/showcase.js";
 import { interactiveStarter } from "../server/interactive-starter.js";
 import "../wedding-content.js";
@@ -180,6 +180,27 @@ export default async function handler(req, res) {
   try {
     const invalidContent = req.method === "POST" && contentError(body);
     if (invalidContent) return sendJson(res, 400, { error: invalidContent });
+    if (action === "address-availability") {
+      if (!methodOnly(req, res, "GET")) return;
+      if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+      const owned = await supabaseRequest(
+        `/rest/v1/weddings?id=eq.${req.query.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=id,slug`, opts);
+      if (!owned?.length) return sendJson(res, 404, { error: "Wedding not found." });
+      res.setHeader("Cache-Control", "private, no-store");
+      const slug = typeof req.query.slug === "string" ? req.query.slug.trim().toLowerCase() : "";
+      if (slug && slug === owned[0].slug) return sendJson(res, 200, { state: "current", available: true, slug });
+      if (isReservedLabel(slug) || ["guest", "demo", "form-diagnostics", "index", "showcase-wedding"].includes(slug)) {
+        return sendJson(res, 200, { state: "reserved", available: false, slug, message: "That address is reserved." });
+      }
+      if (!isSubdomainSlug(slug)) return sendJson(res, 200, {
+        state: "invalid", available: false, slug,
+        message: "Use 3-63 lowercase letters, numbers or hyphens, beginning and ending with a letter or number."
+      });
+      const matches = await supabaseRequest(
+        `/rest/v1/weddings?slug=eq.${encodeURIComponent(slug)}&select=id&limit=1`, { service: true });
+      return sendJson(res, 200, { state: matches?.some(row => row.id !== owned[0].id) ? "taken" : "available",
+        available: !matches?.some(row => row.id !== owned[0].id), slug });
+    }
     if (action === "preview") {
       if (!methodOnly(req, res, "GET")) return;
       if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });

@@ -10,7 +10,7 @@ import { publicWeddingStyle } from "../server/wedding-style.js";
 import "../currencies.js";
 
 const id = "550e8400-e29b-41d4-a716-446655440001";
-test("interactive desktop/mobile renderer edits, saves, isolates guest activity and protects dialogs", { timeout: 240000 }, async () => {
+test("interactive desktop/mobile renderer edits, saves, isolates guest activity and protects dialogs", { timeout: 360000 }, async () => {
   const style = await publicWeddingStyle("showcase-wedding");
   const seed = interactiveStarter(globalThis.WSStarterSetup.normalize({ ...style.setup, reviewed: true }, "KES"));
   const structure = globalThis.WSStarterSetup.structure(seed.setup);
@@ -55,6 +55,12 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
         const url = new URL(route.request().url()), action = url.searchParams.get("action");
         if (url.pathname !== "/api/weddings") guestCalls.push(url.pathname + "?" + action);
         let data = {};
+        if (action === "address-availability") {
+          const slug = url.searchParams.get("slug");
+          if (slug === "offline-address") return route.fulfill({ status: 503, json: { error: "Availability is temporarily unavailable." } });
+          if (slug === "old-slow-address") await new Promise(done => setTimeout(done, 1000));
+          data = { slug, state: slug === wedding.slug ? "current" : slug === "taken-address" || slug === "old-slow-address" ? "taken" : "available" };
+        }
         if (action === "get") data = { wedding: structuredClone(wedding) };
         if (action === "preview") data = interactivePreview(wedding, campaigns);
         if (action === "collection-capabilities") data = { currencies: [{ code: "KES", name: "Kenyan Shilling", methods: [{ name: "M-Pesa", markets: ["Kenya"] }] }] };
@@ -83,7 +89,7 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
         assert.equal(await page.locator("#wedding-address").isVisible(), false, "internal draft address is not suggested before names");
         if (process.env.INTERACTIVE_EVIDENCE_DIR) {
           await mkdir(process.env.INTERACTIVE_EVIDENCE_DIR, { recursive: true });
-          await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `fundamentals-${viewport.width}.png`) });
+          await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `fundamentals-${viewport.width}.png`), animations: "disabled", timeout: 60000 });
         }
         await page.locator("#couple-names").fill("Amina & David");
         assert.match(await page.locator("#slug-preview").innerText(), /amina-and-david\.joinourwedding\.site/);
@@ -105,8 +111,16 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       assert.match(await frame.locator("#info-section").innerText(), /Make a little weekend/);
       assert.equal(await frame.locator("#ecard").isVisible(), true);
       assert.match(await frame.locator("#qrcode").innerText(), /not valid for entry/);
+      assert.equal(await frame.getByText("Private preview. Guest actions are disabled. Review your content before publishing.", { exact: true }).count(), 1);
+      assert.equal(await frame.getByText("Real activity is empty.", { exact: false }).count(), 0);
       assert.equal(await frame.locator("form button:not(:disabled)").count(), 0, "guest submission/payment buttons are effectively disabled");
       assert.equal(await frame.locator(".preview-edit:disabled").count(), 0, "editor controls remain actionable");
+      await frame.getByRole("button", { name: "Currency: KES", exact: true }).click();
+      assert.equal(await page.locator('[data-guide-step="money"]').isVisible(), true);
+      await page.keyboard.press("Escape");
+      await frame.getByRole("button", { name: "Edit names", exact: true }).click();
+      assert.equal(await page.locator("#couple-names").isVisible(), true);
+      await page.keyboard.press("Escape");
       if (process.env.INTERACTIVE_EVIDENCE_DIR) {
         await mkdir(process.env.INTERACTIVE_EVIDENCE_DIR, { recursive: true });
         await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `prefilled-site-${viewport.width}.png`), animations: "disabled", timeout: 60000 });
@@ -123,11 +137,21 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       await page.keyboard.press("Shift+Tab");
       assert.equal(await page.evaluate(() => Boolean(document.activeElement.closest(".interactive-dialog"))), true, "native modal traps focus");
       await page.locator("#wedding-slug").fill("taken-address");
+      await page.locator('#address-availability[data-state="taken"]').waitFor();
       await page.locator("[data-guide-save]").click();
       await page.locator("#notice").filter({ hasText: "already taken" }).waitFor();
       assert.match(await page.locator("[data-editor-notice]").innerText(), /already taken/);
       assert.equal(await page.locator(".interactive-dialog").evaluate(element => element.open), true);
+      await page.locator("#wedding-slug").fill("offline-address");
+      await page.locator('#address-availability[data-state="error"]').waitFor();
+      const oldResponse = page.waitForResponse(response => response.url().includes("slug=old-slow-address"));
+      const oldRequest = page.waitForRequest(request => request.url().includes("slug=old-slow-address"));
+      await page.locator("#wedding-slug").fill("old-slow-address");
+      await oldRequest;
       await page.locator("#wedding-slug").fill("our-manual-address");
+      await page.locator('#address-availability[data-state="available"]').waitFor();
+      await oldResponse;
+      assert.equal(await page.locator("#address-availability").getAttribute("data-state"), "available", "stale taken response cannot overwrite newer availability");
       await page.locator("[data-guide-save]").click();
       await page.waitForFunction(() => !document.querySelector(".interactive-dialog").open);
       await frame.locator("#couple-names").filter({ hasText: "Amina & Joseph" }).waitFor();
@@ -139,7 +163,7 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       assert.equal(await page.locator('[data-guide-step="theme"]').isVisible(), true);
       if (process.env.INTERACTIVE_EVIDENCE_DIR) {
         await mkdir(process.env.INTERACTIVE_EVIDENCE_DIR, { recursive: true });
-        await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `editor-${viewport.width}.png`) });
+        await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `editor-${viewport.width}.png`), animations: "disabled", timeout: 60000 });
       }
       const color = page.locator("#color-inputs input[type=color]").first();
       await page.locator('[data-page-content="details:0"]').fill("");
@@ -166,7 +190,7 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       assert.deepEqual(errors, []);
       if (process.env.INTERACTIVE_EVIDENCE_DIR) {
         await mkdir(process.env.INTERACTIVE_EVIDENCE_DIR, { recursive: true });
-        await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `interactive-${viewport.width}.png`), fullPage: true });
+        await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `interactive-${viewport.width}.png`), animations: "disabled", timeout: 60000 });
       }
       await context.close();
     }

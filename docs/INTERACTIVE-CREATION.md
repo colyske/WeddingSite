@@ -76,3 +76,10 @@ but reached state and all activity stay zero. E-card, sharing and seating
 surfaces are visible, explicitly system-managed inactive previews: no valid
 QR ticket, booked seat, sponsor endorsement, contact or payment is seeded.
 The final KYC/publication workflow stays outside the guest frame.
+
+The private renderer itself exposes explicit **Edit names** and **Currency**
+controls. Address checks are authenticated, owner-scoped and advisory: valid
+values are debounced, old responses ignored, and checking/available/taken/error
+states are announced accessibly. Existing and archived wedding addresses remain
+occupied; no check reserves an address or replaces the atomic save collision
+check. Manual URLs are never overwritten by the availability check.

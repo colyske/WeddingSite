@@ -33,6 +33,51 @@
         mirror.textContent = notice.textContent;
       }).observe($("notice"), { attributes: true, childList: true, characterData: true, subtree: true });
       const status = $("interactive-state");
+      const addressStatus = document.createElement("p");
+      addressStatus.id = "address-availability";
+      addressStatus.className = "fine";
+      addressStatus.setAttribute("role", "status");
+      addressStatus.setAttribute("aria-live", "polite");
+      $("slug-preview").after(addressStatus);
+      $("wedding-slug").setAttribute("aria-describedby", `${$("wedding-slug").getAttribute("aria-describedby")} address-availability`);
+      let addressRevision = 0, addressTimer;
+      function checkAddress() {
+        const revision = ++addressRevision;
+        clearTimeout(addressTimer);
+        const slug = $("wedding-slug").value.trim().toLowerCase();
+        addressStatus.hidden = !$("couple-names").value.trim();
+        if (addressStatus.hidden) { addressStatus.textContent = ""; return; }
+        if (!WSSite.isSubdomainSlug(slug)) {
+          addressStatus.dataset.state = "invalid";
+          addressStatus.textContent = "Choose an unreserved address with 3-63 letters, numbers or hyphens, beginning and ending with a letter or number.";
+          return;
+        }
+        addressStatus.dataset.state = "checking";
+        addressStatus.textContent = "Checking address availability…";
+        addressTimer = setTimeout(async () => {
+          try {
+            const response = await WS.api(`/api/weddings?action=address-availability&weddingId=${encodeURIComponent(weddingId)}&slug=${encodeURIComponent(slug)}`);
+            const data = await response.json();
+            if (revision !== addressRevision) return;
+            if (!response.ok) throw new Error(data.error || "Address availability could not be checked.");
+            if (!["current", "available", "taken", "reserved", "invalid"].includes(data.state) || data.slug !== slug) {
+              throw new Error("The address check returned an invalid response.");
+            }
+            addressStatus.dataset.state = data.state;
+            addressStatus.textContent = data.state === "current" ? "This is your current saved address."
+              : data.state === "available" ? "Available now. Saving still checks for conflicts; this does not reserve the address."
+              : data.state === "taken" ? "That address is taken. Choose a different one."
+              : data.message || "Choose a valid, unreserved address.";
+          } catch (error) {
+            if (revision !== addressRevision) return;
+            addressStatus.dataset.state = "error";
+            addressStatus.textContent = `Could not check availability: ${error.message} Your address is unchanged; saving still checks it.`;
+          }
+        }, 350);
+      }
+      $("couple-names").addEventListener("input", checkAddress);
+      $("wedding-slug").addEventListener("input", checkAddress);
+      checkAddress();
       const pageContent = { ...(wedding.page_content || {}) };
       let wordingSeeded = false;
       const sectionSteps = {
