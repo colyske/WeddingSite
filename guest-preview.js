@@ -28,7 +28,7 @@
       music: "#audio-toggle", cover: ".hero-image", address: ".preview-address",
       currency: "#campaigns-display", campaigns: "#campaigns-display", registry: "#registry-list",
       packages: "#tiers-display", vip: "#vip-display", featured: "#sponsor-auction",
-      rsvp: "#rsvp-form", fees: "#rsvp-fee-note", songs: "#song-request-form",
+      rsvp: "#rsvp-form", fees: "#rsvp-form", songs: "#song-request-form",
       venues: "#venues-display", prewedding: "#prewedding-display",
       travel: "#info-section > p", faq: "#info-section details", wording: "h2"
     };
@@ -125,7 +125,7 @@
       const url = document.createElement("span");
       url.textContent = `https://${data.site.wedding.slug}.joinourwedding.site`;
       address.append(url);
-      welcome.querySelector("#wedding-date-display").after(address);
+      welcome.querySelector('[data-edit-kind="date"]').after(address);
     }
     addEditor(welcome, "Edit wedding address", "couple", "address");
     if (!document.getElementById("private-preview-note")) {
