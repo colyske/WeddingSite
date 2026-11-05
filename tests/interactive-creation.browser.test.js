@@ -81,6 +81,10 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       if (!wedding.couple_names) {
         await page.locator(".interactive-dialog").waitFor({ state: "visible" });
         assert.equal(await page.locator("#wedding-address").isVisible(), false, "internal draft address is not suggested before names");
+        if (process.env.INTERACTIVE_EVIDENCE_DIR) {
+          await mkdir(process.env.INTERACTIVE_EVIDENCE_DIR, { recursive: true });
+          await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `fundamentals-${viewport.width}.png`) });
+        }
         await page.locator("#couple-names").fill("Amina & David");
         assert.match(await page.locator("#slug-preview").innerText(), /amina-and-david\.joinourwedding\.site/);
         await page.locator("[data-guide-save]").click();
@@ -103,6 +107,10 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       assert.match(await frame.locator("#qrcode").innerText(), /not valid for entry/);
       assert.equal(await frame.locator("form button:not(:disabled)").count(), 0, "guest submission/payment buttons are effectively disabled");
       assert.equal(await frame.locator(".preview-edit:disabled").count(), 0, "editor controls remain actionable");
+      if (process.env.INTERACTIVE_EVIDENCE_DIR) {
+        await mkdir(process.env.INTERACTIVE_EVIDENCE_DIR, { recursive: true });
+        await frame.locator("#wedding-content").screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `prefilled-site-${viewport.width}.png`) });
+      }
       await frame.locator("#story .preview-edit").click();
       await page.locator('[data-page-content="story:0"]').fill("How we met");
       await page.locator("#welcome-story").fill("Our own true story, ready for our guests.");

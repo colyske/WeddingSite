@@ -119,8 +119,11 @@ test("real preview handler requires authorization, owner filtering and read-only
       return json(null);
     }
     if (url.pathname === "/rest/v1/fundraising_streams" && url.searchParams.has("enabled")) return json(savedFunds);
-    if (url.pathname === "/rest/v1/fundraising_milestones") return json(savedFunds.flatMap(fund =>
-      fund.milestones.map(item => ({ ...item, stream_id: fund.id, reached: true, internal_note: "PRIVATE" }))));
+    if (url.pathname === "/rest/v1/fundraising_milestones") {
+      assert.equal(options.headers.apikey, "service", "owner-checked milestone read uses the existing service-only contract");
+      return json(savedFunds.flatMap(fund =>
+        fund.milestones.map(item => ({ ...item, stream_id: fund.id, reached: true, internal_note: "PRIVATE" }))));
+    }
     return json([]);
   };
   const run = async (headers, action = "preview", body) => {

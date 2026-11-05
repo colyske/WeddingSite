@@ -190,7 +190,7 @@ export default async function handler(req, res) {
       const funds = await supabaseRequest(
         `/rest/v1/fundraising_streams?wedding_id=eq.${wedding.id}&enabled=eq.true&select=id,name,purpose,goal_minor&order=sort_order`, opts);
       const milestones = await supabaseRequest(
-        `/rest/v1/fundraising_milestones?wedding_id=eq.${wedding.id}&select=id,stream_id,name,description,target_minor&order=sort_order`, opts);
+        `/rest/v1/fundraising_milestones?wedding_id=eq.${wedding.id}&select=id,stream_id,name,description,target_minor&order=sort_order`, { service: true });
       res.setHeader("Cache-Control", "private, no-store");
       return sendJson(res, 200, interactivePreview(wedding, (funds || []).map(fund => ({
         ...fund, milestones: (milestones || []).filter(row => row.stream_id === fund.id)
