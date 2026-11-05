@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#203a31"><link rel="icon" type="image/png" sizes="120x120" href="/assets/brand/icon-120.png"><link rel="apple-touch-icon" sizes="120x120" href="/assets/brand/icon-120.png">
   <title>Join Our Wedding — Wedding Editor</title>
   <link rel="stylesheet" href="sponsor-cards.css">
-  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><link rel="stylesheet" href="guided-setup.css"><script src="ornaments.js" defer></script>
+  <link rel="stylesheet" href="app-shell.css"><link rel="stylesheet" href="theme.css"><link rel="stylesheet" href="editorial.css"><link rel="stylesheet" href="guided-setup.css"><link rel="stylesheet" href="interactive-wedding.css"><script src="ornaments.js" defer></script>
   <style>
     .venue-item { padding: 1rem; border: 2px solid #ddd; border-radius: 8px; background: #fafbf9; margin-bottom: 1rem; }
     .venue-item input[type="text"], .venue-item input[type="url"], .venue-item textarea {
@@ -577,6 +577,7 @@
   <script src="share.js"></script>
   <script src="setup-progress.js"></script>
   <script src="guided-setup.js"></script>
+  <script src="interactive-wedding.js"></script>
   <script>
 (async () => {
     const $ = id => document.getElementById(id);
@@ -1739,6 +1740,7 @@
             }
           });
         }
+        window.WSInteractiveWedding.mount(weddingGuide, weddingId, w);
         loadSecondaryPanels(w);
       } catch (err) {
         console.error("Load failed:", err);
@@ -2022,6 +2024,7 @@
         } else {
           notice("Your wedding details and setup answers are saved.");
           weddingGuide?.saved(answersUnchanged);
+          document.dispatchEvent(new CustomEvent("ws:wedding-saved"));
         }
       } catch (err) {
         console.error("Save failed:", err);
@@ -2249,6 +2252,7 @@
         const d = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(d.error || "Could not save identity details.");
         notice("Identity details saved privately.");
+        document.dispatchEvent(new CustomEvent("ws:kyc-saved"));
         await loadKyc();
         await refreshSetupProgress();
       } catch (err) { notice(err.message, true); }
@@ -2328,6 +2332,10 @@
         e.target.closest(".ms-row").remove();
         campaignsDirty = true;
       } else if (e.target.closest(".cp-del") && confirm("Remove this campaign? It will be hidden from guests; existing gifts stay in your ledger.")) {
+        if (window.__wedding?.interactive_creation && $("campaign-list").children.length <= 1) {
+          notice("Keep at least one celebration fund. You can edit its name and goal.", true);
+          return;
+        }
         card.remove();
         campaignsDirty = true;
       }
@@ -2343,7 +2351,7 @@
       const campaigns = [...$("campaign-list").querySelectorAll(".campaign-card")]
         .filter(card => !blankCampaign(card) && (card.dataset.id || Number(card.querySelector(".cp-goal").value) > 0)).map(c => ({
         id: c.dataset.id || null, name: c.querySelector(".cp-name").value, goal: c.querySelector(".cp-goal").value,
-        purpose: c.querySelector(".cp-purpose").value, enabled: c.querySelector(".cp-enabled").checked,
+        purpose: c.querySelector(".cp-purpose").value, enabled: window.__wedding?.interactive_creation || c.querySelector(".cp-enabled").checked,
         milestones: [...c.querySelectorAll(".ms-row")].map(m => ({ id: m.dataset.id || null, name: m.querySelector(".ms-name").value, target: m.querySelector(".ms-target").value, description: m.querySelector(".ms-desc").value }))
       }));
       const res = await WS.api("/api/weddings?action=campaigns-save", { method: "POST", body: JSON.stringify({ weddingId, campaigns }) });

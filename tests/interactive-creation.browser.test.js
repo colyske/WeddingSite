@@ -1,0 +1,115 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import http from "node:http";
+import { readFile, mkdir } from "node:fs/promises";
+import { extname, resolve } from "node:path";
+import { chromium } from "playwright";
+import { interactivePreview } from "../server/interactive-preview.js";
+
+const id = "550e8400-e29b-41d4-a716-446655440001";
+const structure = { tiers: [], registry: [], vip: null, featured: null, campaigns: [] };
+test("interactive desktop/mobile renderer edits, saves, isolates guest activity and protects dialogs", { timeout: 120000 }, async () => {
+  const server = http.createServer(async (req, res) => {
+    try {
+      const path = new URL(req.url, "http://localhost").pathname;
+      if (path.includes("..")) throw new Error("Invalid path");
+      res.setHeader("Content-Type", ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css" })[extname(path)] || "application/octet-stream");
+      res.end(await readFile(new URL(`..${path}`, import.meta.url)));
+    } catch { res.writeHead(404).end(); }
+  });
+  let browser;
+  try {
+    await new Promise(done => server.listen(0, "127.0.0.1", done));
+    try { browser = await chromium.launch({ channel: "msedge" }); } catch { browser = await chromium.launch(); }
+    const base = `http://127.0.0.1:${server.address().port}`;
+    for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+      let wedding = {
+        id, slug: "amina-and-david", couple_names: "Amina & David", currency: "KES",
+        wedding_date: null, welcome_story: "", palette: ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"],
+        palette_names: [], time_zone: "Africa/Nairobi", venues: [], registry: [], tiers: [],
+        interactive_creation: true, starter_structure: structuredClone(structure), published_at: null
+      };
+      const campaigns = [{ id, name: "Celebration fund", goal_minor: 50000000, enabled: true, milestones: [] }];
+      const context = await browser.newContext({ viewport, reducedMotion: "reduce" });
+      const page = await context.newPage(), errors = [], guestCalls = [];
+      page.setDefaultTimeout(15000);
+      page.on("pageerror", error => errors.push(error.message));
+      page.on("console", message => { if (message.type() === "error") console.error("Browser:", message.text()); });
+      await page.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "fixture-token", r: "client" })));
+      await page.route("https://**", route => route.fulfill({ body: "" }));
+      await page.route("**/api/**", async route => {
+        const url = new URL(route.request().url()), action = url.searchParams.get("action");
+        if (url.pathname !== "/api/weddings") guestCalls.push(url.pathname + "?" + action);
+        let data = {};
+        if (action === "get") data = { wedding: structuredClone(wedding) };
+        if (action === "preview") data = interactivePreview(wedding, campaigns);
+        if (action === "collection-capabilities") data = { currencies: [{ code: "KES", name: "Kenyan Shilling", methods: [{ name: "M-Pesa", markets: ["Kenya"] }] }] };
+        if (action === "payout-methods") data = { methods: [] };
+        if (action === "campaigns") data = { currency: wedding.currency, campaigns, summary: [], rows: [] };
+        if (action === "extras-get") data = { faq: [], travel: "" };
+        if (action === "quote") data = { quote: { fee_minor: null, currency: wedding.currency, pending_date: true } };
+        if (action === "starter-structure") {
+          wedding.starter_structure = route.request().postDataJSON().structure;
+          data = { structure: wedding.starter_structure };
+        }
+        if (action === "update") {
+          const body = route.request().postDataJSON();
+          if (body.slug === "taken-address") return route.fulfill({ status: 409, json: { error: "That address is already taken.", field: "wedding-slug" } });
+          wedding = { ...wedding, couple_names: body.coupleNames, slug: body.slug, welcome_story: body.welcomeStory,
+            palette: body.palette, palette_names: body.paletteNames, currency: body.currency };
+          data = { wedding: structuredClone(wedding) };
+        }
+        await route.fulfill({ json: data });
+      });
+      await page.goto(`${base}/wedding.html?id=${id}`);
+      const frame = page.frameLocator(".interactive-surface iframe");
+      await frame.locator("#couple-names").filter({ hasText: "Amina & David" }).waitFor();
+      await frame.locator("#campaigns .preview-edit").waitFor();
+      assert.equal(await frame.locator("#bids").isVisible(), true);
+      assert.match(await frame.locator("#campaigns").innerText(), /500,000/);
+      assert.match(await frame.locator("#campaigns").innerText(), /KES\s*0/);
+      await frame.locator("#story .preview-edit").click();
+      await page.locator("#couple-names").fill("Amina & Joseph");
+      assert.equal(await page.inputValue("#wedding-slug"), "amina-and-david", "existing named wedding is never auto-renamed");
+      await page.keyboard.press("Escape");
+      assert.equal(await page.locator(".interactive-dialog").evaluate(element => element.open), true);
+      assert.match(await page.locator("[data-close-warning]").innerText(), /Unsaved/);
+      await page.locator("#wedding-slug").fill("taken-address");
+      await page.locator("[data-guide-save]").click();
+      await page.locator("#notice").filter({ hasText: "already taken" }).waitFor();
+      assert.equal(await page.locator(".interactive-dialog").evaluate(element => element.open), true);
+      await page.locator("#wedding-slug").fill("our-manual-address");
+      await page.locator("[data-guide-save]").click();
+      await page.waitForFunction(() => !document.querySelector(".interactive-dialog").open);
+      await frame.locator("#couple-names").filter({ hasText: "Amina & Joseph" }).waitFor();
+      assert.equal(wedding.slug, "our-manual-address");
+      await frame.locator("#details .preview-edit").click();
+      await page.locator(".interactive-dialog").waitFor({ state: "visible" });
+      assert.equal(await page.locator('[data-guide-step="theme"]').isVisible(), true);
+      const color = page.locator("#color-inputs input[type=color]").first();
+      await color.fill("#662244");
+      await color.dispatchEvent("input");
+      await page.locator("[data-guide-save]").click();
+      await page.waitForFunction(() => !document.querySelector(".interactive-dialog").open);
+      await frame.locator("#details .preview-edit").waitFor();
+      assert.equal(wedding.palette[0], "#662244");
+      await frame.locator("#details .preview-edit").click();
+      await page.keyboard.press("Escape");
+      assert.equal(await page.locator(".interactive-dialog").evaluate(element => element.open), false);
+      await frame.locator("#bids .preview-edit").click();
+      assert.equal(await page.locator("#feature-song-requests").isDisabled(), true);
+      assert.equal(await page.locator("#feature-song-requests").isChecked(), true);
+      await page.keyboard.press("Escape");
+      assert.deepEqual(guestCalls, [], "frame makes no guest, checkout or analytics API requests");
+      assert.deepEqual(errors, []);
+      if (process.env.INTERACTIVE_EVIDENCE_DIR) {
+        await mkdir(process.env.INTERACTIVE_EVIDENCE_DIR, { recursive: true });
+        await page.screenshot({ path: resolve(process.env.INTERACTIVE_EVIDENCE_DIR, `interactive-${viewport.width}.png`), fullPage: true });
+      }
+      await context.close();
+    }
+  } finally {
+    await browser?.close();
+    server.close();
+  }
+});

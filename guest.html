@@ -478,6 +478,7 @@
 
   <script src="tz.js"></script>
   <script src="guest-schedule.js"></script>
+  <script src="guest-preview.js"></script>
   <script src="theme-colors.js"></script>
   <script src="site-urls.js"></script>
   <script src="share.js"></script>
@@ -490,6 +491,7 @@
   <script src="sponsor-cards.js"></script>
   <script>
 (async () => {
+  const fetch = window.WSGuestFetch;
   const $ = id => document.getElementById(id);
   for (const prefix of ["pay"]) {
     for (const [platform, label] of Object.entries(WSSocialLinks.labels)) {
@@ -536,7 +538,7 @@
   };
 
   const params = new URLSearchParams(location.search);
-  const slug = WSSite.currentSlug();
+  const slug = window.WSGuestPreview ? "private-preview" : WSSite.currentSlug();
   if (!slug) return notice("Wedding not found.", true);
 
   let wedding = null;
@@ -695,20 +697,19 @@
       } else {
         $("rsvp").hidden = false;
         $("bids").hidden = !wedding.revenue_features.song_requests;
-        restorePass();
+        if (!window.WSGuestPreview) restorePass();
       }
       if (wedding.is_past && wedding.revenue_features.song_requests) {
         $("bids").hidden = false;
         $("bids").querySelector("p.fine").textContent = "Bidding is closed. Here are the final song requests.";
       }
 
-      loadBids();
-      loadLedger();
-      loadFundraising();
+      await Promise.all([loadBids(), loadLedger(), loadFundraising()]);
       $("seating").hidden = false;
       if (!wedding.is_past) startCountdown();
       if (payIntent.heldPaymentId && !params.get("paymentReturn")) params.set("paymentReturn", payIntent.heldPaymentId);
-      await handlePaymentReturn();
+      if (!window.WSGuestPreview) await handlePaymentReturn();
+      document.dispatchEvent(new CustomEvent("ws:preview-ready"));
     } catch (err) {
       console.error("Load failed:", err);
       notice("Network error loading wedding.", true);

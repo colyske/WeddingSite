@@ -1,6 +1,7 @@
 /* Guest-site extras: sharing, calendar links, referral tracking, guestbook, FAQ/travel.
    Listens for "ws:wedding" (site loaded) and "ws:pass" (RSVP pass shown) dispatched by guest.html. */
 (function () {
+  var fetch = window.WSGuestFetch || window.fetch.bind(window);
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   var params = new URLSearchParams(location.search);
@@ -119,11 +120,12 @@
   }
 
   function trackVisit() {
+    if (window.WSGuestPreview) return;
     if (wedding?.is_showcase) return;
     var key = "ws-visit:" + slug;
     try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, "1"); } catch (_) {}
     var ref = ""; try { ref = localStorage.getItem("ws-ref:" + slug) || ""; } catch (_) {}
-    fetch("/api/guest?action=visit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug: slug, ref: ref }) }).catch(function () {});
+    if (!window.WSGuestPreview) fetch("/api/guest?action=visit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug: slug, ref: ref }) }).catch(function () {});
   }
 
   function renderExtras(data) {

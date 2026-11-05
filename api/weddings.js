@@ -16,6 +16,7 @@ import "../inspiration-fixtures.js";
 import { publicWeddingStyle } from "../server/wedding-style.js";
 import "../starter-setup.js";
 import { starterCapabilities } from "../server/starter-capabilities.js";
+import { interactivePreview, permanentFeatures } from "../server/interactive-preview.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COLOR = /^#[0-9a-f]{6}$/i;
@@ -45,8 +46,8 @@ const friendlyColorName = hex => {
   return closest[0];
 };
 const toSlug = text => String(text).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 56).replace(/-+$/g, "");
-const FIELDS = "id,slug,couple_names,welcome_story,cover_image_url,guest_instructions,starter_review_note,wedding_date,time_zone,public_location,currency,revenue_features,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,faq,travel_info,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted";
 const REVENUE_FEATURES = ["giving", "sponsors", "featured_sponsors", "song_requests", "vip_seating"];
+const FIELDS = "id,slug,couple_names,welcome_story,cover_image_url,guest_instructions,starter_review_note,wedding_date,time_zone,public_location,currency,revenue_features,max_guest_capacity,palette,attire_notes,palette_names,rsvp_fee_minor,extra_guest_fee_minor,premium_diet_fee_minor,premium_diet_options,allow_in_kind_sponsorship,enabled_payment_methods,background_music_url,faq,travel_info,published_at,created_at,archived_at,unpublished_at,first_published_at,lifecycle_admin_restricted,interactive_creation";
 const DEFAULT_ZONE = "Africa/Nairobi";
 const validZone = tz => {
   if (typeof tz !== "string" || !tz || tz.length > 64) return false;
@@ -177,6 +178,18 @@ export default async function handler(req, res) {
   try {
     const invalidContent = req.method === "POST" && contentError(body);
     if (invalidContent) return sendJson(res, 400, { error: invalidContent });
+    if (action === "preview") {
+      if (!methodOnly(req, res, "GET")) return;
+      if (!UUID.test(String(req.query.weddingId || ""))) return sendJson(res, 400, { error: "Invalid wedding." });
+      const rows = await supabaseRequest(
+        `/rest/v1/weddings?id=eq.${req.query.weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=${FIELDS}`, opts);
+      if (!rows?.length) return sendJson(res, 404, { error: "Wedding not found." });
+      const [wedding] = await loadWeddingDetails(rows, opts);
+      const funds = await supabaseRequest(
+        `/rest/v1/fundraising_streams?wedding_id=eq.${wedding.id}&enabled=eq.true&select=id,name,purpose,goal_minor&order=sort_order`, opts);
+      res.setHeader("Cache-Control", "private, no-store");
+      return sendJson(res, 200, interactivePreview(wedding, funds || []));
+    }
     if (action === "starter-review") {
         if (!methodOnly(req, res, "POST")) return;
         if (!UUID.test(String(body.weddingId || "")) || !UUID.test(String(body.requestKey || "")) ||
@@ -357,7 +370,11 @@ export default async function handler(req, res) {
               ...(starterSetup ? { starterSetup, ...(deferredStarter ? { starterDeferred: true } : {}) } : {})
             }
           };
-          const path = `/rest/v1/rpc/${deferredStarter ? "create_deferred_wedding_starter" : starterSetup ? "create_wedding_from_starter" : "create_wedding_draft"}`;
+          if (body.interactiveCreation === true) {
+            if (!deferredStarter) return sendJson(res, 400, { error: "Interactive creation requires a reusable starter." });
+            createBody.p_input.starterSetup.features = permanentFeatures;
+          }
+          const path = `/rest/v1/rpc/${body.interactiveCreation === true ? "create_interactive_wedding" : deferredStarter ? "create_deferred_wedding_starter" : starterSetup ? "create_wedding_from_starter" : "create_wedding_draft"}`;
           let created;
           try { created = await supabaseRequest(path, { ...opts, method: "POST", body: createBody }); }
           catch (error) {
@@ -831,7 +848,7 @@ export default async function handler(req, res) {
       const weddingId = String(req.query.weddingId || body.weddingId || "");
       if (!UUID.test(weddingId)) return sendJson(res, 400, { error: "Invalid wedding." });
       const owned = await supabaseRequest(
-        `/rest/v1/weddings?id=eq.${weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=id,currency`, opts);
+        `/rest/v1/weddings?id=eq.${weddingId}&client_owner_id=eq.${encodeURIComponent(session.user.id)}&select=id,currency,interactive_creation`, opts);
       if (!owned?.length) return sendJson(res, 404, { error: "Wedding not found." });
       const currency = owned[0].currency;
 
@@ -999,6 +1016,9 @@ export default async function handler(req, res) {
             milestones.push({ id: m.id || null, name: mn, description: String(m.description || "").slice(0, 240), target_minor: t });
           }
           payload.push({ id: c.id || null, name, purpose: String(c.purpose || "").slice(0, 240), goal_minor: goal, enabled: c.enabled !== false, milestones });
+        }
+        if (owned[0].interactive_creation && !payload.some(campaign => campaign.enabled)) {
+          return sendJson(res, 400, { error: "Keep at least one visible celebration fund with a positive goal. Edit the existing fund instead of removing it." });
         }
         await supabaseRequest("/rest/v1/rpc/save_fundraising_campaigns", { service: true, method: "POST", body: { p_wedding_id: weddingId, p_payload: payload } });
         return sendJson(res, 200, { saved: true });
