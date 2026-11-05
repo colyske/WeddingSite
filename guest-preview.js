@@ -36,8 +36,9 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "preview-edit";
-      button.textContent = `Edit ${section.querySelector("h2")?.textContent || (step === "couple" ? "couple & welcome" : step)}`;
-      section.prepend(button);
+      button.textContent = `Edit ${id === "welcome" ? "welcome" : id === "vip-section" ? "VIP" : id === "sponsor-tiers" ? "packages" : id}`;
+      if (id === "welcome") section.querySelector(".hero-content").prepend(button);
+      else section.prepend(button);
     }
     for (const [id, text] of [
       ["vip-display", "Your VIP offering stays here. Set your own price and actual seat inventory before offering seats."],

@@ -24,6 +24,9 @@ body[data-interactive-editor]:not([data-finishing]) > footer { display: none; }
 .interactive-surface iframe { flex: 1; min-height: 0; }
 .interactive-toolbar { gap: .4rem; padding: .45rem .75rem; }
 .interactive-toolbar button { min-height: 44px; padding: .5rem .7rem; font-size: .85rem; }
+body[data-interactive-editor] > :is(.announcement, .orn-layer),
+body[data-interactive-editor] > .wrap > .orn-divider { display: none; }
+#interactive-surface .interactive-toolbar button { flex: 0 1 auto; min-height: 44px; width: auto; margin: 0; padding: .5rem .75rem !important; font: 600 .85rem/1.2 sans-serif; letter-spacing: .01em; text-transform: none; white-space: nowrap; overflow-wrap: normal; }
 @media (max-width: 600px) {
   .interactive-toolbar p { flex-basis: 100%; font-size: .8rem; line-height: 1.3; }
   .interactive-toolbar button { flex: 1; font-size: .75rem; }

@@ -252,3 +252,5 @@ body.guest-page #ecard { background: #f4e3df !important; }
 body[data-private-preview] [data-edit-section] { position: relative; cursor: pointer; }
 .preview-edit { display: block; position: relative; z-index: 2; margin: .5rem auto; padding: .65rem 1rem; min-height: 44px; max-width: calc(100% - 1rem); border: 1px solid var(--gold); border-radius: 2rem; background: var(--paper, #fffaf0); color: var(--green); font: 600 .85rem/1.4 sans-serif; cursor: pointer; }
 .preview-edit:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
+body.guest-page[data-private-preview] button.preview-edit { width: auto; min-height: 44px; max-width: 100%; padding: .5rem .75rem !important; margin: .5rem 0; background: #fffaf0 !important; color: #244b3a !important; border: 1px solid #795b20 !important; font: 600 .85rem/1.2 sans-serif; letter-spacing: .01em; text-transform: none; }
+body[data-private-preview] > .announcement { display: none; }

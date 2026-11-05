@@ -11,11 +11,12 @@
       surface.className = "interactive-surface";
       surface.innerHTML = `<div class="interactive-toolbar">
         <p><strong>Your wedding, as you build it</strong><br><span id="interactive-state" role="status" aria-live="polite">Private preview. Guest actions and visit tracking are disabled.</span></p>
-        <button type="button" data-edit-basics>Names &amp; address</button>
+        <button type="button" data-edit-basics aria-label="Edit couple names and wedding address">Names</button>
         <button type="button" data-edit-currency>Currency</button>
-        <button type="button" data-finish>Finish setup &amp; private details</button>
+        <button type="button" data-finish aria-label="Finish setup, private identity details and publication review">Finish setup</button>
         </div><iframe title="Your private wedding preview" referrerpolicy="no-referrer"></iframe>`;
       const dialog = document.createElement("dialog");
+      surface.id = "interactive-surface";
       dialog.className = "interactive-dialog";
       dialog.setAttribute("aria-labelledby", "interactive-editor-title");
       dialog.innerHTML = `<header><h2 id="interactive-editor-title">Edit your wedding</h2><button type="button" data-close-editor>Back to your site</button></header>

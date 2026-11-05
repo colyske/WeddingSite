@@ -62,7 +62,7 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
         }
         await route.fulfill({ json: data });
       });
-      await page.goto(`${base}/wedding.html?id=${id}`);
+      await page.goto(`${base}/wedding.html?id=${id}`, { waitUntil: "domcontentloaded" });
       const frame = page.frameLocator(".interactive-surface iframe");
       if (!wedding.couple_names) {
         await page.locator(".interactive-dialog").waitFor({ state: "visible" });
