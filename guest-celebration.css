@@ -68,6 +68,12 @@ body.guest-page #venues { background: var(--green-deep) !important; }
 .guest-page .sched-row { position: relative; grid-template-columns: minmax(160px, .7fr) 2fr; padding: 1.75rem 0 1.75rem 2rem; gap: 2rem; }
 .guest-page .sched-row::before { content: ""; position: absolute; left: 0; top: 2.3rem; width: 8px; height: 8px; border: 0; border-radius: 0; background: var(--honey); transform: rotate(45deg); }
 .guest-page .sched-time { font-size: 2rem; }
+.guest-page .schedule-status:not([hidden]) { display: table; max-width: 100%; margin-top: .65rem; padding: .3rem .6rem; border: 1px solid currentColor; border-radius: 6px; background: #fffcf6; color: #293a31; font: 700 .75rem/1.5 var(--sans, Arial, sans-serif); letter-spacing: .02em; }
+.guest-page .schedule-current .sched-body { padding: .75rem; border: 2px solid #e0be7b; border-radius: 6px; }
+.guest-page #prewedding .schedule-current .sched-body { border-color: #753b43; }
+.guest-page .schedule-current::before { outline: 2px solid var(--honey); outline-offset: 4px; }
+.guest-page #prewedding .schedule-current::before { outline-color: var(--rose-ink); }
+.guest-page .schedule-completed .schedule-status { border-style: dashed; }
 .guest-page .sched-body h3 { font-size: 1.6rem; }
 .guest-page .sched-body p { font-size: .95rem; }
 .guest-page .sched-body .link { display: inline-block; padding: .4rem 0; text-decoration: underline; }
