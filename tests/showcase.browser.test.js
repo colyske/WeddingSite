@@ -181,6 +181,11 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
         return cells.every((cell, i) => !i || cell.left >= cells[i - 1].right - 1) &&
           row.scrollWidth <= row.clientWidth;
       })), "source labels, amounts and percentages never overlap, including mobile");
+      assert.ok(await page.locator(".cake-heading .giving-percent").evaluate(el => {
+        const bounds = el.getBoundingClientRect(), card = el.closest(".campaign").getBoundingClientRect();
+        return bounds.left >= card.left && bounds.right <= card.right && el.scrollWidth <= el.clientWidth;
+      }), "the literal percentage and goal caption fit entirely inside the card");
+      assert.doesNotMatch(await page.locator(".cake-note").innerText(), /sample|illustrative|demo/i);
       if (width <= 768) {
         assert.ok(await page.locator(".sticky-nav").evaluate(nav => nav.getBoundingClientRect().height <= 90), "compact closed mobile header");
         const toggle = page.locator("#wedding-nav-toggle");
@@ -196,8 +201,9 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
       }
       if (process.env.WEDDING_SCREENSHOTS) {
         await page.screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `showcase-${width}.png`), fullPage: true });
-        await page.setViewportSize({ width, height: 1500 });
-        await page.locator(".celebration-fund").screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `cake-${width}.png`) });
+        await page.setViewportSize({ width, height: 2600 });
+        await page.locator(".campaign").scrollIntoViewIfNeeded();
+        await page.locator(".campaign").screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `cake-${width}.png`) });
         await page.setViewportSize({ width, height: 800 });
       }
     }

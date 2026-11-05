@@ -70,7 +70,7 @@
     const description = `${m.completion}% of goal. Raised ${totalText} toward ${goalText}. Remaining ${remainingText}.${sample ? " Illustrative sample." : ""}`;
     return `<div class="celebration-fund">
       <div class="cake-heading"><span class="cake-eyebrow">Every gift is a little slice of joy</span>
-        <div class="giving-total"><span><small>Raised together</small><strong>${totalText}</strong></span><span class="giving-percent">${m.completion}<small>% of goal</small></span></div>
+        <div class="giving-total"><span><small>Raised together</small><strong>${totalText}</strong></span><span class="giving-percent">${m.completion}%<small>of goal</small></span></div>
       </div>
       <div class="cake-layout">
         <figure class="fund-cake">
@@ -96,7 +96,7 @@
         </div>
       </div>
       ${m.over ? `<p class="cake-over">Together, ${esc(money(m.total - m.goal, currency, false))} beyond our goal. The full cake shows each source's share of the actual total.</p>` : ""}
-      <p class="cake-note">Verified contributions across this celebration, counted once. Refunded, disputed or held portions are excluded; withdrawals do not reduce raised.${sample ? " Illustrative sample." : ""}</p>
+      <p class="cake-note">Verified contributions, counted once. Refunded, disputed or held portions are excluded; withdrawals do not reduce raised.</p>
     </div>`;
   }
   root.WSCelebrationFund = { model, render, wedge };

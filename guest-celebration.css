@@ -91,6 +91,10 @@ body.guest-page #registry { background: color-mix(in srgb, var(--gold) 9%, var(-
 .guest-page :is(.campaign, .registry-gift) > p { max-width: 45rem; }
 .guest-page .giving-progress { margin: 1.75rem 0; }
 .guest-page .celebration-fund { margin: 1.75rem 0 1rem; color: #293a31; }
+.guest-page .celebration-fund .giving-total { flex-wrap: wrap; }
+.guest-page .celebration-fund .giving-total > span { min-width: 0; max-width: 100%; }
+.guest-page .celebration-fund .giving-total strong { overflow-wrap: anywhere; }
+.guest-page .celebration-fund .giving-percent { overflow-wrap: anywhere; margin-left: auto; }
 .guest-page .cake-eyebrow { font: italic 1rem/1.5 var(--serif, Georgia, serif); color: #753b43; display: block; margin-bottom: .8rem; }
 .guest-page .cake-layout { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); align-items: center; gap: clamp(1rem, 3vw, 2.5rem); margin: 1rem 0; }
 .guest-page .fund-cake { margin: 0; min-width: 0; text-align: center; }
@@ -112,6 +116,9 @@ body.guest-page #registry { background: color-mix(in srgb, var(--gold) 9%, var(-
 .guest-page .cake-over { padding: .8rem 1rem; border: 1px solid #81a794; border-radius: 8px; background: #edf3ee; font-size: .85rem; }
 .guest-page .celebration-fund + .camp-give .fine { margin: .6rem 0 0; }
 @media (max-width: 640px) {
+  .guest-page .celebration-fund .giving-total { display: block; }
+  .guest-page .celebration-fund .giving-percent { display: block; margin-top: .75rem; text-align: left; font-size: 1.4rem; }
+  .guest-page .celebration-fund .giving-percent small { display: inline; margin-left: .3rem; }
   .guest-page .cake-layout { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
   .guest-page .fund-cake svg { max-width: 275px; }
   .guest-page .cake-legend { font-size: .72rem; }
