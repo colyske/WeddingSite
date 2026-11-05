@@ -19,6 +19,13 @@ the showcase. An unnamed starter's internal address is not displayed or shared;
 entering names suggests a subdomain address, manual changes are retained, and
 only a successful save assigns the requested address after server validation.
 Existing named weddings are never automatically renamed.
+Pre-wedding activity text uses a fixed dark ink on paper rather than theme accents
+to preserve contrast. The showcase's two-line creation CTA opens new-client
+onboarding on the platform domain, retaining the showcase style through account
+verification and sign-in; an existing authenticated client resumes in the dashboard.
+The CTA's free-publication message is qualified by an accessible eligibility note:
+the authoritative publication quote still applies date and account limits, and no
+pricing policy is changed by the template.
 
 Public contribution rows use confirmed `paid_amount_minor`, contribution type,
 consented display name and date; amounts are divided by 100 in the wedding's

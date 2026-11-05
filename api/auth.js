@@ -233,7 +233,8 @@ export default async function handler(req, res) {
         return sendJson(res, 400, { error: "Passwords do not match." });
       }
       const email = body.email.trim().toLowerCase();
-      const result = await authCall("/signup", {
+      const redirectTo = `${siteOrigin(req)}/signin.html?next=${encodeURIComponent(safeReturnPath(body.returnTo, req))}`;
+      const result = await authCall(`/signup?redirect_to=${encodeURIComponent(redirectTo)}`, {
         body: { email, password: body.password, data: { registration_ip: req.ip || req.headers["x-forwarded-for"] || "unknown" } }
       });
       if (!result.ok) {

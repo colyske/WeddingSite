@@ -65,7 +65,15 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     assert.equal(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuenow"), "36");
     assert.equal(await page.locator("#registry [role=progressbar]").getAttribute("aria-valuenow"), "30");
     assert.match(await page.locator("#registry [role=progressbar]").getAttribute("aria-valuetext"), /60,000.*200,000.*illustrative/);
-    assert.match(await page.locator(".showcase-create").getAttribute("href"), /dashboard\.html\?style=showcase-wedding#step=couple$/);
+    const onboarding = new URL(await page.locator(".showcase-create").getAttribute("href"), base);
+    assert.equal(onboarding.pathname, "/signin.html");
+    assert.equal(onboarding.searchParams.get("mode"), "register");
+    assert.equal(onboarding.searchParams.get("next"), "/dashboard.html?style=showcase-wedding#step=couple");
+    assert.equal(await page.locator(".showcase-create strong").innerText(), "Create yours");
+    assert.equal(await page.locator(".showcase-create small").innerText(), "It’s free!");
+    assert.equal(await page.locator(".showcase-create small").evaluate(el => getComputedStyle(el).color), "rgb(255, 250, 240)");
+    assert.match(await page.locator(".showcase-create").getAttribute("aria-description"), /eligibility.*before publishing/);
+    assert.equal(await page.locator("#prewedding > h2").innerText(), "Pre-wedding activities");
     await page.locator("#reuse-wedding-style a").waitFor();
     assert.equal(await page.locator("#reuse-wedding-style a").getAttribute("href"), "/dashboard.html?style=showcase-wedding#step=couple");
     assert.ok(await page.locator("#pay-submit").isDisabled());
@@ -89,6 +97,26 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     for (const [label, value] of Object.entries(contrast)) assert.ok(value >= 4.5, `${label} contrast ${value}`);
     for (const width of [320, 375, 768, 1280]) {
       await page.setViewportSize({ width, height: 800 });
+      for (const palette of [["#ffffff", "#ffff00"], ["#000000", "#000066"], ["#f3c9c5", "#ff00ff"]]) {
+        const ratios = await page.evaluate(([green, gold]) => {
+          document.body.style.setProperty("--green", green);
+          document.body.style.setProperty("--gold", gold);
+          const section = document.querySelector("#prewedding");
+          const rgb = value => value.match(/[\d.]+/g).slice(0, 3).map(Number);
+          const luminance = values => values.map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4)
+            .reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
+          const background = luminance(rgb(getComputedStyle(section).backgroundColor));
+          return [...section.querySelectorAll(".sched-time, .sched-time small, .sched-date, .sched-body h3, .sched-body p, .sched-body a")]
+            .map(el => {
+              const style = getComputedStyle(el);
+              const foreground = luminance(rgb(style.color));
+              return { text: el.textContent, ratio: (Math.max(foreground, background) + .05) / (Math.min(foreground, background) + .05), opacity: style.opacity };
+            });
+        }, palette);
+        assert.ok(ratios.length >= 25, "all five activity cards are measured");
+        for (const item of ratios) assert.ok(item.ratio >= 4.5 && item.opacity === "1", `${width}px ${item.text}: ${item.ratio}`);
+      }
+      await page.evaluate(() => { document.body.style.removeProperty("--green"); document.body.style.removeProperty("--gold"); });
       const metrics = await page.evaluate(() => ({
         scroll: document.documentElement.scrollWidth,
         palette: [...document.querySelectorAll("#palette-preview > *")].map(el => el.getBoundingClientRect().top),

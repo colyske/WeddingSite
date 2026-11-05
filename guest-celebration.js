@@ -66,8 +66,10 @@
     if (!document.body.dataset.showcase || document.querySelector(".showcase-create")) return;
     const cta = document.createElement("a");
     cta.className = "showcase-create";
-    cta.href = WSSite.platformUrl("/dashboard.html?style=showcase-wedding#step=couple");
-    cta.innerHTML = `<svg viewBox="0 0 36 40" aria-hidden="true">${heart(18, 30, .65)}</svg><span>Create your own <span aria-hidden="true">&#8599;</span></span>`;
+    cta.href = WSSite.platformUrl("/signin.html?mode=register&next=" + encodeURIComponent("/dashboard.html?style=showcase-wedding#step=couple"));
+    cta.setAttribute("aria-description", "Free publication eligibility is confirmed before publishing; date and account limits may apply.");
+    cta.title = "Free publication eligibility is confirmed before publishing; date and account limits may apply.";
+    cta.innerHTML = `<svg viewBox="0 0 36 40" aria-hidden="true">${heart(18, 30, .65)}</svg><span><strong>Create yours</strong><small>It&#8217;s free!</small></span>`;
     document.body.append(cta);
     let queued = false;
     function update() {

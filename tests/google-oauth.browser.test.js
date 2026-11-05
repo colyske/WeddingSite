@@ -200,6 +200,37 @@ test("Google callback starts the exchange before web-font CSS and never shows th
   }
 });
 
+test("Showcase onboarding preserves style through registration, verification and an existing session", { skip }, async () => {
+  const page = await browser.newPage();
+  const next = "/dashboard.html?style=showcase-wedding#step=couple";
+  let registration;
+  await page.route("https://**", route => route.fulfill({ body: "" }));
+  await page.route("**/api/auth**", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    if (action === "register") registration = route.request().postDataJSON();
+    return route.fulfill({ contentType: "application/json", body: JSON.stringify(action === "me"
+      ? { user: { id: "existing-client", email: "couple@example.test" } }
+      : { enabled: false, message: "Check your email." }) });
+  });
+  await page.route("**/dashboard.html**", route => route.fulfill({ contentType: "text/html", body: "<title>Dashboard</title>" }));
+  try {
+    const onboarding = `${base}/signin.html?mode=register&next=${encodeURIComponent(next)}`;
+    await page.goto(onboarding);
+    assert.ok(await page.locator("#register-form").isVisible());
+    await page.fill("#reg-email", "couple@example.test");
+    await page.fill("#reg-password", "correct horse battery staple");
+    await page.fill("#reg-confirm", "correct horse battery staple");
+    await page.click("#register-form button[type=submit]");
+    await page.getByText("Check your email.").waitFor();
+    assert.equal(registration.returnTo, next);
+    await page.goto(`${base}/signin.html?next=${encodeURIComponent(registration.returnTo)}#access_token=verified-session&refresh_token=refresh&type=signup`);
+    await page.waitForURL(base + next);
+    await page.goto(onboarding);
+    await page.waitForURL(base + next);
+    assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem("ws-session")).a), "verified-session");
+  } finally { await page.close(); }
+});
+
 test("A signed-in tab stays signed in across home and dashboard; expired sessions are cleared", { skip }, async t => {
   if (!browser) {
     if (process.env.CI) throw new Error(skip);
