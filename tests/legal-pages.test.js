@@ -58,5 +58,5 @@ test("official logo is used on platform pages with alt text and explicit dimensi
   const guest = read("guest.html");
   assert.match(guest, /class="platform-logo"[^>]*data-platform-link><img [^>]*alt="Join Our Wedding"/);
   assert.match(guest, /id="nav-couple"/, "couple names lead the guest nav");
-  assert.doesNotMatch(guest, /apple-touch-icon/, "guest sites keep their own identity");
+  assert.match(guest, /rel="apple-touch-icon" sizes="120x120" href="\/assets\/brand\/icon-120\.png"/, "guest sites share the platform icon while keeping couple-led navigation");
 });
