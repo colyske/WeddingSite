@@ -1,6 +1,6 @@
 # Celebration Fund progress
 
-The cake consumes `get_public_celebration_progress(slug)`, never a sum of the
+The source-coloured progress bar consumes `get_public_celebration_progress(slug)`, never a sum of the
 campaign, registry, leaderboard, sponsor or VIP display totals. The first enabled
 fundraising stream in the wedding's current currency (ordered by `sort_order`,
 `created_at`, then ID) supplies the explicit goal and unchanged contribution
@@ -25,23 +25,17 @@ helper. Fees, withdrawal amounts, payout balances and payout eligibility are not
 read or changed. The public payload contains only aggregate amounts, currency,
 goal and campaign ID, never payer identities or payment references.
 
-Below goal, each slice's angle is its amount divided by the goal and the
-outlined remainder completes the circle. At or above goal, the cake is full,
-angles show shares of the actual total, and the true total and completion
+Below goal, each source segment's width is its amount divided by the goal and the
+neutral remainder completes the bar. At or above goal, the bar is full,
+segments show shares of the actual total, and the true total and completion
 remain visible separately. The legend uses largest-remainder rounding to
-reconcile to 100.0%; angles always use unrounded proportions. Zero is entirely
-empty. No explicit goal means the existing no-goal progress presentation.
-The SVG computes true circular sectors, then projects the entire top together
-with one vertical perspective scale and a shared rotation that centers the
-Remaining opening toward the viewer, without changing source order or proportions.
-The decorative outer frosting circumference
-stays complete; only exposed internal radial wedge faces descend to the base
-beside the unfilled remaining top. The decorative exterior is not a completion
-indicator. Strawberry, cocoa, golden vanilla, pistachio and blueberry tones match the
-legend. Icing bands, piped frosting and an attached stand are decorative, not
-extra data. All labels
-are outside the plot, with accessible textual totals and legend. It has no
-animation or dependency. Existing `givingProgress` remains for other cards.
+reconcile to 100.0%; segment widths always use unrounded proportions. Zero is
+entirely neutral. No explicit goal means the existing no-goal progress presentation.
+The user-selected fallback retains the existing polished progress-bar styling
+with five distinct source colours and matching legend swatches. Labels remain
+outside the bar, with accessible textual totals and legend. No cake geometry,
+chart switcher, animation or new dependency is shipped. Existing `givingProgress`
+remains unchanged for other cards.
 
 ## Database-first release
 
@@ -53,6 +47,6 @@ reconcile progress is reported, not silently shown as zero.
 `tests/db/celebration-progress.sql` runs on an isolated migrated test database
 inside a rollback transaction. Never run fixtures against production.
 `node --test tests/celebration-fund.test.js tests/showcase.browser.test.js`
-covers geometry, reconciliation, zero/over-goal, accessibility, payment-target
+covers segment proportions, reconciliation, zero/over-goal, accessibility, payment-target
 preservation and responsive rendering. Set `WEDDING_SCREENSHOTS` to an existing
 artifact directory for desktop/mobile evidence.

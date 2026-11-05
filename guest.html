@@ -778,12 +778,12 @@
         $("campaigns-display").innerHTML = camps.map(c => {
           const campaignCurrency = c.currency || cur;
           const progress = data.celebration?.campaign_id === c.id ? data.celebration : null;
-          const cake = progress ? WSCelebrationFund.render(progress, cur, WS.money, wedding.is_showcase) : "";
+          const sourceProgress = progress ? WSCelebrationFund.render(progress, cur, WS.money, wedding.is_showcase) : "";
           return `<article class="campaign" data-campaign="${esc(c.id)}">
             <h3>${esc(c.name)}</h3>
             ${c.purpose && c.purpose !== c.name ? `<p>${esc(c.purpose)}</p>` : ""}
-            ${cake || givingProgress(c.name, c.raised_minor, c.goal_minor, campaignCurrency)}
-            ${wedding.is_past ? "" : `<div class="camp-give"><button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-label="${esc(c.name)}">${cake ? "Help complete the cake" : "Choose an amount to contribute"}</button>${cake ? '<p class="fine">Only if you wish. Every contribution is appreciated.</p>' : ""}</div>`}
+            ${sourceProgress || givingProgress(c.name, c.raised_minor, c.goal_minor, campaignCurrency)}
+            ${wedding.is_past ? "" : `<div class="camp-give"><button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-label="${esc(c.name)}">Choose an amount to contribute</button>${sourceProgress ? '<p class="fine">Only if you wish. Every contribution is appreciated.</p>' : ""}</div>`}
             ${c.milestones.length ? `<h4 class="camp-ms-heading">Milestones within ${esc(c.name)}</h4><ul class="camp-ms">${c.milestones.map(m => `<li class="${m.reached ? "done" : ""}"><span aria-hidden="true">${m.reached ? "☑" : "☐"}</span> <span><strong>${esc(m.name)}</strong> · ${WS.money(m.target_minor, campaignCurrency, false)}${m.description ? `<br><small>${esc(m.description)}</small>` : ""}<span class="sr-only">${m.reached ? " (reached)" : " (not yet reached)"}</span>${wedding.is_past ? "" : `<br><button type="button" class="link" data-buy="fund" data-ref="${esc(c.id)}" data-milestone="${esc(m.id)}" data-label="${esc(c.name)} · ${esc(m.name)}">Contribute to ${esc(m.name)}</button>`}</span></li>`).join("")}</ul>` : ""}
           </article>`;
         }).join("");

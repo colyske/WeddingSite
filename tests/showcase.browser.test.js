@@ -68,11 +68,17 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     }
     assert.equal(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuenow"), "36");
     assert.match(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuetext"), /180,000.*500,000.*320,000.*Illustrative/);
-    assert.equal(await page.locator(".cake-legend li").count(), 6);
-    assert.equal(await page.locator(".fund-cake path[data-source]").count(), 5);
+    assert.equal(await page.locator(".fund-legend li").count(), 6);
+    assert.equal(await page.locator(".fund-bar [data-source]").count(), 6);
+    assert.equal(await page.locator(".celebration-fund svg").count(), 0, "fallback ships no unused cake geometry");
+    const segments = await page.locator(".fund-bar [data-source]").evaluateAll(items =>
+      items.map(item => ({ key: item.dataset.source, width: parseFloat(item.style.width), color: item.style.backgroundColor })));
+    assert.ok(Math.abs(segments.reduce((sum, item) => sum + item.width, 0) - 100) < 1e-10);
+    assert.equal(segments.at(-1).key, "remaining");
+    assert.equal(segments.at(-1).width, 64);
     assert.equal(await page.locator(".camp-ms li.done").count(), 0, "source-aggregated raised does not attain stream-only milestones");
-    assert.match(await page.locator(".cake-legend").innerText(), /Remaining[\s\S]*320,000[\s\S]*64.0%/);
-    assert.equal(await page.locator(".cake-legend .cake-share").evaluateAll(items =>
+    assert.match(await page.locator(".fund-legend").innerText(), /Remaining[\s\S]*320,000[\s\S]*64.0%/);
+    assert.equal(await page.locator(".fund-legend .fund-share").evaluateAll(items =>
       items.reduce((sum, item) => sum + Math.round(parseFloat(item.textContent) * 10), 0)), 1000);
     for (const campaign of showcaseFundraising.campaigns) {
       const card = page.locator(`[data-campaign="${campaign.id}"]`);
@@ -80,7 +86,7 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
       assert.equal(await primary.count(), 1);
       assert.equal(await primary.getAttribute("data-ref"), campaign.id);
       assert.equal(await primary.getAttribute("data-milestone"), null);
-      assert.equal(await primary.textContent(), "Help complete the cake");
+      assert.equal(await primary.textContent(), "Choose an amount to contribute");
       assert.ok(await primary.evaluate(button => !!(button.closest(".camp-give").compareDocumentPosition(button.closest(".campaign").querySelector(".camp-ms")) & Node.DOCUMENT_POSITION_FOLLOWING)),
         "parent contribution action precedes nested milestones");
       for (const milestone of campaign.milestones) {
@@ -177,22 +183,22 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
         assert.ok(metrics.songCells[1] > metrics.songCells[0], "mobile artist has its own readable line");
       }
       assert.ok(new Set(metrics.surfaces).size >= 3, "sections are visually differentiated");
-      assert.ok(await page.locator(".cake-legend li").evaluateAll(rows => rows.every(row => {
+      assert.ok(await page.locator(".fund-legend li").evaluateAll(rows => rows.every(row => {
         const cells = [...row.children].map(cell => cell.getBoundingClientRect());
         return cells.every((cell, i) => !i || cell.top >= cells[i - 1].bottom - 1 || cell.left >= cells[i - 1].right - 1) &&
           row.scrollWidth <= row.clientWidth;
       })), "source labels, amounts and percentages never overlap, including mobile");
-      assert.ok(await page.locator(".cake-legend strong").evaluateAll(items => items.every(el => {
+      assert.ok(await page.locator(".fund-legend strong").evaluateAll(items => items.every(el => {
         const range = document.createRange();
         range.selectNodeContents(el);
         const lines = [...range.getClientRects()];
         return new Set(lines.map(rect => Math.round(rect.top))).size === 1;
       })), "monetary values retain every digit on one line, including320px Remaining");
-      assert.ok(await page.locator(".cake-heading .giving-percent").evaluate(el => {
+      assert.ok(await page.locator(".fund-heading .giving-percent").evaluate(el => {
         const bounds = el.getBoundingClientRect(), card = el.closest(".campaign").getBoundingClientRect();
         return bounds.left >= card.left && bounds.right <= card.right && el.scrollWidth <= el.clientWidth;
       }), "the literal percentage and goal caption fit entirely inside the card");
-      assert.doesNotMatch(await page.locator(".cake-note").innerText(), /sample|illustrative|demo/i);
+      assert.doesNotMatch(await page.locator(".fund-note").innerText(), /sample|illustrative|demo/i);
       if (width <= 768) {
         assert.ok(await page.locator(".sticky-nav").evaluate(nav => nav.getBoundingClientRect().height <= 90), "compact closed mobile header");
         const toggle = page.locator("#wedding-nav-toggle");
@@ -210,7 +216,7 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
         await page.screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `showcase-${width}.png`), fullPage: true });
         await page.setViewportSize({ width, height: 2600 });
         await page.locator(".campaign").scrollIntoViewIfNeeded();
-        await page.locator(".campaign").screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `cake-${width}.png`) });
+        await page.locator(".campaign").screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `fund-bar-${width}.png`) });
         await page.setViewportSize({ width, height: 800 });
       }
     }
@@ -222,14 +228,14 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
           sources: ["gifts", "songs", "registry", "sponsors", "vip"].map(key => ({ key, amount_minor: 0 })) };
         document.querySelector(".celebration-fund").outerHTML = WSCelebrationFund.render(zero, "KES", WS.money);
       });
-      assert.ok(await page.locator(".cake-legend li").evaluateAll(rows => rows.every(row => {
-        const amount = row.querySelector("strong"), percent = row.querySelector(".cake-share");
+      assert.ok(await page.locator(".fund-legend li").evaluateAll(rows => rows.every(row => {
+        const amount = row.querySelector("strong"), percent = row.querySelector(".fund-share");
         const a = amount.getBoundingClientRect(), p = percent.getBoundingClientRect();
         return p.left - a.right >= 6 && getComputedStyle(amount).textAlign === "right" &&
           getComputedStyle(percent).textAlign === "right" && row.scrollWidth <= row.clientWidth;
       })), "zero-source money and percentage retain a visible grid gap at320/375");
       if (process.env.WEDDING_SCREENSHOTS) await page.locator(".campaign").screenshot({
-        path: join(process.env.WEDDING_SCREENSHOTS, `cake-zero-${width}.png`)
+        path: join(process.env.WEDDING_SCREENSHOTS, `fund-bar-zero-${width}.png`)
       });
     }
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -237,7 +243,7 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     await page.keyboard.press("Enter");
     assert.equal(await page.evaluate(() => document.activeElement.id), "wedding-content", "skip link transfers keyboard focus to main");
     assert.equal(await page.locator(".hero .celebration-art").evaluate(el => getComputedStyle(el).animationName), "none");
-    assert.equal(await page.locator(".fund-cake").evaluate(el => getComputedStyle(el).animationName), "none");
+    assert.equal(await page.locator(".fund-bar").evaluate(el => getComputedStyle(el).animationName), "none");
     await page.locator("#rsvp-form").scrollIntoViewIfNeeded();
     await page.waitForTimeout(100);
     assert.ok(await page.locator(".showcase-create").isHidden(), "floating CTA never obscures the form");
