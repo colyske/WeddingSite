@@ -2,11 +2,11 @@
 (function (root) {
   "use strict";
   const sources = [
-    { key: "gifts", label: "Gifts & fundraisers", color: "#b86f7b" },
-    { key: "songs", label: "Song bids", color: "#7b5144" },
-    { key: "registry", label: "Registry gifts", color: "#e6d3ad" },
-    { key: "sponsors", label: "Sponsorship", color: "#c58d4e" },
-    { key: "vip", label: "VIP", color: "#9b4956" }
+    { key: "gifts", label: "Gifts & fundraisers", color: "#d9849c" },
+    { key: "songs", label: "Song bids", color: "#704638" },
+    { key: "registry", label: "Registry gifts", color: "#e7c56e" },
+    { key: "sponsors", label: "Sponsorship", color: "#90ad72" },
+    { key: "vip", label: "VIP", color: "#9c87bd" }
   ];
   const esc = value => String(value).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const amount = value => Number.isSafeInteger(value) && value >= 0;
@@ -38,7 +38,8 @@
         rounded[order[i].i]++;
       }
     }
-    let start = -Math.PI / 2;
+    // Center the unfilled arc toward the viewer without changing any source share.
+    let start = denominator && total < data.goal_minor ? -Math.PI / 2 - total / denominator * Math.PI : -5 * Math.PI / 6;
     rows.forEach((row, i) => {
       row.share = denominator ? row.amount / denominator : 0;
       row.percent = rounded[i] / 10;

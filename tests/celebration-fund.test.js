@@ -14,6 +14,8 @@ const money = (minor, currency) => `${currency} ${(minor / 100).toFixed(2)}`;
 test("source amounts, true angles and displayed legend reconcile to goal", () => {
   for (const data of [fixture([2500, 1000, 500, 300, 200]), fixture([1, 1, 1, 1, 1], 7), fixture([99, 1, 0, 0, 0])]) {
     const m = model(data, "KES");
+    const remaining = m.rows.at(-1);
+    assert.ok(Math.abs((remaining.start + remaining.end) / 2 - Math.PI / 2) < 1e-12, "opening is centered toward the viewer");
     assert.equal(m.rows.reduce((a, b) => a + b.amount, 0), m.goal);
     assert.equal(m.rows.reduce((a, b) => a + Math.round(b.percent * 10), 0), 1000);
     assert.ok(Math.abs(m.rows.reduce((a, b) => a + b.share, 0) - 1) < 1e-12);
@@ -74,6 +76,9 @@ test("full-depth internal cut faces follow true radial boundaries; outer frostin
   const partial = render(fixture([2000, 1000, 1000, 500, 500]), "KES", money);
   assert.match(partial, /data-cake-shell="cream"/);
   assert.match(partial, /data-cake-cut="end"/);
+  const rows = model(fixture([2000, 1000, 1000, 500, 500]), "KES").rows;
+  assert.ok(partial.includes(`data-cake-cut="start" d="${cut(rows[0].start)}"`));
+  assert.ok(partial.includes(`data-cake-cut="end" d="${cut(rows[4].end)}"`));
   assert.doesNotMatch(partial, /<path (?:data-source|data-cake-cut)="[^"]+"[^>]*stroke=/, "wedge colours meet without white separator strokes");
   assert.doesNotMatch(partial, /data-cake-side=/, "outer wall is never source-coloured or removed");
   const zero = render(fixture([0, 0, 0, 0, 0]), "KES", money);
