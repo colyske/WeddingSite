@@ -241,7 +241,7 @@
     fetch("/api/guest?action=site&slug=showcase-wedding").then(res => res.ok ? res.json() : null).then(data => {
       const raw = data?.wedding?.wedding_date || data?.site?.wedding_date;
       if (!raw) return;
-      const date = new Date(`${raw}T00:00:00`);
+      const date = new Date(`${raw}T00:00:00Z`);
       if (!Number.isNaN(date.getTime())) $("lp-preview-date").textContent = date.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }) + " · Diani, Kenya";
     }).catch(() => {});
 
