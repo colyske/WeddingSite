@@ -169,6 +169,29 @@
     }
   </style>
   <link rel="stylesheet" href="guest-celebration.css">
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '28941216752200529');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=28941216752200529&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+<script async src="https://www.googletagmanager.com/gtm.js?id=GTM-PFQNMGPG"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+</script>
 </head>
 <body class="guest-page" id="top">
   <a class="wedding-skip" href="#wedding-content">Skip to wedding</a>
@@ -227,6 +250,84 @@
       <p id="past-message">This wedding has taken place. RSVPs, song bids and contributions are now closed, but you are welcome to look back at the day.</p>
     </section>
 
+<section id="campaigns" class="card" hidden>
+      <h2>A gift for our next chapter</h2>
+      <p class="fine">Your presence is the greatest gift. If you would like to help with our next chapter, choose a fundraiser below. No gift is ever expected.</p>
+      <div id="campaigns-display"></div>
+      <div id="campaigns-display-pagination"></div>
+    </section>
+
+<section id="registry" class="card" hidden>
+      <h2>Registry & Crowdfunding</h2>
+      <p class="fine">Help us build our future together. Every contribution makes a difference!</p>
+      <div id="registry-list" style="display: flex; flex-direction: column; gap: 2rem;"></div>
+      <div id="registry-list-pagination"></div>
+      <p id="no-registry" class="fine">No registry items yet.</p>
+    </section>
+
+<section id="bids" class="card" hidden>
+      <h2>DJ Song Requests</h2>
+      <p class="fine">Request a new song or bid on one already on the list. Paid bids for the same song and artist combine into one total and support the couple&rsquo;s wedding fund, not the DJ. A song appears on the leaderboard only after the payment service confirms the payment.</p>
+
+      <!-- DJ leaderboard -->
+      <div style="margin-top: 1rem;">
+        <h3>Top Song Requests</h3>
+        <div style="overflow-x:auto;" role="region" aria-label="Paid song leaderboard" tabindex="0">
+        <table id="leaderboard-table" style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="border-bottom: 2px solid var(--sage);">
+              <th style="text-align: left; padding: 0.75rem; color: var(--green);">#</th>
+              <th style="text-align: left; padding: 0.75rem; color: var(--green);">Song</th>
+              <th style="text-align: left; padding: 0.75rem; color: var(--green);">Artist</th>
+              <th style="text-align: right; padding: 0.75rem; color: var(--green);">Paid total</th>
+              <th style="text-align: left; padding: 0.75rem; color: var(--green);">Add a bid</th>
+            </tr>
+          </thead>
+          <tbody id="leaderboard-body"></tbody>
+        </table>
+        </div>
+        <div id="leaderboard-body-pagination"></div>
+        <p id="no-bids" class="fine">No paid song requests yet. <button type="button" id="no-bids-cta" class="link-btn">Be the first to request a song</button></p>
+      </div>
+
+              <form id="song-request-form" class="song-request" novalidate>
+                <h3>Can&rsquo;t find your song? Request a new one</h3>
+                <div class="song-request-fields">
+                  <label><span>Song title *</span>
+                    <input id="song-request-title" type="text" maxlength="160" autocomplete="off" required>
+                  </label>
+                  <label><span>Artist *</span>
+                    <input id="song-request-artist" type="text" maxlength="100" autocomplete="off" required>
+                  </label>
+                  <label><span>Bid (<span id="song-request-currency">KES</span>) *</span>
+                    <input id="song-request-amount" type="number" min="1" step="1" inputmode="decimal" required>
+                  </label>
+                </div>
+                <p id="song-request-error" class="fine" role="alert" hidden></p>
+                <button type="submit" class="btn">Request &amp; pay</button>
+              </form>
+              <p id="song-request-closed" class="fine" hidden>Song requests are closed for this wedding.</p>
+    </section>
+
+<section id="ledger" class="card" hidden>
+      <h2>Guest Contributions</h2>
+      <p class="fine">Thank you to all who are supporting our special day!</p>
+      <table id="ledger-table" style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="border-bottom: 2px solid var(--sage);">
+            <th style="text-align: left; padding: 0.75rem; color: var(--green);">Contribution</th>
+            <th style="text-align: right; padding: 0.75rem; color: var(--green);">Amount</th>
+            <th style="text-align: left; padding: 0.75rem; color: var(--green);">From</th>
+            <th style="text-align: left; padding: 0.75rem; color: var(--green);">Date</th>
+          </tr>
+        </thead>
+        <tbody id="ledger-body"></tbody>
+      </table>
+      <div id="ledger-body-pagination"></div>
+      <p id="no-ledger" class="fine">No contributions yet.</p>
+    </section>
+
+
     <!-- Story section -->
     <section id="story" class="card" hidden>
       <h2>Our Story</h2>
@@ -258,25 +359,37 @@
       <div id="prewedding-display-pagination"></div>
     </section>
 
-    <!-- Fundraising campaigns -->
-    <section id="campaigns" class="card" hidden>
-      <h2>A gift for our next chapter</h2>
-      <p class="fine">Your presence is the greatest gift. If you would like to help with our next chapter, choose a fundraiser below. No gift is ever expected.</p>
-      <div id="campaigns-display"></div>
-      <div id="campaigns-display-pagination"></div>
+<section id="sponsors" class="card">
+      <h2>Our Sponsors</h2>
+      <p class="fine">Thoughtful brands, beautiful celebrations. Thank you to our paid sponsors.</p>
+      <div id="sponsor-auction" class="card" hidden></div>
+      <div id="sponsors-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;"></div>
+      <div id="sponsors-display-pagination"></div>
+      <div id="sponsors-placeholder" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+        <article style="border: 2px dashed var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
+          <h3>Your advert could be here</h3>
+          <p>Support this couple&rsquo;s celebration.</p>
+          <button type="button" class="buy-btn" id="sponsor-cta">Become a sponsor</button>
+        </article>
+      </div>
     </section>
 
-    <!-- Registry & Crowdfunding -->
-    <section id="registry" class="card" hidden>
-      <h2>Registry & Crowdfunding</h2>
-      <p class="fine">Help us build our future together. Every contribution makes a difference!</p>
-      <div id="registry-list" style="display: flex; flex-direction: column; gap: 2rem;"></div>
-      <div id="registry-list-pagination"></div>
-      <p id="no-registry" class="fine">No registry items yet.</p>
+<section id="sponsor-tiers" class="card" hidden>
+      <h2>Sponsorship Levels</h2>
+      <p class="fine">Packages include the benefits listed. Sponsors are ordered by verified paid amount, so larger contributions appear higher; package level does not set list order.</p>
+      <div id="tiers-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;"></div>
+      <div id="tiers-display-pagination"></div>
     </section>
 
-    <!-- RSVP form -->
-    <section id="rsvp" class="card" hidden>
+
+
+
+
+
+
+
+
+<section id="rsvp" class="card" hidden>
       <h2>Will You Join Us?</h2>
       <p id="guest-instructions" class="fine" hidden></p>
       <form id="rsvp-form">
@@ -337,115 +450,13 @@
       </details>
     </section>
 
-    <!-- DJ song bids -->
-    <section id="bids" class="card" hidden>
-      <h2>DJ Song Requests</h2>
-      <p class="fine">Request a new song or bid on one already on the list. Paid bids for the same song and artist combine into one total and support the couple&rsquo;s wedding fund, not the DJ. A song appears on the leaderboard only after the payment service confirms the payment.</p>
-
-      <!-- DJ leaderboard -->
-      <div style="margin-top: 1rem;">
-        <h3>Top Song Requests</h3>
-        <div style="overflow-x:auto;" role="region" aria-label="Paid song leaderboard" tabindex="0">
-        <table id="leaderboard-table" style="width: 100%; border-collapse: collapse;">
-          <thead>
-            <tr style="border-bottom: 2px solid var(--sage);">
-              <th style="text-align: left; padding: 0.75rem; color: var(--green);">#</th>
-              <th style="text-align: left; padding: 0.75rem; color: var(--green);">Song</th>
-              <th style="text-align: left; padding: 0.75rem; color: var(--green);">Artist</th>
-              <th style="text-align: right; padding: 0.75rem; color: var(--green);">Paid total</th>
-              <th style="text-align: left; padding: 0.75rem; color: var(--green);">Add a bid</th>
-            </tr>
-          </thead>
-          <tbody id="leaderboard-body"></tbody>
-        </table>
-        </div>
-        <div id="leaderboard-body-pagination"></div>
-        <p id="no-bids" class="fine">No paid song requests yet. <button type="button" id="no-bids-cta" class="link-btn">Be the first to request a song</button></p>
-      </div>
-
-              <form id="song-request-form" class="song-request" novalidate>
-                <h3>Can&rsquo;t find your song? Request a new one</h3>
-                <div class="song-request-fields">
-                  <label><span>Song title *</span>
-                    <input id="song-request-title" type="text" maxlength="160" autocomplete="off" required>
-                  </label>
-                  <label><span>Artist *</span>
-                    <input id="song-request-artist" type="text" maxlength="100" autocomplete="off" required>
-                  </label>
-                  <label><span>Bid (<span id="song-request-currency">KES</span>) *</span>
-                    <input id="song-request-amount" type="number" min="1" step="1" inputmode="decimal" required>
-                  </label>
-                </div>
-                <p id="song-request-error" class="fine" role="alert" hidden></p>
-                <button type="submit" class="btn">Request &amp; pay</button>
-              </form>
-              <p id="song-request-closed" class="fine" hidden>Song requests are closed for this wedding.</p>
-    </section>
-
-    <!-- Contribution ledger -->
-    <section id="ledger" class="card" hidden>
-      <h2>Guest Contributions</h2>
-      <p class="fine">Thank you to all who are supporting our special day!</p>
-      <table id="ledger-table" style="width: 100%; border-collapse: collapse;">
-        <thead>
-          <tr style="border-bottom: 2px solid var(--sage);">
-            <th style="text-align: left; padding: 0.75rem; color: var(--green);">Contribution</th>
-            <th style="text-align: right; padding: 0.75rem; color: var(--green);">Amount</th>
-            <th style="text-align: left; padding: 0.75rem; color: var(--green);">From</th>
-            <th style="text-align: left; padding: 0.75rem; color: var(--green);">Date</th>
-          </tr>
-        </thead>
-        <tbody id="ledger-body"></tbody>
-      </table>
-      <div id="ledger-body-pagination"></div>
-      <p id="no-ledger" class="fine">No contributions yet.</p>
-    </section>
-
-    <!-- Sponsorship tiers -->
-    <section id="sponsor-tiers" class="card" hidden>
-      <h2>Sponsorship Levels</h2>
-      <p class="fine">Packages include the benefits listed. Sponsors are ordered by verified paid amount, so larger contributions appear higher; package level does not set list order.</p>
-      <div id="tiers-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;"></div>
-      <div id="tiers-display-pagination"></div>
-    </section>
-
-    <!-- VIP seating -->
-    <section id="vip-section" class="card" hidden>
+<section id="vip-section" class="card" hidden>
       <h2>VIP Seating</h2>
       <p class="fine">Reserve premium seating and elevate your wedding experience.</p>
       <div id="vip-display" style="padding: 1.5rem; background: #f8f9f7; border: 2px solid var(--gold); border-radius: 8px;"></div>
     </section>
 
-    <!-- Corporate sponsors -->
-    <section id="sponsors" class="card">
-      <h2>Our Sponsors</h2>
-      <p class="fine">Thoughtful brands, beautiful celebrations. Thank you to our paid sponsors.</p>
-      <div id="sponsor-auction" class="card" hidden></div>
-      <div id="sponsors-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;"></div>
-      <div id="sponsors-display-pagination"></div>
-      <div id="sponsors-placeholder" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
-        <article style="border: 2px dashed var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
-          <h3>Your advert could be here</h3>
-          <p>Support this couple&rsquo;s celebration.</p>
-          <button type="button" class="buy-btn" id="sponsor-cta">Become a sponsor</button>
-        </article>
-      </div>
-    </section>
-
-    <!-- Seating lookup -->
-    <section id="seating" class="card" hidden>
-      <h2>Find your seat</h2>
-      <p class="fine">Enter the phone number the couple invited you with to see your table. Only your own table is shown.</p>
-      <form id="seat-form">
-        <label for="seat-phone">Phone number</label>
-        <input id="seat-phone" type="tel" inputmode="tel" maxlength="20" required autocomplete="tel" placeholder="+254 700 000000">
-        <button type="submit">Find my table</button>
-      </form>
-      <p id="seat-result" class="notice" role="status" hidden></p>
-    </section>
-
-    <!-- Digital e-card pass -->
-    <section id="ecard" class="card" hidden data-corners>
+<section id="ecard" class="card" hidden data-corners>
       <h2>Your Digital E-Card Pass</h2>
       <p class="fine">Screenshot this pass or show it at the entrance to check in.</p>
       <div id="ecard-display" style="text-align: center; padding: 2rem 1rem; background: linear-gradient(135deg, #f8f9f7 0%, #f3faf3 100%); border-radius: 8px; border: 2px solid var(--sage);">
@@ -459,6 +470,48 @@
         <p id="ecard-date" style="margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--gold); font-weight: 600;"></p>
       </div>
     </section>
+
+<section id="seating" class="card" hidden>
+      <h2>Find your seat</h2>
+      <p class="fine">Enter the phone number the couple invited you with to see your table. Only your own table is shown.</p>
+      <form id="seat-form">
+        <label for="seat-phone">Phone number</label>
+        <input id="seat-phone" type="tel" inputmode="tel" maxlength="20" required autocomplete="tel" placeholder="+254 700 000000">
+        <button type="submit">Find my table</button>
+      </form>
+      <p id="seat-result" class="notice" role="status" hidden></p>
+    </section>
+
+
+    <!-- Fundraising campaigns -->
+    
+
+    <!-- Registry & Crowdfunding -->
+    
+
+    <!-- RSVP form -->
+    
+
+    <!-- DJ song bids -->
+    
+
+    <!-- Contribution ledger -->
+    
+
+    <!-- Sponsorship tiers -->
+    
+
+    <!-- VIP seating -->
+    
+
+    <!-- Corporate sponsors -->
+    
+
+    <!-- Seating lookup -->
+    
+
+    <!-- Digital e-card pass -->
+    
   </main>
 
   <div id="toast" role="status" aria-live="polite" hidden></div>
@@ -1713,7 +1766,7 @@ const payIntent = WSPaymentIntent.create({ name: slug });
 })();
 </script>  <script src="i18n.js"></script>
   <script src="guest-extras.js"></script>
-  <script src="guest-celebration.js"></script>
+  <script src="guest-celebration.js?v=consolidated-order-20261106"></script>
   <script src="footer.js"></script>
 <script src="/feedback.js"></script>
 </body>
