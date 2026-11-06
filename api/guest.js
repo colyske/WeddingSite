@@ -127,7 +127,7 @@ export default async function handler(req, res) {
     if (sample && action === "ledger") return sendJson(res, 200, { ledger: showcaseLedger });
     if (sample && action === "fundraising") return sendJson(res, 200, showcaseFundraising);
     if (sample && action === "extras") return sendJson(res, 200, showcaseExtras);
-    if (sample && action === "rsvp-count") return sendJson(res, 200, { count: 84 });
+    if (sample && action === "rsvp-count") return sendJson(res, 200, { count: 126 });
     if (action === "site") {
       if (!methodOnly(req, res, "GET")) return;
       const slug = String(req.query.slug || "").toLowerCase();

@@ -66,8 +66,8 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
       "bids", "ledger", "sponsor-tiers", "vip-section", "sponsors", "seating", "share-section", "info-section", "guestbook", "ecard"]) {
       assert.equal(await page.locator(`#${id} > .celebration-art svg`).count(), 1, `${id} has a single bespoke illustration`);
     }
-    assert.equal(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuenow"), "36");
-    assert.match(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuetext"), /180,000.*500,000.*320,000.*Illustrative/);
+    assert.equal(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuenow"), "82");
+    assert.match(await page.locator("#campaigns [role=progressbar]").getAttribute("aria-valuetext"), /1,148,000.*1,400,000.*252,000.*Illustrative/);
     assert.equal(await page.locator(".fund-legend li").count(), 6);
     assert.equal(await page.locator(".fund-bar [data-source]").count(), 6);
     assert.equal(await page.locator(".celebration-fund svg").count(), 0, "fallback ships no unused cake geometry");
@@ -75,9 +75,9 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
       items.map(item => ({ key: item.dataset.source, width: parseFloat(item.style.width), color: item.style.backgroundColor })));
     assert.ok(Math.abs(segments.reduce((sum, item) => sum + item.width, 0) - 100) < 1e-10);
     assert.equal(segments.at(-1).key, "remaining");
-    assert.equal(segments.at(-1).width, 64);
-    assert.equal(await page.locator(".camp-ms li.done").count(), 0, "source-aggregated raised does not attain stream-only milestones");
-    assert.match(await page.locator(".fund-legend").innerText(), /Remaining[\s\S]*320,000[\s\S]*64.0%/);
+    assert.equal(segments.at(-1).width, 18);
+    assert.equal(await page.locator(".camp-ms li.done").count(), 1);
+    assert.match(await page.locator(".fund-legend").innerText(), /Remaining[\s\S]*252,000[\s\S]*18.0%/);
     assert.equal(await page.locator(".fund-legend .fund-share").evaluateAll(items =>
       items.reduce((sum, item) => sum + Math.round(parseFloat(item.textContent) * 10), 0)), 1000);
     for (const campaign of showcaseFundraising.campaigns) {
@@ -96,8 +96,8 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
         assert.equal(await action.textContent(), `Contribute to ${milestone.name}`);
       }
     }
-    assert.equal(await page.locator("#registry [role=progressbar]").getAttribute("aria-valuenow"), "30");
-    assert.match(await page.locator("#registry [role=progressbar]").getAttribute("aria-valuetext"), /60,000.*200,000.*illustrative/);
+    assert.equal(await page.locator("#registry [role=progressbar]").getAttribute("aria-valuenow"), "82");
+    assert.match(await page.locator("#registry [role=progressbar]").getAttribute("aria-valuetext"), /205,000.*250,000.*illustrative/);
     const onboarding = new URL(await page.locator(".showcase-create").getAttribute("href"), base);
     assert.equal(onboarding.pathname, "/signin.html");
     assert.equal(onboarding.searchParams.get("mode"), "register");
