@@ -124,7 +124,13 @@ export default async function handler(req, res) {
     }
     if (sample && action === "site") return sendJson(res, 200, { wedding: showcase });
     if (sample && action === "leaderboard") return sendJson(res, 200, { bids: showcaseBids });
-    if (sample && action === "ledger") return sendJson(res, 200, { ledger: showcaseLedger });
+    if (sample && action === "ledger") {
+      const offset = Math.max(0, parseInt(req.query.offset || "0") || 0);
+      const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || "50") || 50));
+      const ledger = showcaseLedger.slice(offset, offset + limit);
+      return sendJson(res, 200, { ledger, hasMore: offset + ledger.length < showcaseLedger.length,
+        nextOffset: offset + ledger.length });
+    }
     if (sample && action === "fundraising") return sendJson(res, 200, showcaseFundraising);
     if (sample && action === "extras") return sendJson(res, 200, showcaseExtras);
     if (sample && action === "rsvp-count") return sendJson(res, 200, { count: 126 });
@@ -263,18 +269,20 @@ export default async function handler(req, res) {
       
       const settings = (await supabaseRequest(`/rest/v1/weddings?id=eq.${encodeURIComponent(weddingId)}&published_at=not.is.null&archived_at=is.null&select=revenue_features`, { service: true }))?.[0];
       if (!settings) return sendJson(res, 404, { error: "Wedding not found." });
-      const offset = Math.max(0, parseInt(req.query.offset || "0"));
-      const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || "50")));
+      const offset = Math.max(0, parseInt(req.query.offset || "0") || 0);
+      const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || "50") || 50));
       const rows = await rpc("get_published_contributions_page", { p_wedding_id: weddingId, p_offset: offset, p_limit: limit });
       const features = settings.revenue_features || {};
       const featureForType = {
         "Song bid": "song_requests", "Sponsorship": "sponsors", "Featured sponsorship": "featured_sponsors",
         "VIP reservation": "vip_seating", "Registry gift": "giving"
       };
-      return sendJson(res, 200, { ledger: (rows || []).filter(row => {
+      const ledger = (rows || []).filter(row => {
         const feature = featureForType[row.contribution_type];
         return !feature || features[feature] !== false;
-      }) });
+      });
+      return sendJson(res, 200, { ledger, hasMore: (rows || []).length === limit,
+        nextOffset: offset + (rows || []).length });
     }
 
     if (action === "rsvp" || action === "bid") {

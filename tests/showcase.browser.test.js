@@ -37,7 +37,8 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     await page.locator("#ledger-body tr").first().waitFor();
     await page.locator(".field-row").first().waitFor();
     await page.locator("#guestbook").waitFor();
-    assert.equal(await page.locator("#prewedding-display > *").count(), 5);
+    assert.equal(await page.locator("#prewedding-display > *").count(), 4);
+    assert.match(await page.locator("#prewedding-display-pagination").innerText(), /1–4 of 5/);
     assert.equal(await page.locator("#sponsor-enquiry-link").count(), 0);
     assert.equal(await page.locator(".sponsor-ad .sponsor-socials a").count(), 2);
     assert.match(await page.locator(".sponsor-ad").innerText(), /studio@example\.com/);
@@ -51,7 +52,7 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     }));
     assert.ok(markers.every(m => m.radius === "0px" && m.border === "0px" && m.transform !== "none" && m.content === '""'),
       "venue markers are decorative filled diamonds, never O-like hollow circles or text");
-    assert.match(await page.locator("#ledger-body").innerText(), /Song bid[\s\S]*2,500[\s\S]*A friend/);
+    assert.match(await page.locator("#ledger-body").innerText(), /Song bid[\s\S]*42,000[\s\S]*The wedding party/);
     assert.doesNotMatch(await page.locator("#ledger-body").innerText(), /NaN|\$/);
     assert.ok(await page.locator(".showcase-banner").isVisible());
     assert.equal(await page.locator(".showcase-banner").innerText(), "Demo");

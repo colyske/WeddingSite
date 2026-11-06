@@ -21,6 +21,11 @@
     .song-request { margin-top:1.5rem; padding:1.25rem; border:1px solid #e3dcc7; border-radius:12px; background:rgba(255,255,255,.55); }
     .song-request h3 { margin-top:0; }
     .song-highlight td { background:#fff3c4; transition:background .6s; }
+    .list-pagination { display:flex; align-items:center; justify-content:center; gap:.8rem; margin:1rem auto 0; color:var(--green); font-size:.92rem; }
+    .list-pagination button { min-height:40px; padding:.45rem .9rem; border:1px solid #be9b52; border-radius:999px; background:#fffaf0; color:var(--green); font:inherit; font-weight:600; cursor:pointer; transition:background-color .18s ease, color .18s ease, transform .18s ease; }
+    .list-pagination button:not(:disabled):hover { background:var(--green); color:#fff; transform:translateY(-1px); }
+    .list-pagination button:focus-visible { outline:3px solid #be9b52; outline-offset:2px; }
+    .list-pagination button:disabled { opacity:.45; cursor:default; }
     @media (max-width:640px) {
       #leaderboard-table thead { display:none; }
       #leaderboard-table, #leaderboard-table tbody, #leaderboard-table tr { display:block; width:100%; }
@@ -242,6 +247,7 @@
       <h2>Programme &amp; venues</h2>
       <p class="fine" id="venues-zone"></p>
       <div id="venues-display" style="display: flex; flex-direction: column; gap: 1.5rem;"></div>
+      <div id="venues-display-pagination"></div>
     </section>
 
     <!-- Pre-wedding events -->
@@ -249,6 +255,7 @@
       <h2>04 Before the wedding: The road to the day</h2>
       <p class="fine">Fundraisers, rehearsals and gatherings leading up to the day.</p>
       <div id="prewedding-display" style="display: flex; flex-direction: column; gap: 1.5rem;"></div>
+      <div id="prewedding-display-pagination"></div>
     </section>
 
     <!-- Fundraising campaigns -->
@@ -256,6 +263,7 @@
       <h2>A gift for our next chapter</h2>
       <p class="fine">Your presence is the greatest gift. If you would like to help with our next chapter, choose a fundraiser below. No gift is ever expected.</p>
       <div id="campaigns-display"></div>
+      <div id="campaigns-display-pagination"></div>
     </section>
 
     <!-- Registry & Crowdfunding -->
@@ -263,6 +271,7 @@
       <h2>Registry & Crowdfunding</h2>
       <p class="fine">Help us build our future together. Every contribution makes a difference!</p>
       <div id="registry-list" style="display: flex; flex-direction: column; gap: 2rem;"></div>
+      <div id="registry-list-pagination"></div>
       <p id="no-registry" class="fine">No registry items yet.</p>
     </section>
 
@@ -350,6 +359,7 @@
           <tbody id="leaderboard-body"></tbody>
         </table>
         </div>
+        <div id="leaderboard-body-pagination"></div>
         <p id="no-bids" class="fine">No paid song requests yet. <button type="button" id="no-bids-cta" class="link-btn">Be the first to request a song</button></p>
       </div>
 
@@ -387,6 +397,7 @@
         </thead>
         <tbody id="ledger-body"></tbody>
       </table>
+      <div id="ledger-body-pagination"></div>
       <p id="no-ledger" class="fine">No contributions yet.</p>
     </section>
 
@@ -395,6 +406,7 @@
       <h2>Sponsorship Levels</h2>
       <p class="fine">Packages include the benefits listed. Sponsors are ordered by verified paid amount, so larger contributions appear higher; package level does not set list order.</p>
       <div id="tiers-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;"></div>
+      <div id="tiers-display-pagination"></div>
     </section>
 
     <!-- VIP seating -->
@@ -409,7 +421,9 @@
       <h2>Our Sponsors</h2>
       <p class="fine">Thoughtful brands, beautiful celebrations. Thank you to our paid sponsors.</p>
       <div id="sponsor-auction" class="card" hidden></div>
-      <div id="sponsors-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+      <div id="sponsors-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;"></div>
+      <div id="sponsors-display-pagination"></div>
+      <div id="sponsors-placeholder" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
         <article style="border: 2px dashed var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
           <h3>Your advert could be here</h3>
           <p>Support this couple&rsquo;s celebration.</p>
@@ -495,6 +509,7 @@
 (async () => {
   const fetch = window.WSGuestFetch;
   const $ = id => document.getElementById(id);
+  const paginatedLists = new Map();
   for (const prefix of ["pay"]) {
     for (const [platform, label] of Object.entries(WSSocialLinks.labels)) {
       const field = document.createElement("label");
@@ -513,6 +528,36 @@
       .map(platform => [platform, $(`${prefix}-social-${platform}`).value.trim()])));
   }
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  function renderPaginated(id, items, renderItem, pageSize, label, onPageRender) {
+    const container = $(id), controls = $(`${id}-pagination`);
+    if (!container) return;
+    let state = paginatedLists.get(id);
+    if (!state) state = { page: 1 };
+    Object.assign(state, { items, renderItem, pageSize, label, onPageRender });
+    const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+    state.page = Math.min(state.page, pageCount);
+    paginatedLists.set(id, state);
+    const paint = () => {
+      const pages = Math.max(1, Math.ceil(state.items.length / state.pageSize));
+      state.page = Math.min(state.page, pages);
+      const start = (state.page - 1) * state.pageSize;
+      container.innerHTML = state.items.slice(start, start + state.pageSize).map((item, index) => state.renderItem(item, start + index)).join("");
+      state.onPageRender?.(state.items.slice(start, start + state.pageSize));
+      if (!controls) return;
+      controls.hidden = pages <= 1;
+      if (pages <= 1) { controls.replaceChildren(); return; }
+      const end = Math.min(start + state.pageSize, state.items.length);
+      controls.innerHTML = `<nav class="list-pagination" aria-label="${esc(state.label)} pages"><button type="button" data-page-step="-1" ${state.page === 1 ? "disabled" : ""}>Previous</button><span aria-live="polite">${start + 1}–${end} of ${state.items.length}</span><button type="button" data-page-step="1" ${state.page === pages ? "disabled" : ""}>Next</button></nav>`;
+      controls.querySelectorAll("[data-page-step]").forEach(button => button.addEventListener("click", () => {
+        const step = Number(button.dataset.pageStep);
+        state.page += step;
+        paint();
+        (controls.querySelector(`[data-page-step="${step}"]:not(:disabled)`) || controls.querySelector("button:not(:disabled)"))?.focus({ preventScroll: true });
+      }));
+    };
+    state.paint = paint;
+    paint();
+  }
   function givingProgress(name, raised, target, currency = wedding.currency || "USD") {
     const amount = WS.money(raised, currency, false);
     const demo = "Raised";
@@ -547,6 +592,7 @@
   let audioEnabled = false;
   let sponsorPackageCount = 0;
   let sponsorAuctionOpen = false;
+  let ledgerOffsets = [0], ledgerRequest = 0;
 
   // Load wedding data
   async function loadWedding() {
@@ -658,13 +704,16 @@
       // Venues: date, time (wedding time zone), address/notes and map link
       const mainVenues = (wedding.venues || []).filter(v => v.kind !== "pre");
       const preVenues = (wedding.venues || []).filter(v => v.kind === "pre");
-      if (preVenues.length) { $("prewedding").hidden = false; $("prewedding-display").innerHTML = preVenues.map(v => venueRow(v, wedding)).join(""); }
+      if (preVenues.length) {
+        $("prewedding").hidden = false;
+        renderPaginated("prewedding-display", preVenues, v => venueRow(v, wedding), 4, "Pre-wedding activities");
+      }
       if (mainVenues.length > 0) {
         $("venues").hidden = false;
         const zone = wedding.time_zone || WSTime.DEFAULT_ZONE;
         const startMs = WSTime.weddingStart(wedding);
         $("venues-zone").textContent = "Times are shown in " + zone.replace(/_/g, " ") + (startMs != null ? " (" + WSTime.abbreviation(zone, startMs) + ")" : "") + ".";
-        $("venues-display").innerHTML = mainVenues.map(v => venueRow(v, wedding)).join("");
+        renderPaginated("venues-display", mainVenues, v => venueRow(v, wedding), 4, "Wedding programme events");
       }
       if (stopSchedule) stopSchedule();
       stopSchedule = WSSchedule.mount(wedding);
@@ -672,7 +721,7 @@
       if (wedding.registry && wedding.registry.length > 0) {
         $("registry").hidden = false;
         $("no-registry").hidden = true;
-        $("registry-list").innerHTML = wedding.registry.map(item => {
+        renderPaginated("registry-list", wedding.registry, item => {
           const raised = item.amount_raised_minor || 0;
           const target = item.target_amount_minor || 0;
           return `
@@ -685,7 +734,7 @@
               ${wedding.is_past ? "" : `<button type="button" class="buy-btn" data-buy="registry" data-ref="${esc(item.id)}" data-label="${esc(item.name)}">Choose an amount to contribute</button>`}
             </article>
           `;
-        }).join("");
+        }, 4, "Registry gifts");
       }
 
       // RSVP & Bids
@@ -778,31 +827,37 @@
       $("campaigns").hidden = features.giving !== true || !camps.length;
       if (camps.length) {
         const cur = wedding.currency || "USD";
-        $("campaigns-display").innerHTML = camps.map(c => {
+        renderPaginated("campaigns-display", camps, c => {
           const campaignCurrency = c.currency || cur;
           const progress = data.celebration?.campaign_id === c.id ? data.celebration : null;
           const sourceProgress = progress ? WSCelebrationFund.render(progress, cur, WS.money, wedding.is_showcase) : "";
+          const milestones = c.milestones || [];
           return `<article class="campaign" data-campaign="${esc(c.id)}">
             <h3>${esc(c.name)}</h3>
             ${c.purpose && c.purpose !== c.name ? `<p>${esc(c.purpose)}</p>` : ""}
             ${sourceProgress || givingProgress(c.name, c.raised_minor, c.goal_minor, campaignCurrency)}
             ${wedding.is_past ? "" : `<div class="camp-give"><button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-label="${esc(c.name)}">Choose an amount to contribute</button>${sourceProgress ? '<p class="fine">Only if you wish. Every contribution is appreciated.</p>' : ""}</div>`}
-            ${c.milestones.length ? `<h4 class="camp-ms-heading">Milestones within ${esc(c.name)}</h4><ul class="camp-ms">${c.milestones.map(m => `<li class="${m.reached ? "done" : ""}"><span aria-hidden="true">${m.reached ? "☑" : "☐"}</span> <span><strong>${esc(m.name)}</strong> · ${WS.money(m.target_minor, campaignCurrency, false)}${m.description ? `<br><small>${esc(m.description)}</small>` : ""}<span class="sr-only">${m.reached ? " (reached)" : " (not yet reached)"}</span>${wedding.is_past ? "" : `<br><button type="button" class="link" data-buy="fund" data-ref="${esc(c.id)}" data-milestone="${esc(m.id)}" data-label="${esc(c.name)} · ${esc(m.name)}">Contribute to ${esc(m.name)}</button>`}</span></li>`).join("")}</ul>` : ""}
+            ${milestones.length ? `<h4 class="camp-ms-heading">Milestones within ${esc(c.name)}</h4><ul class="camp-ms" id="campaign-milestones-${esc(c.id)}"></ul><div id="campaign-milestones-${esc(c.id)}-pagination"></div>` : ""}
           </article>`;
-        }).join("");
+        }, 3, "Fundraising campaigns", visibleCampaigns => visibleCampaigns.forEach(c => {
+          const milestones = c.milestones || [];
+          if (!milestones.length) return;
+          const campaignCurrency = c.currency || cur;
+          renderPaginated(`campaign-milestones-${c.id}`, milestones, m => `<li class="${m.reached ? "done" : ""}"><span aria-hidden="true">${m.reached ? "☑" : "☐"}</span> <span><strong>${esc(m.name)}</strong> · ${WS.money(m.target_minor, campaignCurrency, false)}${m.description ? `<br><small>${esc(m.description)}</small>` : ""}<span class="sr-only">${m.reached ? " (reached)" : " (not yet reached)"}</span>${wedding.is_past ? "" : `<br><button type="button" class="link" data-buy="fund" data-ref="${esc(c.id)}" data-milestone="${esc(m.id)}" data-label="${esc(c.name)} · ${esc(m.name)}">Contribute to ${esc(m.name)}</button>`}</span></li>`, 5, `${c.name} milestones`);
+        }));
       }
 
       // Display sponsorship tiers
       if (data.tiers && data.tiers.length > 0) {
         $("sponsor-tiers").hidden = !features.sponsors;
-        $("tiers-display").innerHTML = data.tiers.map(tier => `
+        renderPaginated("tiers-display", data.tiers, tier => `
           <div style="border: 2px solid var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
             <h3 style="margin: 0 0 0.5rem; color: var(--gold);">${esc(tier.name)}</h3>
             <p style="margin: 0 0 1rem; font-size: 1.3rem; font-weight: 700; color: var(--green);">${tier.min_amount_minor == null && window.WSGuestPreview ? "Preview offering - set your price" : WS.money(tier.min_amount_minor, wedding.currency || "USD", false)}</p>
             <p style="margin: 0; font-size: 0.9rem; color: #5a5f5a;">${esc(tier.perks)}</p>
             ${wedding.is_past ? "" : `<button type="button" class="buy-btn" data-buy="sponsor" data-ref="${esc(tier.id)}" data-min="${tier.min_amount_minor}" data-label="${esc(tier.name)} sponsorship">Become a sponsor</button>`}
           </div>
-        `).join("");
+        `, 4, "Sponsorship packages");
       }
 
       // Display VIP offer
@@ -840,16 +895,16 @@
       }).format(new Date(value));
       const featuredNames = new Set((auction?.leaders || []).slice(0, Number(auction?.slot_count) || 0)
         .map(row => String(row.company_name || "").trim().toLowerCase()));
-      let lastSponsorCurrency = "";
-      const sponsorCards = (data.sponsors || []).map(sponsor => {
+      const sponsors = data.sponsors || [];
+      renderPaginated("sponsors-display", sponsors, (sponsor, index) => {
         const currency = sponsor.currency || wedding.currency || "USD";
-        const heading = currency !== lastSponsorCurrency
+        const previousCurrency = sponsors[index - 1]?.currency || wedding.currency || "USD";
+        const heading = index === 0 || currency !== previousCurrency
           ? `<h3 class="sponsor-currency-group">Sponsors supporting in ${esc(currency)}</h3>` : "";
-        lastSponsorCurrency = currency;
         const featured = auction?.currency === currency &&
           featuredNames.has(String(sponsor.company_name || "").trim().toLowerCase()) ? featuredLabel : "";
         return heading + WSSponsorCards.render(sponsor, { currency, featured });
-      }).join("");
+      }, 6, "Sponsors");
       const placeholder = `<article class="sponsor-sample">
         <p class="eyebrow">${wedding.is_showcase ? "Your brand here" : "Sample advert &middot; your brand here"}</p>
         <div class="sponsor-emblem" aria-hidden="true">✦</div>
@@ -858,7 +913,9 @@
         <p class="fine">Imagine your flowers, styling or services here, supporting ${esc(wedding.couple_names || "the couple")}.</p>
         <button type="button" class="buy-btn" id="sponsor-cta" ${wedding.is_past ? "disabled" : ""}>Become a sponsor</button>
       </article>`;
-      $("sponsors-display").innerHTML = features.sponsors ? sponsorCards + placeholder : "";
+      $("sponsors-display").hidden = !features.sponsors;
+      $("sponsors-placeholder").hidden = !features.sponsors;
+      $("sponsors-placeholder").innerHTML = features.sponsors ? placeholder : "";
       sponsorAuctionOpen = auction?.enabled === true && auction.status === "open" && auction.currency === wedding.currency;
       const auctionPanel = $("sponsor-auction");
       auctionPanel.hidden = features.sponsors !== true || features.featured_sponsors !== true || !auction?.enabled;
@@ -870,8 +927,10 @@
               : auction.status === "scheduled" ? "Bidding opens " + esc(auctionTime(auction.starts_at))
                 : "Bidding has closed. Final placements are ranked by verified paid bids."}</p>
           <p class="fine">${Number(auction.slot_count)} featured slots · bids support the wedding fund. Amounts are shown in ${esc(auctionCurrency)}.</p>
-          ${leaders.length ? `<ol>${leaders.map(item => `<li>${esc(item.company_name)} — ${WS.money(item.total_minor, item.currency || auctionCurrency, false)}</li>`).join("")}</ol>` : "<p>No verified featured bids yet.</p>"}
+          ${leaders.length ? '<ol id="featured-sponsor-leaders"></ol><div id="featured-sponsor-leaders-pagination"></div>' : "<p>No verified featured bids yet.</p>"}
           ${auction.status === "open" && auction.currency === wedding.currency && !wedding.is_past ? `<p>Next eligible bid: <strong>${WS.money(auction.next_bid_minor, auctionCurrency, false)}</strong></p><button type="button" class="buy-btn" data-buy="sponsor_featured_bid" data-min="${Number(auction.next_bid_minor)}" data-exact="1" data-label="Featured sponsor bid">Bid for featured placement</button>` : ""}`;
+        if (leaders.length) renderPaginated("featured-sponsor-leaders", leaders,
+          item => `<li>${esc(item.company_name)} — ${WS.money(item.total_minor, item.currency || auctionCurrency, false)}</li>`, 5, "Featured sponsor bids");
       }
     } catch (err) {
       console.warn("Could not load fundraising data:", err);
@@ -879,7 +938,7 @@
     }
   }
 
-  $("sponsors-display").addEventListener("click", e => {
+  $("sponsors").addEventListener("click", e => {
     if (!e.target.closest("#sponsor-cta")) return;
     if (sponsorPackageCount) {
       $("sponsor-tiers").scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1082,6 +1141,12 @@
 
   const normSong = s => String(s || "").trim().replace(/\s+/g, " ").toLowerCase();
   function highlightSong(title, artist) {
+    const state = paginatedLists.get("leaderboard-body");
+    const index = state?.items.findIndex(item => normSong(item.song_title) === normSong(title) && normSong(item.artist_name) === normSong(artist)) ?? -1;
+    if (index >= 0 && state) {
+      state.page = Math.floor(index / state.pageSize) + 1;
+      state.paint();
+    }
     const rows = [...$("leaderboard-body").querySelectorAll("tr")];
     const row = rows.find(r => normSong(r.dataset.title) === normSong(title) && normSong(r.dataset.artist) === normSong(artist));
     const target = row || $("leaderboard-table");
@@ -1520,7 +1585,7 @@ const payIntent = WSPaymentIntent.create({ name: slug });
       }
 
       $("no-bids").hidden = true;
-      $("leaderboard-body").innerHTML = bids.map((b, i) => `
+      renderPaginated("leaderboard-body", bids, (b, i) => `
         <tr style="border-bottom: 1px solid #e3dcc7;" data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}">
           <td class="lb-rank" style="padding: 0.75rem; color: var(--gold);">${i + 1}</td>
           <td class="lb-song" style="padding: 0.75rem;">${esc(b.song_title)}${Number(b.bid_count) > 1 ? ` <small class="fine">(${Number(b.bid_count)} bids)</small>` : ""}</td>
@@ -1528,26 +1593,27 @@ const payIntent = WSPaymentIntent.create({ name: slug });
           <td class="lb-total" style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, b.currency || wedding.currency)}</td>
           <td class="lb-bid" style="padding: 0.75rem;">${wedding.is_past ? "Closed" : `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}">Enter a bid</button>`}</td>
         </tr>
-      `).join("");
+      `, 8, "Song leaderboard");
     } catch (err) {
       console.error("Load bids failed:", err);
     }
   }
 
   // Load contribution ledger
-  async function loadLedger() {
+  async function loadLedger(offset = 0, page = 0, reset = true, focusTarget = "") {
+    if (reset) { ledgerOffsets = [0]; offset = 0; page = 0; }
+    const requestId = ++ledgerRequest;
     try {
-      const res = await fetch(`/api/guest?action=ledger&slug=${encodeURIComponent(slug)}`);
+      const res = await fetch(`/api/guest?action=ledger&slug=${encodeURIComponent(slug)}&offset=${offset}&limit=10`);
       const data = await res.json();
-      if (!res.ok) return;
-
+      if (requestId !== ledgerRequest || !res.ok) return;
       const ledger = data.ledger || [];
       if (ledger.length === 0) {
-        $("no-ledger").hidden = false;
-        return;
+        $("no-ledger").hidden = data.hasMore === true || offset > 0;
+      } else {
+        $("no-ledger").hidden = true;
       }
-
-      $("no-ledger").hidden = true;
+      $("ledger").hidden = ledger.length === 0 && offset === 0 && data.hasMore !== true;
       $("ledger-body").innerHTML = ledger.map(l => `
         <tr style="border-bottom: 1px solid #e3dcc7;">
           <td style="padding: 0.75rem;">${esc(l.contribution_type || l.stream_name || "Contribution")}</td>
@@ -1556,6 +1622,23 @@ const payIntent = WSPaymentIntent.create({ name: slug });
           <td style="padding: 0.75rem; color: var(--sage);">${new Date(l.created_at).toLocaleDateString()}</td>
         </tr>
       `).join("");
+      const controls = $("ledger-body-pagination");
+      const nextOffset = Number(data.nextOffset ?? (offset + ledger.length));
+      const hasNext = data.hasMore === true && nextOffset > offset;
+      const hasPrevious = page > 0;
+      controls.hidden = !hasNext && !hasPrevious;
+      controls.innerHTML = controls.hidden ? "" : `<nav class="list-pagination" aria-label="Guest contributions pages"><button type="button" data-ledger-prev ${hasPrevious ? "" : "disabled"}>Previous</button><span aria-live="polite">Page ${page + 1}</span><button type="button" data-ledger-next ${hasNext ? "" : "disabled"}>Next</button></nav>`;
+      controls.querySelector("[data-ledger-prev]")?.addEventListener("click", () => {
+        const priorPage = page - 1;
+        const priorOffset = ledgerOffsets[priorPage] ?? Math.max(0, offset - 10);
+        loadLedger(priorOffset, priorPage, false, "prev");
+      });
+      controls.querySelector("[data-ledger-next]")?.addEventListener("click", () => {
+        ledgerOffsets = ledgerOffsets.slice(0, page + 1);
+        ledgerOffsets.push(nextOffset);
+        loadLedger(nextOffset, page + 1, false, "next");
+      });
+      if (focusTarget) (controls.querySelector(`[data-ledger-${focusTarget}]:not(:disabled)`) || controls.querySelector("button:not(:disabled)"))?.focus({ preventScroll: true });
       $("ledger").hidden = false;
     } catch (err) {
       console.error("Load ledger failed:", err);

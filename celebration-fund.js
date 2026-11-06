@@ -66,7 +66,7 @@
       <p class="fund-legend-heading">Contributions by source <span>(% of ${m.basis})</span></p>
       <ul class="fund-legend">${m.rows.map(row => `<li><span class="fund-key ${row.key === "remaining" ? "fund-key-empty" : ""}" style="--slice:${row.color}" aria-hidden="true"></span><span>${row.label}</span><strong>${esc(money(row.amount, currency, false))}</strong><span class="fund-share">${row.percent.toFixed(1)}%</span></li>`).join("")}</ul>
       ${m.over ? `<p class="fund-over">Together, ${esc(money(m.total - m.goal, currency, false))} beyond our goal. The full bar shows each source's share of the actual total.</p>` : ""}
-      <p class="fund-note">${sample ? "Illustrative sample figures only; no real contributions or payments are represented." : "Verified contributions, counted once. Refunded, disputed or held portions are excluded; withdrawals do not reduce raised."}</p>
+      <p class="fund-note">Verified contributions, counted once. Refunded, disputed or held portions are excluded; withdrawals do not reduce raised.</p>
     </div>`;
   }
   root.WSCelebrationFund = { model, render };
