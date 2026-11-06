@@ -72,14 +72,22 @@ export function currentShowcase(now = new Date()) {
 }
 
 export const showcaseBids = [
-  { song_title: "Together in the sunshine", artist_name: "Sunlit Notes", bid_amount_minor: 4200000, bid_count: 32 },
-  { song_title: "Garden of joy", artist_name: "The Petal Ensemble", bid_amount_minor: 3100000, bid_count: 24 },
-  { song_title: "One more dance", artist_name: "The Courtyard Quartet", bid_amount_minor: 2600000, bid_count: 19 },
-  { song_title: "Dancing under the stars", artist_name: "Coastline Collective", bid_amount_minor: 2200000, bid_count: 16 },
-  { song_title: "Home is wherever you are", artist_name: "The Sunday Sessions", bid_amount_minor: 1800000, bid_count: 13 },
-  { song_title: "A thousand little adventures", artist_name: "Maji & Moon", bid_amount_minor: 1600000, bid_count: 11 },
-  { song_title: "Our favourite day", artist_name: "The Garden Party", bid_amount_minor: 1400000, bid_count: 9 },
-  { song_title: "Forever starts tonight", artist_name: "Golden Hour Band", bid_amount_minor: 1100000, bid_count: 7 }
+  { song_title: "Chaguo La Moyo", artist_name: "Otile Brown ft. Sanaipei Tande", bid_amount_minor: 4200000, bid_count: 32 },
+  { song_title: "Sura Yako", artist_name: "Sauti Sol", bid_amount_minor: 3100000, bid_count: 24 },
+  { song_title: "Milele", artist_name: "Elani", bid_amount_minor: 2600000, bid_count: 19 },
+  { song_title: "I Do", artist_name: "Willy Paul ft. Alaine", bid_amount_minor: 2200000, bid_count: 16 },
+  { song_title: "Malaika", artist_name: "Nyashinski", bid_amount_minor: 1800000, bid_count: 13 },
+  { song_title: "Short N Sweet", artist_name: "Sauti Sol", bid_amount_minor: 1600000, bid_count: 11 },
+  { song_title: "Kuliko Jana", artist_name: "Sauti Sol", bid_amount_minor: 1400000, bid_count: 9 },
+  { song_title: "Aheri", artist_name: "Nina Ogot", bid_amount_minor: 1100000, bid_count: 7 },
+  { song_title: "Bebi Bebi", artist_name: "Atemi Oyungu", bid_amount_minor: 1000000, bid_count: 6 },
+  { song_title: "Someday", artist_name: "Atemi Oyungu ft. Chris Adwar", bid_amount_minor: 900000, bid_count: 5 },
+  { song_title: "Kidededede", artist_name: "Malindi Choir", bid_amount_minor: 850000, bid_count: 5 },
+  { song_title: "Waambie", artist_name: "Alice Kimanzi", bid_amount_minor: 750000, bid_count: 4 },
+  { song_title: "Zawadi Nono", artist_name: "Benachi", bid_amount_minor: 650000, bid_count: 4 },
+  { song_title: "Umetenda Mema", artist_name: "Kambua", bid_amount_minor: 600000, bid_count: 3 },
+  { song_title: "Follow You", artist_name: "Gloria Muliro", bid_amount_minor: 500000, bid_count: 3 },
+  { song_title: "Mbwe Mbwe", artist_name: "Bien", bid_amount_minor: 450000, bid_count: 2 }
 ];
 export const showcaseLedger = [
   { contribution_type: "Song bid", paid_amount_minor: 4200000, currency: "KES", guest_display_name: "The wedding party", created_at: "2026-11-05T16:00:00Z" },
@@ -90,6 +98,14 @@ export const showcaseLedger = [
   { contribution_type: "Song bid", paid_amount_minor: 1600000, currency: "KES", guest_display_name: "Anonymous", created_at: "2026-11-03T13:00:00Z" },
   { contribution_type: "Song bid", paid_amount_minor: 1400000, currency: "KES", guest_display_name: "The garden friends", created_at: "2026-11-02T15:00:00Z" },
   { contribution_type: "Song bid", paid_amount_minor: 1100000, currency: "KES", guest_display_name: "Cousins near & far", created_at: "2026-11-02T11:00:00Z" },
+  { contribution_type: "Song bid", paid_amount_minor: 1000000, currency: "KES", guest_display_name: "The cousins' table", created_at: "2026-11-02T10:00:00Z" },
+  { contribution_type: "Song bid", paid_amount_minor: 900000, currency: "KES", guest_display_name: "Friends from campus", created_at: "2026-11-02T09:00:00Z" },
+  { contribution_type: "Song bid", paid_amount_minor: 850000, currency: "KES", guest_display_name: "A friend from Kilifi", created_at: "2026-11-02T08:00:00Z" },
+  { contribution_type: "Song bid", paid_amount_minor: 750000, currency: "KES", guest_display_name: "The choir circle", created_at: "2026-11-02T07:00:00Z" },
+  { contribution_type: "Song bid", paid_amount_minor: 650000, currency: "KES", guest_display_name: "The garden crew", created_at: "2026-11-02T06:00:00Z" },
+  { contribution_type: "Song bid", paid_amount_minor: 600000, currency: "KES", guest_display_name: "A generous auntie", created_at: "2026-11-02T05:00:00Z" },
+  { contribution_type: "Song bid", paid_amount_minor: 500000, currency: "KES", guest_display_name: "The dance crew", created_at: "2026-11-02T04:00:00Z" },
+  { contribution_type: "Song bid", paid_amount_minor: 450000, currency: "KES", guest_display_name: "With love from Nairobi", created_at: "2026-11-02T03:00:00Z" },
   { contribution_type: "Registry gift", paid_amount_minor: 8000000, currency: "KES", guest_display_name: "Both families", created_at: "2026-11-01T17:00:00Z" },
   { contribution_type: "Registry gift", paid_amount_minor: 7000000, currency: "KES", guest_display_name: "A dear family friend", created_at: "2026-11-01T12:00:00Z" },
   { contribution_type: "Registry gift", paid_amount_minor: 5500000, currency: "KES", guest_display_name: "Anonymous", created_at: "2026-10-31T16:00:00Z" },
@@ -104,15 +120,15 @@ export const showcaseLedger = [
 export const showcaseFundraising = {
   allow_in_kind_sponsorship: false,
   celebration: {
-    campaign_id: id(7), currency: "KES", goal_minor: 140000000, raised_minor: 114800000,
-    remaining_minor: 25200000, completion_percent: 82, campaign_raised_minor: 68000000,
+    campaign_id: id(7), currency: "KES", goal_minor: 140000000, raised_minor: 120500000,
+    remaining_minor: 19500000, completion_percent: 86, campaign_raised_minor: 68000000,
     sources: [
-      { key: "gifts", amount_minor: 68000000 }, { key: "songs", amount_minor: 18000000 },
+      { key: "gifts", amount_minor: 68000000 }, { key: "songs", amount_minor: 23700000 },
       { key: "registry", amount_minor: 20500000 }, { key: "sponsors", amount_minor: 5000000 },
       { key: "vip", amount_minor: 3300000 }
     ]
   },
-  campaigns: [{ id: id(7), name: "Celebration fund", purpose: "A garden full of love, a table full of laughter. Help us bring our favourite people together for a day to remember.", goal_minor: 140000000, raised_minor: 114800000,
+  campaigns: [{ id: id(7), name: "Celebration fund", purpose: "A garden full of love, a table full of laughter. Help us bring our favourite people together for a day to remember.", goal_minor: 140000000, raised_minor: 120500000,
     milestones: [{ id: id(8), name: "Garden venue", target_minor: 30000000, reached: true, description: "Space for all our favourite people." },
       { id: id(9), name: "Music & memories", target_minor: 80000000, reached: false, description: "The soundtrack to our first dance and every dance after." }] }],
   tiers: [{ id: id(10), name: "Golden celebration partner", min_amount_minor: 1000000, perks: "A clearly labelled sponsor card and a warm thank-you." }],
