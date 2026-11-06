@@ -149,6 +149,8 @@
     document.getElementById("qrcode").textContent = "Preview only - not valid for entry";
     document.getElementById("ecard-guest-name").textContent = "A guest's pass will appear here after their actual RSVP.";
     document.getElementById("reuse-wedding-style").hidden = true;
+    document.documentElement.dataset.previewReady = "true";
+    document.dispatchEvent(new CustomEvent("ws:private-preview-ready"));
   }
   function refreshEditors() {
     if (!ready) return;

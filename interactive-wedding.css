@@ -2,13 +2,24 @@
 .interactive-toolbar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: .8rem 1rem; background: #fffaf0; border-block: 1px solid #d5c6a5; }
 .interactive-toolbar p { flex: 1 1 16rem; margin: 0; }
 .interactive-surface iframe { display: block; width: 100%; height: 82vh; border: 0; }
-.interactive-dialog { width: min(850px, calc(100vw - 2rem)); max-height: 90dvh; padding: 1rem; border: 1px solid #be9b52; border-radius: 12px; box-sizing: border-box; }
-.interactive-dialog::backdrop { background: #10251ec9; }
+.interactive-dialog { width: min(850px, calc(100vw - 2rem)); max-height: 90dvh; padding: 1rem; border: 1px solid #be9b52; border-radius: 12px; box-sizing: border-box; opacity: 0; transform: translateY(8px) scale(.985); transition: opacity .22s ease, transform .22s ease, display .22s allow-discrete, overlay .22s allow-discrete; }
+.interactive-dialog[open] { opacity: 1; transform: translateY(0) scale(1); }
+@starting-style { .interactive-dialog[open] { opacity: 0; transform: translateY(8px) scale(.985); } }
+.interactive-dialog::backdrop { background: rgb(16 37 30 / 0); transition: background-color .22s ease, display .22s allow-discrete, overlay .22s allow-discrete; }
+.interactive-dialog[open]::backdrop { background: #10251ec9; }
+@starting-style { .interactive-dialog[open]::backdrop { background: rgb(16 37 30 / 0); } }
 .interactive-dialog .guide-jump, .interactive-dialog .guide-meter, .interactive-dialog [data-guide-back],
 .interactive-dialog [data-guide-next], .interactive-dialog [data-guide-skip], .interactive-dialog [data-guide-announcement] { display: none; }
 .interactive-dialog .guide-actions { position: static; }
 .interactive-dialog .card { padding: .7rem; }
 .interactive-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.interactive-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+.interactive-header-actions button { min-height: 44px; }
+.interactive-dialog[data-task] .guide-heading { display: none; }
+.interactive-dialog[data-task] .guide-state { margin: .25rem 0; font-size: .8rem; }
+@media (prefers-reduced-motion: reduce) {
+  .interactive-dialog, .interactive-dialog::backdrop { transition-duration: 0s; }
+}
 .interactive-dialog [data-guide-state] { font-weight: 600; }
 .interactive-dialog .editor-filter-hidden { display: none !important; }
 .interactive-dialog .guide-buttons { display: flex; justify-content: flex-end; }

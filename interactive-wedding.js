@@ -19,8 +19,8 @@
       surface.id = "interactive-surface";
       dialog.className = "interactive-dialog";
       dialog.setAttribute("aria-labelledby", "interactive-editor-title");
-      dialog.innerHTML = `<header><h2 id="interactive-editor-title">Edit your wedding</h2><button type="button" data-close-editor>Back to your site</button></header>
-        <p data-close-warning role="alert" hidden>Unsaved changes are still here. Save before returning to your site.</p>
+      dialog.innerHTML = `<header><h2 id="interactive-editor-title">Edit your wedding</h2><div class="interactive-header-actions"><button type="button" data-cancel-editor>Cancel changes</button><button type="button" data-close-editor>Back to your site</button></div></header>
+        <p data-close-warning role="alert" hidden>Save your changes or choose Cancel changes to discard them and return to your site.</p>
         <p data-editor-notice role="status" aria-live="polite" hidden></p>`;
       const edit = $("edit-section");
       edit.before(surface);
@@ -108,6 +108,50 @@
       });
       guide.saved(true);
       let dataPromise, activeEditor;
+      const previewFrame = surface.querySelector("iframe");
+      const previewPositionKey = `ws-editor-preview-position:${weddingId}`;
+      let pendingPreviewPosition = null;
+      try {
+        pendingPreviewPosition = JSON.parse(sessionStorage.getItem(previewPositionKey) || "null");
+        sessionStorage.removeItem(previewPositionKey);
+      } catch (_) {}
+      function capturePreviewPosition() {
+        try {
+          const view = previewFrame.contentWindow, doc = previewFrame.contentDocument;
+          if (!view || !doc) return null;
+          const section = [...doc.querySelectorAll("#wedding-content > section:not([hidden])")]
+            .find(item => { const rect = item.getBoundingClientRect(); return rect.bottom > 0 && rect.top < view.innerHeight; });
+          return {
+            x: view.scrollX, y: view.scrollY,
+            sectionId: section?.id || "",
+            sectionTop: section?.getBoundingClientRect().top ?? 0
+          };
+        } catch (_) { return null; }
+      }
+      function restorePreviewPosition() {
+        const position = pendingPreviewPosition;
+        const view = previewFrame.contentWindow, doc = previewFrame.contentDocument;
+        if (!position || !view || !doc || doc.documentElement.dataset.previewReady !== "true") return;
+        const section = position.sectionId && doc.getElementById(position.sectionId);
+        const top = section
+          ? view.scrollY + section.getBoundingClientRect().top - position.sectionTop
+          : position.y;
+        const root = doc.documentElement, priorScrollBehavior = root.style.scrollBehavior;
+        root.style.scrollBehavior = "auto";
+        view.scrollTo(position.x || 0, Math.max(0, top || 0));
+        requestAnimationFrame(() => { root.style.scrollBehavior = priorScrollBehavior; });
+        pendingPreviewPosition = null;
+        try { sessionStorage.removeItem(previewPositionKey); } catch (_) {}
+      }
+      previewFrame.addEventListener("load", () => {
+        const doc = previewFrame.contentDocument;
+        if (!doc || !pendingPreviewPosition) return;
+        if (doc.documentElement.dataset.previewReady === "true") restorePreviewPosition();
+        else doc.addEventListener("ws:private-preview-ready", restorePreviewPosition, { once: true });
+      });
+      function hasUnsavedChanges() {
+        return guide.hasUnsavedChanges() || $("kyc-form").dataset.unsaved === "true";
+      }
       function refresh() {
         dataPromise = (async () => {
           const response = await WS.api(`/api/weddings?action=preview&weddingId=${encodeURIComponent(weddingId)}`);
@@ -116,7 +160,8 @@
           return data;
         })();
         dataPromise.catch(error => { status.textContent = `Preview unavailable: ${error.message}`; });
-        const frame = surface.querySelector("iframe");
+        if (!pendingPreviewPosition) pendingPreviewPosition = capturePreviewPosition();
+        const frame = previewFrame;
         frame.src = `/guest.html?preview=1&revision=${Date.now()}`;
       }
       function open(step, section, kind) {
@@ -180,6 +225,7 @@
           delete dialog.dataset.task;
           $("interactive-editor-title").textContent = "Finish setup & private details";
         }
+        guide.refresh();
         [...(target?.querySelectorAll("input:not([disabled]), select:not([disabled]), textarea:not([disabled])") || [])]
           .find(element => element.getClientRects().length)?.focus();
       }
@@ -201,11 +247,28 @@
         window.WSInteractiveWedding.revealField($("edit-form").querySelector("input:invalid, select:invalid, textarea:invalid"));
       };
       function close() {
-        if (guide.isSaving() || guide.dirty()) {
+        if (guide.isSaving() || hasUnsavedChanges()) {
           dialog.querySelector("[data-close-warning]").hidden = false;
           return;
         }
         dialog.close();
+      }
+      function cancelChanges() {
+        if (guide.isSaving()) {
+          dialog.querySelector("[data-close-warning]").textContent = "A save is in progress. Wait for it to finish before cancelling.";
+          dialog.querySelector("[data-close-warning]").hidden = false;
+          return;
+        }
+        if (!hasUnsavedChanges()) { dialog.close(); return; }
+        pendingPreviewPosition = capturePreviewPosition() || pendingPreviewPosition;
+        try {
+          if (pendingPreviewPosition) sessionStorage.setItem(previewPositionKey, JSON.stringify(pendingPreviewPosition));
+        } catch (_) {}
+        guide.prepareDiscard();
+        delete $("kyc-form").dataset.unsaved;
+        history.replaceState(history.state, "", location.pathname + location.search);
+        dialog.close();
+        window.setTimeout(() => window.location.reload(), 260);
       }
       window.WSInteractiveGuest = {
         data: () => dataPromise,
@@ -249,11 +312,12 @@
       document.addEventListener("ws:wedding-saved", () => {
         status.textContent = "Saved. Your private preview reflects your saved wedding.";
         refresh();
-        if (!guide.dirty()) dialog.close();
+        if (!hasUnsavedChanges()) dialog.close();
       });
       function liveInput(event) {
         status.textContent = "Unsaved changes. Save in the section editor to update your site.";
-        const frame = surface.querySelector("iframe");
+        if (!pendingPreviewPosition) pendingPreviewPosition = capturePreviewPosition();
+        const frame = previewFrame;
         if (dialog.querySelector('[data-guide-step="theme"]:not([hidden])')) {
           if (event.target.closest("#color-inputs")) $("apply-colors-btn").click();
           const palette = JSON.parse($("palette-preview").dataset.palette || "[]");

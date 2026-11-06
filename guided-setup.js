@@ -53,7 +53,7 @@
     const meter = actions.querySelector(".guide-meter-track");
     const meterFill = actions.querySelector(".guide-meter-fill");
     const meterText = actions.querySelector("[data-guide-meter]");
-    let current = 0, saving = false, snapshot = "", saved = "";
+    let current = 0, saving = false, snapshot = "", saved = "", discardPending = false;
     let pendingCreate = false;
     let savingControls = [];
     let nextAnswerId = 0;
@@ -92,13 +92,17 @@
         setState("Draft answers stay in this tab until you create it.");
       } else {
         const weddingChanges = dirty(), privateChanges = hasExternalChanges();
-        setState(saving ? "Saving changes..." : weddingChanges && privateChanges
+        if (form.closest("dialog")?.hasAttribute("data-task")) {
+          setState(saving ? "Saving…" : weddingChanges || privateChanges ? "Unsaved" : "Saved");
+        } else {
+          setState(saving ? "Saving changes..." : weddingChanges && privateChanges
           ? "Wedding and private identity changes are unsaved. Save each in its section before leaving or reloading."
           : privateChanges
             ? "Private identity details are unsaved. Save them in that section before leaving or reloading."
             : weddingChanges
               ? "Unsaved changes. Next and Skip keep answers on this page; use Save changes before leaving or reloading."
               : "Saved wedding details. You can return to any section.");
+        }
       }
     };
     function label(input) {
@@ -376,7 +380,7 @@
     global.visualViewport?.addEventListener("scroll", syncViewport);
     (global.requestAnimationFrame || setTimeout)(syncViewport);
     global.addEventListener("beforeunload", event => {
-      if (mode === "edit" && (dirty() || hasExternalChanges())) {
+      if (mode === "edit" && !discardPending && (dirty() || hasExternalChanges())) {
         event.preventDefault();
         event.returnValue = "";
       }
@@ -387,6 +391,8 @@
       reveal, validate, dirty, refresh, setState, blockPublication,
       publishSlot: actions.querySelector("[data-guide-publish]"),
       isSaving: () => saving,
+      hasUnsavedChanges: () => dirty() || hasExternalChanges(),
+      prepareDiscard() { discardPending = true; },
       adoptSaved(name) {
         const update = value => { const parsed = JSON.parse(value); parsed[2][name] = segmentFingerprint(name); return JSON.stringify(parsed); };
         saved = update(saved);
