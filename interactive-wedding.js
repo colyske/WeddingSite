@@ -128,10 +128,14 @@
           };
         } catch (_) { return null; }
       }
-      function restorePreviewPosition() {
+      function restorePreviewPosition(early = false) {
         const position = pendingPreviewPosition;
         const view = previewFrame.contentWindow, doc = previewFrame.contentDocument;
-        if (!position || !view || !doc || doc.documentElement.dataset.previewReady !== "true") return;
+        if (!position || !view || !doc) return;
+        if (doc.documentElement.dataset.previewReady !== "true") {
+          if (early) view.scrollTo(position.x || 0, Math.max(0, position.y || 0));
+          return;
+        }
         const section = position.sectionId && doc.getElementById(position.sectionId);
         const top = section
           ? view.scrollY + section.getBoundingClientRect().top - position.sectionTop
@@ -147,7 +151,10 @@
         const doc = previewFrame.contentDocument;
         if (!doc || !pendingPreviewPosition) return;
         if (doc.documentElement.dataset.previewReady === "true") restorePreviewPosition();
-        else doc.addEventListener("ws:private-preview-ready", restorePreviewPosition, { once: true });
+        else {
+          restorePreviewPosition(true);
+          doc.addEventListener("ws:private-preview-ready", () => restorePreviewPosition(), { once: true });
+        }
       });
       function hasUnsavedChanges() {
         return guide.hasUnsavedChanges() || $("kyc-form").dataset.unsaved === "true";
