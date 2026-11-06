@@ -251,6 +251,25 @@
       <div id="prewedding-display" style="display: flex; flex-direction: column; gap: 1.5rem;"></div>
     </section>
 
+    <!-- Sponsorship follows the pre-wedding gatherings. -->
+    <section id="sponsor-tiers" class="card" hidden>
+      <h2>Sponsorship Levels</h2>
+      <p class="fine">Packages include the benefits listed. Sponsors are ordered by verified paid amount, so larger contributions appear higher; package level does not set list order.</p>
+      <div id="tiers-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;"></div>
+    </section>
+    <section id="sponsors" class="card">
+      <h2>Our Sponsors</h2>
+      <p class="fine">Thoughtful brands, beautiful celebrations. Thank you to our paid sponsors.</p>
+      <div id="sponsor-auction" class="card" hidden></div>
+      <div id="sponsors-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
+        <article style="border: 2px dashed var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
+          <h3>Your advert could be here</h3>
+          <p>Support this couple&rsquo;s celebration.</p>
+          <button type="button" class="buy-btn" id="sponsor-cta">Become a sponsor</button>
+        </article>
+      </div>
+    </section>
+
     <!-- Fundraising campaigns -->
     <section id="campaigns" class="card" hidden>
       <h2>A gift for our next chapter</h2>
@@ -328,6 +347,13 @@
       </details>
     </section>
 
+    <!-- Sit a little closer belongs beside the attendance response. -->
+    <section id="vip-section" class="card" hidden>
+      <h2>VIP Seating</h2>
+      <p class="fine">Reserve premium seating and elevate your wedding experience.</p>
+      <div id="vip-display" style="padding: 1.5rem; background: #f8f9f7; border: 2px solid var(--gold); border-radius: 8px;"></div>
+    </section>
+
     <!-- DJ song bids -->
     <section id="bids" class="card" hidden>
       <h2>DJ Song Requests</h2>
@@ -350,6 +376,11 @@
           <tbody id="leaderboard-body"></tbody>
         </table>
         </div>
+        <nav id="leaderboard-pagination" class="list-pagination" aria-label="Song leaderboard pages" hidden>
+          <button type="button" id="bids-prev" aria-label="Previous songs">Previous</button>
+          <span id="bids-page" aria-live="polite"></span>
+          <button type="button" id="bids-next" aria-label="Next songs">Next</button>
+        </nav>
         <p id="no-bids" class="fine">No paid song requests yet. <button type="button" id="no-bids-cta" class="link-btn">Be the first to request a song</button></p>
       </div>
 
@@ -387,47 +418,12 @@
         </thead>
         <tbody id="ledger-body"></tbody>
       </table>
+      <nav id="ledger-pagination" class="list-pagination" aria-label="Contribution history pages" hidden>
+        <button type="button" id="ledger-prev" aria-label="Previous contributions">Previous</button>
+        <span id="ledger-page" aria-live="polite"></span>
+        <button type="button" id="ledger-next" aria-label="Next contributions">Next</button>
+      </nav>
       <p id="no-ledger" class="fine">No contributions yet.</p>
-    </section>
-
-    <!-- Sponsorship tiers -->
-    <section id="sponsor-tiers" class="card" hidden>
-      <h2>Sponsorship Levels</h2>
-      <p class="fine">Packages include the benefits listed. Sponsors are ordered by verified paid amount, so larger contributions appear higher; package level does not set list order.</p>
-      <div id="tiers-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;"></div>
-    </section>
-
-    <!-- VIP seating -->
-    <section id="vip-section" class="card" hidden>
-      <h2>VIP Seating</h2>
-      <p class="fine">Reserve premium seating and elevate your wedding experience.</p>
-      <div id="vip-display" style="padding: 1.5rem; background: #f8f9f7; border: 2px solid var(--gold); border-radius: 8px;"></div>
-    </section>
-
-    <!-- Corporate sponsors -->
-    <section id="sponsors" class="card">
-      <h2>Our Sponsors</h2>
-      <p class="fine">Thoughtful brands, beautiful celebrations. Thank you to our paid sponsors.</p>
-      <div id="sponsor-auction" class="card" hidden></div>
-      <div id="sponsors-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem;">
-        <article style="border: 2px dashed var(--gold); border-radius: 8px; padding: 1.5rem; background: #fafbf9; text-align: center;">
-          <h3>Your advert could be here</h3>
-          <p>Support this couple&rsquo;s celebration.</p>
-          <button type="button" class="buy-btn" id="sponsor-cta">Become a sponsor</button>
-        </article>
-      </div>
-    </section>
-
-    <!-- Seating lookup -->
-    <section id="seating" class="card" hidden>
-      <h2>Find your seat</h2>
-      <p class="fine">Enter the phone number the couple invited you with to see your table. Only your own table is shown.</p>
-      <form id="seat-form">
-        <label for="seat-phone">Phone number</label>
-        <input id="seat-phone" type="tel" inputmode="tel" maxlength="20" required autocomplete="tel" placeholder="+254 700 000000">
-        <button type="submit">Find my table</button>
-      </form>
-      <p id="seat-result" class="notice" role="status" hidden></p>
     </section>
 
     <!-- Digital e-card pass -->
@@ -444,6 +440,18 @@
         <p id="pass-status" style="margin: 0.5rem 0 0; font-weight: 600;"></p>
         <p id="ecard-date" style="margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--gold); font-weight: 600;"></p>
       </div>
+    </section>
+
+    <!-- Seating lookup follows the digital invitation/pass. -->
+    <section id="seating" class="card" hidden>
+      <h2>Find your seat</h2>
+      <p class="fine">Enter the phone number the couple invited you with to see your table. Only your own table is shown.</p>
+      <form id="seat-form">
+        <label for="seat-phone">Phone number</label>
+        <input id="seat-phone" type="tel" inputmode="tel" maxlength="20" required autocomplete="tel" placeholder="+254 700 000000">
+        <button type="submit">Find my table</button>
+      </form>
+      <p id="seat-result" class="notice" role="status" hidden></p>
     </section>
   </main>
 
@@ -547,6 +555,10 @@
   let audioEnabled = false;
   let sponsorPackageCount = 0;
   let sponsorAuctionOpen = false;
+  const LIST_PAGE_SIZE = 10;
+  let leaderboardRows = [];
+  let leaderboardPage = 0;
+  let ledgerPage = 0;
 
   // Load wedding data
   async function loadWedding() {
@@ -717,6 +729,10 @@
       if (!window.WSGuestPreview) await handlePaymentReturn();
       WSWeddingContent.apply(document, wedding.page_content);
       document.dispatchEvent(new CustomEvent("ws:preview-ready"));
+      const restoreScrollY = Number(params.get("restoreScrollY"));
+      if (params.has("restoreScrollY") && Number.isFinite(restoreScrollY)) {
+        requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, restoreScrollY)));
+      }
     } catch (err) {
       console.error("Load failed:", err);
       notice("Network error loading wedding.", true);
@@ -1503,6 +1519,32 @@ const payIntent = WSPaymentIntent.create({ name: slug });
   });
 
   // Load DJ bids/leaderboard
+  function renderLeaderboardPage() {
+    const start = leaderboardPage * LIST_PAGE_SIZE;
+    const rows = leaderboardRows.slice(start, start + LIST_PAGE_SIZE);
+    $("leaderboard-body").innerHTML = rows.map((b, i) => `
+      <tr style="border-bottom: 1px solid #e3dcc7;" data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}">
+        <td class="lb-rank" style="padding: 0.75rem; color: var(--gold);">${start + i + 1}</td>
+        <td class="lb-song" style="padding: 0.75rem;">${esc(b.song_title)}${Number(b.bid_count) > 1 ? ` <small class="fine">(${Number(b.bid_count)} bids)</small>` : ""}</td>
+        <td class="lb-artist" style="padding: 0.75rem; color: var(--sage);">${esc(b.artist_name || "—")}</td>
+        <td class="lb-total" style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, b.currency || wedding.currency)}</td>
+        <td class="lb-bid" style="padding: 0.75rem;">${wedding.is_past ? "Closed" : `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}">Enter a bid</button>`}</td>
+      </tr>
+    `).join("");
+    const pagination = $("leaderboard-pagination");
+    pagination.hidden = leaderboardRows.length <= LIST_PAGE_SIZE;
+    $("bids-page").textContent = `Songs ${start + 1}–${Math.min(start + rows.length, leaderboardRows.length)} of ${leaderboardRows.length}`;
+    $("bids-prev").disabled = leaderboardPage === 0;
+    $("bids-next").disabled = start + LIST_PAGE_SIZE >= leaderboardRows.length;
+  }
+
+  $("bids-prev").addEventListener("click", () => {
+    if (leaderboardPage > 0) { leaderboardPage--; renderLeaderboardPage(); }
+  });
+  $("bids-next").addEventListener("click", () => {
+    if ((leaderboardPage + 1) * LIST_PAGE_SIZE < leaderboardRows.length) { leaderboardPage++; renderLeaderboardPage(); }
+  });
+
   async function loadBids() {
     try {
       const res = await fetch(`/api/guest?action=leaderboard&slug=${encodeURIComponent(slug)}`);
@@ -1510,37 +1552,38 @@ const payIntent = WSPaymentIntent.create({ name: slug });
       if (!res.ok) return;
 
       const bids = data.bids || [];
+      leaderboardRows = bids;
+      leaderboardPage = 0;
       if (bids.length === 0) {
         $("leaderboard-body").replaceChildren();
+        $("leaderboard-pagination").hidden = true;
         $("no-bids").hidden = false;
         return;
       }
 
       $("no-bids").hidden = true;
-      $("leaderboard-body").innerHTML = bids.map((b, i) => `
-        <tr style="border-bottom: 1px solid #e3dcc7;" data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}">
-          <td class="lb-rank" style="padding: 0.75rem; color: var(--gold);">${i + 1}</td>
-          <td class="lb-song" style="padding: 0.75rem;">${esc(b.song_title)}${Number(b.bid_count) > 1 ? ` <small class="fine">(${Number(b.bid_count)} bids)</small>` : ""}</td>
-          <td class="lb-artist" style="padding: 0.75rem; color: var(--sage);">${esc(b.artist_name || "—")}</td>
-          <td class="lb-total" style="padding: 0.75rem; text-align: right; font-weight: 600; color: var(--gold);">${WS.money(b.bid_amount_minor, b.currency || wedding.currency)}</td>
-          <td class="lb-bid" style="padding: 0.75rem;">${wedding.is_past ? "Closed" : `<button type="button" class="buy-btn" data-song-bid data-title="${esc(b.song_title)}" data-artist="${esc(b.artist_name || "")}">Enter a bid</button>`}</td>
-        </tr>
-      `).join("");
+      renderLeaderboardPage();
     } catch (err) {
       console.error("Load bids failed:", err);
     }
   }
 
   // Load contribution ledger
-  async function loadLedger() {
+  async function loadLedger(page = 0) {
     try {
-      const res = await fetch(`/api/guest?action=ledger&slug=${encodeURIComponent(slug)}`);
+      const offset = page * LIST_PAGE_SIZE;
+      const res = await fetch(`/api/guest?action=ledger&slug=${encodeURIComponent(slug)}&offset=${offset}&limit=${LIST_PAGE_SIZE + 1}`);
       const data = await res.json();
       if (!res.ok) return;
 
-      const ledger = data.ledger || [];
+      const received = data.ledger || [];
+      if (page > 0 && received.length === 0) return loadLedger(page - 1);
+      const hasMore = received.length > LIST_PAGE_SIZE;
+      const ledger = received.slice(0, LIST_PAGE_SIZE);
+      ledgerPage = page;
       if (ledger.length === 0) {
         $("no-ledger").hidden = false;
+        $("ledger-pagination").hidden = true;
         return;
       }
 
@@ -1553,11 +1596,23 @@ const payIntent = WSPaymentIntent.create({ name: slug });
           <td style="padding: 0.75rem; color: var(--sage);">${new Date(l.created_at).toLocaleDateString()}</td>
         </tr>
       `).join("");
+      const pagination = $("ledger-pagination");
+      pagination.hidden = page === 0 && !hasMore;
+      $("ledger-page").textContent = `Contributions ${offset + 1}–${offset + ledger.length}`;
+      $("ledger-prev").disabled = page === 0;
+      $("ledger-next").disabled = !hasMore;
       $("ledger").hidden = false;
     } catch (err) {
       console.error("Load ledger failed:", err);
     }
   }
+
+  $("ledger-prev").addEventListener("click", () => {
+    if (ledgerPage > 0) loadLedger(ledgerPage - 1);
+  });
+  $("ledger-next").addEventListener("click", () => {
+    if (!$("ledger-next").disabled) loadLedger(ledgerPage + 1);
+  });
 
   // Smooth scroll for nav links
   document.querySelectorAll("nav.sticky-nav a").forEach(link => {

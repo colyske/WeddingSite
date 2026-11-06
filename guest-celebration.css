@@ -159,6 +159,15 @@ body.guest-page #bids { background: #422f3c !important; color: #fffaf0; }
 .guest-page #leaderboard-table td { padding: 1.25rem .75rem !important; border-bottom: 1px solid #ddd7cb; }
 .guest-page #leaderboard-table .lb-rank { font: italic 1.5rem var(--serif, Georgia, serif); color: var(--rose-ink); }
 .guest-page #leaderboard-table .lb-song { font-family: var(--serif, Georgia, serif); font-size: 1.15rem; }
+.guest-page .list-pagination { display:flex; justify-content:center; align-items:center; gap:.85rem; flex-wrap:wrap; margin:1.1rem 0 .4rem; color:#f3eee3; font-size:.8rem; }
+.guest-page #ledger .list-pagination { color:var(--green); }
+.guest-page .list-pagination[hidden] { display:none !important; }
+.guest-page .list-pagination button { min-width:6rem; padding:.55rem .9rem; border:1px solid currentColor; border-radius:99px !important; background:transparent; color:inherit; font:600 .75rem/1.4 var(--sans,Arial,sans-serif); cursor:pointer; }
+.guest-page #ledger .list-pagination button { color:var(--green); }
+.guest-page .list-pagination button:hover:not(:disabled) { background:#ffffff18; }
+.guest-page #ledger .list-pagination button:hover:not(:disabled) { background:#244b3a0d; }
+.guest-page .list-pagination button:disabled { opacity:.45; cursor:not-allowed; }
+.guest-page .list-pagination span { min-width:10rem; text-align:center; font-variant-numeric:tabular-nums; }
 body.guest-page #bids .song-request { margin-top: 2rem; padding: 1.5rem; border: 1px solid #c4b5ad; background: var(--paper); border-radius: 12px; }
 body.guest-page #ledger { background: var(--paper) !important; }
 .guest-page #ledger-table { margin-top: 3rem; }

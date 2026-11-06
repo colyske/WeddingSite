@@ -124,7 +124,11 @@ export default async function handler(req, res) {
     }
     if (sample && action === "site") return sendJson(res, 200, { wedding: showcase });
     if (sample && action === "leaderboard") return sendJson(res, 200, { bids: showcaseBids });
-    if (sample && action === "ledger") return sendJson(res, 200, { ledger: showcaseLedger });
+    if (sample && action === "ledger") {
+      const offset = Math.max(0, parseInt(req.query.offset || "0"));
+      const limit = Math.min(50, Math.max(1, parseInt(req.query.limit || "50")));
+      return sendJson(res, 200, { ledger: showcaseLedger.slice(offset, offset + limit) });
+    }
     if (sample && action === "fundraising") return sendJson(res, 200, showcaseFundraising);
     if (sample && action === "extras") return sendJson(res, 200, showcaseExtras);
     if (sample && action === "rsvp-count") return sendJson(res, 200, { count: 84 });

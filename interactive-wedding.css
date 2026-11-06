@@ -4,6 +4,12 @@
 .interactive-surface iframe { display: block; width: 100%; height: 82vh; border: 0; }
 .interactive-dialog { width: min(850px, calc(100vw - 2rem)); max-height: 90dvh; padding: 1rem; border: 1px solid #be9b52; border-radius: 12px; box-sizing: border-box; }
 .interactive-dialog::backdrop { background: #10251ec9; }
+.interactive-editor-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.55rem; }
+.interactive-dialog.is-dissolving { animation: editor-dissolve 420ms ease-in forwards; pointer-events:none; }
+.interactive-dialog.is-dissolving::backdrop { animation: backdrop-dissolve 420ms ease-in forwards; }
+@keyframes editor-dissolve { to { opacity:0; transform:translateY(-10px) scale(.985); filter:blur(5px); } }
+@keyframes backdrop-dissolve { to { background:transparent; } }
+@media (prefers-reduced-motion: reduce) { .interactive-dialog.is-dissolving, .interactive-dialog.is-dissolving::backdrop { animation-duration:1ms; } }
 .interactive-dialog .guide-jump, .interactive-dialog .guide-meter, .interactive-dialog [data-guide-back],
 .interactive-dialog [data-guide-next], .interactive-dialog [data-guide-skip], .interactive-dialog [data-guide-announcement] { display: none; }
 .interactive-dialog .guide-actions { position: static; }

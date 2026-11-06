@@ -19,7 +19,7 @@
       surface.id = "interactive-surface";
       dialog.className = "interactive-dialog";
       dialog.setAttribute("aria-labelledby", "interactive-editor-title");
-      dialog.innerHTML = `<header><h2 id="interactive-editor-title">Edit your wedding</h2><button type="button" data-close-editor>Back to your site</button></header>
+      dialog.innerHTML = `<header><h2 id="interactive-editor-title">Edit your wedding</h2><div class="interactive-editor-actions"><button type="button" data-cancel-editor>Cancel</button><button type="button" data-close-editor>Back to your site</button></div></header>
         <p data-close-warning role="alert" hidden>Unsaved changes are still here. Save before returning to your site.</p>
         <p data-editor-notice role="status" aria-live="polite" hidden></p>`;
       const edit = $("edit-section");
@@ -107,7 +107,7 @@
         pageContent, creationContentReviewed: review.querySelector("input").checked
       });
       guide.saved(true);
-      let dataPromise, activeEditor;
+      let dataPromise, activeEditor, editorSnapshot;
       function refresh() {
         dataPromise = (async () => {
           const response = await WS.api(`/api/weddings?action=preview&weddingId=${encodeURIComponent(weddingId)}`);
@@ -117,7 +117,9 @@
         })();
         dataPromise.catch(error => { status.textContent = `Preview unavailable: ${error.message}`; });
         const frame = surface.querySelector("iframe");
-        frame.src = `/guest.html?preview=1&revision=${Date.now()}`;
+        let scrollY = 0;
+        try { scrollY = frame.contentWindow.scrollY || 0; } catch {}
+        frame.src = `/guest.html?preview=1&revision=${Date.now()}&restoreScrollY=${encodeURIComponent(scrollY)}`;
       }
       function open(step, section, kind) {
         if (!section && !kind && dialog.open && activeEditor?.step === step) {
@@ -155,6 +157,12 @@
           venues: ["Wedding-day programme", "#wedding-day-events-list, #add-venue-btn, #wedding-day-events-title"]
         };
         activeEditor = { step, section, kind };
+        if (!dialog.open) {
+          editorSnapshot = {
+            controls: [...$("edit-form").querySelectorAll("input,select,textarea")].map(element => ({ element, value: element.value, checked: element.checked })),
+            pageContent: { ...pageContent }
+          };
+        }
         if (!dialog.open) dialog.showModal();
         dialog.querySelector("[data-close-warning]").hidden = true;
         const target = document.querySelector(`[data-guide-step="${step}"]`);
@@ -207,6 +215,19 @@
         }
         dialog.close();
       }
+      function cancelEditor() {
+        if (guide.isSaving() || !editorSnapshot) return;
+        for (const item of editorSnapshot.controls) {
+          if (!item.element.isConnected) continue;
+          item.element.value = item.value;
+          if ("checked" in item.element) item.element.checked = item.checked;
+          item.element.dispatchEvent(new Event("input", { bubbles: true }));
+          item.element.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        for (const key of Object.keys(pageContent)) delete pageContent[key];
+        Object.assign(pageContent, editorSnapshot.pageContent);
+        dialog.close();
+      }
       window.WSInteractiveGuest = {
         data: () => dataPromise,
         edit: (step, section, kind) => {
@@ -224,6 +245,7 @@
         }
       };
       dialog.querySelector("[data-close-editor]").addEventListener("click", close);
+      dialog.querySelector("[data-cancel-editor]").addEventListener("click", cancelEditor);
       dialog.addEventListener("cancel", event => { event.preventDefault(); close(); });
       dialog.addEventListener("keydown", event => {
         if (event.key !== "Tab") return;
@@ -249,7 +271,7 @@
       document.addEventListener("ws:wedding-saved", () => {
         status.textContent = "Saved. Your private preview reflects your saved wedding.";
         refresh();
-        if (!guide.dirty()) dialog.close();
+        if (!guide.dirty()) { editorSnapshot = null; dialog.classList.add("is-dissolving"); setTimeout(() => { dialog.close(); dialog.classList.remove("is-dissolving"); }, 420); }
       });
       function liveInput(event) {
         status.textContent = "Unsaved changes. Save in the section editor to update your site.";

@@ -75,12 +75,6 @@
       <p id="moderation-status" role="status" aria-live="polite"></p>
     </div>
     <div id="edit-section" class="card" hidden>
-      <aside id="starter-review-note" class="notice" hidden>
-        <h3>Review your starter setup</h3>
-        <p data-starter-review-note></p>
-        <p>These are the choices made at creation, not a claim that the wedding is ready to publish.</p>
-        <p><a href="#step=money">Decide about the style's amounts</a> · <a href="#step=giving">Review offerings and prices</a> · <a href="#step=campaigns">Set your fundraising goals</a> · <a href="#step=guests">Review RSVP fees and meals</a> · <a href="#step=venues">Personalize event plans</a> · <a href="#step=theme">Review attire</a> · <a href="#step=extras">Review travel and FAQ</a></p>
-      </aside>
       <form id="edit-form" novalidate>
         <section data-guide-step="couple" data-guide-title="Couple & welcome">
         <p class="fine">Start with your names and site address. Your welcome message can wait.</p>
@@ -1313,7 +1307,6 @@
         if (!res.ok) throw new Error(data.error || "We couldn't save that choice. Please try again.");
         if (decision === "omit" && weddingGuide?.dirty()) {
           window.__wedding = { ...window.__wedding, starter_pending_setup: null, starter_review_note: null };
-          $("starter-review-note").hidden = true;
           renderStarterPending();
           weddingGuide.refresh();
           notice("Done. The style's amounts were left out. Your other answers are still on this page; save them when you're ready.");
@@ -1513,8 +1506,6 @@
         document.title = `${w.couple_names || "Wedding"} — Wedding`;
         $("title").textContent = document.title;
         $("couple-names").value = w.couple_names || "";
-        $("starter-review-note").hidden = !w.starter_review_note;
-        $("starter-review-note").querySelector("[data-starter-review-note]").textContent = w.starter_review_note || "";
         suggestAddress = !w.couple_names?.trim();
         $("wedding-slug").value = suggestAddress ? "" : w.slug || "";
         updateAddressPreview();
