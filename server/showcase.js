@@ -5,7 +5,7 @@ const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 export const isShowcase = value => [SHOWCASE_SLUG, SHOWCASE_ID].includes(String(value || "").toLowerCase());
 export const showcase = {
   id: SHOWCASE_ID, slug: SHOWCASE_SLUG, is_showcase: true, couple_names: "Amara & Kito",
-  wedding_date: "2099-08-16", time_zone: "Africa/Nairobi", currency: "KES",
+  wedding_date: "2027-03-06", time_zone: "Africa/Nairobi", currency: "KES",
   published_at: "2026-10-29T00:00:00Z", public_location: "Azure Gardens, Diani",
   welcome_story: "It started with a borrowed watering can. Amara had a row of sunflowers to rescue; Kito had absolutely no idea how to help. He stayed anyway.\n\nOne garden afternoon became a thousand little adventures: Sunday markets, long walks by the ocean, burnt pancakes, and a playlist that somehow always ended with one more dance. Somewhere between the laughter and the everyday, friendship became home.\n\nNow comes our favourite adventure yet. Under the garden trees, with the people who have loved us along the way, we are choosing forever. Come for the vows. Stay for the cake. Bring your whole heart.",
   palette: ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"],
@@ -13,13 +13,13 @@ export const showcase = {
   attire_notes: "Formal African elegance or traditional attire. Choose a colour from our shared wedding palette and comfortable shoes for the garden.",
   max_guest_capacity: 150, rsvp_fee_minor: 0, allow_in_kind_sponsorship: false,
   venues: [
-    { id: id(12), name: "Family introductions & blessing", event_date: "2099-06-07", event_time: "14:00", kind: "pre", address: "Family Homestead, Diani", description: "Two families, one table. Stories, introductions and a traditional blessing for the journey ahead.", is_main: false },
-    { id: id(13), name: "Pre-wedding fundraiser", event_date: "2099-07-12", event_time: "14:00", kind: "pre", address: "Community Hall, Ukunda", description: "An afternoon of music and shared dreams. Your company is the loveliest contribution of all.", is_main: false },
-    { id: id(14), name: "Bridal celebration & committee gathering", event_date: "2099-08-02", event_time: "15:00", kind: "pre", address: "Palm Courtyard, Diani", description: "Flowers in our hair, laughter in the courtyard, and the final little plans coming together.", is_main: false },
-    { id: id(2), name: "Family welcome & tea", event_date: "2099-08-14", event_time: "15:00", kind: "pre", address: "Family Courtyard, Diani", description: "Meet the families, share stories and enjoy an afternoon of music.", is_main: false },
-    { id: id(3), name: "Rehearsal & sunset dinner", event_date: "2099-08-15", event_time: "17:00", kind: "pre", address: "Garden Terrace, Diani", description: "A relaxed rehearsal for the wedding party, followed by dinner under a peach-coloured sky.", is_main: false },
-    { id: id(4), name: "Garden ceremony", event_date: "2099-08-16", event_time: "11:00", kind: "main", address: "Azure Gardens, Diani", description: "A canopy of trees, our favourite people, and two very happy hearts. Please be seated before the vows; this is our unplugged moment.", is_main: true },
-    { id: id(5), name: "Lunch, toasts & reception", event_date: "2099-08-16", event_time: "13:00", kind: "main", address: "Azure Pavilion, Diani", description: "A generous lunch, happy tears, a slice of cake and a dance floor for every generation.", is_main: false }
+    { id: id(12), name: "Family introductions & blessing", event_date: "2027-01-09", event_time: "14:00", kind: "pre", address: "Family Homestead, Diani", description: "Two families, one table. Stories, introductions and a traditional blessing for the journey ahead.", is_main: false },
+    { id: id(13), name: "Pre-wedding fundraiser", event_date: "2027-02-06", event_time: "14:00", kind: "pre", address: "Community Hall, Ukunda", description: "An afternoon of music and shared dreams. Your company is the loveliest contribution of all.", is_main: false },
+    { id: id(14), name: "Bridal celebration & committee gathering", event_date: "2027-02-20", event_time: "15:00", kind: "pre", address: "Palm Courtyard, Diani", description: "Flowers in our hair, laughter in the courtyard, and the final little plans coming together.", is_main: false },
+    { id: id(2), name: "Family welcome & tea", event_date: "2027-03-04", event_time: "15:00", kind: "pre", address: "Family Courtyard, Diani", description: "Meet the families, share stories and enjoy an afternoon of music.", is_main: false },
+    { id: id(3), name: "Rehearsal & sunset dinner", event_date: "2027-03-05", event_time: "17:00", kind: "pre", address: "Garden Terrace, Diani", description: "A relaxed rehearsal for the wedding party, followed by dinner under a peach-coloured sky.", is_main: false },
+    { id: id(4), name: "Garden ceremony", event_date: "2027-03-06", event_time: "11:00", kind: "main", address: "Azure Gardens, Diani", description: "A canopy of trees, our favourite people, and two very happy hearts. Please be seated before the vows; this is our unplugged moment.", is_main: true },
+    { id: id(5), name: "Lunch, toasts & reception", event_date: "2027-03-06", event_time: "13:00", kind: "main", address: "Azure Pavilion, Diani", description: "A generous lunch, happy tears, a slice of cake and a dance floor for every generation.", is_main: false }
   ],
   registry: [{ id: id(6), name: "Our first home", category: "Home, sweet home", description: "For slow Sunday breakfasts, a table full of friends, and all the everyday magic of building a life together.", target_amount_minor: 25000000, amount_raised_minor: 20500000 }],
   tiers: [], vip: null
