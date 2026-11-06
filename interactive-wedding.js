@@ -246,12 +246,51 @@
       window.WSInteractiveWedding.revealInvalid = () => {
         window.WSInteractiveWedding.revealField($("edit-form").querySelector("input:invalid, select:invalid, textarea:invalid"));
       };
+      function dismissDialog(afterClose) {
+        if (!dialog.open) { afterClose?.(); return; }
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          dialog.close();
+          afterClose?.();
+          return;
+        }
+        const dust = document.createElement("span");
+        dust.className = "editor-gold-dust";
+        dust.setAttribute("aria-hidden", "true");
+        for (let index = 0; index < 28; index++) {
+          const angle = Math.PI * 2 * index / 28;
+          const distance = 24 + Math.random() * 72;
+          const particle = document.createElement("i");
+          particle.style.setProperty("--particle-x", `${12 + Math.random() * 76}%`);
+          particle.style.setProperty("--particle-y", `${10 + Math.random() * 80}%`);
+          particle.style.setProperty("--particle-dx", `${Math.round(Math.cos(angle) * distance)}px`);
+          particle.style.setProperty("--particle-dy", `${Math.round(Math.sin(angle) * distance - 24)}px`);
+          particle.style.setProperty("--particle-size", `${2 + Math.random() * 3}px`);
+          particle.style.setProperty("--particle-delay", `${Math.random() * 150}ms`);
+          dust.append(particle);
+        }
+        dialog.append(dust);
+        let finished = false, timeoutId;
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          window.clearTimeout(timeoutId);
+          dialog.removeEventListener("animationend", onAnimationEnd);
+          dialog.close();
+          dust.remove();
+          dialog.classList.remove("is-dissolving");
+          afterClose?.();
+        };
+        const onAnimationEnd = event => { if (event.target === dialog) finish(); };
+        dialog.addEventListener("animationend", onAnimationEnd);
+        dialog.classList.add("is-dissolving");
+        timeoutId = window.setTimeout(finish, 900);
+      }
       function close() {
         if (guide.isSaving() || hasUnsavedChanges()) {
           dialog.querySelector("[data-close-warning]").hidden = false;
           return;
         }
-        dialog.close();
+        dismissDialog();
       }
       function cancelChanges() {
         if (guide.isSaving()) {
@@ -259,7 +298,7 @@
           dialog.querySelector("[data-close-warning]").hidden = false;
           return;
         }
-        if (!hasUnsavedChanges()) { dialog.close(); return; }
+        if (!hasUnsavedChanges()) { dismissDialog(); return; }
         pendingPreviewPosition = capturePreviewPosition() || pendingPreviewPosition;
         try {
           if (pendingPreviewPosition) sessionStorage.setItem(previewPositionKey, JSON.stringify(pendingPreviewPosition));
@@ -267,8 +306,7 @@
         guide.prepareDiscard();
         delete $("kyc-form").dataset.unsaved;
         history.replaceState(history.state, "", location.pathname + location.search);
-        dialog.close();
-        window.setTimeout(() => window.location.reload(), 260);
+        dismissDialog(() => window.location.reload());
       }
       window.WSInteractiveGuest = {
         data: () => dataPromise,
@@ -287,6 +325,7 @@
         }
       };
       dialog.querySelector("[data-close-editor]").addEventListener("click", close);
+      dialog.querySelector("[data-cancel-editor]").addEventListener("click", cancelChanges);
       dialog.addEventListener("cancel", event => { event.preventDefault(); close(); });
       dialog.addEventListener("keydown", event => {
         if (event.key !== "Tab") return;
@@ -312,7 +351,7 @@
       document.addEventListener("ws:wedding-saved", () => {
         status.textContent = "Saved. Your private preview reflects your saved wedding.";
         refresh();
-        if (!hasUnsavedChanges()) dialog.close();
+        if (!hasUnsavedChanges()) dismissDialog();
       });
       function liveInput(event) {
         status.textContent = "Unsaved changes. Save in the section editor to update your site.";
@@ -353,8 +392,7 @@
         else if (target?.closest("#wedding-workspace") && !guide.dirty()) {
           document.body.dataset.finishing = "true";
           $("wedding-workspace").open = true;
-          dialog.close();
-          target.scrollIntoView();
+          dismissDialog(() => target.scrollIntoView());
         }
       }
       window.addEventListener("hashchange", fromLocation);

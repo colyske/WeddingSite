@@ -18,9 +18,24 @@
 .interactive-dialog[data-task] .guide-heading { display: none; }
 .interactive-dialog[data-task] .guide-state { margin: .25rem 0; font-size: .8rem; }
 @media (prefers-reduced-motion: reduce) {
+  .interactive-dialog.is-dissolving { animation: none !important; }
+  .editor-gold-dust i { animation: none !important; }
   .interactive-dialog, .interactive-dialog::backdrop { transition-duration: 0s; }
 }
 .interactive-dialog [data-guide-state] { font-weight: 600; }
+.interactive-dialog.is-dissolving { pointer-events: none; animation: editor-gold-dissolve .78s cubic-bezier(.22, .78, .25, 1) forwards; }
+.editor-gold-dust { position: absolute; inset: 0; z-index: 8; overflow: hidden; pointer-events: none; }
+.editor-gold-dust i { position: absolute; left: var(--particle-x); top: var(--particle-y); width: var(--particle-size); height: var(--particle-size); border-radius: 50%; background: radial-gradient(circle, #fff8d7 0 18%, #e5c56f 46%, #be9b52 62%, transparent 76%); box-shadow: 0 0 9px #e9cb7b99; opacity: 0; animation: editor-gold-particle .72s var(--particle-delay) ease-out forwards; }
+@keyframes editor-gold-dissolve {
+  0% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0) saturate(1); }
+  35% { opacity: .98; filter: blur(.2px) saturate(1.08); }
+  100% { opacity: 0; transform: translateY(-8px) scale(.975); filter: blur(7px) saturate(1.3); }
+}
+@keyframes editor-gold-particle {
+  0% { opacity: 0; transform: translate3d(0, 0, 0) scale(.2); }
+  16% { opacity: .95; }
+  100% { opacity: 0; transform: translate3d(var(--particle-dx), var(--particle-dy), 0) scale(0); }
+}
 .interactive-dialog .editor-filter-hidden { display: none !important; }
 .interactive-dialog .guide-buttons { display: flex; justify-content: flex-end; }
 .interactive-dialog .guide-buttons [data-guide-save] { flex: 0 0 auto; min-width: 9rem; white-space: nowrap; }
