@@ -167,9 +167,14 @@
           return data;
         })();
         dataPromise.catch(error => { status.textContent = `Preview unavailable: ${error.message}`; });
-        if (!pendingPreviewPosition) pendingPreviewPosition = capturePreviewPosition();
         const frame = previewFrame;
-        frame.src = `/guest.html?preview=1&revision=${Date.now()}`;
+        if (typeof frame.contentWindow?.WSGuestPreviewRefresh === "function") {
+          pendingPreviewPosition = null;
+          frame.contentWindow.WSGuestPreviewRefresh();
+        } else {
+          if (!pendingPreviewPosition) pendingPreviewPosition = capturePreviewPosition();
+          frame.src = `/guest.html?preview=1&revision=${Date.now()}`;
+        }
       }
       function open(step, section, kind) {
         if (!section && !kind && dialog.open && activeEditor?.step === step) {

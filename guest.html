@@ -570,11 +570,13 @@
       };
       if (wedding.is_showcase) {
         document.body.dataset.showcase = "true";
-        const banner = document.createElement("aside");
-        banner.className = "showcase-banner";
-        banner.setAttribute("role", "note");
-        banner.textContent = "Demo";
-        document.querySelector(".logo-section").append(banner);
+        if (!document.querySelector(".showcase-banner")) {
+          const banner = document.createElement("aside");
+          banner.className = "showcase-banner";
+          banner.setAttribute("role", "note");
+          banner.textContent = "Demo";
+          document.querySelector(".logo-section").append(banner);
+        }
         $("ecard").hidden = false;
         $("ecard-guest-name").textContent = "Our dear guest";
         $("qrcode").textContent = "Not valid for entry";
@@ -722,6 +724,7 @@
       notice("Network error loading wedding.", true);
     }
   }
+  if (window.WSGuestPreview) window.WSGuestPreviewRefresh = loadWedding;
 
   function paletteFigs(w) {
     const names = w.palette_names || [];
