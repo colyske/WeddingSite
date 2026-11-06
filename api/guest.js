@@ -6,7 +6,7 @@ import { normalizePhone, phoneKeyEmail } from "../server/phone.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { canonicalWeddingUrl, classifyHost, isSubdomainSlug, weddingBaseDomain } from "../server/site-hosts.js";
-import { isShowcase, showcase, showcaseBids, showcaseLedger, showcaseFundraising, showcaseExtras } from "../server/showcase.js";
+import { isShowcase, currentShowcase, showcaseBids, showcaseLedger, showcaseFundraising, showcaseExtras } from "../server/showcase.js";
 import { contentError } from "../server/content-policy.js";
 import "../social-links.js";
 import { publicWeddingStyle } from "../server/wedding-style.js";
@@ -122,7 +122,7 @@ export default async function handler(req, res) {
       res.setHeader("Cache-Control", failed ? "no-store" : "public, max-age=0, s-maxage=300");
       return res.end(JSON.stringify({ currency }));
     }
-    if (sample && action === "site") return sendJson(res, 200, { wedding: showcase });
+    if (sample && action === "site") return sendJson(res, 200, { wedding: currentShowcase() });
     if (sample && action === "leaderboard") return sendJson(res, 200, { bids: showcaseBids });
     if (sample && action === "ledger") {
       const offset = Math.max(0, parseInt(req.query.offset || "0") || 0);
@@ -159,7 +159,7 @@ export default async function handler(req, res) {
         return res.end();
       }
       const slug = host.kind === "wedding" ? host.slug : "";
-      const site = isShowcase(slug) ? showcase : slug ? await rpc("get_public_wedding_site", { p_slug: slug }).catch(() => null) : null;
+      const site = isShowcase(slug) ? currentShowcase() : slug ? await rpc("get_public_wedding_site", { p_slug: slug }).catch(() => null) : null;
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Cache-Control", "public, max-age=0, s-maxage=60");
       res.setHeader("Vary", "Host");
@@ -174,7 +174,7 @@ export default async function handler(req, res) {
     if (action === "og") {
       if (!methodOnly(req, res, "GET")) return;
       const slug = String(req.query.slug || "").toLowerCase();
-      const site = isShowcase(slug) ? showcase : /^[a-z0-9-]{3,80}$/.test(slug) ? await rpc("get_public_wedding_site", { p_slug: slug }).catch(() => null) : null;
+      const site = isShowcase(slug) ? currentShowcase() : /^[a-z0-9-]{3,80}$/.test(slug) ? await rpc("get_public_wedding_site", { p_slug: slug }).catch(() => null) : null;
       const ref = REF.test(String(req.query.ref || "")) ? String(req.query.ref) : "";
       if (site?.id && weddingBaseDomain() && isSubdomainSlug(slug)) {
         res.statusCode = 308;

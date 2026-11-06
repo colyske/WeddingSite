@@ -24,6 +24,53 @@ export const showcase = {
   registry: [{ id: id(6), name: "Our first home", category: "Home, sweet home", description: "For slow Sunday breakfasts, a table full of friends, and all the everyday magic of building a life together.", target_amount_minor: 25000000, amount_raised_minor: 20500000 }],
   tiers: [], vip: null
 };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const BASE_WEDDING_DATE = showcase.wedding_date;
+function utcDate(value) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+function addCalendarMonths(date, amount) {
+  const monthStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + amount, 1));
+  const lastDay = new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth(), Math.min(date.getUTCDate(), lastDay)));
+}
+function nextSaturday(date) {
+  const result = new Date(date);
+  while (result.getUTCDay() !== 6) result.setUTCDate(result.getUTCDate() + 1);
+  return result;
+}
+function nairobiToday(now) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(now);
+  const part = type => Number(parts.find(item => item.type === type)?.value);
+  return new Date(Date.UTC(part("year"), part("month") - 1, part("day")));
+}
+function shiftDate(value, days) {
+  if (!value) return value;
+  return new Date(utcDate(value).getTime() + days * DAY_MS).toISOString().slice(0, 10);
+}
+
+// Keep the sample date stable until it is within 77 days, then roll to a Saturday
+// about four months after that threshold. This is computed per request, not stored.
+export function currentShowcase(now = new Date()) {
+  const today = nairobiToday(now);
+  const baseDate = utcDate(BASE_WEDDING_DATE);
+  let target = new Date(baseDate);
+  while (target.getTime() - today.getTime() <= 77 * DAY_MS) {
+    const thresholdDate = new Date(target.getTime() - 77 * DAY_MS);
+    target = nextSaturday(addCalendarMonths(thresholdDate, 4));
+  }
+  const dayShift = Math.round((target.getTime() - baseDate.getTime()) / DAY_MS);
+  return {
+    ...showcase,
+    wedding_date: target.toISOString().slice(0, 10),
+    venues: showcase.venues.map(venue => ({ ...venue, event_date: shiftDate(venue.event_date, dayShift) }))
+  };
+}
+
 export const showcaseBids = [
   { song_title: "Together in the sunshine", artist_name: "Sunlit Notes", bid_amount_minor: 4200000, bid_count: 32 },
   { song_title: "Garden of joy", artist_name: "The Petal Ensemble", bid_amount_minor: 3100000, bid_count: 24 },
