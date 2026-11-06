@@ -37,9 +37,9 @@
     const main = document.getElementById("wedding-content");
     const active = document.activeElement;
     for (const id of [
-      "welcome", "countdown-band", "past-banner", "story", "details", "venues", "prewedding", "info-section",
-      "rsvp", "ecard", "campaigns", "registry", "bids", "ledger", "sponsors", "sponsor-tiers",
-      "vip-section", "seating", "guestbook", "share-section"
+      "welcome", "countdown-band", "past-banner", "story", "details", "venues", "prewedding",
+      "sponsors", "sponsor-tiers", "info-section", "campaigns", "registry", "bids", "ledger",
+      "rsvp", "vip-section", "ecard", "seating", "guestbook", "share-section"
     ]) {
       const section = document.getElementById(id);
       if (section?.parentElement === main) main.append(section);
