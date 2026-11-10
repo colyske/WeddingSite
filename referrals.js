@@ -17,13 +17,13 @@
       $("referral-copy").disabled = !account.opted_in;
       $("referral-withdraw").disabled = !account.opted_in;
     }
-    $("referral-count").textContent = `${summary.referral_count} wedding referral(s). Payable: zero.`;
+    $("referral-count").textContent = `${summary.referral_count} wedding referral(s). Commission is paid manually after the wedding date and cleared funds.`;
     $("referral-results").replaceChildren(...summary.weddings.map(row => {
       const p = document.createElement("p");
-      const eligibility = row.excluded_by_account_link ? "ineligible (provable owner/client account link)" :
-        row.eligible ? "eligible for prospective estimates" : "ineligible (created before program activation)";
+      const eligibility = row.excluded_by_account_link ? "not eligible (account is connected to this wedding)" :
+        row.eligible ? "eligible for commission tracking" : "not eligible (wedding created before program activation)";
       p.textContent = `Reference ${row.reference}: ${eligibility}. ` +
-        (row.currency ? `Verified net basis ${WSReferrals.money(row.verified_basis_minor, row.currency)}; HELD estimate ${WSReferrals.money(row.held_estimate_minor, row.currency)}; payable ${WSReferrals.money("0", row.currency)}.` : "No contributions recorded.");
+        (row.currency ? `Verified net basis ${WSReferrals.money(row.verified_basis_minor, row.currency)}; tracked 2% commission ${WSReferrals.money(row.held_estimate_minor, row.currency)}. Manual payout is arranged after the wedding date and cleared funds.` : "No contributions recorded yet.");
       return p;
     }));
   }
@@ -35,7 +35,7 @@
     try {
       await WSReferrals.request("consent", { optedIn: true, termsVersion: "client-referrals-v1" });
       await load();
-      notice("Opt-in consent recorded. Estimates remain held; nothing is payable.");
+      notice("You’re opted in. Your referral link and eligible commission activity are ready to track.");
     } catch (error) { notice(error.message); }
     finally { button.disabled = false; }
   });

@@ -18,6 +18,15 @@ for (const page of ["privacy.html", "terms.html"]) {
   });
 }
 
+test("facilitator guide uses product SVG artwork and positive manual commission wording", () => {
+  const html = read("facilitator.html");
+  assert.match(html, /class="facilitator-art"/);
+  assert.match(html, /role="img" aria-labelledby="facilitator-art-title/);
+  assert.match(html, /2% commission/i);
+  assert.match(html, /manual payout after the wedding date and cleared funds/i);
+  assert.doesNotMatch(html, /HELD estimates only|payable: zero|no transfer route|doesn.t enable payouts/i);
+});
+
 test("privacy policy covers the actual data practices", () => {
   const html = read("privacy.html");
   for (const topic of [/phone number/i, /both partners/i, /referral/i, /sponsored/i, /Paystack/, /Daraja/, /Google/, /session storage/i, /archived, not deleted/i, /assistant/i, /Turnstile/])

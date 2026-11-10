@@ -251,8 +251,8 @@
         `The current platform referral rate is ${d.enabled ? (d.rate_basis_points / 100).toFixed(2) : "0.00"}% of verified live money raised. ` +
         `The configured platform percentage fee is ${(d.platform_fee_basis_points / 100).toFixed(2)}%` +
         (BigInt(d.platform_fixed_fee_minor) > 0n ? ` plus the applicable quoted fixed fee (${d.platform_fixed_fee_currency}). ` : ". ") +
-        `Any future commission is capped by available platform revenue after costs and commitments, never deducted from your net or provider amounts. ` +
-        `Referral estimates are calculated from eligible live contributions. Platform rate changes affect new contributions only. ` +
+        `The Platform arranges manual facilitator commission payout after the wedding date and cleared funds. Commissions are not deducted from your net or provider amounts. ` +
+        `Referral commission is calculated from eligible verified live contributions. Platform rate changes affect new contributions only. ` +
         `Attribution is fixed when you create this wedding; you can decline it now. Terms: ${d.terms_version}.`;
     }
     referralReady = true;
