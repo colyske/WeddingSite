@@ -17,7 +17,7 @@
   const href = path => (window.WSSite && window.WSSite.platformUrl) ? window.WSSite.platformUrl(path) : (onWedding ? "https://joinourwedding.site" + path : path);
   const links = document.createElement("div");
   links.style.marginTop = ".35rem";
-  [["Privacy Policy", "/privacy.html"], ["Terms of Service", "/terms.html"]].forEach(([label, path], i) => {
+  [["Facilitator Guide", "/facilitator.html"], ["Privacy Policy", "/privacy.html"], ["Terms of Service", "/terms.html"]].forEach(([label, path], i) => {
     if (i) links.appendChild(document.createTextNode(" \u00B7 "));
     const a = document.createElement("a");
     a.href = href(path);
