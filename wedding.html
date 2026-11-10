@@ -48,7 +48,7 @@
               <a href="/account.html" class="link" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer; text-decoration: none; color: #0066cc;">Account Settings</a>
               <button type="button" class="link" id="change-password" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer;">Change password</button>
               <a href="/admin.html" class="link" style="display: none;" id="admin-dashboard" title="Admin Dashboard">Admin Dashboard</a>
-              <a href="/owner.html" class="link" style="display: none;" id="owner-profile" title="Owner dashboard">Owner dashboard</a>
+              <a href="/owner.html" class="link" style="display: none;" id="owner-profile" title="Platform settings">Platform settings</a>
               <hr style="margin: 0.5rem 0; border: none; border-top: 1px solid #ddd;">
               <button type="button" class="link" id="account-sign-out" style="display: block; text-align: left; width: 100%; padding: 0.5rem 0; border: none; background: none; cursor: pointer;">Sign out</button>
             </div>
@@ -500,14 +500,14 @@
       <h2>💰 Payouts & Withdrawals</h2>
       <section id="simple-payout-couple" aria-live="polite">Loading payout balance and requests...</section>
       <details id="old-payout-history"><summary>Older payout requests and accounting history</summary>
-      <p class="notice" id="manual-payout-status">Manual admission status is being checked. Manual requests are staff-controlled and require separately reviewed operational readiness. A request is not a payment: review, an external execution claim, a unique receipt and statement reconciliation are required. Staff need two distinct authorized actors; the protected Owner may explicitly use audited solo manual mode. Uncertain transfers stay held; payment is never instant. Test payments and direct-settled funds cannot be withdrawn here.</p>
+      <p class="notice" id="manual-payout-status">Manual admission status is being checked. Manual requests are staff-controlled and require separately reviewed operational readiness. A request is not a payment: review, an external execution claim, a unique receipt and statement reconciliation are required. Staff need two distinct authorized actors; an authorized platform lead may use audited single-operator mode in limited cases. Uncertain transfers stay held; payment is never instant. Test payments and direct-settled funds cannot be withdrawn here.</p>
       <p class="notice" id="payout-kyc-notice" role="status">Add both partners&rsquo; private identity details before requesting a payout. <a href="#kyc-section">Complete identity details</a>. Publishing is not blocked.</p>
       
       <section id="paystack-onboarding" class="notice" aria-labelledby="paystack-onboarding-title">
         <h3 id="paystack-onboarding-title">Direct settlement to your verified account</h3>
         <p>The receiving account is verified separately from the identity details collected here. Publishing is not blocked by either. Money sent directly to your account is not part of the balance available to withdraw through Join Our Wedding.</p>
         <p id="paystack-onboarding-status" role="status">Checking onboarding status...</p>
-        <label><input id="paystack-destination-consent" type="checkbox" disabled> I have confirmed the receiving account with the platform Owner and consent to direct settlement there, less platform and applicable payment fees.</label>
+        <label><input id="paystack-destination-consent" type="checkbox" disabled> I have confirmed the receiving account with an authorized platform representative and consent to direct settlement there, less platform and applicable payment fees.</label>
         <button id="paystack-consent-submit" type="button" disabled>Consent to verified destination</button>
         <button id="paystack-onboarding-reload" type="button">Refresh onboarding status</button>
         <div id="paystack-settlement-rows" aria-live="polite"></div>
@@ -750,7 +750,7 @@
       
       if (roleWedding === "owner") {
         $("owner-profile").style.display = "block";
-        $("owner-profile").textContent = "Owner dashboard";
+        $("owner-profile").textContent = "Platform settings";
         $("owner-profile").href = "/owner.html";
       }
     }
@@ -2517,7 +2517,7 @@
           }
           const manual = balData.manual;
           $("manual-payout-status").textContent = manual?.enabled ?
-            "Staff manual admission is currently ready. Requests are reviewed, never instant or automatically sent. Attributable settled net, verified recipient and exact transfer evidence remain required; Owner solo processing is explicitly audited. Merchant liquidity is checked externally, not guaranteed." :
+            "Staff manual admission is currently ready. Requests are reviewed, never instant or automatically sent. Attributable settled net, verified recipient and exact transfer evidence remain required; Single-operator processing is explicitly audited. Merchant liquidity is checked externally, not guaranteed." :
             "Staff manual admission is OFF or not ready. Existing reservations and uncertain outcomes stay held; evidence and reconciliation can continue. Estimates are not spendable.";
           $("manual-balance-detail").textContent = manual ?
             `Attributable settled net: ${WS.money(manual.attributable_settled_minor ?? manual.statement_backed_minor,balData.currency)}; reserved (including uncertain): ${WS.money(manual.reserved_minor,balData.currency)}; reconciled spent: ${WS.money(manual.spent_minor,balData.currency)}; known obligations: ${WS.money(manual.known_obligations_minor,balData.currency)}; unknown/held: ${WS.money(manual.unknown_or_held_minor,balData.currency)}. Estimates are not spendable; requests are staff-controlled. Reservations are internal exposure, not bank reservations or liquidity guarantees.` :
@@ -2560,7 +2560,7 @@
           $("withdrawals-body").innerHTML = withdrawals.map(w => `
             <tr style="border-bottom: 1px solid #ddd;">
               <td style="padding: 0.75rem;">${WS.money(w.amount_minor, w.currency)}</td>
-              <td style="padding: 0.75rem;"><span class="tag">${WS.esc(w.manual ? w.owner_solo && w.status === "paid" ? "Statement-reconciled payment (audited Owner solo mode)" : manualLabels[w.status] || "Manual review required" : `Legacy record: ${w.status} (not independent reconciliation evidence)`)}</span>${w.staff_reason ? `<p>${WS.esc(w.staff_reason)}</p>` : ""}</td>
+              <td style="padding: 0.75rem;"><span class="tag">${WS.esc(w.manual ? w.owner_solo && w.status === "paid" ? "Statement-reconciled payment (audited single-operator mode)" : manualLabels[w.status] || "Manual review required" : `Legacy record: ${w.status} (not independent reconciliation evidence)`)}</span>${w.staff_reason ? `<p>${WS.esc(w.staff_reason)}</p>` : ""}</td>
               <td style="padding: 0.75rem; font-size: 0.9rem;">${new Date(w.requested_at).toLocaleDateString()}</td>
             </tr>
           `).join("");

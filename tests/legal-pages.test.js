@@ -13,6 +13,7 @@ for (const page of ["privacy.html", "terms.html"]) {
     assert.match(html, /Aster Azure Ltd/);
     assert.match(html, /PVT-EYUBL333/);
     assert.doesNotMatch(html, /GDPR compliant|certified|ISO 27001|SOC 2/i);
+    assert.doesNotMatch(html, /\bOwner\b/, "internal platform roles are not exposed in public legal copy");
     assert.match(html, /info\.asterazure@gmail\.com/, "user-supplied contact inbox");
   });
 }
@@ -28,7 +29,7 @@ test("payment terms distinguish company costs, accepted customer fees and histor
   assert.match(html, /datetime="2026-11-04"/);
   assert.match(html, /provider transaction costs are company overhead, not a separate deduction or an unknown-fee hold/i);
   assert.match(html, /Unknown actual provider costs remain unknown/);
-  assert.match(html, /Owner may configure a customer withdrawal processing fee/);
+  assert.match(html, /platform may configure a customer withdrawal processing fee/i);
   assert.match(html, /explicitly confirms the amount received, processing fee and total balance debit/);
   assert.match(html, /changed quote requires fresh confirmation/);
   assert.match(html, /no additional customer fee is added at Processing/);
