@@ -17,13 +17,13 @@
       $("referral-copy").disabled = !account.opted_in;
       $("referral-withdraw").disabled = !account.opted_in;
     }
-    $("referral-count").textContent = `${summary.referral_count} wedding referral(s). Commission is paid manually after the wedding date and cleared funds.`;
+    $("referral-count").textContent = `${summary.referral_count} wedding referral(s). Commission is paid after funds are cleared.`;
     $("referral-results").replaceChildren(...summary.weddings.map(row => {
       const p = document.createElement("p");
       const eligibility = row.excluded_by_account_link ? "not eligible (account is connected to this wedding)" :
         row.eligible ? "eligible for commission tracking" : "not eligible (wedding created before program activation)";
       p.textContent = `Reference ${row.reference}: ${eligibility}. ` +
-        (row.currency ? `Verified net basis ${WSReferrals.money(row.verified_basis_minor, row.currency)}; tracked 2% commission ${WSReferrals.money(row.held_estimate_minor, row.currency)}. Manual payout is arranged after the wedding date and cleared funds.` : "No contributions recorded yet.");
+        (row.currency ? `Verified net basis ${WSReferrals.money(row.verified_basis_minor, row.currency)}; tracked 2% commission ${WSReferrals.money(row.held_estimate_minor, row.currency)}. Paid after funds are cleared.` : "No contributions recorded yet.");
       return p;
     }));
   }

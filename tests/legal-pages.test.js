@@ -23,7 +23,8 @@ test("facilitator guide uses product SVG artwork and positive manual commission 
   assert.match(html, /class="facilitator-art"/);
   assert.match(html, /role="img" aria-labelledby="facilitator-art-title/);
   assert.match(html, /2% commission/i);
-  assert.match(html, /manual payout after the wedding date and cleared funds/i);
+  assert.match(html, /paid after funds are cleared/i);
+  assert.doesNotMatch(html, /manual payout|manually paid/i);
   assert.doesNotMatch(html, /HELD estimates only|payable: zero|no transfer route|doesn.t enable payouts/i);
 });
 
