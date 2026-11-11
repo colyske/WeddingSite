@@ -23,6 +23,8 @@ test("facilitator guide uses product SVG artwork and clear onsite setup instruct
   assert.match(html, /class="facilitator-art"/);
   assert.match(html, /role="img" aria-labelledby="facilitator-art-title/);
   assert.match(html, /Be physically with the couple/);
+  assert.match(html, /reply “Yes” before starting setup/);
+  assert.match(html, /Open sample wedding/);
   assert.match(html, /same link for every couple/);
   assert.match(html, /phone or laptop/);
   assert.match(html, /I'll set up your wedding website on Join Our Wedding site for you\./);
