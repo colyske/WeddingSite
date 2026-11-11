@@ -23,9 +23,11 @@ test("facilitator guide uses product SVG artwork and clear onsite setup instruct
   assert.match(html, /class="facilitator-art"/);
   assert.match(html, /role="img" aria-labelledby="facilitator-art-title/);
   assert.match(html, /Be physically with the couple/);
-  assert.match(html, /couple’s own phone or laptop/);
+  assert.match(html, /same link for every couple/);
+  assert.match(html, /one of their phones or laptops/);
   assert.match(html, /I'll set up your wedding website on Join Our Wedding site for you\./);
-  assert.match(html, /2% commission/i);
+  assert.match(html, /2%/);
+  assert.match(html, /Facilitator commission/);
   assert.match(html, /paid after funds are cleared/i);
   assert.doesNotMatch(html, /manual payout|manually paid|HELD estimates only|payable: zero|no transfer route|doesn.t enable payouts/i);
 });

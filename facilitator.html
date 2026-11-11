@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#203a31">
-  <meta name="description" content="A clear, consent-first guide to becoming a Join Our Wedding facilitator: referral setup, couple consent, role boundaries, product walkthrough and current payout terms.">
+  <meta name="description" content="A practical, in-person onboarding guide for Join Our Wedding facilitators: consent, assisted setup on the couple’s device, publishing, sharing and referral commissions.">
   <title>Facilitator guide — Join Our Wedding</title>
   <link rel="icon" type="image/png" sizes="120x120" href="/assets/brand/icon-120.png">
   <link rel="stylesheet" href="/app-shell.css">
@@ -31,14 +31,13 @@
         <div class="facilitator-hero-copy">
           <p class="facilitator-eyebrow">A practical guide for trusted helpers</p>
           <h1 id="facilitator-title">Help a couple bring their celebration <em>together.</em></h1>
-          <p class="facilitator-lead">Refer a couple to Join Our Wedding, help them understand the options, and let them stay in control of their own wedding page, account and money.</p>
+          <p class="facilitator-lead">A trusted in-person guide for turning a couple’s plans into a complete wedding site.</p>
           <div class="facilitator-reward" aria-label="2 percent facilitator commission">
             <span class="facilitator-reward-rate">2%</span>
             <div><strong>Facilitator commission</strong><p>Paid after funds are cleared.</p></div>
           </div>
           <div class="facilitator-actions">
             <a class="facilitator-button facilitator-button-primary" href="/signin.html?next=%2Freferrals.html">Sign in &amp; open Client Referrals</a>
-            <a class="facilitator-button facilitator-button-outline" href="https://showcase-wedding.joinourwedding.site/" target="_blank" rel="noopener noreferrer">Explore the sample wedding <span aria-hidden="true">↗</span></a>
           </div>
           <p class="facilitator-caption">For facilitators, committee members and trusted friends. The couple always makes the final decisions.</p>
         </div>
@@ -102,134 +101,45 @@
       </div>
     </section>
 
-    <section class="facilitator-section" aria-labelledby="role-title">
-      <div class="facilitator-container">
-        <div class="facilitator-section-heading">
-          <p class="facilitator-eyebrow">The role, simply</p>
-          <h2 id="role-title">You connect. <em>The couple stays in control.</em></h2>
-          <p>A facilitator is a referrer—not a wedding-page administrator, payment collector or platform staff member.</p>
-        </div>
-        <div class="facilitator-role-grid">
-          <article class="facilitator-role-card">
-            <span class="facilitator-card-number">01</span>
-            <h3>Your part</h3>
-            <p>Opt in to Client Referrals, share your own link after consent, introduce the showcase, and answer basic questions using current site information.</p>
-          </article>
-          <article class="facilitator-role-card">
-            <span class="facilitator-card-number">02</span>
-            <h3>The couple’s part</h3>
-            <p>They sign in, decide whether to use the link, create and manage their wedding page, review any fees, and enter their own wedding and payout details.</p>
-          </article>
-          <article class="facilitator-role-card">
-            <span class="facilitator-card-number">03</span>
-            <h3>What you can see</h3>
-            <p>Referral reporting is limited to permitted aggregate information. It does not give you a platform role or access to the couple’s wedding workspace, guest list or RSVP details.</p>
-          </article>
-        </div>
-        <aside class="facilitator-note">
-          <strong>Ready to facilitate:</strong> be 18 or older, have valid ID and an M-Pesa number in your own name. The program has no joining fee or targets.
-        </aside>
-      </div>
-    </section>
-
     <section class="facilitator-section facilitator-steps-section" aria-labelledby="steps-title">
       <div class="facilitator-container">
         <div class="facilitator-section-heading">
-          <p class="facilitator-eyebrow">A consent-first process</p>
-          <h2 id="steps-title">From introduction to a couple’s own wedding page</h2>
-          <p>Follow these steps in order. The current website flow is referral-based: the couple—not the facilitator—creates and owns the page.</p>
+          <p class="facilitator-eyebrow">A hands-on, consent-first process</p>
+          <h2 id="steps-title">The facilitator workflow</h2>
         </div>
         <ol class="facilitator-steps">
           <li>
             <span class="facilitator-step-count">01</span>
-            <div><h3>Opt in and prepare your setup link</h3><p>Sign in to Join Our Wedding, open Client Referrals from your dashboard, accept the current terms and copy your unique setup link. The couple does not need to manage this step.</p></div>
+            <div><h3>Prepare once</h3><p>Get started in just a moment: sign in once, opt in to Client Referrals and copy your unique setup link. Use that same link for every couple you assist. To qualify, be 18 or older, have valid ID and an M-Pesa number in your own name. There is no joining fee or target.</p></div>
           </li>
-          <li>
+          <li class="facilitator-step-consent">
             <span class="facilitator-step-count">02</span>
-            <div><h3>Meet the couple, get consent and begin together</h3><p>Be physically with the couple. Show them the <a href="https://showcase-wedding.joinourwedding.site/" target="_blank" rel="noopener noreferrer">Showcase Wedding</a>, then ask them to send the consent message below and keep their reply. With their agreement, open the setup link on one of the couple’s phones or laptops and start the site together.</p></div>
+            <div class="facilitator-step-consent-content">
+              <div><h3>Get consent and begin setup</h3><p>Be physically with the couple. Show them the <a href="https://showcase-wedding.joinourwedding.site/" target="_blank" rel="noopener noreferrer">sample wedding</a>, then ask them to send the consent message below and keep their reply. Once they agree, open the setup link on one of their phones or laptops and assist them there.</p></div>
+              <div class="facilitator-consent-inline">
+                <blockquote id="consent-copy">I'll set up your wedding website on Join Our Wedding site for you. Setup is free. When you raise money through the site, the platform charges a percentage of what's raised (around 4-8% for maintenance); you keep the rest (92-96%). You'll see every deduction on your dashboard. Can I go ahead?</blockquote>
+                <button class="facilitator-copy-button" type="button" id="copy-consent">Copy consent message</button>
+                <p id="copy-status" class="facilitator-copy-status" role="status" aria-live="polite"></p>
+              </div>
+            </div>
           </li>
           <li>
             <span class="facilitator-step-count">03</span>
-            <div><h3>Set up the wedding on the couple’s device</h3><p>Work together on the couple’s own phone or laptop. Help enter their names, date, venue, schedule, goals, sponsors and optional features. The couple provides and confirms their own payout and identity details. Never use your own payout details or ask for their password or sign-in code.</p></div>
+            <div><h3>Complete the wedding on their device together</h3><p>Help enter the couple’s names, date, story, theme, venue, full schedule, fundraising goals, gifts, song requests, sponsors, VIP seats and RSVP settings. The couple reviews each detail and enters their own payout and identity information. Never use your own payout number or ask for their password or sign-in code.</p></div>
           </li>
           <li>
             <span class="facilitator-step-count">04</span>
-            <div><h3>Review the page and publish</h3><p>Read every detail back with the couple, check their goals and event information, and let them approve the finished page before it is published.</p></div>
+            <div><h3>Review and publish</h3><p>Check every detail and fee with the couple. They approve the finished page and choose when to publish.</p></div>
           </li>
           <li>
             <span class="facilitator-step-count">05</span>
-            <div><h3>Show them how to share and use the features</h3><p>Help share the wedding site with family, faith communities and friends. Demonstrate campaign progress, gifts, song bidding, sponsorship and RSVP features that suit their celebration.</p></div>
+            <div><h3>Help them share and get the most from the site</h3><p>Show how to share the link in family, church or mosque, neighborhood and committee groups. Demonstrate campaign progress, gifts, song bidding, sponsorship and RSVPs, and stay available for questions and updates. Never handle contributions, refer a wedding you benefit from, or recruit other facilitators for a cut.</p></div>
           </li>
           <li>
             <span class="facilitator-step-count">06</span>
-            <div><h3>Track your referral commission</h3><p>Check Client Referrals for your eligible contribution totals and commission. The Platform pays after funds are cleared.</p></div>
+            <div><h3>Track your commission</h3><p>Check Client Referrals for eligible contribution totals and commission by currency.</p></div>
           </li>
         </ol>
-      </div>
-    </section>
-
-    <section class="facilitator-section facilitator-showcase-section" aria-labelledby="showcase-title">
-      <div class="facilitator-container facilitator-showcase-card">
-        <div>
-          <p class="facilitator-eyebrow">A real product walkthrough</p>
-          <h2 id="showcase-title">Explore the Showcase Wedding before your first introduction.</h2>
-          <p>Show how a wedding page brings the celebration story and guest tools together. The public homepage also previews the look and feel of a wedding site.</p>
-          <a class="facilitator-button facilitator-button-primary" href="https://showcase-wedding.joinourwedding.site/" target="_blank" rel="noopener noreferrer">Open the Showcase Wedding <span aria-hidden="true">↗</span></a>
-          <p class="facilitator-caption">The showcase is fictional and read-only. It is not a live couple’s page.</p>
-        </div>
-        <div class="facilitator-feature-list" aria-label="Features to demonstrate">
-          <div><span aria-hidden="true">01</span><p><strong>Campaign goals &amp; milestones</strong><br>Show progress toward the couple’s chosen goals.</p></div>
-          <div><span aria-hidden="true">02</span><p><strong>Gifts, song bids &amp; sponsorship</strong><br>Guests can support in different ways, where enabled.</p></div>
-          <div><span aria-hidden="true">03</span><p><strong>RSVPs &amp; guest information</strong><br>Help guests find event details and respond.</p></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="facilitator-section" aria-labelledby="consent-title">
-      <div class="facilitator-container facilitator-consent-grid">
-        <div>
-          <p class="facilitator-eyebrow">A message you can adapt</p>
-          <h2 id="consent-title">Ask clearly. Keep the reply.</h2>
-          <p>Be physically with the couple before starting. Ask them to send the message below and keep their written reply; then help set up the wedding together on their own phone or laptop.</p>
-        </div>
-        <div class="facilitator-quote-card">
-          <blockquote id="consent-copy">I'll set up your wedding website on Join Our Wedding site for you. Setup is free. When you raise money through the site, the platform charges a percentage of what's raised (around 4-8% for maintenance); you keep the rest (92-96%). You'll see every deduction on your dashboard. Can I go ahead?</blockquote>
-          <button class="facilitator-copy-button" type="button" id="copy-consent">Copy consent request</button>
-          <p id="copy-status" class="facilitator-copy-status" role="status" aria-live="polite"></p>
-          <p class="facilitator-caption">Keep their written reply as the consent record before starting the setup.</p>
-        </div>
-      </div>
-    </section>
-
-    <section class="facilitator-section facilitator-terms-section" aria-labelledby="say-title">
-      <div class="facilitator-container">
-        <div class="facilitator-section-heading">
-          <p class="facilitator-eyebrow">Set honest expectations</p>
-          <h2 id="say-title">What to say—and what to avoid</h2>
-        </div>
-        <div class="facilitator-terms-grid">
-          <article class="facilitator-terms-card facilitator-say">
-            <h3>Good to say</h3>
-            <ul>
-              <li>“You create and manage your own wedding page.”</li>
-              <li>“Creating a draft is free; check the site for any fees before publishing or paying.”</li>
-              <li>“You can review and decline referral attribution.”</li>
-              <li>“Your dashboard shows confirmed contributions and any applicable deductions.”</li>
-              <li>“The showcase is a sample; it doesn’t accept payments or RSVPs.”</li>
-            </ul>
-          </article>
-          <article class="facilitator-terms-card facilitator-avoid">
-            <h3>Never promise</h3>
-            <ul>
-              <li>“There are no charges at all.”</li>
-              <li>“You’ll receive every shilling” or a guaranteed fundraising result.</li>
-              <li>“I’ll collect the contributions” or “send the money to me.”</li>
-              <li>A guaranteed fundraising target or an amount before eligible contributions are verified.</li>
-              <li>To create a page without consent, use your own payout details or recruit another facilitator for a cut.</li>
-            </ul>
-          </article>
-        </div>
-        <p class="facilitator-self-referral"><strong>Self-referrals are not allowed.</strong> Do not refer a wedding you own, a family member’s wedding or a wedding you personally benefit from. This is a one-level referral program; do not recruit facilitators or promise a share of anyone else’s commission.</p>
       </div>
     </section>
 
@@ -237,14 +147,14 @@
       <div class="facilitator-container">
         <div class="facilitator-example-card">
           <div>
-            <p class="facilitator-eyebrow">Your referral reward</p>
-            <h2 id="examples-title">A 2% commission can add up.</h2>
-            <p>Illustrative totals at the facilitator rate. Your commission is calculated from eligible verified contributions. Paid after funds are cleared.</p>
+            <p class="facilitator-eyebrow">Example commissions</p>
+            <h2 id="examples-title">See how referrals can add up.</h2>
+            <p>Illustrative totals at the current rate, based on eligible verified contributions.</p>
           </div>
           <div class="facilitator-table-scroll">
             <table>
-              <caption>Illustrative commission examples at 2%</caption>
-              <thead><tr><th scope="col">Weddings</th><th scope="col">Raised per wedding</th><th scope="col">Total raised</th><th scope="col">Commission (2%)</th></tr></thead>
+              <caption>Illustrative examples</caption>
+              <thead><tr><th scope="col">Weddings</th><th scope="col">Raised per wedding</th><th scope="col">Total raised</th><th scope="col">Commission</th></tr></thead>
               <tbody>
                 <tr><td>3</td><td>KES 300,000</td><td>KES 900,000</td><td>KES 18,000</td></tr>
                 <tr><td>5</td><td>KES 500,000</td><td>KES 2,500,000</td><td>KES 50,000</td></tr>
@@ -252,28 +162,15 @@
               </tbody>
             </table>
           </div>
-          <p class="facilitator-caption">Eligible commission is paid after funds are cleared to the facilitator’s verified M-Pesa number.</p>
+          <p class="facilitator-caption">Illustrative amounts; actual commission is based on eligible verified contributions.</p>
         </div>
       </div>
     </section>
 
-    <section class="facilitator-section facilitator-checklist-section" aria-labelledby="checklist-title">
+    <section class="facilitator-section facilitator-final-section" aria-labelledby="ready-title">
       <div class="facilitator-container">
-        <div class="facilitator-section-heading">
-          <p class="facilitator-eyebrow">Before you wrap up</p>
-          <h2 id="checklist-title">Your facilitator checklist</h2>
-          <p>Use this quick review for every couple you refer.</p>
-        </div>
-        <ul class="facilitator-checklist">
-          <li><span aria-hidden="true">✓</span><span>I opted in to the current Client Referrals terms and copied my own link.</span></li>
-          <li><span aria-hidden="true">✓</span><span>I showed the fictional showcase and explained what it does not do.</span></li>
-          <li><span aria-hidden="true">✓</span><span>I obtained and kept the couple’s permission before sending the link.</span></li>
-          <li><span aria-hidden="true">✓</span><span>The couple signed in, completed their own details and chose their own payout settings.</span></li>
-          <li><span aria-hidden="true">✓</span><span>I did not collect money, request credentials or claim access to their wedding.</span></li>
-          <li><span aria-hidden="true">✓</span><span>I explained the 2% commission and payout timing.</span></li>
-        </ul>
         <div class="facilitator-final-cta">
-          <div><h2>Ready to make an introduction?</h2><p>Review the current terms, opt in and get your personal referral link.</p></div>
+          <div><h2 id="ready-title">Ready to help a couple get started?</h2><p>Opt in to Client Referrals and prepare for your first in-person setup.</p></div>
           <a class="facilitator-button facilitator-button-light" href="/signin.html?next=%2Freferrals.html">Go to Client Referrals <span aria-hidden="true">→</span></a>
         </div>
       </div>
