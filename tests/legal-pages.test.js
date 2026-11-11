@@ -46,6 +46,15 @@ test("facilitator link message is prepared with the individual referral URL", ()
   assert.match(script, /Setup message copied/);
 });
 
+test("homepage promotes the facilitator guide from its closing section and footer", () => {
+  const home = read("index.html");
+  const footer = read("footer.js");
+  assert.match(home, /id="facilitator-invite-title"/);
+  assert.match(home, /src="\/footer\.js\?v=3"/);
+  assert.match(home, /href="\/facilitator\.html">Earn as our Facilitator<\/a>/);
+  assert.match(footer, /\[\["Earn as our Facilitator", "\/facilitator\.html"\]/);
+});
+
 test("privacy policy covers the actual data practices", () => {
   const html = read("privacy.html");
   for (const topic of [/phone number/i, /both partners/i, /referral/i, /sponsored/i, /Paystack/, /Daraja/, /Google/, /session storage/i, /archived, not deleted/i, /assistant/i, /Turnstile/])
