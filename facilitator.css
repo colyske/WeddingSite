@@ -75,7 +75,8 @@
 .facilitator-steps-section { background: #f2efe7; }
 .facilitator-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem; padding: 0; margin: 0; list-style: none; counter-reset: none; }
 .facilitator-steps li { display: grid; grid-template-columns: 2.6rem 1fr; align-items: start; gap: .9rem; padding: 1.2rem; background: var(--fac-paper); border: 1px solid var(--fac-line); }
-.facilitator-step-consent { grid-column: 1 / -1; }
+.facilitator-step-consent,
+.facilitator-step-message { grid-column: 1 / -1; }
 .facilitator-step-consent-content { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); align-items: start; gap: 1rem; }
 .facilitator-step-consent-content > div:first-child p { margin: 0; color: var(--fac-muted); font-size: .89rem; line-height: 1.65; }
 .facilitator-consent-inline { padding: 1rem; background: #f8f4ea; border: 1px solid var(--fac-line); }

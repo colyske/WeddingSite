@@ -26,9 +26,15 @@
     <section id="referral-account" class="card" hidden>
       <h2>My referral link</h2>
       <p id="referral-consent-status"></p>
-      <label for="referral-link">Share this link to a new client wedding</label>
+      <label for="referral-link">Your referral link</label>
       <input id="referral-link" type="text" readonly>
       <button id="referral-copy" type="button">Copy link</button>
+      <div id="referral-share-message-wrap" class="referral-share-message" hidden>
+        <h3>Message to send after they agree</h3>
+        <label for="referral-share-message">WhatsApp or SMS message</label>
+        <textarea id="referral-share-message" rows="4" readonly></textarea>
+        <button id="referral-share-copy" type="button">Copy setup message</button>
+      </div>
       <button id="referral-withdraw" type="button">Withdraw opt-in</button>
     </section>
     <section class="card">

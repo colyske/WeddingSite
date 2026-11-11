@@ -24,12 +24,24 @@ test("facilitator guide uses product SVG artwork and clear onsite setup instruct
   assert.match(html, /role="img" aria-labelledby="facilitator-art-title/);
   assert.match(html, /Be physically with the couple/);
   assert.match(html, /same link for every couple/);
-  assert.match(html, /one of their phones or laptops/);
+  assert.match(html, /phone or laptop/);
   assert.match(html, /I'll set up your wedding website on Join Our Wedding site for you\./);
+  assert.match(html, /Here's the link to set up your wedding site: \[your referral link\]\./);
+  assert.match(html, /class="facilitator-step-message"/);
   assert.match(html, /2%/);
   assert.match(html, /Facilitator commission/);
   assert.match(html, /paid after funds are cleared/i);
   assert.doesNotMatch(html, /manual payout|manually paid|HELD estimates only|payable: zero|no transfer route|doesn.t enable payouts/i);
+});
+
+test("facilitator link message is prepared with the individual referral URL", () => {
+  const html = read("referrals.html");
+  const script = read("referrals.js");
+  assert.match(html, /id="referral-share-message"/);
+  assert.match(html, /Message to send after they agree/);
+  assert.match(script, /client_ref=\$\{account\.code\}/);
+  assert.match(script, /Here's the link to set up your wedding site: \$\{referralLink\}/);
+  assert.match(script, /Setup message copied/);
 });
 
 test("privacy policy covers the actual data practices", () => {

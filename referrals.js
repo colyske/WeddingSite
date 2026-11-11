@@ -13,7 +13,11 @@
     $("referral-consent-form").hidden = account?.opted_in === true;
     if (account) {
       $("referral-consent-status").textContent = `${account.opted_in ? "Opted in" : "Withdrawn"}; consent recorded ${account.consent_at}, terms ${account.terms_version}.`;
-      $("referral-link").value = account.opted_in ? `${location.origin}/dashboard.html?client_ref=${account.code}` : "";
+      const referralLink = account.opted_in ? `${location.origin}/dashboard.html?client_ref=${account.code}` : "";
+      $("referral-link").value = referralLink;
+      $("referral-share-message").value = referralLink ? `Here's the link to set up your wedding site: ${referralLink}. Click it, sign in, and I'll help you fill everything in.` : "";
+      $("referral-share-message-wrap").hidden = !account.opted_in;
+      $("referral-share-copy").disabled = !account.opted_in;
       $("referral-copy").disabled = !account.opted_in;
       $("referral-withdraw").disabled = !account.opted_in;
     }
@@ -50,6 +54,12 @@
   $("referral-copy").addEventListener("click", async () => {
     try { await navigator.clipboard.writeText($("referral-link").value); notice("Referral link copied."); }
     catch { notice("The clipboard is unavailable. Select and copy the link above."); }
+  });
+  $("referral-share-copy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("referral-share-message").value);
+      notice("Setup message copied. Send it after the couple has agreed.");
+    } catch { notice("Clipboard unavailable. Select and copy the setup message above."); }
   });
   try { await load(); } catch (error) { notice(error.message); }
 })();
