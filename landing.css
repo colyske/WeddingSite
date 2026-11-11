@@ -118,6 +118,15 @@
 .lp-faq summary:focus-visible { outline: 3px solid var(--lp-gold); outline-offset: -3px; }
 .lp-faq details p { margin: 0; padding: 0 1.2rem 1.1rem; color: var(--lp-muted); line-height: 1.6; font-size: .94rem; }
 
+/* Facilitator invitation */
+.lp-facilitator-invite { background: #f3efe6; }
+.lp-facilitator-card { display: flex; align-items: center; justify-content: space-between; gap: 1.5rem; padding: clamp(1.25rem, 4vw, 2.25rem); border: 1px solid #e4dccb; background: #fffdf8; }
+.lp-facilitator-copy { max-width: 43rem; }
+.lp-facilitator-copy .eyebrow { color: #8a6a2b; }
+.lp-facilitator-copy h2 { margin: .35rem 0 .55rem; color: #203a31; font-size: clamp(1.7rem, 3.4vw, 2.5rem); line-height: 1.2; }
+.lp-facilitator-copy p:last-child { margin: 0; color: #545d57; line-height: 1.6; }
+.lp-facilitator-card > .btn { flex: none; text-align: center; }
+
 /* Closing CTA */
 .lp-final { background: linear-gradient(135deg, #203a31, #2d5244); color: #eef0e8; text-align: center; }
 .lp-final h2 { color: #fff !important; margin: .6rem 0 .8rem; }
@@ -137,6 +146,10 @@
   .lp-js .lp-reveal { opacity: 1; transform: none; transition: none; }
   .landing .wedding-card, .lp-fab article { transition: none; }
   .landing .wedding-card:hover, .lp-fab article:hover { transform: none; }
+}
+@media (max-width: 760px) {
+  .lp-facilitator-card { align-items: stretch; flex-direction: column; }
+  .lp-facilitator-card > .btn { width: 100%; }
 }
 @media (max-width: 420px) {
   .lp-ctas .btn { width: 100%; justify-content: center; }
