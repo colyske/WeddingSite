@@ -14,6 +14,7 @@ const initializer = JSON.stringify({
 }).replaceAll("'", "''");
 
 const migration = readFileSync(new URL("../../supabase/migrations/202611210001_interactive_wedding_creation.sql", import.meta.url), "utf8");
+const fundPresetMigration = readFileSync(new URL("../../supabase/migrations/202611220002_interactive_kes_showcase_goal.sql", import.meta.url), "utf8");
 const result = spawnSync("docker", ["exec", "-i", "supabase_db_weddingsite", "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1"], {
   encoding: "utf8", input: `
 create temporary table interactive_before(kind text,payload jsonb);
@@ -27,6 +28,22 @@ begin; ${migration}
 insert into supabase_migrations.schema_migrations(version,name,statements)
   values('202611210001','interactive_wedding_creation',array[]::text[]);
 commit;
+begin; ${fundPresetMigration} rollback;
+do $$ begin
+  if public.interactive_fund_preset('KES','{"currency":"KES","campaigns":[{"goalMinor":140000000}]}')<>50000000 then
+    raise exception 'Interactive starter goal migration did not roll back';
+  end if;
+end $$;
+begin; ${fundPresetMigration}
+insert into supabase_migrations.schema_migrations(version,name,statements)
+  values('202611220002','interactive_kes_showcase_goal',array[]::text[]);
+commit;
+do $$ begin
+  if public.interactive_fund_preset('KES','{"currency":"KES","campaigns":[{"goalMinor":150000000}]}')<>140000000 or
+    public.interactive_fund_preset('KES','{"currency":"USD","campaigns":[{"goalMinor":150000000}]}')<>140000000 then
+    raise exception 'Interactive starter goal or KES fallback regression';
+  end if;
+end $$;
 do $$ declare t text; changed boolean; projection text; begin
 for t in select distinct kind from interactive_before loop
   projection := case when t='weddings' then 'to_jsonb(x)-''interactive_creation''-''page_content''-''creation_content_reviewed''' else 'to_jsonb(x)' end;
@@ -60,8 +77,10 @@ begin
   end if;
   if (select count(*) from public.venues where wedding_id=w.id)<>7 or exists(
     select 1 from public.venues where wedding_id=w.id and (event_date is not null or address not like 'Sample venue:%'))
-    or (select count(*) from public.fundraising_milestones where wedding_id=w.id)<>2 then
-    raise exception 'Initializer lost programme or milestone definitions';
+    or (select count(*) from public.fundraising_milestones where wedding_id=w.id)<>2
+    or (select goal_minor from public.fundraising_streams where wedding_id=w.id and enabled limit 1)<>140000000
+    or (select count(*) from public.fundraising_milestones where wedding_id=w.id and target_minor in (30000000,80000000))<>2 then
+    raise exception 'Initializer lost programme or matching-currency showcase fund amounts';
   end if;
   perform public.save_wedding_content(w.id,'{"page_content":{"story:0":"Our saved heading","welcome:1":""}}');
   if (select page_content from public.weddings where id=w.id)<>'{"story:0":"Our saved heading","welcome:1":""}'::jsonb then

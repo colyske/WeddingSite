@@ -18,6 +18,11 @@ begin
       }'::jsonb),null);
   end loop;
 end $$;
+update interactive_fixture set payload=jsonb_set(
+  jsonb_set(payload,'{starterSetup,campaigns,0,goalMinor}','140000000'::jsonb),
+  '{starterSetup,campaigns,0,milestones}',
+  '[{"name":"Garden venue","description":"Space for our guests.","targetMinor":30000000},{"name":"Music & memories","description":"The celebration soundtrack.","targetMinor":80000000}]'::jsonb
+) where payload->>'currency'='KES';
 set local role service_role;
 select set_config('request.jwt.claim.role','service_role',true);
 select public.stage_wedding_starter_source(owner_id,key,payload) from interactive_fixture;
@@ -46,8 +51,12 @@ begin
       raise exception 'Interactive draft inherited readiness or lost permanent surfaces';
     end if;
     if w.currency='KES' and (select count(*) from public.fundraising_streams
-      where wedding_id=w.id and currency='KES' and goal_minor=50000000 and enabled)<>1 then
-      raise exception 'KES preset missing or duplicated on replay';
+      where wedding_id=w.id and currency='KES' and goal_minor=140000000 and enabled)<>1 then
+      raise exception 'KES showcase goal is missing or duplicated';
+    end if;
+    if w.currency='KES' and (select count(*) from public.fundraising_milestones
+      where wedding_id=w.id and target_minor in (30000000,80000000))<>2 then
+      raise exception 'Showcase milestones were not accepted under their matching KES goal';
     end if;
     if w.currency='EUR' and (exists(select 1 from public.fundraising_streams where wedding_id=w.id)
       or not exists(select 1 from public.wedding_starter_structures where wedding_id=w.id
@@ -78,8 +87,10 @@ begin
     raise exception 'Interactive creation grants are too broad';
   end if;
   if public.interactive_fund_preset('EUR','{"currency":"EUR","campaigns":[{"goalMinor":12300}]}')<>12300 or
-    public.interactive_fund_preset('EUR','{"currency":"KES","campaigns":[{"goalMinor":12300}]}') is not null then
-    raise exception 'Same-currency preset contract failed';
+    public.interactive_fund_preset('EUR','{"currency":"KES","campaigns":[{"goalMinor":12300}]}') is not null or
+    public.interactive_fund_preset('KES','{"currency":"KES","campaigns":[{"goalMinor":150000000}]}')<>140000000 or
+    public.interactive_fund_preset('KES','{"currency":"EUR","campaigns":[{"goalMinor":150000000}]}')<>140000000 then
+    raise exception 'Same-currency preset or KES fallback contract failed';
   end if;
 end $$;
 set local role service_role;

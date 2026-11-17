@@ -5,7 +5,7 @@ export const permanentFeatures = Object.fromEntries(featureKeys.map(key => [key,
 
 // No foreign-currency fallback: KES is the showcase's accounting currency.
 export function creationFundPreset(currency, setup) {
-  if (currency === "KES") return 50000000;
+  if (currency === "KES") return 140000000;
   const amount = setup?.currency === currency ? setup.campaigns?.[0]?.goalMinor : null;
   return Number.isSafeInteger(amount) && amount > 0 && amount <= 100000000000 ? amount : null;
 }

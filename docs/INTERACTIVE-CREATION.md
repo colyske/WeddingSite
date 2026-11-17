@@ -37,12 +37,12 @@ featured-sponsor, song-request and VIP surfaces. Visibility does not authorize
 payment rails or create inventory, publication eligibility or transactions.
 Unconfigured products remain visible as incomplete private-preview sections.
 
-KES uses the current showcase Celebration fund target: **KES 500,000**
-(`50000000` minor units), with no raised balance. Other currencies use the selected template's first goal only when it is
-explicitly configured in that exact currency. Current Owner amount presets are
-guest contribution choices, not fundraising targets. Without a matching
-template goal the fund stays visibly incomplete and must be explicitly priced
-before publication. No KES goal is converted or relabelled. The isolated
+KES uses the current showcase Celebration fund target: **KES 1,400,000**
+(`140000000` minor units), with no raised balance. Other currencies use a
+template goal only when it is explicitly configured in that exact currency;
+otherwise the fund stays visibly incomplete until a positive goal is entered.
+Current amount presets are guest contribution choices, not fundraising targets.
+No foreign-currency amount is converted or relabelled. The isolated
 `creationFundPreset` contract and transactional SQL initializer must stay in
 sync if this preset changes.
 

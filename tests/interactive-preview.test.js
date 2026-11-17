@@ -26,7 +26,8 @@ test("preview projection contains no private workspace data or invented activity
   assert.equal(bundle.fundraising.vip.seats_sold, 0);
   assert.deepEqual(bundle.leaderboard.bids, []);
   assert.deepEqual(bundle.ledger.ledger, []);
-  assert.equal(creationFundPreset("KES"), 50000000);
+  assert.equal(creationFundPreset("KES"), 140000000);
+  assert.equal(creationFundPreset("KES", { currency: "KES", campaigns: [{ goalMinor: 150000000 }] }), 140000000);
   assert.equal(creationFundPreset("EUR"), null);
   assert.equal(creationFundPreset("EUR", { currency: "EUR", campaigns: [{ goalMinor: 12300 }] }), 12300);
   assert.equal(creationFundPreset("EUR", { currency: "KES", campaigns: [{ goalMinor: 12300 }] }), null);
@@ -79,6 +80,9 @@ test("interactive create uses the transactional initializer, stable key, blank d
 test("full fictional editorial placeholders exclude identities and activity; wording is plain-text allowlisted", async () => {
   const style = await publicWeddingStyle("showcase-wedding");
   const seed = interactiveStarter(globalThis.WSStarterSetup.normalize({ ...style.setup, reviewed: true }, "KES"));
+  assert.equal(seed.setup.campaigns[0].goalMinor, 140000000);
+  assert.deepEqual(seed.setup.campaigns[0].milestones.map(item => item.targetMinor), [30000000, 80000000]);
+  assert.equal(creationFundPreset("KES", seed.setup), 140000000);
   const structure = globalThis.WSStarterSetup.structure(seed.setup);
   const preview = interactivePreview({ interactive_creation: true, starter_structure: structure }, [{
     id, name: "Saved goal", goal_minor: 10000,
