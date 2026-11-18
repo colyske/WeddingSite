@@ -31,6 +31,7 @@ const waitFor = condition => run(`do $$ begin for i in 1..1000 loop
 end loop; raise exception 'Concurrency barrier timed out'; end $$;`);
 const creator = randomUUID(), referrer = randomUUID(), wedding = randomUUID(), intent = randomUUID();
 const linkedWedding = randomUUID(), linkedIntent = randomUUID();
+const updateWedding = randomUUID(), updateIntent = randomUUID();
 const revision = randomUUID(), holderName = `referral_link_holder_${randomUUID()}`;
 let fixtureCreated = false;
 try {
@@ -40,12 +41,17 @@ try {
       values('${referrer}',true,'client-referrals-v1');
     insert into public.weddings(id,couple_names,currency,client_owner_id)
       values('${wedding}','Fictional couple','KES','${creator}'),
-        ('${linkedWedding}','Fictional linked couple','KES','${referrer}');
+        ('${linkedWedding}','Fictional linked couple','KES','${referrer}'),
+        ('${updateWedding}','Fictional existing member','KES','${creator}');
     insert into public.referral_intents(id,creator_id,referrer_id,state,consumed_at,disclosed_revision,disclosed_terms_version)
       values('${intent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1'),
-        ('${linkedIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1');
+        ('${linkedIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1'),
+        ('${updateIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1');
+    insert into public.wedding_memberships(wedding_id,user_id,role)
+      values('${updateWedding}','${referrer}','admin');
     insert into public.referral_attributions(wedding_id,referrer_id,creator_id,intent_id,disclosed_revision,terms_version,eligible)
-      values('${wedding}','${referrer}','${creator}','${intent}','${revision}','client-referrals-v1',true);
+      values('${wedding}','${referrer}','${creator}','${intent}','${revision}','client-referrals-v1',true),
+        ('${updateWedding}','${referrer}','${creator}','${updateIntent}','${revision}','client-referrals-v1',true);
     commit;`);
   fixtureCreated = true;
   const holder = sql(`begin; set local statement_timeout='20s';
@@ -57,17 +63,34 @@ try {
     await waitFor(`exists(select 1 from pg_stat_activity where application_name='${holderName}'
       and state='idle in transaction' and wait_event='ClientRead')`);
     await run(`update public.weddings set couple_names='Unrelated edit' where id='${wedding}';`);
-    await assert.rejects(run(`update public.weddings set client_owner_id='${referrer}' where id='${wedding}';`),
+    await assert.rejects(run(`begin; set local statement_timeout='2s';
+      update public.weddings set couple_names='Must roll back owner' where id='${wedding}';
+      update public.weddings set client_owner_id='${referrer}' where id='${wedding}'; commit;`),
       /REFERRAL_ACCOUNTING_BUSY/, "Relevant owner change fails fast rather than waiting after row lock");
-    await assert.rejects(run(`insert into public.wedding_memberships(wedding_id,user_id,role)
-      values('${wedding}','${referrer}','client');`),
-      /REFERRAL_ACCOUNTING_BUSY/, "Relevant client membership fails fast");
-    await assert.rejects(run(`insert into public.referral_attributions
+    for (const target of [wedding, updateWedding]) {
+      await assert.rejects(run(`begin; set local statement_timeout='2s';
+        update public.weddings set public_location='Must roll back membership' where id='${target}';
+        set local role authenticated;
+        select set_config('request.jwt.claim.sub','${creator}',true);
+        select public.set_workspace_member_role('${target}','${referrer}','client'); commit;`),
+        /REFERRAL_ACCOUNTING_BUSY/, "Real client membership RPC fails fast for insert and update");
+    }
+    await assert.rejects(run(`begin; set local statement_timeout='2s';
+      update public.weddings set couple_names='Must roll back attribution' where id='${linkedWedding}';
+      insert into public.referral_attributions
       (wedding_id,referrer_id,creator_id,intent_id,disclosed_revision,terms_version,eligible)
-      values('${linkedWedding}','${referrer}','${creator}','${linkedIntent}','${revision}','client-referrals-v1',true);`),
+      values('${linkedWedding}','${referrer}','${creator}','${linkedIntent}','${revision}','client-referrals-v1',true); commit;`),
       /REFERRAL_ACCOUNTING_BUSY/, "Attribution with an existing matching owner fails fast");
     assert.equal(await run(`select count(*) from public.referral_attributions where wedding_id='${linkedWedding}';`), "0");
     assert.equal(await run(`select count(*) from public.referral_eligibility_events where wedding_id='${wedding}';`), "0");
+    assert.equal(await run(`select couple_names from public.weddings where id='${wedding}';`), "Unrelated edit");
+    assert.equal(await run(`select couple_names from public.weddings where id='${linkedWedding}';`), "Fictional linked couple");
+    assert.equal(await run(`select count(*) from public.weddings where id in ('${wedding}','${updateWedding}')
+      and public_location='Must roll back membership';`), "0", "Prior writes roll back with failed RPC");
+    assert.equal(await run(`select count(*) from public.wedding_memberships where wedding_id='${wedding}'
+      and user_id='${referrer}';`), "0");
+    assert.equal(await run(`select role from public.wedding_memberships where wedding_id='${updateWedding}'
+      and user_id='${referrer}';`), "admin");
   } catch (caught) {
     error = caught;
   } finally {
@@ -76,6 +99,13 @@ try {
   const held = await heldResult;
   if (held.error) throw held.error;
   if (error) throw error;
+  for (const target of [wedding, updateWedding]) {
+    await run(`begin; set local role authenticated;
+      select set_config('request.jwt.claim.sub','${creator}',true);
+      select public.set_workspace_member_role('${target}','${referrer}','client'); commit;`);
+    assert.equal(await run(`select count(*) from public.referral_eligibility_events
+      where wedding_id='${target}' and reason='client_membership';`), "1");
+  }
   await run(`update public.weddings set client_owner_id='${referrer}' where id='${wedding}';`);
   assert.equal(await run(`select count(*) from public.referral_eligibility_events
     where wedding_id='${wedding}' and reason='owner_account';`), "1");
@@ -88,14 +118,15 @@ try {
 } finally {
   if (fixtureCreated) await run(`begin;
     alter table public.referral_eligibility_events disable trigger referral_eligibility_events_immutable;
-    delete from public.referral_eligibility_events where wedding_id in ('${wedding}','${linkedWedding}');
+    delete from public.referral_eligibility_events where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}');
     alter table public.referral_eligibility_events enable trigger referral_eligibility_events_immutable;
     alter table public.referral_attributions disable trigger referral_attribution_immutable;
-    delete from public.referral_attributions where wedding_id in ('${wedding}','${linkedWedding}');
+    delete from public.referral_attributions where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}');
     alter table public.referral_attributions enable trigger referral_attribution_immutable;
-    delete from public.referral_intents where id in ('${intent}','${linkedIntent}');
+    delete from public.referral_intents where id in ('${intent}','${linkedIntent}','${updateIntent}');
+    delete from public.wedding_memberships where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}');
     alter table public.weddings disable trigger weddings_no_delete;
-    delete from public.weddings where id in ('${wedding}','${linkedWedding}');
+    delete from public.weddings where id in ('${wedding}','${linkedWedding}','${updateWedding}');
     alter table public.weddings enable trigger weddings_no_delete;
     delete from public.referral_accounts where user_id='${referrer}';
     delete from public.profiles where id in ('${creator}','${referrer}');
