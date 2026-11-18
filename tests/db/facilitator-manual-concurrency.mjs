@@ -261,6 +261,49 @@ try {
   assert.match(staleRequest.error.message, /FACILITATOR_MANUAL_HOLD: Current verified recipient required/);
   assert.ok(staleClaim.error, "Concurrent recipient change must also block the pending claim");
   assert.match(staleClaim.error.message, /FACILITATOR_MANUAL_HOLD: Recipient changed or is not verified/);
+  const updatedRevision = matchJson(recipientUpdated.value).revision;
+  await run(`with evidence as (
+    insert into public.facilitator_recipient_evidence(revision_id,external_reference,sha256,submitted_by)
+      values('${updatedRevision}','${randomUUID()}','${"b".repeat(64)}','${fixtureIds.owner}')
+      returning id
+  ) insert into public.facilitator_recipient_checks(revision_id,evidence_id,checked_by,owner_solo)
+    select '${updatedRevision}',id,'${fixtureIds.owner}',true from evidence;`);
+  assert.equal(await run(`select public.facilitator_payout_recipient_ready(
+    '${fixtureIds.user}','${updatedRevision}');`), "t", "New synthetic recipient is ready for source race");
+  const adjustmentName = `manual_adjustment_${randomUUID()}`, adjustedRequestName = `manual_adjusted_${randomUUID()}`;
+  const adjustmentKey = randomUUID();
+  const adjustment = sql(`begin; set local statement_timeout='30s';
+    set local idle_in_transaction_session_timeout='45s'; set local application_name='${adjustmentName}';
+    select pg_advisory_xact_lock(71110001);
+    insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
+      amount_minor,currency,status,refund_fee_allocation)
+      select 'stripe','refund','manual-concurrent-refund',c.id,c.wedding_id,50000,'KES','processed','platform'
+      from public.contributions c join public.referral_funding_reviews f on f.contribution_id=c.id
+      where f.id='${fixtureIds.review}';\n`, true);
+  const adjustmentResult = adjustment.result.then(value => ({ value }), error => ({ error }));
+  let adjustedResult, adjustmentBarrierError;
+  try {
+    await waitFor(`exists(select 1 from pg_stat_activity where application_name='${adjustmentName}'
+      and state='idle in transaction' and wait_event='ClientRead')`);
+    const adjusted = sql(`begin; set local statement_timeout='30s'; set local application_name='${adjustedRequestName}';
+      ${actor(fixtureIds.user)} select public.facilitator_manual_request_internal(
+        '${adjustmentKey}','${updatedRevision}','KES',1,
+        jsonb_build_array(jsonb_build_object('review','${fixtureIds.review}','amount','1')),true); commit;`);
+    adjustedResult = adjusted.result.then(value => ({ value }), error => ({ error }));
+    await waitFor(`exists(select 1 from pg_stat_activity waiting join pg_stat_activity holding
+      on holding.pid=any(pg_blocking_pids(waiting.pid))
+      where waiting.application_name='${adjustedRequestName}' and holding.application_name='${adjustmentName}'
+        and waiting.wait_event='advisory')`);
+  } catch (error) {
+    adjustmentBarrierError = error;
+  } finally {
+    adjustment.release();
+  }
+  const [adjustmentCommitted, adjustedRequest] = await Promise.all([adjustmentResult, adjustedResult]);
+  if (adjustmentBarrierError) throw adjustmentBarrierError;
+  assert.ifError(adjustmentCommitted.error);
+  assert.ok(adjustedRequest.error, "Committed refund must hold subsequent source admission");
+  assert.match(adjustedRequest.error.message, /FACILITATOR_MANUAL_HOLD:/);
   const totals = matchJson(await run(`select jsonb_build_object(
     'requests',(select count(*) from public.facilitator_manual_requests where user_id='${fixtureIds.user}'),
     'allocations',(select count(*) from public.facilitator_manual_allocations),
@@ -268,11 +311,12 @@ try {
     'failed',(select count(*) from public.facilitator_manual_requests where request_key='${competingKey}'),
     'stale',(select count(*) from public.facilitator_manual_requests where request_key='${staleKey}'),
     'checker_failed',(select count(*) from public.facilitator_manual_requests where request_key='${checkerRequestKey}'),
+    'adjustment_failed',(select count(*) from public.facilitator_manual_requests where request_key='${adjustmentKey}'),
     'claims',(select count(*) from public.facilitator_manual_claims),
     'receipts',(select count(*) from public.facilitator_manual_receipts),
     'incidents',(select count(*) from public.facilitator_manual_incidents));`));
   assert.deepEqual(totals, { requests: 3, allocations: 3, total: 1000, failed: 0, stale: 0,
-    checker_failed: 0, claims: 2, receipts: 1, incidents: 1 });
+    checker_failed: 0, adjustment_failed: 0, claims: 2, receipts: 1, incidents: 1 });
   console.log("Concurrent synthetic requests and claims serialize; retries acknowledge history without additional liabilities.");
 } finally {
   if (gateChanged) await run(gateReset);
