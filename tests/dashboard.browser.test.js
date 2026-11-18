@@ -31,17 +31,18 @@ for (const options of [{ channel: "msedge" }, {}]) {
 const skip = browser ? false : "No Chromium/Edge available (run: npx playwright install chromium)";
 if (!browser && process.env.CI) throw new Error(skip);
 
-async function openDashboard(handlers = {}, query = "") {
+async function openDashboard(handlers = {}, query = "", legacyAnswers = null) {
   const context = await browser.newContext();
   const page = await context.newPage();
   const errors = [];
   const calls = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(() => {
+  await page.addInitScript(savedAnswers => {
     if (sessionStorage.getItem("seeded")) return;
     sessionStorage.setItem("seeded", "1");
     sessionStorage.setItem("ws-session", JSON.stringify({ a: "test-token", r: "" }));
-  });
+    if (savedAnswers) sessionStorage.setItem("ws-create-answers", JSON.stringify(savedAnswers));
+  }, legacyAnswers);
   await page.route("**/api/referrals*", route => route.fulfill({
     status: 200, contentType: "application/json", body: JSON.stringify({ intent_id: null })
   }));
@@ -81,6 +82,41 @@ test("dashboard opens without script errors or native form navigation", { skip }
   assert.deepEqual(errors, []);
   await close();
 });
+
+test("dashboard explains the sample and currency choice without setup jargon", { skip }, async () => {
+  const { page, close } = await openDashboard();
+  try {
+    assert.match(await page.locator("#create-section h2").innerText(), /Start your wedding website/);
+    assert.match(await page.locator("#create-currency-note").innerText(), /clear amounts.*won't be converted/i);
+    assert.match(await page.locator("#inspiration-selection-copy").innerText(), /sample wedding.*own details before publishing/i);
+    assert.equal(await page.locator("#create-submit").textContent(), "Continue to your wedding preview");
+    assert.doesNotMatch(await page.locator("#create-section").innerText(),
+      /fallback|matching-currency|server checks|sponsor identities|valid passes/i);
+  } finally { await close(); }
+});
+
+const savedAnswers = {
+  fields: { names: "Amina & David", date: "", timeZone: "", location: "", currency: "USD", capacity: "" },
+  palette: ["#244b3a", "#a9b5a2", "#be9b52", "#eee8d9"],
+  venues: [{ name: "", time: "", eventDate: "", address: "", map: "", description: "" }]
+};
+
+for (const [label, query, expected] of [
+  ["public wedding", "?style=another-public-wedding", /wedding's setup.*own details before publishing/i],
+  ["fictional inspiration", "?inspiration=garden-gathering", /sample.*own wedding details before publishing/i]
+]) {
+  test(`${label} choice explains saved answers and uses simple starter copy`, { skip }, async () => {
+    const { page, close } = await openDashboard({}, query, savedAnswers);
+    try {
+      assert.match(await page.locator("#inspiration-selection-copy").innerText(), /won't use your saved setup answers.*names will stay/i);
+      assert.equal(await page.locator("#include-legacy-answers").isChecked(), true);
+      await page.click("#apply-inspiration");
+      assert.equal(await page.locator("#include-legacy-answers").isChecked(), false);
+      assert.equal(await page.locator("#couple-names").inputValue(), "Amina & David");
+      assert.match(await page.locator("#inspiration-selection-copy").innerText(), expected);
+    } finally { await close(); }
+  });
+}
 
 test("create entry makes one idempotent draft request and continues to the shared wedding guide", { skip }, async () => {
   const id = "11111111-1111-1111-1111-111111111111";
