@@ -299,6 +299,8 @@ begin
       and not has_function_privilege(role_name,
         'public.facilitator_manual_status_internal(uuid)','execute')
       and not has_function_privilege(role_name,
+        'public.facilitator_manual_claim_snapshot_internal(uuid)','execute')
+      and not has_function_privilege(role_name,
         'public.facilitator_manual_lock_recipient(uuid,uuid)','execute')
       and not has_function_privilege(role_name,
         'public.facilitator_manual_reconfirm_internal(uuid,uuid,uuid,uuid,boolean)','execute')
@@ -380,6 +382,13 @@ begin
     blocked:=true;
   end;
   perform pg_temp.assert_true(blocked,'shadow observation is hard disabled');
+  blocked:=false;
+  begin perform public.facilitator_manual_claim_snapshot_internal(null);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_MANUAL_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'manual claim snapshot is hard disabled');
 end $$;
 create or replace function public.facilitator_reservation_core_enabled() returns boolean
 language sql immutable set search_path='' as $$ select true $$;
@@ -495,6 +504,35 @@ begin
         and exists(select 1 from public.facilitator_manual_claims c where c.request_id=manual_id
           and c.binding_id=binding and c.recipient_revision=changed_recipient),
         'claim snapshots the reviewed current destination');
+      insert into public.facilitator_recipient_versions(user_id,request_key,full_name,phone,ownership_attested,consent_version)
+        values(u,extensions.gen_random_uuid(),'Later fictional facilitator','254700000007',true,
+          'facilitator-mpesa-recipient-v1');
+      result:=public.facilitator_manual_claim_snapshot_internal(manual_id);
+      perform pg_temp.assert_true(result->>'revision'=changed_recipient::text
+        and result->>'binding_id'=binding::text and result->>'phone'='254700000006'
+        and result->>'expected_name'='Changed fictional facilitator'
+        and result->>'historical_only'='true' and result->>'send_authorized'='false'
+        and exists(select 1 from public.facilitator_recipient_audit
+          where actor_id=owner_id and subject_user_id=u and revision_id=changed_recipient
+            and action='payout_snapshot'),
+        'claim sender receives an audited historical snapshot, not the latest recipient or send authority');
+      perform set_config('request.jwt.claim.sub',admin_id::text,true);
+      blocked:=false;
+      begin perform public.facilitator_manual_claim_snapshot_internal(manual_id);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_MANUAL_AUTH:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'another staff member cannot reveal the claim snapshot');
+      perform set_config('request.jwt.claim.sub',u::text,true);
+      blocked:=false;
+      begin perform public.facilitator_manual_claim_snapshot_internal(manual_id);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_MANUAL_AUTH:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'beneficiary cannot use the staff claim snapshot');
+      perform set_config('request.jwt.claim.sub',owner_id::text,true);
       blocked:=false;
       begin
         perform public.facilitator_manual_rebind_internal(manual_id,binding,extensions.gen_random_uuid(),

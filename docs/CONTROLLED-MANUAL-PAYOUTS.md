@@ -108,8 +108,10 @@ review and, for a changed recipient, confirmation by the beneficiary against
 the expected previous binding. Claims use the latest binding and retain the
 original source allocations; the immutable claim snapshots that binding and
 recipient revision. A claimed request cannot be rebound; retries
-acknowledge history rather than establishing current readiness. The model has
-no sender-facing snapshot or authority to send.
+acknowledge history rather than establishing current readiness. A disabled,
+ungranted internal disclosure lets only the current staff sender read that
+historical claim destination and records each reveal. It deliberately returns
+no send authority, does not revalidate readiness, and is not an API or UI.
 Historical request and action retries acknowledge prior records and never
 authorize a send or resend. SQL tests enable the model inside a rolled-back
 synthetic transaction. The concurrency test instead commits synthetic fixtures

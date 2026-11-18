@@ -430,6 +430,39 @@ begin
     'operator_reported',reported,'external_transfer_verified',false,'do_not_resend',claimed);
 end $$;
 
+-- Historical disclosure only; this is not a readiness check or send authority.
+create function public.facilitator_manual_claim_snapshot_internal(p_request uuid) returns jsonb
+language plpgsql volatile security definer set search_path='' set row_security=off as $$
+declare r public.facilitator_manual_requests; c public.facilitator_manual_claims;
+  v public.facilitator_recipient_versions;
+begin
+  if not public.facilitator_manual_enabled() then
+    raise exception 'FACILITATOR_MANUAL_DISABLED: Manual payout model is disabled.';
+  end if;
+  if current_setting('transaction_isolation')<>'read committed' then
+    raise exception 'FACILITATOR_MANUAL_CONFLICT: READ COMMITTED is required.';
+  end if;
+  if auth.uid() is null or p_request is null then
+    raise exception 'FACILITATOR_MANUAL_AUTH: Claim snapshot is not accessible.';
+  end if;
+  perform pg_advisory_xact_lock(71110001);
+  perform pg_advisory_xact_lock(71110002);
+  perform 1 from public.profiles where id=auth.uid() for share;
+  if coalesce(public.current_platform_role()::text,'') not in ('admin','superadmin','owner') then
+    raise exception 'FACILITATOR_MANUAL_AUTH: Claim snapshot is not accessible.';
+  end if;
+  select * into c from public.facilitator_manual_claims where request_id=p_request and sender_id=auth.uid();
+  if not found then raise exception 'FACILITATOR_MANUAL_AUTH: Claim snapshot is not accessible.'; end if;
+  select * into r from public.facilitator_manual_requests where id=c.request_id;
+  select * into v from public.facilitator_recipient_versions
+    where revision_id=c.recipient_revision and user_id=r.user_id;
+  if not found then raise exception 'FACILITATOR_MANUAL_CONFLICT: Claim recipient is inconsistent.'; end if;
+  insert into public.facilitator_recipient_audit(actor_id,subject_user_id,revision_id,action)
+    values(auth.uid(),r.user_id,v.revision_id,'payout_snapshot');
+  return jsonb_build_object('request_id',r.id,'binding_id',c.binding_id,'revision',v.revision_id,
+    'expected_name',v.full_name,'phone',v.phone,'historical_only',true,'send_authorized',false);
+end $$;
+
 create function public.facilitator_manual_action_internal(
   p_request uuid,p_key uuid,p_action text,p_reason text,p_fee bigint,
   p_reference text,p_owner_solo boolean,p_confirmed boolean
@@ -588,6 +621,7 @@ revoke all on function public.facilitator_manual_enabled(),public.facilitator_ma
   public.facilitator_manual_source_cap(uuid,uuid,text),public.facilitator_manual_check_sources(uuid,text),
   public.facilitator_manual_evidence_digest(uuid),
   public.facilitator_manual_status_internal(uuid),
+  public.facilitator_manual_claim_snapshot_internal(uuid),
   public.facilitator_manual_reconfirm_internal(uuid,uuid,uuid,uuid,boolean),
   public.facilitator_manual_rebind_internal(uuid,uuid,uuid,uuid,uuid,boolean),
   public.facilitator_manual_request_internal(uuid,uuid,text,bigint,jsonb,boolean),
