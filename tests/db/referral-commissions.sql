@@ -417,6 +417,30 @@ begin
       blocked:=true;
     end;
     perform pg_temp.assert_true(blocked,'rebinding cannot move custody scope');
+    declare changed_review uuid;
+    begin
+      insert into public.referral_funding_reviews(contribution_id,source_digest,currency,estimate_minor,
+        platform_fee_minor,settled_platform_fee_minor,provider_cost_minor,losses_minor,holds_minor,
+        other_commitments_minor,evidence_reference,evidence_sha256,recorded_by,recorded_at)
+        select contribution_id,repeat('0',64),currency,estimate_minor,platform_fee_minor,settled_platform_fee_minor,
+          provider_cost_minor,losses_minor,holds_minor,other_commitments_minor,extensions.gen_random_uuid(),
+          repeat('f',64),owner_id,clock_timestamp()+interval '2 seconds'
+        from public.referral_funding_reviews where id=fresh_review returning id into changed_review;
+      insert into public.referral_funding_review_checks(review_id,checked_by,owner_solo)
+        values(changed_review,checker,false);
+      blocked:=false;
+      begin
+        perform public.facilitator_reservation_rebind_internal(first_id,binding,extensions.gen_random_uuid(),recipient,
+          fresh_inventory,jsonb_build_array(jsonb_build_object('review',changed_review,'amount','600')),null,true);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_RESERVATION_CONFLICT:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'changed source digest cannot rebind the original liability');
+      raise exception 'SYNTHETIC_CHANGED_DIGEST_ROLLBACK';
+    exception when raise_exception then
+      if sqlerrm <> 'SYNTHETIC_CHANGED_DIGEST_ROLLBACK' then raise; end if;
+    end;
     blocked:=false;
     begin
       perform public.facilitator_reservation_rebind_internal(first_id,binding,extensions.gen_random_uuid(),recipient,
