@@ -41,7 +41,9 @@ a payload digest, not raw payloads or signatures. Live Paystack still requires
 its independent provider check before staging: a failure before that point
 continues to depend on provider redelivery. Publication adjustments, payment
 confirmations and Daraja callbacks do not use this inbox. It does not establish
-complete source locking or authorize facilitator payouts.
+complete source locking or authorize facilitator payouts. The internal readiness
+check also rejects contradictory legacy adjustment observations that arrive
+after an inbox item was processed; it is not a comprehensive provider queue.
 
 The legacy expense, reconciliation, budget and couple payout-request RPCs check
 workspace access before acquiring the accounting lock, and check it again after

@@ -39,6 +39,31 @@ begin
     'payout readiness remains internal only');
 end $$;
 
+savepoint late_legacy_fixture;
+set local role service_role;
+select set_config('request.jwt.claim.role','service_role',true);
+do $$
+declare id uuid;
+begin
+  id:=(public.stage_verified_adjustment('paystack',repeat('c',64),'refund.pending',
+    'legacy-late-refund','legacy-late-payment',100,'KES','refund_pending',null,repeat('c',64))->>'id')::uuid;
+  perform pg_temp.assert_inbox((public.process_verified_adjustment(id)->>'processed')::boolean,
+    'first legacy comparison fixture processed');
+  perform public.record_provider_adjustment('paystack','legacy-lifecycle-fixture','refund.processed',
+    'legacy-late-refund','legacy-late-payment',100,'KES','refund_processed',null);
+end $$;
+reset role;
+select pg_temp.assert_inbox(public.verified_adjustment_inbox_clear_for_payout(),
+  'compatible legacy lifecycle does not block readiness');
+set local role service_role;
+select set_config('request.jwt.claim.role','service_role',true);
+select public.record_provider_adjustment('paystack','legacy-conflict-fixture','refund.processed',
+  'legacy-late-refund','legacy-late-payment',101,'KES','refund_processed',null);
+reset role;
+select pg_temp.assert_inbox(not public.verified_adjustment_inbox_clear_for_payout(),
+  'late incompatible legacy observation blocks readiness after inbox processing');
+rollback to savepoint late_legacy_fixture;
+
 set local role service_role;
 select set_config('request.jwt.claim.role','service_role',true);
 do $$
