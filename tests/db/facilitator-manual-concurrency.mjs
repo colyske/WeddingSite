@@ -238,25 +238,41 @@ try {
   await assert.rejects(run(wrapper(fixtureIds.superadmin, checked(sixth, sixthStartKey))),
     /FACILITATOR_MANUAL_HOLD: Reviewer authority changed/);
   await run(`update public.profiles set platform_role='admin' where id='${fixtureIds.admin}';`);
+  // Synthetic cross-rail hold rows intentionally bypass foreign keys in this disposable database.
   const simplePayout = randomUUID();
-  await run(`begin;
-    insert into public.simple_payout_requests(id,request_key,wedding_id,requested_by,amount_minor,currency,partner_slot,kyc_hash)
-      select '${simplePayout}','${randomUUID()}',c.wedding_id,'${fixtureIds.user}',1,'KES',1,'fixture'
-      from public.contributions c join public.referral_funding_reviews f on f.contribution_id=c.id
-      where f.id='${fixtureIds.review}';
+  await run(`begin; set local session_replication_role=replica;
     insert into public.simple_payout_incidents(payout_id,provider,transaction_reference,actor_id)
       values('${simplePayout}','daraja','SYNTHETIC-INCIDENT','${fixtureIds.owner}'); commit;`);
   try {
     await assert.rejects(run(wrapper(fixtureIds.owner, checked(fourth, fourthStartKey))),
       /FACILITATOR_MANUAL_HOLD: Payout or cross-rail incident requires review/);
   } finally {
-    await run(`begin; alter table public.simple_payout_incidents disable trigger simple_payout_immutable;
+    await run(`begin; set local session_replication_role=replica;
       delete from public.simple_payout_incidents where payout_id='${simplePayout}';
-      alter table public.simple_payout_incidents enable trigger simple_payout_immutable;
-      alter table public.simple_payout_requests disable trigger simple_payout_immutable;
-      delete from public.simple_payout_requests where id='${simplePayout}';
-      alter table public.simple_payout_requests enable trigger simple_payout_immutable; commit;`);
+      commit;`);
   }
+  const custody = randomUUID(), hold = randomUUID();
+  await run(`begin; set local session_replication_role=replica;
+    insert into public.manual_payout_custody(id,provider,account_reference,currency,available_minor,statement_at,evidence_id,recorded_by)
+      values('${custody}','daraja','${randomUUID()}','KES',0,now(),'${randomUUID()}','${fixtureIds.owner}');
+    insert into public.manual_payout_account_holds(id,custody_id,payout_id,execution_channel,
+      authority_actor_id,authority_role_at_observation,journal_reference,journal_sha256)
+      values('${hold}','${custody}','${randomUUID()}','automatic_b2c','${fixtureIds.owner}',
+        'owner','${randomUUID()}','${"a".repeat(64)}'); commit;`);
+  try {
+    await assert.rejects(run(wrapper(fixtureIds.owner, checked(fourth, fourthStartKey))),
+      /FACILITATOR_MANUAL_HOLD: Payout or cross-rail incident requires review/);
+  } finally {
+    await run(`begin; set local session_replication_role=replica;
+      delete from public.manual_payout_account_holds where id='${hold}';
+      delete from public.manual_payout_custody where id='${custody}'; commit;`);
+  }
+  await assert.rejects(run(`begin; ${actor(fixtureIds.user)}
+    select public.facilitator_recipient_submit('${randomUUID()}','Changed facilitator','254700000004',
+      true,'facilitator-mpesa-recipient-v1');
+    ${actor(fixtureIds.owner)} set local role authenticated;
+    select ${checked(fourth, fourthStartKey)}; commit;`),
+  /FACILITATOR_MANUAL_HOLD: Recipient changed or is not verified/);
   await assert.rejects(run(`begin;
     insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
       amount_minor,currency,status,refund_fee_allocation)

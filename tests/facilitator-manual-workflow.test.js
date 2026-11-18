@@ -18,7 +18,7 @@ test("send start authorizes only after a committed first start and a separate ch
     const path = new URL(url).pathname;
     if (path === "/auth/v1/user") return Response.json({ id });
     if (path === "/rest/v1/profiles") return Response.json([{ platform_role: role }]);
-    calls.push({ path, authorization: options.headers.Authorization });
+    calls.push({ path, authorization: options.headers.Authorization, body: JSON.parse(options.body) });
     if (path.endsWith("_send_start")) {
       if (mode === "timeout") throw new Error("transport lost");
       if (mode === "replay") return Response.json({ started: false, send_authorized: false });
@@ -52,6 +52,10 @@ test("send start authorizes only after a committed first start and a separate ch
     assert.deepEqual(calls.map(call => call.path.split("/").at(-1)),
       ["facilitator_manual_send_start", "facilitator_manual_send_checked"]);
     assert.ok(calls.every(call => call.authorization === "Bearer fixture-token"));
+    calls.length = 0;
+    const upper = await invoke({ ...body, id: id.toUpperCase(), key: id.toUpperCase() });
+    assert.equal(upper.data.send_authorized, true);
+    assert.ok(calls.every(call => call.body.p_request === id && call.body.p_key === id));
     for (mode of ["replay", "invalid", "timeout", "blocked", "read-timeout"]) {
       calls.length = 0;
       const result = await invoke(body);

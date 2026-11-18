@@ -74,15 +74,16 @@ export default async function handler(req, res) {
         return sendJson(res, 400, { error: "Confirm the claimed payout and send start." });
       }
       try {
+        const requestId = body.id.toLowerCase(), key = body.key.toLowerCase();
         const start = await rpc("facilitator_manual_send_start", session.token,
-          { p_request: body.id, p_key: body.key, p_confirmed: true });
+          { p_request: requestId, p_key: key, p_confirmed: true });
         if (start?.started === false && start.send_authorized === false) {
           return sendJson(res, 200, { send_authorized: false, do_not_resend: true });
         }
         if (start?.started !== true || start.send_authorized !== false) throw new Error("Invalid start response");
         const checked = await rpc("facilitator_manual_send_checked", session.token,
-          { p_request: body.id, p_key: body.key });
-        if (checked?.request_id !== body.id || checked.send_authorized !== false ||
+          { p_request: requestId, p_key: key });
+        if (checked?.request_id !== requestId || checked.send_authorized !== false ||
           typeof checked.expected_name !== "string" || typeof checked.phone !== "string") {
           throw new Error("Invalid checked destination");
         }
