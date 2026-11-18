@@ -42,8 +42,12 @@ its independent provider check before staging: a failure before that point
 continues to depend on provider redelivery. Publication adjustments, payment
 confirmations and Daraja callbacks do not use this inbox. It does not establish
 complete source locking or authorize facilitator payouts. The internal readiness
-check also rejects contradictory legacy adjustment observations that arrive
-after an inbox item was processed; it is not a comprehensive provider queue.
+check also rejects persisted, contradictory legacy adjustment observations
+after an inbox item was processed. A conflicting legacy replay with the same
+event ID may be discarded by the older writer before it is persisted. Matching
+but unresolved legacy observations are not blocked by this check. It is not a
+comprehensive provider queue, and its historical join needs scale and lock-order
+testing before any payout path may depend on it.
 
 The legacy expense, reconciliation, budget and couple payout-request RPCs check
 workspace access before acquiring the accounting lock, and check it again after
