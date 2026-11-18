@@ -39,6 +39,75 @@
           finally { reveal.disabled = false; }
         });
         card.append(reveal, details);
+        const current = element("button", "Check my current claimed recipient");
+        current.type = "button";
+        const currentDetails = element("p");
+        current.addEventListener("click", async () => {
+          current.disabled = true;
+          try {
+            const snapshot = await WSReferrals.request("manual-sender-current&id=" + encodeURIComponent(row.request_id));
+            currentDetails.textContent = `Current checked destination: ${snapshot.expected_name}, ${snapshot.phone}. This is not authorization to send or resend.`;
+          } catch (error) { notice.textContent = error.message; }
+          finally { current.disabled = false; }
+        });
+        card.append(current, currentDetails);
+      }
+      for (const incident of row.incidents || []) {
+        const section = element("section");
+        section.append(element("h3", `Incident ${incident.id}: ${incident.reviewed ? "investigation reviewed" : "investigation required"}`),
+          element("p", "The affected claim remains held. Do not resend, even after investigation review."));
+        if (!incident.reviewed) {
+          const evidenceForm = element("form");
+          const reference = element("input"); reference.required = true;
+          const sha = element("input"); sha.required = true; sha.pattern = "[0-9a-f]{64}";
+          const confirmEvidence = element("input"); confirmEvidence.type = "checkbox"; confirmEvidence.required = true;
+          const evidenceLabel = element("label", " I recorded the external investigation and all related transfer evidence.");
+          evidenceLabel.prepend(confirmEvidence);
+          const evidenceButton = element("button", "Record investigation evidence"); evidenceButton.type = "submit";
+          evidenceForm.append(labeled("External evidence reference UUID", reference), labeled("Evidence SHA-256", sha),
+            evidenceLabel, evidenceButton);
+          let evidenceKey = null, previousEvidence = null;
+          evidenceForm.addEventListener("submit", async event => {
+            event.preventDefault();
+            const payload = { incident: incident.id, reference: reference.value.trim(), sha256: sha.value.trim(),
+              confirmed: confirmEvidence.checked };
+            const fingerprint = JSON.stringify(payload);
+            if (!evidenceKey || previousEvidence !== fingerprint) { evidenceKey = crypto.randomUUID(); previousEvidence = fingerprint; }
+            evidenceButton.disabled = true;
+            try {
+              await WSReferrals.request("manual-incident-evidence", { ...payload, key: evidenceKey });
+              await load(); notice.textContent = "Investigation evidence recorded. The claim remains held.";
+            } catch (error) { notice.textContent = error.message; }
+            finally { evidenceButton.disabled = false; }
+          });
+          section.append(evidenceForm);
+          if (incident.evidence.length) {
+            const reviewForm = element("form");
+            const evidence = element("select");
+            for (const item of incident.evidence) {
+              const option = element("option", `${item.id} (submitted by ${item.submitted_by})`);
+              option.value = item.id; evidence.append(option);
+            }
+            const solo = element("input"); solo.type = "checkbox";
+            const soloLabel = element("label", " Owner solo investigation review"); soloLabel.prepend(solo);
+            const confirmed = element("input"); confirmed.type = "checkbox"; confirmed.required = true;
+            const confirmLabel = element("label", " I independently checked the evidence and accounted for related transfers and liabilities. The affected claim stays held and must not be resent.");
+            confirmLabel.prepend(confirmed);
+            const reviewButton = element("button", "Record investigation review"); reviewButton.type = "submit";
+            reviewForm.append(labeled("Investigation evidence", evidence), soloLabel, confirmLabel, reviewButton);
+            reviewForm.addEventListener("submit", async event => {
+              event.preventDefault(); reviewButton.disabled = true;
+              try {
+                await WSReferrals.request("manual-incident-review", { incident: incident.id,
+                  evidence: evidence.value, ownerSolo: solo.checked, confirmed: confirmed.checked });
+                await load(); notice.textContent = "Investigation reviewed. The affected claim remains held; do not resend.";
+              } catch (error) { notice.textContent = error.message; }
+              finally { reviewButton.disabled = false; }
+            });
+            section.append(reviewForm);
+          }
+        }
+        card.append(section);
       }
       if (!["paid", "cancelled", "outcome_review_required"].includes(row.state)) {
         const form = element("form");

@@ -119,6 +119,13 @@ ungranted internal disclosure lets only the current staff sender read that
 historical claim destination and records each reveal. It deliberately returns
 no send authority and does not revalidate readiness. A sender-only wrapper is
 available to the staff interface, but remains blocked by the false model gate.
+The separately checked current-recipient read revalidates the exact claimed
+revision and source, but also cannot authorize sending or resending. Incident
+investigations record immutable external evidence and an independent reviewer,
+or explicit Owner solo review. Review removes only the global unresolved-incident
+block for unrelated future claims; the affected claim, incident and liabilities
+remain intact and must never be resent. This records staff attestations, not
+independently verified provider outcomes.
 Historical request and action retries acknowledge prior records and never
 authorize a send or resend. SQL tests enable the model inside a rolled-back
 synthetic transaction. The concurrency test instead commits synthetic fixtures

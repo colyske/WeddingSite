@@ -7,8 +7,9 @@
 -- The incident trigger is AFTER INSERT, so b2c_event's
 -- ON CONFLICT DO NOTHING replays fire nothing, and its key is derived from the
 -- event so any repeat is a no-op. Incidents are immutable and the existing
--- global incident block has no resolution path in this model. External funding
--- and past sends stay operator-checked.
+-- global incident block is released only after an evidence-bound staff review;
+-- the affected claim and its incident remain retained and must not be resent.
+-- External funding and past sends stay operator-checked.
 create function public.facilitator_reference_receipt_guard() returns trigger
 language plpgsql security definer set search_path='' set row_security=off as $$
 begin

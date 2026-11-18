@@ -70,6 +70,22 @@ create table public.facilitator_manual_reports (
   created_at timestamptz not null default clock_timestamp(),
   unique(request_id,action_key,transaction_reference,actor_id)
 );
+create table public.facilitator_manual_incident_evidence (
+  id uuid primary key default extensions.gen_random_uuid(),
+  incident_id bigint not null references public.facilitator_manual_incidents(id),
+  request_key uuid not null unique,
+  external_reference uuid not null,
+  sha256 text not null check (sha256 ~ '^[0-9a-f]{64}$'),
+  submitted_by uuid not null references public.profiles(id),
+  submitted_at timestamptz not null default clock_timestamp()
+);
+create table public.facilitator_manual_incident_reviews (
+  incident_id bigint primary key references public.facilitator_manual_incidents(id),
+  evidence_id uuid not null unique references public.facilitator_manual_incident_evidence(id),
+  checked_by uuid not null references public.profiles(id),
+  owner_solo boolean not null,
+  checked_at timestamptz not null default clock_timestamp()
+);
 create table public.facilitator_manual_reconfirmations (
   id uuid primary key default extensions.gen_random_uuid(),
   request_id uuid not null references public.facilitator_manual_requests(id),
@@ -100,6 +116,7 @@ do $$ declare t text; begin
   foreach t in array array['facilitator_manual_requests','facilitator_manual_allocations',
     'facilitator_manual_events','facilitator_manual_claims','facilitator_manual_receipts',
     'facilitator_manual_incidents','facilitator_manual_reports',
+    'facilitator_manual_incident_evidence','facilitator_manual_incident_reviews',
     'facilitator_manual_reconfirmations','facilitator_manual_rebindings'] loop
     execute format('alter table public.%I enable row level security',t);
     execute format('revoke all on public.%I from public,anon,authenticated,service_role',t);
@@ -503,6 +520,112 @@ begin
     'expected_name',v.full_name,'phone',v.phone,'historical_only',true,'send_authorized',false);
 end $$;
 
+create function public.facilitator_manual_incident_evidence_internal(
+  p_incident bigint,p_key uuid,p_reference uuid,p_sha256 text,p_confirmed boolean
+) returns uuid language plpgsql security definer set search_path='' set row_security=off as $$
+declare prior public.facilitator_manual_incident_evidence; result uuid;
+begin
+  if not public.facilitator_manual_enabled() then
+    raise exception 'FACILITATOR_MANUAL_DISABLED: Manual payout model is disabled.';
+  end if;
+  if current_setting('transaction_isolation')<>'read committed' then
+    raise exception 'FACILITATOR_MANUAL_CONFLICT: READ COMMITTED is required.';
+  end if;
+  if p_incident is null or p_key is null or p_reference is null or p_sha256 is null
+    or p_sha256 !~ '^[0-9a-f]{64}$' or p_confirmed is distinct from true then
+    raise exception 'FACILITATOR_MANUAL_INPUT: Confirm the investigation evidence.';
+  end if;
+  perform pg_advisory_xact_lock(71110001);
+  perform pg_advisory_xact_lock(71110002);
+  perform 1 from public.profiles where id=auth.uid() for share;
+  perform public.require_staff('admin');
+  select * into prior from public.facilitator_manual_incident_evidence where request_key=p_key;
+  if found then
+    if (prior.incident_id,prior.external_reference,prior.sha256,prior.submitted_by)
+      is distinct from (p_incident,p_reference,p_sha256,auth.uid()) then
+      raise exception 'FACILITATOR_MANUAL_CONFLICT: Investigation evidence retry changed.';
+    end if;
+    return prior.id;
+  end if;
+  if not exists(select 1 from public.facilitator_manual_incidents where id=p_incident)
+    or exists(select 1 from public.facilitator_manual_incident_reviews where incident_id=p_incident) then
+    raise exception 'FACILITATOR_MANUAL_CONFLICT: Incident is unavailable or already reviewed.';
+  end if;
+  insert into public.facilitator_manual_incident_evidence(incident_id,request_key,external_reference,sha256,submitted_by)
+    values(p_incident,p_key,p_reference,p_sha256,auth.uid()) returning id into result;
+  return result;
+end $$;
+
+create function public.facilitator_manual_sender_current_internal(p_request uuid) returns jsonb
+language plpgsql security definer set search_path='' set row_security=off as $$
+declare c public.facilitator_manual_claims; r public.facilitator_manual_requests; result jsonb;
+begin
+  if not public.facilitator_manual_enabled() then
+    raise exception 'FACILITATOR_MANUAL_DISABLED: Manual payout model is disabled.';
+  end if;
+  if current_setting('transaction_isolation')<>'read committed' then
+    raise exception 'FACILITATOR_MANUAL_CONFLICT: READ COMMITTED is required.';
+  end if;
+  perform pg_advisory_xact_lock(71110001);
+  perform pg_advisory_xact_lock(71110002);
+  perform 1 from public.profiles where id=auth.uid() for share;
+  perform public.require_staff('admin');
+  select * into c from public.facilitator_manual_claims where request_id=p_request and sender_id=auth.uid();
+  if not found then raise exception 'FACILITATOR_MANUAL_AUTH: Claim is not accessible.'; end if;
+  select * into r from public.facilitator_manual_requests where id=c.request_id;
+  perform 1 from public.profiles where id=r.user_id for update;
+  if public.facilitator_manual_state(p_request)<>'processing'
+    or exists(select 1 from public.facilitator_manual_incidents where request_id=p_request)
+    or not public.facilitator_manual_lock_recipient(r.user_id,c.recipient_revision) then
+    raise exception 'FACILITATOR_MANUAL_HOLD: Current destination is not available; do not resend.';
+  end if;
+  perform public.facilitator_manual_check_sources(r.user_id,r.currency);
+  result:=public.facilitator_manual_claim_snapshot_internal(p_request);
+  return result||jsonb_build_object('historical_only',false,'current_recipient_checked',true,
+    'send_authorized',false,'do_not_resend',true);
+end $$;
+
+create function public.facilitator_manual_incident_review_internal(
+  p_incident bigint,p_evidence uuid,p_owner_solo boolean,p_confirmed boolean
+) returns boolean language plpgsql security definer set search_path='' set row_security=off as $$
+declare e public.facilitator_manual_incident_evidence; previous public.facilitator_manual_incident_reviews;
+  role_name public.platform_role;
+begin
+  if not public.facilitator_manual_enabled() then
+    raise exception 'FACILITATOR_MANUAL_DISABLED: Manual payout model is disabled.';
+  end if;
+  if current_setting('transaction_isolation')<>'read committed' then
+    raise exception 'FACILITATOR_MANUAL_CONFLICT: READ COMMITTED is required.';
+  end if;
+  if p_incident is null or p_evidence is null or p_owner_solo is null or p_confirmed is distinct from true then
+    raise exception 'FACILITATOR_MANUAL_INPUT: Confirm the incident investigation.';
+  end if;
+  perform pg_advisory_xact_lock(71110001);
+  perform pg_advisory_xact_lock(71110002);
+  perform 1 from public.profiles where id=auth.uid() for share;
+  role_name:=public.require_staff('admin');
+  if p_owner_solo and role_name<>'owner' then
+    raise exception 'FACILITATOR_MANUAL_AUTH: Only the Owner may review solo.';
+  end if;
+  select * into e from public.facilitator_manual_incident_evidence
+    where id=p_evidence and incident_id=p_incident;
+  if not found then raise exception 'FACILITATOR_MANUAL_CONFLICT: Investigation evidence not found.'; end if;
+  select * into previous from public.facilitator_manual_incident_reviews where incident_id=p_incident;
+  if found then
+    if (previous.evidence_id,previous.checked_by,previous.owner_solo)
+      is distinct from (p_evidence,auth.uid(),p_owner_solo) then
+      raise exception 'FACILITATOR_MANUAL_CONFLICT: Incident already reviewed.';
+    end if;
+    return true;
+  end if;
+  if e.submitted_by=auth.uid() and not (p_owner_solo and role_name='owner') then
+    raise exception 'FACILITATOR_MANUAL_AUTH: Independent review or Owner solo is required.';
+  end if;
+  insert into public.facilitator_manual_incident_reviews(incident_id,evidence_id,checked_by,owner_solo)
+    values(p_incident,p_evidence,auth.uid(),p_owner_solo);
+  return true;
+end $$;
+
 create function public.facilitator_manual_action_internal(
   p_request uuid,p_key uuid,p_action text,p_reason text,p_fee bigint,
   p_reference text,p_owner_solo boolean,p_confirmed boolean
@@ -627,7 +750,8 @@ begin
       perform 1 from public.profiles where id=reviewer and platform_role in ('admin','superadmin','owner') for share;
       if not found then raise exception 'FACILITATOR_MANUAL_AUTH: Reviewer authority changed.'; end if;
     end if;
-    if exists(select 1 from public.facilitator_manual_incidents) then
+    if exists(select 1 from public.facilitator_manual_incidents i
+      where not exists(select 1 from public.facilitator_manual_incident_reviews x where x.incident_id=i.id)) then
       raise exception 'FACILITATOR_MANUAL_HOLD: A duplicate receipt requires review; do not send.';
     end if;
     insert into public.facilitator_manual_claims(
@@ -664,6 +788,9 @@ revoke all on function public.facilitator_manual_enabled(),public.facilitator_ma
   public.facilitator_manual_evidence_digest(uuid),
   public.facilitator_manual_status_internal(uuid),
   public.facilitator_manual_claim_snapshot_internal(uuid),
+  public.facilitator_manual_sender_current_internal(uuid),
+  public.facilitator_manual_incident_evidence_internal(bigint,uuid,uuid,text,boolean),
+  public.facilitator_manual_incident_review_internal(bigint,uuid,boolean,boolean),
   public.facilitator_manual_reconfirm_internal(uuid,uuid,uuid,uuid,boolean),
   public.facilitator_manual_rebind_internal(uuid,uuid,uuid,uuid,uuid,boolean),
   public.facilitator_manual_request_internal(uuid,uuid,text,bigint,jsonb,boolean),

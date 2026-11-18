@@ -350,6 +350,31 @@ test("staff queue offers manual claim with explicit confirmation and no automati
   await ctx.close();
 });
 
+test("staff incident review preserves the no-resend warning", { skip }, async () => {
+  const { ctx, page } = await context();
+  const sent = [];
+  await page.route("**/api/referrals*", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    if (action === "manual-staff-workspace") return fulfill(route, [{ request_id: uuid, amount_minor: "600",
+      currency: "KES", state: "outcome_review_required", do_not_resend: true,
+      incidents: [{ id: "1", reviewed: false, evidence: [{ id: revision, submitted_by: uuid }] }] }]);
+    if (action === "manual-incident-review") {
+      sent.push(JSON.parse(route.request().postData()));
+      return fulfill(route, { reviewed: true, do_not_resend: true });
+    }
+    return fulfill(route, {});
+  });
+  await page.goto(`${base}/facilitator-payouts.html`);
+  const form = page.locator("#requests section section form").last();
+  await form.locator("input[type=checkbox]").last().check();
+  await form.locator("button").click();
+  await page.waitForFunction(() => document.querySelector("#notice").textContent.includes("do not resend"));
+  assert.equal(sent[0].incident, "1");
+  assert.equal(sent[0].evidence, revision);
+  assert.equal(sent[0].ownerSolo, false);
+  await ctx.close();
+});
+
 test.after(async () => {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));

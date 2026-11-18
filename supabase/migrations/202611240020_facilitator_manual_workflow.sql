@@ -62,7 +62,12 @@ begin
   perform 1 from public.profiles where id=auth.uid() for share;
   perform public.require_staff('admin');
   select coalesce(jsonb_agg(public.facilitator_manual_status_internal(r.id)
-    || jsonb_build_object('created_at',r.created_at,'sender_id',c.sender_id)
+    || jsonb_build_object('created_at',r.created_at,'sender_id',c.sender_id,'incidents',
+      (select coalesce(jsonb_agg(jsonb_build_object('id',i.id::text,
+        'reviewed',exists(select 1 from public.facilitator_manual_incident_reviews x where x.incident_id=i.id),
+        'evidence',(select coalesce(jsonb_agg(jsonb_build_object('id',e.id,'submitted_by',e.submitted_by)
+          order by e.submitted_at),'[]'::jsonb) from public.facilitator_manual_incident_evidence e where e.incident_id=i.id))
+        order by i.id),'[]'::jsonb) from public.facilitator_manual_incidents i where i.request_id=r.id))
     order by r.created_at desc),'[]'::jsonb) into rows
     from public.facilitator_manual_requests r
     left join public.facilitator_manual_claims c on c.request_id=r.id;
@@ -80,13 +85,34 @@ language sql volatile security definer set search_path='' set row_security=off a
   select public.facilitator_manual_claim_snapshot_internal(p_request)
 $$;
 
+create function public.facilitator_manual_sender_current(p_request uuid) returns jsonb
+language sql volatile security definer set search_path='' set row_security=off as $$
+  select public.facilitator_manual_sender_current_internal(p_request)
+$$;
+
+create function public.facilitator_manual_incident_evidence_add(
+  p_incident bigint,p_key uuid,p_reference uuid,p_sha256 text,p_confirmed boolean) returns uuid
+language sql volatile security definer set search_path='' set row_security=off as $$
+  select public.facilitator_manual_incident_evidence_internal(p_incident,p_key,p_reference,p_sha256,p_confirmed)
+$$;
+
+create function public.facilitator_manual_incident_review(
+  p_incident bigint,p_evidence uuid,p_owner_solo boolean,p_confirmed boolean) returns boolean
+language sql volatile security definer set search_path='' set row_security=off as $$
+  select public.facilitator_manual_incident_review_internal(p_incident,p_evidence,p_owner_solo,p_confirmed)
+$$;
+
 revoke all on function public.facilitator_manual_workspace(),
   public.facilitator_manual_submit(uuid,uuid,uuid,bigint,boolean),
   public.facilitator_manual_staff_workspace(),
   public.facilitator_manual_staff_action(uuid,uuid,text,text,bigint,text,boolean,boolean),
-  public.facilitator_manual_sender_snapshot(uuid) from public,anon,authenticated,service_role;
+  public.facilitator_manual_sender_snapshot(uuid),public.facilitator_manual_sender_current(uuid),
+  public.facilitator_manual_incident_evidence_add(bigint,uuid,uuid,text,boolean),
+  public.facilitator_manual_incident_review(bigint,uuid,boolean,boolean) from public,anon,authenticated,service_role;
 grant execute on function public.facilitator_manual_workspace(),
   public.facilitator_manual_submit(uuid,uuid,uuid,bigint,boolean),
   public.facilitator_manual_staff_workspace(),
   public.facilitator_manual_staff_action(uuid,uuid,text,text,bigint,text,boolean,boolean),
-  public.facilitator_manual_sender_snapshot(uuid) to authenticated;
+  public.facilitator_manual_sender_snapshot(uuid),public.facilitator_manual_sender_current(uuid),
+  public.facilitator_manual_incident_evidence_add(bigint,uuid,uuid,text,boolean),
+  public.facilitator_manual_incident_review(bigint,uuid,boolean,boolean) to authenticated;

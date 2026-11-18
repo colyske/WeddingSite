@@ -47,6 +47,16 @@ test("manual payout endpoints require actor authentication, staff roles and exac
     role = "owner";
     assert.equal((await invoke("manual-staff-action", "POST", action)).statusCode, 200);
     assert.equal(calls.at(-1).body.p_owner_solo, true);
+    const review = { incident: "1", evidence: id, ownerSolo: true, confirmed: true };
+    role = "admin";
+    assert.equal((await invoke("manual-incident-review", "POST", review)).statusCode, 403);
+    role = "owner";
+    assert.equal((await invoke("manual-incident-review", "POST", review)).statusCode, 200);
+    assert.equal(calls.at(-1).body.p_incident, "1");
+    assert.equal((await invoke("manual-incident-review", "POST", { ...review, incident: "9223372036854775808" })).statusCode, 400);
+    const evidence = { incident: "1", key: id, reference: id, sha256: "a".repeat(64), confirmed: true };
+    assert.equal((await invoke("manual-incident-evidence", "POST", evidence)).statusCode, 200);
+    assert.equal((await invoke("manual-sender-current", "GET")).statusCode, 200);
     disabled = true;
     const unavailable = await invoke("manual-workspace", "GET");
     assert.equal(unavailable.statusCode, 503);

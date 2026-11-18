@@ -37,8 +37,10 @@ export default async function handler(req, res) {
       return sendJson(res, 200, await rpc(action === "summary" ? "referral_my_summary" : "referral_disclosure", session.token));
     }
     const ownerActions = ["recipient-workspace", "recipient-evidence", "recipient-verify"];
-    const staffActions = ["manual-staff-workspace", "manual-staff-action", "manual-sender-snapshot"];
-    const readActions = ["recipient-mine", "recipient-workspace", "manual-workspace", "manual-staff-workspace", "manual-sender-snapshot"];
+    const staffActions = ["manual-staff-workspace", "manual-staff-action", "manual-sender-snapshot",
+      "manual-sender-current", "manual-incident-evidence", "manual-incident-review"];
+    const readActions = ["recipient-mine", "recipient-workspace", "manual-workspace", "manual-staff-workspace",
+      "manual-sender-snapshot", "manual-sender-current"];
     if (!["consent", "capture", "recipient-mine", "recipient-submit", "manual-workspace", "manual-submit",
       ...ownerActions, ...staffActions].includes(action)) {
       return sendJson(res, 404, { error: "Unknown referral action." });
@@ -53,9 +55,10 @@ export default async function handler(req, res) {
       return sendJson(res, 200, await rpc(action === "manual-workspace"
         ? "facilitator_manual_workspace" : "facilitator_manual_staff_workspace", session.token));
     }
-    if (action === "manual-sender-snapshot") {
+    if (action === "manual-sender-snapshot" || action === "manual-sender-current") {
       if (!UUID.test(String(req.query?.id || ""))) return sendJson(res, 400, { error: "Select a valid request." });
-      return sendJson(res, 200, await rpc("facilitator_manual_sender_snapshot", session.token, { p_request: req.query.id }));
+      return sendJson(res, 200, await rpc(action === "manual-sender-current" ?
+        "facilitator_manual_sender_current" : "facilitator_manual_sender_snapshot", session.token, { p_request: req.query.id }));
     }
     if (action === "recipient-mine") {
       return sendJson(res, 200, await rpc("facilitator_recipient_mine", session.token));
@@ -65,6 +68,30 @@ export default async function handler(req, res) {
     }
     const body = parseBody(req);
     if (!body) return sendJson(res, 400, { error: "Invalid referral request." });
+    if (action === "manual-incident-evidence" || action === "manual-incident-review") {
+      if (typeof body.incident !== "string" || !/^[1-9][0-9]{0,18}$/.test(body.incident) ||
+        BigInt(body.incident) > 9223372036854775807n || body.confirmed !== true) {
+        return sendJson(res, 400, { error: "Confirm a valid incident." });
+      }
+      if (action === "manual-incident-evidence") {
+        if (!exactFields(body, ["incident", "key", "reference", "sha256", "confirmed"]) ||
+          !UUID.test(body.key || "") || !UUID.test(body.reference || "") || !SHA256.test(body.sha256 || "")) {
+          return sendJson(res, 400, { error: "Provide confirmed investigation evidence and its digest." });
+        }
+        return sendJson(res, 200, { evidence_id: await rpc("facilitator_manual_incident_evidence_add", session.token,
+          { p_incident: body.incident, p_key: body.key, p_reference: body.reference, p_sha256: body.sha256, p_confirmed: true }) });
+      }
+      if (!exactFields(body, ["incident", "evidence", "ownerSolo", "confirmed"]) ||
+        !UUID.test(body.evidence || "") || typeof body.ownerSolo !== "boolean") {
+        return sendJson(res, 400, { error: "Confirm the investigation and reviewer mode." });
+      }
+      if (body.ownerSolo && session.profile.platform_role !== "owner") {
+        return sendJson(res, 403, { error: "Only the Owner can review solo." });
+      }
+      await rpc("facilitator_manual_incident_review", session.token, { p_incident: body.incident,
+        p_evidence: body.evidence, p_owner_solo: body.ownerSolo, p_confirmed: true });
+      return sendJson(res, 200, { reviewed: true, do_not_resend: true });
+    }
     if (action === "manual-submit") {
       if (!exactFields(body, ["key", "recipient", "review", "amount", "confirmed"]) ||
         !UUID.test(body.key || "") || !UUID.test(body.recipient || "") || !UUID.test(body.review || "") ||

@@ -305,6 +305,10 @@ begin
       and not has_function_privilege(role_name,
         'public.facilitator_manual_claim_snapshot_internal(uuid)','execute')
       and not has_function_privilege(role_name,
+        'public.facilitator_manual_sender_current_internal(uuid)','execute')
+      and not has_function_privilege(role_name,
+        'public.facilitator_manual_incident_review_internal(bigint,uuid,boolean,boolean)','execute')
+      and not has_function_privilege(role_name,
         'public.facilitator_manual_source_quote_internal(uuid,text)','execute')
       and not has_function_privilege(role_name,
         'public.facilitator_manual_source_available(uuid,uuid,text)','execute')
@@ -584,6 +588,13 @@ begin
           where actor_id=owner_id and subject_user_id=u and revision_id=changed_recipient
             and action='payout_snapshot'),
         'claim sender receives an audited historical snapshot, not the latest recipient or send authority');
+      blocked:=false;
+      begin perform public.facilitator_manual_sender_current(manual_id);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_MANUAL_HOLD:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'superseded claim destination fails the current recipient check');
       perform set_config('request.jwt.claim.sub',admin_id::text,true);
       blocked:=false;
       begin perform public.facilitator_manual_claim_snapshot_internal(manual_id);
@@ -816,6 +827,19 @@ begin
     perform pg_temp.assert_true(result->>'state'='processing'
       and (select reviewer_id=admin_id and not owner_solo from public.facilitator_manual_claims where request_id=manual_id),
       'Admin can review and SuperAdmin can claim');
+    result:=public.facilitator_manual_sender_current(manual_id);
+    perform pg_temp.assert_true(result->>'revision'=recipient::text
+      and result->>'current_recipient_checked'='true' and result->>'send_authorized'='false'
+      and result->>'do_not_resend'='true', 'claimed sender may audit-read the current verified destination only');
+    perform set_config('request.jwt.claim.sub',admin_id::text,true);
+    blocked:=false;
+    begin perform public.facilitator_manual_sender_current(manual_id);
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_MANUAL_AUTH:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'another staff member cannot access sender destination');
+    perform set_config('request.jwt.claim.sub',checker::text,true);
     result:=public.facilitator_manual_action_internal(manual_id,action_key,'processing',null,10,null,false,true);
     perform pg_temp.assert_true(result->>'replayed'='true','claim replay is acknowledgment only');
     perform public.facilitator_manual_action_internal(manual_id,extensions.gen_random_uuid(),
@@ -848,6 +872,42 @@ begin
       and (select count(*)=3 from public.facilitator_manual_reports)
       and (select count(*)=2 from public.facilitator_manual_incidents),
       'new-key report after paid is retained as a further incident');
+    declare inc record; ev uuid; key_id uuid:=extensions.gen_random_uuid(); second_id uuid;
+    begin
+      perform set_config('request.jwt.claim.sub',u::text,true);
+      second_id:=public.facilitator_manual_submit(extensions.gen_random_uuid(),recipient,source,100,true);
+      perform set_config('request.jwt.claim.sub',owner_id::text,true);
+      blocked:=false;
+      begin perform public.facilitator_manual_staff_action(second_id,extensions.gen_random_uuid(),
+        'processing',null,10,null,true,true);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_MANUAL_HOLD:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'unreviewed incidents block new claims');
+      for inc in select id from public.facilitator_manual_incidents where request_id=manual_id order by id loop
+        key_id:=extensions.gen_random_uuid();
+        ev:=public.facilitator_manual_incident_evidence_add(inc.id,key_id,extensions.gen_random_uuid(),repeat('a',64),true);
+        blocked:=false;
+        begin perform public.facilitator_manual_incident_review(inc.id,ev,false,true);
+        exception when raise_exception then
+          if sqlerrm not like 'FACILITATOR_MANUAL_AUTH:%' then raise; end if;
+          blocked:=true;
+        end;
+        perform pg_temp.assert_true(blocked,'same reviewer cannot review incident evidence without Owner solo');
+        perform pg_temp.assert_true(public.facilitator_manual_incident_review(inc.id,ev,true,true),
+          'Owner explicitly reviews incident evidence solo');
+      end loop;
+      result:=public.facilitator_manual_staff_action(second_id,extensions.gen_random_uuid(),
+        'processing',null,10,null,true,true);
+      perform pg_temp.assert_true(result->>'state'='processing'
+        and (public.facilitator_manual_status_internal(manual_id)->>'state')='outcome_review_required'
+        and (public.facilitator_manual_status_internal(manual_id)->>'do_not_resend')='true',
+        'review permits unrelated claims but affected claim remains held and never resend');
+      raise exception 'SYNTHETIC_INCIDENT_REVIEW_ROLLBACK';
+    exception when raise_exception then
+      if sqlerrm <> 'SYNTHETIC_INCIDENT_REVIEW_ROLLBACK' then raise; end if;
+    end;
     perform set_config('request.jwt.claim.sub',u::text,true);
     result:=public.facilitator_manual_status_internal(manual_id);
     perform pg_temp.assert_true(result->>'state'='outcome_review_required'
