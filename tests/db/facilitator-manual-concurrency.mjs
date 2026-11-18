@@ -307,6 +307,13 @@ try {
   assert.ifError(adjustmentCommitted.error);
   assert.ok(adjustedRequest.error, "Committed refund must hold subsequent source admission");
   assert.match(adjustedRequest.error.message, /FACILITATOR_MANUAL_HOLD: Current checked source evidence is required/);
+  await assert.rejects(run(`begin isolation level repeatable read; ${actor(fixtureIds.user)}
+    select ${adjustedCall}; commit;`), /FACILITATOR_MANUAL_CONFLICT: READ COMMITTED is required/);
+  await assert.rejects(run(`begin isolation level repeatable read; ${actor(fixtureIds.owner)}
+    select ${claim(randomUUID(), third)}; commit;`), /FACILITATOR_MANUAL_CONFLICT: READ COMMITTED is required/);
+  await assert.rejects(run(`begin isolation level repeatable read; ${actor(fixtureIds.user)}
+    select public.facilitator_manual_status_internal('${first}'); commit;`),
+  /FACILITATOR_MANUAL_CONFLICT: READ COMMITTED is required/);
   const totals = matchJson(await run(`select jsonb_build_object(
     'requests',(select count(*) from public.facilitator_manual_requests where user_id='${fixtureIds.user}'),
     'allocations',(select count(*) from public.facilitator_manual_allocations),

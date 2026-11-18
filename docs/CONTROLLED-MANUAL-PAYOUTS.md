@@ -117,6 +117,9 @@ before request admission and claim, and revocation of the recipient checker or a
 does not cover all source, role, lock-order or cross-rail races. Its source evidence is manually attested rather than independently
 verified by the application. Do not expose it or interpret synthetic `paid` as
 an actual transfer. External cash decisions remain with the operator.
+Its private request, action and status entry points reject isolation levels
+other than READ COMMITTED; that restriction does not make arbitrary callers
+that pre-lock rows safe.
 
 The current inventory guard holds contradictory amounts for the same latest
 snapshot time, but a newer snapshot can supersede that check without an explicit
