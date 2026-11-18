@@ -301,6 +301,10 @@ begin
       and not has_function_privilege(role_name,
         'public.facilitator_manual_claim_snapshot_internal(uuid)','execute')
       and not has_function_privilege(role_name,
+        'public.facilitator_manual_source_quote_internal(uuid,text)','execute')
+      and not has_function_privilege(role_name,
+        'public.facilitator_manual_source_available(uuid,uuid,text)','execute')
+      and not has_function_privilege(role_name,
         'public.facilitator_manual_lock_recipient(uuid,uuid)','execute')
       and not has_function_privilege(role_name,
         'public.facilitator_manual_reconfirm_internal(uuid,uuid,uuid,uuid,boolean)','execute')
@@ -389,6 +393,13 @@ begin
     blocked:=true;
   end;
   perform pg_temp.assert_true(blocked,'manual claim snapshot is hard disabled');
+  blocked:=false;
+  begin perform public.facilitator_manual_source_quote_internal(null,null);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_MANUAL_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'manual source quote is hard disabled');
 end $$;
 create or replace function public.facilitator_reservation_core_enabled() returns boolean
 language sql immutable set search_path='' as $$ select true $$;
@@ -417,8 +428,26 @@ begin
     result jsonb;
   begin
     perform set_config('request.jwt.claim.sub',u::text,true);
+    result:=public.facilitator_manual_source_quote_internal(source,'KES');
+    perform pg_temp.assert_true(result->>'capacity_minor'='1000'
+      and result->>'review_id'=source::text and result->>'currency'='KES'
+      and result->>'reserved'='false' and result->>'external_cash_verified'='false'
+      and result->>'send_authorized'='false',
+      'source quote is bounded, advisory and does not attest cash');
+    perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='other'),true);
+    blocked:=false;
+    begin perform public.facilitator_manual_source_quote_internal(source,'KES');
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_MANUAL_HOLD:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'another beneficiary cannot quote this source');
+    perform set_config('request.jwt.claim.sub',u::text,true);
     manual_id:=public.facilitator_manual_request_internal(request_key,recipient,'KES',600,
       jsonb_build_array(jsonb_build_object('review',source,'amount','600')),true);
+    result:=public.facilitator_manual_source_quote_internal(source,'KES');
+    perform pg_temp.assert_true(result->>'capacity_minor'='400',
+      'source quote subtracts the retained request without adding a liability');
     perform pg_temp.assert_true(manual_id=public.facilitator_manual_request_internal(request_key,recipient,'KES',600,
       jsonb_build_array(jsonb_build_object('review',source,'amount','600')),true),'manual request replay is historical');
     blocked:=false;
@@ -564,6 +593,13 @@ begin
       perform pg_temp.assert_true(blocked
         and (select sum(amount_minor)=600 from public.facilitator_manual_allocations where request_id=manual_id),
         'same-transaction refund blocks source revalidation and retains the original liability');
+      blocked:=false;
+      begin perform public.facilitator_manual_source_quote_internal(source,'KES');
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_MANUAL_HOLD:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'refund also holds the source quote');
       raise exception 'SYNTHETIC_MANUAL_REFUND_ROLLBACK';
     exception when raise_exception then
       if sqlerrm <> 'SYNTHETIC_MANUAL_REFUND_ROLLBACK' then raise; end if;

@@ -92,6 +92,10 @@ A same-transaction recorded refund or dispute invalidates source evidence and
 causes source revalidation to hold without releasing the original modeled
 liability; this test does not exercise concurrent ingestion or establish that
 all external adjustment events are captured.
+An ungranted, disabled single-source quote uses the same source-cap and retained
+liability calculation as request admission. It is not a complete beneficiary
+balance, a reservation, proof of external cash, or authority to send. Stale
+quotes must be revalidated at request time.
 The concurrency fixture separately tests a synthetic refund writer that
 explicitly takes the accounting lock before inserting its adjustment; the same
 request succeeds in a rolled-back control before the refund. This does not

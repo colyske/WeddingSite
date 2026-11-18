@@ -195,11 +195,57 @@ begin
   end loop;
 end $$;
 
+-- Caller holds the accounting locks and the contribution row.
+create function public.facilitator_manual_source_available(p_contribution uuid,p_user uuid,p_currency text)
+returns numeric language plpgsql security definer set search_path='' set row_security=off as $$
+declare cap numeric; used numeric;
+begin
+  cap:=public.facilitator_manual_source_cap(p_contribution,p_user,p_currency);
+  select coalesce(sum(a.amount_minor::numeric),0) into used from public.facilitator_manual_allocations a
+    join public.facilitator_manual_requests r on r.id=a.request_id
+    where a.contribution_id=p_contribution and public.facilitator_manual_state(r.id)<>'cancelled';
+  select used+coalesce(sum(amount_minor::numeric),0) into used
+    from public.facilitator_reservation_allocations where contribution_id=p_contribution;
+  return cap-used;
+end $$;
+
+-- A single source quote is advisory, not a balance, reservation or cash check.
+create function public.facilitator_manual_source_quote_internal(p_review uuid,p_currency text) returns jsonb
+language plpgsql volatile security definer set search_path='' set row_security=off as $$
+declare f public.referral_funding_reviews; available numeric;
+begin
+  if not public.facilitator_manual_enabled() then
+    raise exception 'FACILITATOR_MANUAL_DISABLED: Manual payout model is disabled.';
+  end if;
+  if current_setting('transaction_isolation')<>'read committed' then
+    raise exception 'FACILITATOR_MANUAL_CONFLICT: READ COMMITTED is required.';
+  end if;
+  if auth.uid() is null or p_review is null or p_currency is distinct from 'KES' then
+    raise exception 'FACILITATOR_MANUAL_INPUT: A signed-in beneficiary and valid source are required.';
+  end if;
+  perform pg_advisory_xact_lock(71110001);
+  perform pg_advisory_xact_lock(71110002);
+  perform 1 from public.profiles where id=auth.uid() for update;
+  perform public.facilitator_manual_check_sources(auth.uid(),p_currency);
+  select * into f from public.referral_funding_reviews where id=p_review;
+  if f.id is null or f.id is distinct from (select id from public.referral_funding_reviews
+    where contribution_id=f.contribution_id order by recorded_at desc,id desc limit 1) then
+    raise exception 'FACILITATOR_MANUAL_HOLD: Latest reviewed source required.';
+  end if;
+  perform 1 from public.contributions where id=f.contribution_id for update;
+  available:=public.facilitator_manual_source_available(f.contribution_id,auth.uid(),p_currency);
+  if available<0 then
+    raise exception 'FACILITATOR_MANUAL_HOLD: Source cannot cover retained liabilities.';
+  end if;
+  return jsonb_build_object('review_id',f.id,'currency',p_currency,'capacity_minor',available::text,
+    'reserved',false,'external_cash_verified',false,'send_authorized',false);
+end $$;
+
 create function public.facilitator_manual_request_internal(
   p_key uuid,p_recipient uuid,p_currency text,p_amount bigint,p_allocations jsonb,p_confirmed boolean
 ) returns uuid language plpgsql security definer set search_path='' set row_security=off as $$
 declare old public.facilitator_manual_requests; x record; f public.referral_funding_reviews;
-  digest text; total numeric; used numeric; cap numeric; result uuid;
+  digest text; total numeric; result uuid;
 begin
   if not public.facilitator_manual_enabled() then
     raise exception 'FACILITATOR_MANUAL_DISABLED: Manual payout model is disabled.';
@@ -253,13 +299,7 @@ begin
       raise exception 'FACILITATOR_MANUAL_HOLD: Latest reviewed source required.';
     end if;
     perform 1 from public.contributions where id=f.contribution_id for update;
-    cap:=public.facilitator_manual_source_cap(f.contribution_id,auth.uid(),p_currency);
-    select coalesce(sum(a.amount_minor::numeric),0) into used from public.facilitator_manual_allocations a
-      join public.facilitator_manual_requests r on r.id=a.request_id
-      where a.contribution_id=f.contribution_id and public.facilitator_manual_state(r.id)<>'cancelled';
-    select used+coalesce(sum(amount_minor::numeric),0) into used
-      from public.facilitator_reservation_allocations where contribution_id=f.contribution_id;
-    if used+x.amount>cap then
+    if x.amount>public.facilitator_manual_source_available(f.contribution_id,auth.uid(),p_currency) then
       raise exception 'FACILITATOR_MANUAL_HOLD: Source cannot cover the request and retained liabilities.';
     end if;
   end loop;
@@ -619,6 +659,8 @@ end $$;
 revoke all on function public.facilitator_manual_enabled(),public.facilitator_manual_state(uuid),
   public.facilitator_manual_lock_recipient(uuid,uuid),
   public.facilitator_manual_source_cap(uuid,uuid,text),public.facilitator_manual_check_sources(uuid,text),
+  public.facilitator_manual_source_available(uuid,uuid,text),
+  public.facilitator_manual_source_quote_internal(uuid,text),
   public.facilitator_manual_evidence_digest(uuid),
   public.facilitator_manual_status_internal(uuid),
   public.facilitator_manual_claim_snapshot_internal(uuid),
