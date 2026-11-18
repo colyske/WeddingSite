@@ -285,7 +285,7 @@ declare u uuid:=(select id from referral_actors where kind='referrer');
   owner_id uuid:=(select id from referral_actors where kind='owner');
   checker uuid:=(select id from referral_actors where kind='superadmin');
   source uuid:=(select id from referral_actors where kind='funding-review');
-  recipient uuid; evidence uuid; inventory uuid; newer_inventory uuid; adverse_review uuid;
+  recipient uuid; evidence uuid; inventory uuid; newer_inventory uuid; other_inventory uuid; adverse_review uuid;
   key_id uuid:=extensions.gen_random_uuid();
   first_id uuid; retry_id uuid; allocations jsonb; blocked boolean;
 begin
@@ -334,7 +334,7 @@ begin
   insert into public.facilitator_funding_attestations(request_key,currency,custody_scope_reference,
     period_start,as_of,expires_at,cash_minor,unpaid_costs_minor,holds_minor,other_commitments_minor,
     exclusive_platform_funded_asserted,evidence_reference,evidence_sha256,recorded_by,recorded_at)
-    select extensions.gen_random_uuid(),currency,custody_scope_reference,period_start,as_of,
+    select extensions.gen_random_uuid(),currency,custody_scope_reference,period_start,now()-interval '30 minutes',
       expires_at,500,0,0,0,true,extensions.gen_random_uuid(),repeat('c',64),owner_id,clock_timestamp()+interval '1 second'
     from public.facilitator_funding_attestations where id=inventory returning id into newer_inventory;
   insert into public.facilitator_funding_attestation_checks(attestation_id,checked_by,owner_solo)
@@ -359,9 +359,43 @@ begin
   perform pg_temp.assert_true(blocked,'pool deficit blocks new reservation');
   insert into public.facilitator_funding_attestations(request_key,currency,custody_scope_reference,
     period_start,as_of,expires_at,cash_minor,unpaid_costs_minor,holds_minor,other_commitments_minor,
+    exclusive_platform_funded_asserted,evidence_reference,evidence_sha256,recorded_by)
+    select extensions.gen_random_uuid(),currency,extensions.gen_random_uuid(),period_start,as_of,
+      expires_at,2000,0,0,0,true,extensions.gen_random_uuid(),repeat('f',64),owner_id
+    from public.facilitator_funding_attestations where id=inventory returning id into other_inventory;
+  insert into public.facilitator_funding_attestation_checks(attestation_id,checked_by,owner_solo)
+    values(other_inventory,checker,false);
+  blocked:=false;
+  begin
+    perform public.facilitator_reservation_create_internal(extensions.gen_random_uuid(),u,recipient,other_inventory,'KES',1,
+      jsonb_build_array(jsonb_build_object('review',source,'amount','1')));
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD: A retained custody scope%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'a deficit in another custody scope blocks admission');
+  insert into public.facilitator_funding_attestations(request_key,currency,custody_scope_reference,
+    period_start,as_of,expires_at,cash_minor,unpaid_costs_minor,holds_minor,other_commitments_minor,
     exclusive_platform_funded_asserted,evidence_reference,evidence_sha256,recorded_by,recorded_at)
     select extensions.gen_random_uuid(),currency,custody_scope_reference,period_start,as_of,
-      expires_at,2000,0,0,0,true,extensions.gen_random_uuid(),repeat('d',64),owner_id,clock_timestamp()+interval '2 seconds'
+      expires_at,2000,0,0,0,true,extensions.gen_random_uuid(),repeat('f',64),owner_id,clock_timestamp()+interval '2 seconds'
+    from public.facilitator_funding_attestations where id=newer_inventory returning id into other_inventory;
+  insert into public.facilitator_funding_attestation_checks(attestation_id,checked_by,owner_solo)
+    values(other_inventory,checker,false);
+  blocked:=false;
+  begin
+    perform public.facilitator_reservation_create_internal(extensions.gen_random_uuid(),u,recipient,other_inventory,'KES',1,
+      jsonb_build_array(jsonb_build_object('review',source,'amount','1')));
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'contradictory cash at the same snapshot time is held');
+  insert into public.facilitator_funding_attestations(request_key,currency,custody_scope_reference,
+    period_start,as_of,expires_at,cash_minor,unpaid_costs_minor,holds_minor,other_commitments_minor,
+    exclusive_platform_funded_asserted,evidence_reference,evidence_sha256,recorded_by,recorded_at)
+    select extensions.gen_random_uuid(),currency,custody_scope_reference,period_start,now()-interval '15 minutes',
+      expires_at,2000,0,0,0,true,extensions.gen_random_uuid(),repeat('d',64),owner_id,clock_timestamp()+interval '3 seconds'
     from public.facilitator_funding_attestations where id=inventory returning id into inventory;
   insert into public.facilitator_funding_attestation_checks(attestation_id,checked_by,owner_solo)
     values(inventory,checker,false);

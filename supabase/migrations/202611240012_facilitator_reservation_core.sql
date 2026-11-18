@@ -114,7 +114,10 @@ begin
       order by latest.recorded_at desc,latest.id desc limit 1)
     or exists(select 1 from public.facilitator_funding_attestations earlier
       where earlier.custody_scope_reference=inventory.custody_scope_reference and earlier.currency=inventory.currency
-        and earlier.as_of>inventory.as_of) then
+        and (earlier.as_of>inventory.as_of or (earlier.id<>inventory.id and earlier.as_of=inventory.as_of
+          and (earlier.cash_minor,earlier.unpaid_costs_minor,earlier.holds_minor,earlier.other_commitments_minor)
+            is distinct from (inventory.cash_minor,inventory.unpaid_costs_minor,inventory.holds_minor,
+              inventory.other_commitments_minor)))) then
     raise exception 'FACILITATOR_RESERVATION_HOLD: Current checked inventory is required.';
   end if;
   for entry in select distinct contribution_id from public.facilitator_reservation_allocations order by contribution_id loop
@@ -152,6 +155,29 @@ begin
               -f.holds_minor-f.other_commitments_minor)))
   ) then
     raise exception 'FACILITATOR_RESERVATION_HOLD: A retained allocation has a source deficit or changed evidence.';
+  end if;
+  if exists(
+    select 1 from (
+      select custody_scope_reference,currency,sum(amount_minor::numeric) as reserved
+      from public.facilitator_reservation_requests group by custody_scope_reference,currency
+    ) scope
+    left join lateral (select latest.* from public.facilitator_funding_attestations latest
+      where latest.custody_scope_reference=scope.custody_scope_reference and latest.currency=scope.currency
+      order by latest.recorded_at desc,latest.id desc limit 1) current_inventory on true
+    where current_inventory.id is null or current_inventory.expires_at<=clock_timestamp()
+      or not exists(select 1 from public.facilitator_funding_attestation_checks checked
+        where checked.attestation_id=current_inventory.id)
+      or exists(select 1 from public.facilitator_funding_attestations earlier
+        where earlier.custody_scope_reference=scope.custody_scope_reference and earlier.currency=scope.currency
+          and (earlier.as_of>current_inventory.as_of or
+            (earlier.id<>current_inventory.id and earlier.as_of=current_inventory.as_of
+              and (earlier.cash_minor,earlier.unpaid_costs_minor,earlier.holds_minor,earlier.other_commitments_minor)
+                is distinct from (current_inventory.cash_minor,current_inventory.unpaid_costs_minor,
+                  current_inventory.holds_minor,current_inventory.other_commitments_minor))))
+      or scope.reserved > greatest(0::numeric,current_inventory.cash_minor::numeric
+        -current_inventory.unpaid_costs_minor-current_inventory.holds_minor-current_inventory.other_commitments_minor)
+  ) then
+    raise exception 'FACILITATOR_RESERVATION_HOLD: A retained custody scope has a deficit or stale evidence.';
   end if;
   select coalesce(sum(amount_minor::numeric),0) into used from public.facilitator_reservation_requests
     where custody_scope_reference=inventory.custody_scope_reference and currency=p_currency;
