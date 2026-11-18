@@ -45,7 +45,11 @@ requires an explicit beneficiary confirmation tied to that preceding binding.
 Evidence with a changed source digest remains held; rebinding does not resolve
 refunds or deficits. Replays acknowledge history, not present readiness. Neither
 the evaluator nor a binding authorizes a transfer, and neither is exposed to API
-roles.
+roles. The private binding evaluator loads the latest reviewed binding by ID and
+revalidates it; the lower-level evaluator accepts caller-supplied evidence and is
+not proof that any binding or recipient confirmation exists. Neither routine
+creates a claim. A future processing implementation must atomically validate the
+latest binding and establish a safe cross-rail claim under the applicable locks.
 
 The current inventory guard holds contradictory amounts for the same latest
 snapshot time, but a newer snapshot can supersede that check without an explicit

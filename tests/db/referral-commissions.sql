@@ -273,7 +273,10 @@ begin
       'public.facilitator_reservation_rebind_internal(uuid,uuid,uuid,uuid,uuid,jsonb,uuid,boolean)','execute')
       and not has_function_privilege(role_name,
         'public.facilitator_reservation_reconfirm_internal(uuid,uuid,uuid,uuid,boolean)','execute')
-      and not has_table_privilege(role_name,'public.facilitator_reservation_rebindings','select'),
+      and not has_function_privilege(role_name,
+        'public.facilitator_reservation_binding_evaluate_internal(uuid,uuid)','execute')
+      and not has_table_privilege(role_name,'public.facilitator_reservation_rebindings','select')
+      and not has_table_privilege(role_name,'public.facilitator_reservation_reconfirmations','insert'),
       role_name||' cannot access private rebinding');
     perform pg_temp.assert_true(not has_table_privilege(role_name,'public.facilitator_reservation_requests','select')
       and not has_table_privilege(role_name,'public.facilitator_reservation_allocations','insert'),
@@ -286,6 +289,20 @@ begin
     blocked:=true;
   end;
   perform pg_temp.assert_true(blocked,'reservation core is hard disabled');
+  blocked:=false;
+  begin perform public.facilitator_reservation_rebind_internal(null,null,null,null,null,null,null,false);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'rebinding is hard disabled');
+  blocked:=false;
+  begin perform public.facilitator_reservation_reconfirm_internal(null,null,null,null,false);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'reconfirmation is hard disabled');
 end $$;
 create or replace function public.facilitator_reservation_core_enabled() returns boolean
 language sql immutable set search_path='' as $$ select true $$;
@@ -329,10 +346,18 @@ begin
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   perform pg_temp.assert_true(first_id=public.facilitator_reservation_evaluate_internal(
     key_id,u,recipient,inventory,'KES',600,allocations,true),'existing reservation revalidates without double charging');
+  blocked:=false;
+  begin
+    perform public.facilitator_reservation_binding_evaluate_internal(first_id,extensions.gen_random_uuid());
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_CONFLICT:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'evaluator success does not create a reviewed binding');
   perform set_config('request.jwt.claim.sub',u::text,true);
   perform pg_temp.assert_true((select count(*)=1 and sum(amount_minor)=600 from public.facilitator_reservation_allocations),
     'allocation reserves the requested source amount');
-  declare fresh_inventory uuid; fresh_review uuid; fresh_recipient uuid; fresh_evidence uuid;
+  declare fresh_inventory uuid; foreign_inventory uuid; fresh_review uuid; fresh_recipient uuid; fresh_evidence uuid;
     binding uuid; changed_binding uuid; consent uuid; action_key uuid:=extensions.gen_random_uuid(); fresh_allocations jsonb;
   begin
     insert into public.facilitator_funding_attestations(request_key,currency,custody_scope_reference,
@@ -365,8 +390,33 @@ begin
     perform set_config('request.jwt.claim.sub',owner_id::text,true);
     binding:=public.facilitator_reservation_rebind_internal(first_id,null,action_key,recipient,
       fresh_inventory,fresh_allocations,null,true);
+    perform pg_temp.assert_true(binding=public.facilitator_reservation_binding_evaluate_internal(first_id,binding),
+      'current reviewed binding revalidates without additional liability');
     perform pg_temp.assert_true(binding=public.facilitator_reservation_rebind_internal(first_id,null,action_key,
       recipient,fresh_inventory,fresh_allocations,null,true),'binding replay is historical and idempotent');
+    blocked:=false;
+    begin
+      update public.facilitator_reservation_rebindings set inventory_id=inventory where id=binding;
+    exception when raise_exception then blocked:=true; end;
+    perform pg_temp.assert_true(blocked,'evidence binding is immutable');
+    insert into public.facilitator_funding_attestations(request_key,currency,custody_scope_reference,
+      period_start,as_of,expires_at,cash_minor,unpaid_costs_minor,holds_minor,other_commitments_minor,
+      exclusive_platform_funded_asserted,evidence_reference,evidence_sha256,recorded_by)
+      select extensions.gen_random_uuid(),currency,extensions.gen_random_uuid(),period_start,as_of,expires_at,
+        cash_minor,unpaid_costs_minor,holds_minor,other_commitments_minor,true,
+        extensions.gen_random_uuid(),repeat('f',64),owner_id
+      from public.facilitator_funding_attestations where id=fresh_inventory returning id into foreign_inventory;
+    insert into public.facilitator_funding_attestation_checks(attestation_id,checked_by,owner_solo)
+      values(foreign_inventory,checker,false);
+    blocked:=false;
+    begin
+      perform public.facilitator_reservation_rebind_internal(first_id,binding,extensions.gen_random_uuid(),recipient,
+        foreign_inventory,fresh_allocations,null,true);
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'rebinding cannot move custody scope');
     blocked:=false;
     begin
       perform public.facilitator_reservation_rebind_internal(first_id,binding,extensions.gen_random_uuid(),recipient,
@@ -409,6 +459,16 @@ begin
     perform pg_temp.assert_true(changed_binding is not null and
       (select count(*)=1 and sum(amount_minor)=600 from public.facilitator_reservation_allocations),
       'changed recipient binding retains the original source allocation');
+    blocked:=false;
+    begin
+      perform public.facilitator_reservation_binding_evaluate_internal(first_id,binding);
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_RESERVATION_CONFLICT:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'historical binding is not current evidence');
+    perform pg_temp.assert_true(changed_binding=public.facilitator_reservation_binding_evaluate_internal(first_id,changed_binding),
+      'latest confirmed recipient binding revalidates');
     blocked:=false;
     begin
       perform public.facilitator_reservation_rebind_internal(first_id,binding,extensions.gen_random_uuid(),

@@ -135,6 +135,37 @@ begin
   return result;
 end $$;
 
+-- A current binding check is not a claim and does not authorize a transfer.
+create function public.facilitator_reservation_binding_evaluate_internal(p_request uuid,p_binding uuid)
+returns uuid language plpgsql security definer set search_path='' set row_security=off as $$
+declare r public.facilitator_reservation_requests; binding public.facilitator_reservation_rebindings;
+begin
+  if not public.facilitator_reservation_core_enabled() then
+    raise exception 'FACILITATOR_RESERVATION_DISABLED: Reservation core is not enabled.';
+  end if;
+  if current_setting('transaction_isolation')<>'read committed' then
+    raise exception 'FACILITATOR_RESERVATION_CONFLICT: READ COMMITTED is required.';
+  end if;
+  if auth.uid() is null or p_request is null or p_binding is null then
+    raise exception 'FACILITATOR_RESERVATION_INPUT: Current reviewed binding required.';
+  end if;
+  perform pg_advisory_xact_lock(71110001);
+  perform pg_advisory_xact_lock(71110002);
+  perform 1 from public.profiles where id=auth.uid() for share;
+  perform public.require_staff('superadmin');
+  select * into r from public.facilitator_reservation_requests where id=p_request;
+  if not found then raise exception 'FACILITATOR_RESERVATION_CONFLICT: Reservation not found.'; end if;
+  select * into binding from public.facilitator_reservation_rebindings
+    where request_id=p_request order by sequence desc limit 1;
+  if binding.id is distinct from p_binding then
+    raise exception 'FACILITATOR_RESERVATION_CONFLICT: Current reviewed binding required.';
+  end if;
+  perform public.facilitator_reservation_evaluate_internal(r.request_key,r.user_id,binding.recipient_revision,
+    binding.inventory_id,r.currency,r.amount_minor,binding.allocations,true);
+  return binding.id;
+end $$;
+
 revoke all on function public.facilitator_reservation_reconfirm_internal(uuid,uuid,uuid,uuid,boolean),
-  public.facilitator_reservation_rebind_internal(uuid,uuid,uuid,uuid,uuid,jsonb,uuid,boolean)
+  public.facilitator_reservation_rebind_internal(uuid,uuid,uuid,uuid,uuid,jsonb,uuid,boolean),
+  public.facilitator_reservation_binding_evaluate_internal(uuid,uuid)
   from public,anon,authenticated,service_role;
