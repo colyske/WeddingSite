@@ -102,7 +102,7 @@
     const choose = status?.configured === true && !status.supported;
     $("draft-currency-choice").hidden = false;
     $("draft-currency-retry").hidden = !(choose && !draftCurrencies.length) && !status?.unavailable;
-    note.textContent = "Choose your accounting currency first. A matching-currency starter keeps its first fund goal and milestones; the showcase goal is KES 1,400,000, with no raised balance. Without a matching goal, KES uses a KES 500,000 fallback and other currencies start with an incomplete fund. Changing currency clears affected amounts, never converts them. Collection and publication still require the existing server checks.";
+    note.textContent = "Changing your currency later can clear amounts you entered; they won't be converted.";
   }
   async function checkDraftCurrency(force = false) {
     const selected = $("draft-currency").value;
@@ -150,14 +150,12 @@
     const item = pendingStarter || selectedStarter;
     if (!item) return;
     $("inspiration-selection-copy").textContent = pendingStarter
-      ? "Your existing names and saved answers have not been replaced. Choose explicitly whether to use this new starting point."
+      ? "Using this starting point won't use your saved setup answers. Your names will stay."
       : selectedStarter.source?.styleSlug === "showcase-wedding"
-        ? "The platform's fictional showcase wording, programme and offering descriptions start as editable placeholders. Replace sample details before publishing; no guests, payments, sponsor identities, accounts or valid passes are copied."
+        ? "This sample wedding is a starting point. Add your own details before publishing."
       : selectedStarter.inspirationId
-        ? "Author-owned fictional inspiration, not customers, donations or paid sponsorships. Examples are illustrative and editable."
-        : "Public reusable configuration only: colours, event types/order, shared venue groups, RSVP choices, features and unpriced sponsor/gift/goal structures. Public visibility is not permission to copy personal content: neutral editable prompts replace original writing, identities, locations and instructions.";
-    if (selectedStarter && !pendingStarter) $("inspiration-selection-copy").textContent +=
-      " Your interactive private preview opens next. The Celebration fund uses a matching-currency template goal or the KES fallback; otherwise enter a goal yourself. No guest activity or payment readiness is copied.";
+        ? "This sample is a starting point. Add your own wedding details before publishing."
+        : "This wedding's setup is a starting point. Add your own details before publishing.";
   }
   async function chooseStarter(item, { restore = false } = {}) {
     selectedStarter = item; pendingStarter = null;
@@ -272,7 +270,7 @@
   function renderSubmit() {
     $("create-submit").disabled = state.submitting || !!state.created || starterLoading;
     $("create-submit").textContent = state.created
-      ? "Draft created" : state.submitting ? "Creating your draft…" : "Create my private preview";
+      ? "Draft created" : state.submitting ? "Creating your draft…" : "Continue to your wedding preview";
   }
 
   function renderCreated() {
@@ -353,7 +351,7 @@
   async function submitCreate(event) {
     event.preventDefault();
     if (state.submitting || state.created || starterLoading) return;
-    if (starterFailed) return setNotice("That setup could not be loaded. Your answers are kept. Retry the link or choose From scratch to load the showcase default; no empty replacement draft was created.", "bad");
+    if (starterFailed) return setNotice("That setup could not be loaded. Your answers are kept. Retry the link or choose Start with the sample wedding; no empty replacement draft was created.", "bad");
     const names = $("couple-names").value.trim();
     $("couple-names").removeAttribute("aria-invalid");
     if (!names && !selectedStarter) {
