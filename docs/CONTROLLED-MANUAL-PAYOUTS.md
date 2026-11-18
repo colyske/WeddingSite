@@ -167,13 +167,15 @@ the payout gate is off. Multi-wedding and row-lock ordering, repeatable-read
 visibility, and whole-transaction retry behavior remain unproven. Do not apply
 this migration to production until those effects and gaps are resolved.
 
-Migration `202611240018` can reject a conflicting simple or controlled payout
-receipt after an external transfer has already occurred, rolling back the
-receipt transaction rather than recording the conflicting observation through
-that rail's hold path. Its trigger is not complete cross-rail reconciliation.
-The payout gate must remain off until this and the other cross-rail risks are
-resolved. A current-destination read never authorizes a first send; a safe
-one-time manual authorization and uncertain-outcome procedure are still needed.
+Migration `202611240018` alone can reject a conflicting payout receipt after an
+external transfer has already occurred, rolling back the receipt transaction.
+Migration `202611240021` routes facilitator-reference conflicts reported through
+the simple, controlled manual and B2C reconciliation RPCs into their existing
+incident or account-hold paths before the defensive trigger. This does not
+establish complete cross-rail reconciliation or cover every writer and ordering.
+The payout gate must remain off until the other cross-rail risks are resolved.
+A current-destination read never authorizes a first send; a safe one-time manual
+authorization and uncertain-outcome procedure are still needed.
 
 The verified-adjustment inbox is a default-off infrastructure change. If
 `VERIFIED_ADJUSTMENT_INBOX_ENABLED` is explicitly enabled after review, signed
