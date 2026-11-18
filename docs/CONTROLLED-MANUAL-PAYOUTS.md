@@ -157,7 +157,14 @@ snapshot time, but a newer snapshot can supersede that check without an explicit
 conflict resolution. It does not prove custody exclusivity or find other-rail
 liabilities. Immediate link exclusions also do not yet cover concurrent
 attribution/link write skew or a transient link removed before attribution in one
-transaction. These remain blockers to any exposure or activation.
+transaction. Disposable races reproduce a missed transient client link both
+when a REPEATABLE READ transaction predates attribution and when a READ
+COMMITTED link transaction overlaps an uncommitted attribution. Both use the
+authenticated membership RPC and a synthetic privileged attribution insert on
+an existing wedding, and leave no exclusion event. They do not prove the
+normal fresh-wedding creation path exposes that schedule. Restricting only the
+isolation level does not close the demonstrated trigger gap. These remain
+blockers to any exposure or activation.
 
 Migration `202611240019` retains the proposed link-order functions as
 unattached prototypes; it does not replace the preceding wedding, membership,
@@ -182,6 +189,9 @@ including preceding writes; retrying only the failed statement is insufficient.
 The disposable concurrency fixture exercises this RPC, owner and attribution
 writes, and fresh referred draft creation. No universal caller retry or safe
 lock ordering for arbitrary pre-locked transactions has been established.
+Unconditionally guarding all client links would also affect ordinary wedding
+creation during accounting and requires an explicit whole-transaction retry
+strategy; it is not enabled here.
 
 Migration `202611240018` alone can reject a conflicting payout receipt after an
 external transfer has already occurred, rolling back the receipt transaction.
