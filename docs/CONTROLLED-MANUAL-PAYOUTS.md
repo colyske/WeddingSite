@@ -36,7 +36,7 @@ provider admission, all source locks, shared liabilities and cross-rail receipts
 remain unresolved. Existing allocations are retained if their source changes;
 the foundation has no cancellation, claim, paid or deficit-resolution workflow.
 Historical request retries acknowledge the original reservation without checking
-current readiness. A separate private leadership-only evaluator rechecks the
+current readiness. A separate private staff evaluator rechecks the
 current evidence without adding the obligation twice. Private, hard-disabled
 rebinding records preserve the original beneficiary, custody scope, currency,
 contribution allocations, source digest and liabilities. Each rebind records the
@@ -45,7 +45,12 @@ requires an explicit beneficiary confirmation tied to that preceding binding.
 Evidence with a changed source digest remains held; rebinding does not resolve
 refunds or deficits. Replays acknowledge history, not present readiness. Neither
 the evaluator nor a binding authorizes a transfer, and neither is exposed to API
-roles. The private binding evaluator loads the latest reviewed binding by ID and
+roles. Synthetic handling permits Admin, SuperAdmin and Owner, with an independent
+eligible reviewer unless the protected Owner explicitly elects solo review; the
+separate recipient, funding and binding evidence reviews remain leadership-only.
+The existing couple simple-payout implementation currently limits its operator RPC
+to Owner/SuperAdmin; the broader facilitator handling is user-directed and does not
+change that couple path. The private binding evaluator loads the latest reviewed binding by ID and
 revalidates it; the lower-level evaluator accepts caller-supplied evidence and is
 not proof that any binding or recipient confirmation exists. Neither routine
 creates a claim. A future processing implementation must atomically validate the

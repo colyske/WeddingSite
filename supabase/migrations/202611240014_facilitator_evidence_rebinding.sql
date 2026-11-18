@@ -155,7 +155,7 @@ begin
   perform pg_advisory_xact_lock(71110001);
   perform pg_advisory_xact_lock(71110002);
   perform 1 from public.profiles where id=auth.uid() for share;
-  perform public.require_staff('superadmin');
+  perform public.require_staff('admin');
   select * into r from public.facilitator_reservation_requests where id=p_request;
   if not found then raise exception 'FACILITATOR_RESERVATION_CONFLICT: Reservation not found.'; end if;
   select * into binding from public.facilitator_reservation_rebindings

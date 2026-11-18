@@ -92,7 +92,7 @@ begin
   end if;
   perform pg_advisory_xact_lock(71110001);
   perform pg_advisory_xact_lock(71110002);
-  if p_revalidate then perform public.require_staff('superadmin'); end if;
+  if p_revalidate then perform public.require_staff('admin'); end if;
   perform 1 from public.profiles where id=p_user for update;
   select * into prior from public.facilitator_reservation_requests where user_id=p_user and request_key=p_key;
   if found then

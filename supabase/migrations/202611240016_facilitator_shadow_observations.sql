@@ -56,7 +56,7 @@ begin
   perform pg_advisory_xact_lock(71110001);
   perform pg_advisory_xact_lock(71110002);
   perform 1 from public.profiles where id=auth.uid() for share;
-  perform public.require_staff('superadmin');
+  perform public.require_staff('admin');
   select * into claim from public.facilitator_shadow_claims where request_id=p_request;
   if not found or claim.sender_id is distinct from auth.uid() then
     raise exception 'FACILITATOR_SHADOW_AUTH: Only the claimed sender may report an observation.';

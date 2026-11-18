@@ -337,6 +337,7 @@ do $$
 declare u uuid:=(select id from referral_actors where kind='referrer');
   owner_id uuid:=(select id from referral_actors where kind='owner');
   checker uuid:=(select id from referral_actors where kind='superadmin');
+  admin_id uuid:=(select id from referral_actors where kind='admin');
   source uuid:=(select id from referral_actors where kind='funding-review');
   recipient uuid; evidence uuid; inventory uuid; newer_inventory uuid; other_inventory uuid; adverse_review uuid;
   key_id uuid:=extensions.gen_random_uuid();
@@ -539,9 +540,44 @@ begin
         blocked:=true;
       end;
       perform pg_temp.assert_true(blocked,'reviewer cannot claim without explicit owner solo');
+      begin
+        perform pg_temp.assert_true(first_id=public.facilitator_shadow_claim_internal(
+          first_id,changed_binding,extensions.gen_random_uuid(),true,true),'owner can explicitly claim solo');
+        raise exception 'SYNTHETIC_SOLO_ROLLBACK';
+      exception when raise_exception then
+        if sqlerrm <> 'SYNTHETIC_SOLO_ROLLBACK' then raise; end if;
+      end;
+      perform set_config('request.jwt.claim.sub',u::text,true);
+      blocked:=false;
+      begin
+        perform public.facilitator_shadow_claim_internal(first_id,changed_binding,extensions.gen_random_uuid(),false,true);
+      exception when raise_exception then
+        if sqlerrm <> 'Staff access required.' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'nonstaff cannot claim');
       perform set_config('request.jwt.claim.sub',checker::text,true);
+      blocked:=false;
+      begin
+        perform public.facilitator_shadow_claim_internal(first_id,changed_binding,extensions.gen_random_uuid(),true,true);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_SHADOW_AUTH:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'superadmin cannot use protected owner solo');
+      perform set_config('request.jwt.claim.sub',admin_id::text,true);
+      perform pg_temp.assert_true(changed_binding=public.facilitator_reservation_binding_evaluate_internal(
+        first_id,changed_binding),'admin can check current reviewed binding');
+      blocked:=false;
+      begin
+        perform public.facilitator_shadow_claim_internal(first_id,changed_binding,extensions.gen_random_uuid(),true,true);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_SHADOW_AUTH:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'admin cannot use protected owner solo');
       perform pg_temp.assert_true(first_id=public.facilitator_shadow_claim_internal(
-        first_id,changed_binding,claim_key,false,true),'independent leader creates one shadow claim');
+        first_id,changed_binding,claim_key,false,true),'independent admin creates one shadow claim');
       perform pg_temp.assert_true(first_id=public.facilitator_shadow_claim_internal(
         first_id,changed_binding,claim_key,false,true),'claim retry acknowledges history only');
       blocked:=false;
@@ -597,7 +633,7 @@ begin
           blocked:=true;
         end;
         perform pg_temp.assert_true(blocked,'other leader cannot impersonate claimed sender');
-        perform set_config('request.jwt.claim.sub',checker::text,true);
+        perform set_config('request.jwt.claim.sub',admin_id::text,true);
       end;
       blocked:=false;
       begin

@@ -47,7 +47,7 @@ begin
   perform pg_advisory_xact_lock(71110001);
   perform pg_advisory_xact_lock(71110002);
   perform 1 from public.profiles where id=auth.uid() for share;
-  actor_role:=public.require_staff('superadmin');
+  actor_role:=public.require_staff('admin');
   select * into existing from public.facilitator_shadow_claims where claim_key=p_key;
   if found then
     if (existing.request_id,existing.binding_id,existing.sender_id,existing.owner_solo)
@@ -62,7 +62,7 @@ begin
   select * into binding from public.facilitator_reservation_rebindings where id=p_binding and request_id=p_request;
   if not found then raise exception 'FACILITATOR_SHADOW_CONFLICT: Reviewed binding required.'; end if;
   if p_owner_solo then
-    if actor_role is distinct from 'owner' or binding.reviewed_by is distinct from auth.uid() then
+    if actor_role is distinct from 'owner' then
       raise exception 'FACILITATOR_SHADOW_AUTH: Protected Owner solo review required.';
     end if;
   else
@@ -97,7 +97,7 @@ begin
   perform pg_advisory_xact_lock(71110001);
   perform pg_advisory_xact_lock(71110002);
   perform 1 from public.profiles where id=auth.uid() for share;
-  perform public.require_staff('superadmin');
+  perform public.require_staff('admin');
   if not exists(select 1 from public.facilitator_shadow_claims where request_id=p_request) then
     raise exception 'FACILITATOR_SHADOW_CONFLICT: Claim required.';
   end if;
