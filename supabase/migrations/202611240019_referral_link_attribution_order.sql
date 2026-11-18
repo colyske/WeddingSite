@@ -1,11 +1,12 @@
--- Close the link/attribution exclusion races. Link writers and the attribution
+-- Coordinate link/attribution exclusions. Link writers and the attribution
 -- writer previously each checked the other's committed state, so concurrent
 -- transactions (or link -> unlink -> attribution in one transaction) could miss
--- each other. A per-wedding transaction lock (taken before the existing
--- fail-fast accounting try-locks, so it cannot deadlock with them) orders the
+-- each other. A per-wedding transaction lock and the existing fail-fast
+-- accounting try-locks order the
 -- two writers, and an immutable link history lets attribution see links that
--- were removed earlier in the same transaction. Observations are never dropped:
--- the history is append-only and exclusion events are recorded as before.
+-- were removed earlier in the same transaction. History begins with this
+-- migration; links previously removed cannot be reconstructed here. Existing
+-- caller lock ordering and deadlocks require separate verification.
 create table public.referral_link_history (
   wedding_id uuid not null,
   user_id uuid not null,
