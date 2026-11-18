@@ -245,6 +245,37 @@ language sql stable security definer set search_path='' set row_security=off as 
   where r.id=p_request group by r.id,r.recipient_revision,r.currency
 $$;
 
+create function public.facilitator_manual_status_internal(p_request uuid) returns jsonb
+language plpgsql security definer set search_path='' set row_security=off as $$
+declare r public.facilitator_manual_requests; incident boolean; claimed boolean; reported boolean;
+begin
+  if not public.facilitator_manual_enabled() then
+    raise exception 'FACILITATOR_MANUAL_DISABLED: Manual payout model is disabled.';
+  end if;
+  if auth.uid() is null or p_request is null then
+    raise exception 'FACILITATOR_MANUAL_AUTH: Authentication is required.';
+  end if;
+  if current_setting('transaction_isolation')<>'read committed' then
+    raise exception 'FACILITATOR_MANUAL_CONFLICT: READ COMMITTED is required.';
+  end if;
+  perform pg_advisory_xact_lock(71110001);
+  perform pg_advisory_xact_lock(71110002);
+  perform 1 from public.profiles where id=auth.uid() for share;
+  select * into r from public.facilitator_manual_requests where id=p_request;
+  if not found or (r.user_id is distinct from auth.uid()
+    and coalesce(public.current_platform_role()::text,'') not in ('admin','superadmin','owner')) then
+    raise exception 'FACILITATOR_MANUAL_AUTH: Request is not accessible.';
+  end if;
+  select exists(select 1 from public.facilitator_manual_incidents where request_id=r.id),
+    exists(select 1 from public.facilitator_manual_claims where request_id=r.id),
+    exists(select 1 from public.facilitator_manual_receipts where request_id=r.id)
+    into incident,claimed,reported;
+  return jsonb_build_object('request_id',r.id,'amount_minor',r.amount_minor::text,'currency',r.currency,
+    'state',case when incident then 'outcome_review_required' else public.facilitator_manual_state(r.id) end,
+    'historical_state',public.facilitator_manual_state(r.id),'incident',incident,
+    'operator_reported',reported,'external_transfer_verified',false,'do_not_resend',claimed);
+end $$;
+
 create function public.facilitator_manual_action_internal(
   p_request uuid,p_key uuid,p_action text,p_reason text,p_fee bigint,
   p_reference text,p_owner_solo boolean,p_confirmed boolean
@@ -389,6 +420,7 @@ end $$;
 revoke all on function public.facilitator_manual_enabled(),public.facilitator_manual_state(uuid),
   public.facilitator_manual_source_cap(uuid,uuid,text),public.facilitator_manual_check_sources(uuid,text),
   public.facilitator_manual_evidence_digest(uuid),
+  public.facilitator_manual_status_internal(uuid),
   public.facilitator_manual_request_internal(uuid,uuid,text,bigint,jsonb,boolean),
   public.facilitator_manual_action_internal(uuid,uuid,text,text,bigint,text,boolean,boolean)
   from public,anon,authenticated,service_role;

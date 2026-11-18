@@ -93,7 +93,8 @@ observation, not a deduction from couple funds or proof of external liquidity.
 Conflicting reports are retained as incidents without changing the prior receipt.
 After such a conflict the historical state may still be `paid`; any future
 status surface must display the unresolved incident and prohibit resending,
-not present that state as an unqualified successful payment.
+not present that state as an unqualified successful payment. A private disabled
+status routine models that distinction; it is not exposed as an API or UI.
 Historical request and action retries acknowledge prior records and never
 authorize a send or resend. Tests enable the model only inside a rolled-back
 synthetic transaction; the migration has no activation mechanism.

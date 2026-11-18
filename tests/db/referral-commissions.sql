@@ -296,6 +296,8 @@ begin
       'public.facilitator_manual_request_internal(uuid,uuid,text,bigint,jsonb,boolean)','execute')
       and not has_function_privilege(role_name,
         'public.facilitator_manual_action_internal(uuid,uuid,text,text,bigint,text,boolean,boolean)','execute')
+      and not has_function_privilege(role_name,
+        'public.facilitator_manual_status_internal(uuid)','execute')
       and not has_table_privilege(role_name,'public.facilitator_manual_requests','select')
       and not has_table_privilege(role_name,'public.facilitator_manual_receipts','insert'),
       role_name||' cannot access the disabled manual model');
@@ -314,6 +316,13 @@ begin
     blocked:=true;
   end;
   perform pg_temp.assert_true(blocked,'manual action is hard disabled');
+  blocked:=false;
+  begin perform public.facilitator_manual_status_internal(null);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_MANUAL_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'manual status is hard disabled');
   blocked:=false;
   begin perform public.facilitator_reservation_create_internal(null,null,null,null,'KES',1,'[]'::jsonb);
   exception when raise_exception then
@@ -575,6 +584,22 @@ begin
       and (select count(*)=3 from public.facilitator_manual_reports)
       and (select count(*)=2 from public.facilitator_manual_incidents),
       'new-key report after paid is retained as a further incident');
+    perform set_config('request.jwt.claim.sub',u::text,true);
+    result:=public.facilitator_manual_status_internal(manual_id);
+    perform pg_temp.assert_true(result->>'state'='outcome_review_required'
+      and result->>'historical_state'='paid' and result->>'incident'='true'
+      and result->>'operator_reported'='true' and result->>'external_transfer_verified'='false'
+      and result->>'do_not_resend'='true',
+      'beneficiary status surfaces the incident and never implies provider verification');
+    perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='outsider'),true);
+    blocked:=false;
+    begin
+      perform public.facilitator_manual_status_internal(manual_id);
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_MANUAL_AUTH:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'unrelated user cannot read manual request status');
     declare changed_review uuid;
     begin
       insert into public.referral_funding_reviews(contribution_id,source_digest,currency,estimate_minor,
