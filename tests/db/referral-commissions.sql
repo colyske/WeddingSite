@@ -298,6 +298,8 @@ begin
         'public.facilitator_manual_action_internal(uuid,uuid,text,text,bigint,text,boolean,boolean)','execute')
       and not has_function_privilege(role_name,
         'public.facilitator_manual_status_internal(uuid)','execute')
+      and not has_function_privilege(role_name,
+        'public.facilitator_manual_lock_recipient(uuid,uuid)','execute')
       and not has_table_privilege(role_name,'public.facilitator_manual_requests','select')
       and not has_table_privilege(role_name,'public.facilitator_manual_receipts','insert'),
       role_name||' cannot access the disabled manual model');

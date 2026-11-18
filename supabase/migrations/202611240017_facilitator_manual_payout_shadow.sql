@@ -86,6 +86,22 @@ language sql stable security definer set search_path='' set row_security=off as 
   select state from public.facilitator_manual_events where request_id=p_request order by id desc limit 1
 $$;
 
+-- Caller holds the beneficiary profile lock and both accounting locks. Lock
+-- the checker before the final readiness read so a role revocation that wins
+-- the row lock is observed, and a later revocation waits for this transaction.
+create function public.facilitator_manual_lock_recipient(p_user uuid,p_revision uuid) returns boolean
+language plpgsql security definer set search_path='' set row_security=off as $$
+declare checker uuid;
+begin
+  select c.checked_by into checker from public.facilitator_recipient_checks c
+    join public.facilitator_recipient_versions v on v.revision_id=c.revision_id
+    where v.revision_id=p_revision and v.user_id=p_user;
+  if checker is not null then
+    perform 1 from public.profiles where id=checker for share;
+  end if;
+  return public.facilitator_payout_recipient_ready(p_user,p_revision);
+end $$;
+
 -- Caller holds both global locks and the contribution row. A checked review is
 -- a source-specific attestation, not proof of available external cash.
 create function public.facilitator_manual_source_cap(p_contribution uuid,p_user uuid,p_currency text)
@@ -196,7 +212,7 @@ begin
     end if;
     return old.id;
   end if;
-  if not public.facilitator_payout_recipient_ready(auth.uid(),p_recipient) then
+  if not public.facilitator_manual_lock_recipient(auth.uid(),p_recipient) then
     raise exception 'FACILITATOR_MANUAL_HOLD: Current verified recipient required.';
   end if;
   perform public.facilitator_manual_check_sources(auth.uid(),p_currency);
@@ -360,7 +376,7 @@ begin
       raise exception 'FACILITATOR_MANUAL_CONFLICT: Already claimed; do not resend.';
     end if;
     perform 1 from public.profiles where id=r.user_id for update;
-    if not public.facilitator_payout_recipient_ready(r.user_id,r.recipient_revision) then
+    if not public.facilitator_manual_lock_recipient(r.user_id,r.recipient_revision) then
       raise exception 'FACILITATOR_MANUAL_HOLD: Recipient changed or is not verified.';
     end if;
     perform public.facilitator_manual_check_sources(r.user_id,r.currency);
@@ -418,6 +434,7 @@ begin
 end $$;
 
 revoke all on function public.facilitator_manual_enabled(),public.facilitator_manual_state(uuid),
+  public.facilitator_manual_lock_recipient(uuid,uuid),
   public.facilitator_manual_source_cap(uuid,uuid,text),public.facilitator_manual_check_sources(uuid,text),
   public.facilitator_manual_evidence_digest(uuid),
   public.facilitator_manual_status_internal(uuid),

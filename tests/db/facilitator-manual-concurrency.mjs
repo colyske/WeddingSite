@@ -170,6 +170,46 @@ try {
   assert.ifError(revoked.error);
   assert.ok(blockedClaim.error, "Reviewer revocation must prevent the claim");
   assert.match(blockedClaim.error.message, /FACILITATOR_MANUAL_AUTH: Reviewer authority changed/);
+  const checkerName = `manual_checker_${randomUUID()}`, checkerClaimName = `manual_checker_claim_${randomUUID()}`;
+  const checkerRequestName = `manual_checker_request_${randomUUID()}`, checkerRequestKey = randomUUID();
+  const checkerUpdate = sql(`begin; set local statement_timeout='30s';
+    set local idle_in_transaction_session_timeout='45s'; set local application_name='${checkerName}';
+    update public.profiles set platform_role='client' where id='${fixtureIds.superadmin}';\n`, true);
+  const checkerResult = checkerUpdate.result.then(value => ({ value }), error => ({ error }));
+  let checkerClaimResult, checkerRequestResult, checkerBarrierError;
+  try {
+    await waitFor(`exists(select 1 from pg_stat_activity where application_name='${checkerName}'
+      and state='idle in transaction' and wait_event='ClientRead')`);
+    const checkerClaim = sql(`begin; set local statement_timeout='30s';
+      set local application_name='${checkerClaimName}'; ${actor(fixtureIds.owner)}
+      select ${claim(randomUUID(), third)}; commit;`);
+    checkerClaimResult = checkerClaim.result.then(value => ({ value }), error => ({ error }));
+    await waitFor(`exists(select 1 from pg_stat_activity waiting join pg_stat_activity holding
+      on holding.pid=any(pg_blocking_pids(waiting.pid))
+      where waiting.application_name='${checkerClaimName}' and holding.application_name='${checkerName}')`);
+    const checkerRequest = sql(`begin; set local statement_timeout='30s';
+      set local application_name='${checkerRequestName}'; ${actor(fixtureIds.user)}
+      select ${request(checkerRequestKey, 1)}; commit;`);
+    checkerRequestResult = checkerRequest.result.then(value => ({ value }), error => ({ error }));
+    await waitFor(`exists(select 1 from pg_stat_activity waiting join pg_stat_activity holding
+      on holding.pid=any(pg_blocking_pids(waiting.pid))
+      where waiting.application_name='${checkerRequestName}' and holding.application_name='${checkerClaimName}')`);
+  } catch (error) {
+    checkerBarrierError = error;
+  } finally {
+    checkerUpdate.release();
+  }
+  const [checkerRevoked, checkerClaim, checkerRequest] = await Promise.all(
+    [checkerResult, checkerClaimResult, checkerRequestResult]);
+  if (checkerBarrierError) throw checkerBarrierError;
+  assert.ifError(checkerRevoked.error);
+  assert.ok(checkerClaim.error, "Recipient checker revocation must prevent the claim");
+  assert.match(checkerClaim.error.message, /FACILITATOR_MANUAL_HOLD: Recipient changed or is not verified/);
+  assert.ok(checkerRequest.error, "Recipient checker revocation must prevent admission");
+  assert.match(checkerRequest.error.message, /FACILITATOR_MANUAL_HOLD: Current verified recipient required/);
+  await run(`update public.profiles set platform_role='superadmin' where id='${fixtureIds.superadmin}';`);
+  assert.equal(await run(`select public.facilitator_payout_recipient_ready(
+    '${fixtureIds.user}','${fixtureIds.recipient}');`), "t", "Recipient is ready before the independent revision race");
   const recipientName = `manual_recipient_${randomUUID()}`, waitingName = `manual_waiting_${randomUUID()}`;
   const waitingClaimName = `manual_recipient_claim_${randomUUID()}`;
   const recipientChange = sql(`begin; set local statement_timeout='30s';
@@ -215,8 +255,9 @@ try {
     'total',(select sum(amount_minor) from public.facilitator_manual_allocations),
     'failed',(select count(*) from public.facilitator_manual_requests where request_key='${competingKey}'),
     'stale',(select count(*) from public.facilitator_manual_requests where request_key='${staleKey}'),
+    'checker_failed',(select count(*) from public.facilitator_manual_requests where request_key='${checkerRequestKey}'),
     'claims',(select count(*) from public.facilitator_manual_claims));`));
-  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 1000, failed: 0, stale: 0, claims: 2 });
+  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 1000, failed: 0, stale: 0, checker_failed: 0, claims: 2 });
   console.log("Concurrent synthetic requests and claims serialize; retries acknowledge history without additional liabilities.");
 } finally {
   if (gateChanged) await run(gateReset);
