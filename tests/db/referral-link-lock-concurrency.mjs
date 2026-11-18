@@ -21,8 +21,8 @@ function sql(input, hold = false) {
     });
   });
   if (hold) child.stdin.write(input); else child.stdin.end(input);
-  return { result, write: input => child.stdin.write(input),
-    release: () => { if (!child.stdin.destroyed) child.stdin.end("commit;\n"); } };
+  return { result, output: () => stdout, write: input => child.stdin.write(input),
+    release: () => { if (!child.stdin.destroyed && !child.stdin.writableEnded) child.stdin.end("commit;\n"); } };
 }
 const run = input => sql(input).result;
 const waitFor = condition => run(`do $$ begin for i in 1..1000 loop
@@ -36,11 +36,14 @@ const updateWedding = randomUUID(), updateIntent = randomUUID();
 const staleWedding = randomUUID(), staleIntent = randomUUID();
 const pendingWedding = randomUUID(), pendingIntent = randomUUID();
 const freshCreator = randomUUID(), freshIntent = randomUUID(), createKey = randomUUID();
+const raceCreators = [randomUUID(), randomUUID()], raceIntents = [randomUUID(), randomUUID()];
 const revision = randomUUID(), holderName = `referral_link_holder_${randomUUID()}`;
 let fixtureCreated = false;
 try {
   await run(`begin;
-    insert into auth.users(id) values('${creator}'),('${referrer}'),('${freshCreator}');
+    insert into auth.users(id) values('${creator}'),('${referrer}'),('${freshCreator}'),
+      ('${raceCreators[0]}'),('${raceCreators[1]}');
+    update public.profiles set platform_role='superadmin' where id='${referrer}';
     insert into public.referral_accounts(user_id,opted_in,terms_version)
       values('${referrer}',true,'client-referrals-v1');
     insert into public.weddings(id,couple_names,currency,client_owner_id)
@@ -56,7 +59,9 @@ try {
         ('${staleIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1'),
         ('${pendingIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1');
     insert into public.referral_intents(id,creator_id,referrer_id)
-      values('${freshIntent}','${freshCreator}','${referrer}');
+      values('${freshIntent}','${freshCreator}','${referrer}'),
+        ('${raceIntents[0]}','${raceCreators[0]}','${referrer}'),
+        ('${raceIntents[1]}','${raceCreators[1]}','${referrer}');
     insert into public.wedding_memberships(wedding_id,user_id,role)
       values('${updateWedding}','${referrer}','admin');
     insert into public.referral_attributions(wedding_id,referrer_id,creator_id,intent_id,disclosed_revision,terms_version,eligible)
@@ -198,23 +203,80 @@ try {
   assert.equal(await run(`select count(*) from public.referral_eligibility_events
     where wedding_id='${pendingWedding}';`), "0",
   "An uncommitted attribution and a transient read-committed client link can miss one another");
+
+  // The actual creation path commits the wedding and attribution together.
+  for (const [index, isolation] of ["repeatable read", "read committed"].entries()) {
+    const createName = `referral_fresh_create_${randomUUID()}`, linkName = `referral_fresh_link_${randomUUID()}`;
+    const link = sql(`begin isolation level ${isolation}; set local statement_timeout='20s';
+      set local idle_in_transaction_session_timeout='25s'; set local application_name='${linkName}';
+      set local role authenticated; select set_config('request.jwt.claim.sub','${referrer}',true);
+      select count(*) from public.weddings;\n`, true);
+    const linkResult = link.result.then(value => ({ value }), error => ({ error }));
+    let creation, creationResult, weddingId, caseError;
+    try {
+      await waitFor(`exists(select 1 from pg_stat_activity where application_name='${linkName}'
+        and state='idle in transaction' and wait_event='ClientRead')`);
+      creation = sql(`begin; set local statement_timeout='20s'; set local idle_in_transaction_session_timeout='25s';
+        set local application_name='${createName}'; set local role authenticated;
+        select set_config('request.jwt.claim.sub','${raceCreators[index]}',true);
+        select public.create_wedding_draft('${randomUUID()}',jsonb_build_object(
+          'slug','race-${randomUUID()}','coupleNames','Fresh race','weddingDate',null,'location',null,
+          'currency','KES','maxCapacity',150,'palette',jsonb_build_array('#244b3a'),
+          'paletteNames',jsonb_build_array('Forest Green'),'timeZone','Africa/Nairobi',
+          'venues','[]'::jsonb,'referral',jsonb_build_object('intentId','${raceIntents[index]}',
+            'decision','accept','revision',public.referral_disclosure()->>'revision',
+            'termsVersion','client-referrals-v1')));\n`, true);
+      creationResult = creation.result.then(value => ({ value }), error => ({ error }));
+      await waitFor(`exists(select 1 from pg_stat_activity where application_name='${createName}'
+        and state='idle in transaction' and wait_event='ClientRead')`);
+      const line = creation.output().split("\n").find(value => value.startsWith("{"));
+      assert.ok(line, "Fresh creation must return its UUID before commit");
+      weddingId = JSON.parse(line).weddingId;
+      assert.match(weddingId, /^[0-9a-f-]{36}$/);
+      link.write(`select public.set_workspace_member_role('${weddingId}','${referrer}','client');
+        select public.set_workspace_member_role('${weddingId}','${referrer}','admin');\n`);
+      link.release();
+      await waitFor(`not exists(select 1 from pg_stat_activity where application_name='${linkName}')
+        or exists(select 1 from pg_stat_activity where application_name='${linkName}' and wait_event_type='Lock')`);
+    } catch (caught) {
+      caseError = caught;
+      link.release();
+    } finally {
+      if (creation) creation.release();
+    }
+    const [linked, created] = await Promise.all([linkResult, creationResult]);
+    if (caseError) throw caseError;
+    if (created.error) throw created.error;
+    if (linked.error) {
+      assert.match(linked.error.message, /foreign key|serialize|REFERRAL_ACCOUNTING_BUSY/i);
+    } else {
+      assert.equal(await run(`select count(*) from public.referral_eligibility_events
+        where wedding_id='${weddingId}' and reason='client_membership';`), "1",
+      `${isolation} accepted a transient link without durable exclusion`);
+    }
+  }
   console.log("Relevant account links and existing-link attribution fail fast under accounting lock.");
 } finally {
   if (fixtureCreated) await run(`begin;
+    delete from public.wedding_create_requests where client_owner_id in ('${raceCreators[0]}','${raceCreators[1]}');
     alter table public.referral_eligibility_events disable trigger referral_eligibility_events_immutable;
-    delete from public.referral_eligibility_events where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}');
+    delete from public.referral_eligibility_events where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}')
+      or wedding_id in (select id from public.weddings where client_owner_id in ('${raceCreators[0]}','${raceCreators[1]}'));
     alter table public.referral_eligibility_events enable trigger referral_eligibility_events_immutable;
     alter table public.referral_attributions disable trigger referral_attribution_immutable;
-    delete from public.referral_attributions where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}');
+    delete from public.referral_attributions where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}')
+      or wedding_id in (select id from public.weddings where client_owner_id in ('${raceCreators[0]}','${raceCreators[1]}'));
     alter table public.referral_attributions enable trigger referral_attribution_immutable;
-    delete from public.referral_intents where id in ('${intent}','${linkedIntent}','${updateIntent}','${staleIntent}','${pendingIntent}','${freshIntent}');
-    delete from public.wedding_memberships where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}');
+    delete from public.referral_intents where id in ('${intent}','${linkedIntent}','${updateIntent}','${staleIntent}','${pendingIntent}','${freshIntent}','${raceIntents[0]}','${raceIntents[1]}');
+    delete from public.wedding_memberships where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}')
+      or wedding_id in (select id from public.weddings where client_owner_id in ('${raceCreators[0]}','${raceCreators[1]}'));
     alter table public.weddings disable trigger weddings_no_delete;
-    delete from public.weddings where id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}');
+    delete from public.weddings where id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}')
+      or client_owner_id in ('${raceCreators[0]}','${raceCreators[1]}');
     alter table public.weddings enable trigger weddings_no_delete;
     delete from public.referral_accounts where user_id='${referrer}';
-    delete from public.profiles where id in ('${creator}','${referrer}','${freshCreator}');
-    delete from auth.users where id in ('${creator}','${referrer}','${freshCreator}');
-    delete from public.audit_events where table_name='profiles' and record_id in ('${creator}','${referrer}','${freshCreator}');
+    delete from public.profiles where id in ('${creator}','${referrer}','${freshCreator}','${raceCreators[0]}','${raceCreators[1]}');
+    delete from auth.users where id in ('${creator}','${referrer}','${freshCreator}','${raceCreators[0]}','${raceCreators[1]}');
+    delete from public.audit_events where table_name='profiles' and record_id in ('${creator}','${referrer}','${freshCreator}','${raceCreators[0]}','${raceCreators[1]}');
     commit;`);
 }
