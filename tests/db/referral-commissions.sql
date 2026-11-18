@@ -635,6 +635,7 @@ begin
         perform pg_temp.assert_true(blocked,'other leader cannot impersonate claimed sender');
         perform set_config('request.jwt.claim.sub',admin_id::text,true);
       end;
+      perform set_config('request.jwt.claim.sub',owner_id::text,true);
       blocked:=false;
       begin
         perform public.facilitator_reservation_rebind_internal(first_id,changed_binding,extensions.gen_random_uuid(),

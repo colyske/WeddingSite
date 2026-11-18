@@ -25,7 +25,11 @@ custody scope. It records cash, unpaid costs, holds, other commitments and
 external evidence; a second leader or explicit Owner solo review can check the
 assertion. The application cannot independently establish account exclusivity
 or validate the external evidence. An inventory assertion is not a spendable
-balance, a reservation or authority to transfer.
+balance, a reservation or authority to transfer. This assertion belongs to the
+experimental inventory-bound model below; identifying an account or
+automatically reconciling its cash is not a requirement for the requested manual
+facilitator workflow. Its operator is responsible for external funding decisions,
+and the application must not describe that funding as independently verified.
 
 Migration `202611240012` introduces an internal, hard-disabled reservation
 foundation with immutable source allocations. No API role can invoke it, and
@@ -35,6 +39,9 @@ assertions for isolated synthetic tests only; real custody identity, complete
 provider admission, all source locks, shared liabilities and cross-rail receipts
 remain unresolved. Existing allocations are retained if their source changes;
 the foundation has no cancellation, claim, paid or deficit-resolution workflow.
+The eventual manual workflow still needs independently supportable commission
+entitlements, atomic liability accounting, adjustment handling and safe manual
+payment recording; an operator funding decision does not establish those facts.
 Historical request retries acknowledge the original reservation without checking
 current readiness. A separate private staff evaluator rechecks the
 current evidence without adding the obligation twice. Private, hard-disabled
