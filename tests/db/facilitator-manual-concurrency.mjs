@@ -66,29 +66,30 @@ try {
       insert into referral_actors values('race-recipient',v);
     end $$;
     select jsonb_build_object('user',(select id from referral_actors where kind='referrer'),
+      'owner',(select id from referral_actors where kind='owner'),
       'recipient',(select id from referral_actors where kind='race-recipient'),
       'review',(select id from referral_actors where kind='funding-review'));
     commit;`);
   const fixtureIds = matchJson(seed);
   const requestId = value => value.split("\n").find(line =>
     /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(line) && line !== fixtureIds.user);
-  const actor = `select set_config('request.jwt.claim.role','authenticated',true);
-    select set_config('request.jwt.claim.sub','${fixtureIds.user}',true);`;
+  const actor = user => `select set_config('request.jwt.claim.role','authenticated',true);
+    select set_config('request.jwt.claim.sub','${user}',true);`;
   const request = (key, amount) => `public.facilitator_manual_request_internal(
     '${key}','${fixtureIds.recipient}','KES',${amount},
     jsonb_build_array(jsonb_build_object('review','${fixtureIds.review}','amount','${amount}')),true)`;
-  async function race(firstKey, firstAmount, secondKey, secondAmount) {
+  async function race(firstCall, secondCall, user = fixtureIds.user) {
     const firstName = `manual_first_${randomUUID()}`, secondName = `manual_second_${randomUUID()}`;
     const first = sql(`begin; set local statement_timeout='30s';
       set local idle_in_transaction_session_timeout='45s'; set local application_name='${firstName}';
-      ${actor} select ${request(firstKey, firstAmount)};\n`, true);
+      ${actor(user)} select ${firstCall};\n`, true);
     const aResult = first.result.then(value => ({ value }), error => ({ error }));
     let bResult, barrierError;
     try {
       await waitFor(`exists(select 1 from pg_stat_activity where application_name='${firstName}'
         and state='idle in transaction' and wait_event='ClientRead')`);
       const second = sql(`begin; set local statement_timeout='30s'; set local application_name='${secondName}';
-        ${actor} select ${request(secondKey, secondAmount)}; commit;`);
+        ${actor(user)} select ${secondCall}; commit;`);
       bResult = second.result.then(value => ({ value }), error => ({ error }));
       await waitFor(`exists(select 1 from pg_stat_activity waiting join pg_stat_activity holding
         on holding.pid=any(pg_blocking_pids(waiting.pid))
@@ -102,28 +103,42 @@ try {
     const [a, b] = await Promise.all([aResult, bResult]);
     if (barrierError) throw barrierError;
     if (a.error) throw a.error;
-    return [requestId(a.value), b];
+    return [a.value, b];
   }
   const firstKey = randomUUID(), competingKey = randomUUID(), replayKey = randomUUID(), changedKey = randomUUID();
-  const [first, competing] = await race(firstKey, 600, competingKey, 600);
+  const [firstOutput, competing] = await race(request(firstKey, 600), request(competingKey, 600));
+  const first = requestId(firstOutput);
   assert.ok(first, "First request must commit");
   assert.ok(competing.error, "Concurrent over-allocation must fail");
   assert.match(competing.error.message, /FACILITATOR_MANUAL_HOLD:/);
-  const [second, replay] = await race(replayKey, 300, replayKey, 300);
+  const [secondOutput, replay] = await race(request(replayKey, 300), request(replayKey, 300));
+  const second = requestId(secondOutput);
   assert.ok(second, "Remaining source capacity can be reserved");
   assert.ifError(replay.error);
   assert.equal(requestId(replay.value), second, "Concurrent identical retry returns the prior request");
-  const [third, changed] = await race(changedKey, 100, changedKey, 99);
-  assert.ok(third, "Initial changed-key race commits the first request");
+  const [thirdOutput, changed] = await race(request(changedKey, 100), request(changedKey, 99));
+  assert.ok(requestId(thirdOutput), "Initial changed-key race commits the first request");
   assert.ok(changed.error, "Concurrent changed replay must fail");
   assert.match(changed.error.message, /FACILITATOR_MANUAL_CONFLICT:/);
+  const claimKey = randomUUID();
+  const claim = key => `public.facilitator_manual_action_internal(
+    '${first}','${key}','processing',null,10,null,true,true)`;
+  const [claimOutput, otherClaim] = await race(claim(claimKey), claim(randomUUID()), fixtureIds.owner);
+  assert.equal(matchJson(claimOutput).state, "processing", "Owner claims the synthetic payout");
+  assert.ok(otherClaim.error, "Concurrent second claim must fail");
+  assert.match(otherClaim.error.message, /FACILITATOR_MANUAL_CONFLICT:/);
+  const [claimReplayOutput, claimReplay] = await race(claim(claimKey), claim(claimKey), fixtureIds.owner);
+  assert.equal(matchJson(claimReplayOutput).replayed, true, "Claim retry is historical acknowledgment");
+  assert.ifError(claimReplay.error);
+  assert.equal(matchJson(claimReplay.value).replayed, true, "Concurrent claim retry cannot create a new claim");
   const totals = matchJson(await run(`select jsonb_build_object(
     'requests',(select count(*) from public.facilitator_manual_requests where user_id='${fixtureIds.user}'),
     'allocations',(select count(*) from public.facilitator_manual_allocations),
     'total',(select sum(amount_minor) from public.facilitator_manual_allocations),
-    'failed',(select count(*) from public.facilitator_manual_requests where request_key='${competingKey}'));`));
-  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 1000, failed: 0 });
-  console.log("Concurrent manual requests serialize: over-allocation rolls back and identical retry returns one request.");
+    'failed',(select count(*) from public.facilitator_manual_requests where request_key='${competingKey}'),
+    'claims',(select count(*) from public.facilitator_manual_claims));`));
+  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 1000, failed: 0, claims: 1 });
+  console.log("Concurrent synthetic requests and claims serialize; retries acknowledge history without additional liabilities.");
 } finally {
   if (gateChanged) await run(gateReset);
 }

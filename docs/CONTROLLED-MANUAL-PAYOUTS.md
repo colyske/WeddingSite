@@ -103,8 +103,8 @@ This is not a usable payout service: it has no beneficiary or operator API/UI,
 no reciprocal cross-rail receipt or incident protection, and no safe destination
 rebinding after recipient changes. The model inherits incomplete provider
 ingress and attribution-link visibility and has not established concurrency or
-scale safety. A two-session CI regression covers competing requests and identical
-replay, but not all source, recipient, role or cross-rail races. Its source evidence is manually attested rather than independently
+scale safety. A two-session CI regression covers competing requests and claims
+and their retries, but not all source, recipient, role or cross-rail races. Its source evidence is manually attested rather than independently
 verified by the application. Do not expose it or interpret synthetic `paid` as
 an actual transfer. External cash decisions remain with the operator.
 
