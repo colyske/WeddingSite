@@ -872,7 +872,8 @@ begin
       and (select count(*)=3 from public.facilitator_manual_reports)
       and (select count(*)=2 from public.facilitator_manual_incidents),
       'new-key report after paid is retained as a further incident');
-    declare inc record; ev uuid; key_id uuid:=extensions.gen_random_uuid(); second_id uuid;
+    declare inc record; ev uuid; ev_ref uuid; key_id uuid:=extensions.gen_random_uuid(); second_id uuid;
+      reviewed_count integer:=0;
     begin
       perform set_config('request.jwt.claim.sub',u::text,true);
       second_id:=public.facilitator_manual_submit(extensions.gen_random_uuid(),recipient,source,100,true);
@@ -887,7 +888,17 @@ begin
       perform pg_temp.assert_true(blocked,'unreviewed incidents block new claims');
       for inc in select id from public.facilitator_manual_incidents where request_id=manual_id order by id loop
         key_id:=extensions.gen_random_uuid();
-        ev:=public.facilitator_manual_incident_evidence_add(inc.id,key_id,extensions.gen_random_uuid(),repeat('a',64),true);
+        ev_ref:=extensions.gen_random_uuid();
+        perform set_config('request.jwt.claim.sub',case when reviewed_count=0 then admin_id else owner_id end::text,true);
+        ev:=public.facilitator_manual_incident_evidence_add(inc.id,key_id,ev_ref,repeat('a',64),true);
+        result:=public.facilitator_manual_staff_workspace();
+        perform pg_temp.assert_true(exists(select 1 from jsonb_array_elements(result) req
+          cross join lateral jsonb_array_elements(req->'incidents') incident
+          cross join lateral jsonb_array_elements(incident->'evidence') evidence
+          where req->>'request_id'=manual_id::text and incident->>'id'=inc.id::text
+            and evidence->>'id'=ev::text and evidence->>'external_reference'=ev_ref::text
+            and evidence->>'sha256'=repeat('a',64)),
+          'staff can find and verify the submitted external evidence reference and digest');
         blocked:=false;
         begin perform public.facilitator_manual_incident_review(inc.id,ev,false,true);
         exception when raise_exception then
@@ -895,9 +906,17 @@ begin
           blocked:=true;
         end;
         perform pg_temp.assert_true(blocked,'same reviewer cannot review incident evidence without Owner solo');
-        perform pg_temp.assert_true(public.facilitator_manual_incident_review(inc.id,ev,true,true),
-          'Owner explicitly reviews incident evidence solo');
+        if reviewed_count=0 then
+          perform set_config('request.jwt.claim.sub',checker::text,true);
+          perform pg_temp.assert_true(public.facilitator_manual_incident_review(inc.id,ev,false,true),
+            'different staff member independently reviews incident evidence');
+        else
+          perform pg_temp.assert_true(public.facilitator_manual_incident_review(inc.id,ev,true,true),
+            'Owner explicitly reviews incident evidence solo');
+        end if;
+        reviewed_count:=reviewed_count+1;
       end loop;
+      perform set_config('request.jwt.claim.sub',owner_id::text,true);
       result:=public.facilitator_manual_staff_action(second_id,extensions.gen_random_uuid(),
         'processing',null,10,null,true,true);
       perform pg_temp.assert_true(result->>'state'='processing'

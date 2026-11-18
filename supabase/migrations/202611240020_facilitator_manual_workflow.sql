@@ -65,7 +65,8 @@ begin
     || jsonb_build_object('created_at',r.created_at,'sender_id',c.sender_id,'incidents',
       (select coalesce(jsonb_agg(jsonb_build_object('id',i.id::text,
         'reviewed',exists(select 1 from public.facilitator_manual_incident_reviews x where x.incident_id=i.id),
-        'evidence',(select coalesce(jsonb_agg(jsonb_build_object('id',e.id,'submitted_by',e.submitted_by)
+        'evidence',(select coalesce(jsonb_agg(jsonb_build_object('id',e.id,'submitted_by',e.submitted_by,
+          'external_reference',e.external_reference,'sha256',e.sha256)
           order by e.submitted_at),'[]'::jsonb) from public.facilitator_manual_incident_evidence e where e.incident_id=i.id))
         order by i.id),'[]'::jsonb) from public.facilitator_manual_incidents i where i.request_id=r.id))
     order by r.created_at desc),'[]'::jsonb) into rows

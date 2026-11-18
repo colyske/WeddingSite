@@ -85,7 +85,7 @@
             const reviewForm = element("form");
             const evidence = element("select");
             for (const item of incident.evidence) {
-              const option = element("option", `${item.id} (submitted by ${item.submitted_by})`);
+              const option = element("option", `${item.id} (submitted by ${item.submitted_by}; reference ${item.external_reference}; SHA-256 ${item.sha256})`);
               option.value = item.id; evidence.append(option);
             }
             const solo = element("input"); solo.type = "checkbox";

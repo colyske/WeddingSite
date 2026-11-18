@@ -357,7 +357,8 @@ test("staff incident review preserves the no-resend warning", { skip }, async ()
     const action = new URL(route.request().url()).searchParams.get("action");
     if (action === "manual-staff-workspace") return fulfill(route, [{ request_id: uuid, amount_minor: "600",
       currency: "KES", state: "outcome_review_required", do_not_resend: true,
-      incidents: [{ id: "1", reviewed: false, evidence: [{ id: revision, submitted_by: uuid }] }] }]);
+      incidents: [{ id: "1", reviewed: false, evidence: [{ id: revision, submitted_by: uuid,
+        external_reference: uuid, sha256: "a".repeat(64) }] }] }]);
     if (action === "manual-incident-review") {
       sent.push(JSON.parse(route.request().postData()));
       return fulfill(route, { reviewed: true, do_not_resend: true });
@@ -366,6 +367,7 @@ test("staff incident review preserves the no-resend warning", { skip }, async ()
   });
   await page.goto(`${base}/facilitator-payouts.html`);
   const form = page.locator("#requests section section form").last();
+  assert.match(await form.locator("select").textContent(), /reference.*SHA-256/);
   await form.locator("input[type=checkbox]").last().check();
   await form.locator("button").click();
   await page.waitForFunction(() => document.querySelector("#notice").textContent.includes("do not resend"));
