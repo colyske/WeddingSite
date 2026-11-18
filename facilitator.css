@@ -84,6 +84,7 @@
 .facilitator-earnings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
 .facilitator-earnings-grid article { padding: 1.5rem; border: 1px solid var(--fac-line); background: var(--fac-paper); }
 .facilitator-earnings-grid article > span { color: #76591e; font-size: .72rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.facilitator-earnings-grid h3 { margin: 1rem 0 .45rem; color: var(--fac-green); font: 700 1rem var(--sans); }
 .facilitator-earnings-grid p { min-height: 3em; margin: 1rem 0 .7rem; color: var(--fac-muted); font-size: .9rem; line-height: 1.5; }
 .facilitator-earnings-grid strong { display: block; color: var(--fac-green); font: 500 clamp(1.7rem, 3vw, 2.25rem)/1.2 var(--serif); }
 .facilitator-earnings-grid small { display: block; margin-top: .5rem; color: var(--fac-muted); font-size: .8rem; line-height: 1.5; }

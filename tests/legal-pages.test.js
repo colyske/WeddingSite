@@ -30,15 +30,13 @@ test("facilitator guide uses illustrative artwork and clear, qualified onsite in
   assert.match(html, /I'll help you set up your wedding website on Join Our Wedding\./);
   assert.match(html, /Here's the link to set up your wedding site: \[your referral link\]\./);
   assert.match(html, /class="facilitator-step-message"/);
-  assert.match(html, /2%/);
-  assert.match(html, /Facilitator commission/);
-  assert.match(html, /paid after (eligible )?funds (are )?clear/i);
+  assert.match(html, /referral payouts are not available/i);
+  assert.match(html, /commission estimate is on hold/i);
+  assert.match(html, /not payable earnings/i);
   assert.match(html, /couples can decline referral attribution/i);
   assert.match(html, /publication and contribution fees may apply/i);
-  assert.match(html, /not a promise of earnings/i);
-  assert.match(html, /12 weddings in a month/);
+  assert.doesNotMatch(html, /2%|KES (?:10,000|40,000|120,000)|make money|paid after funds|verified M-Pesa details/i);
   assert.doesNotMatch(html, /4-8%|92-96%|setup is free/i);
-  assert.doesNotMatch(html, /manual payout|manually paid|HELD estimates only|payable: zero|no transfer route|doesn.t enable payouts/i);
 });
 
 test("facilitator link message is prepared with the individual referral URL", () => {
