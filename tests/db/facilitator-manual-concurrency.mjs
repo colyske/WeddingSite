@@ -171,33 +171,44 @@ try {
   assert.ok(blockedClaim.error, "Reviewer revocation must prevent the claim");
   assert.match(blockedClaim.error.message, /FACILITATOR_MANUAL_AUTH: Reviewer authority changed/);
   const recipientName = `manual_recipient_${randomUUID()}`, waitingName = `manual_waiting_${randomUUID()}`;
+  const waitingClaimName = `manual_recipient_claim_${randomUUID()}`;
   const recipientChange = sql(`begin; set local statement_timeout='30s';
     set local idle_in_transaction_session_timeout='45s'; set local application_name='${recipientName}';
     ${actor(fixtureIds.user)}
     select public.facilitator_recipient_submit('${randomUUID()}','Changed synthetic facilitator','254700000004',
       true,'facilitator-mpesa-recipient-v1');\n`, true);
   const recipientResult = recipientChange.result.then(value => ({ value }), error => ({ error }));
-  let waitingResult, recipientBarrierError;
+  let waitingResult, waitingClaimResult, recipientBarrierError;
   const staleKey = randomUUID();
   try {
     await waitFor(`exists(select 1 from pg_stat_activity where application_name='${recipientName}'
       and state='idle in transaction' and wait_event='ClientRead')`);
+    const waitingClaim = sql(`begin; set local statement_timeout='30s';
+      set local application_name='${waitingClaimName}'; ${actor(fixtureIds.owner)}
+      select ${claim(randomUUID(), third)}; commit;`);
+    waitingClaimResult = waitingClaim.result.then(value => ({ value }), error => ({ error }));
+    await waitFor(`exists(select 1 from pg_stat_activity waiting join pg_stat_activity holding
+      on holding.pid=any(pg_blocking_pids(waiting.pid))
+      where waiting.application_name='${waitingClaimName}' and holding.application_name='${recipientName}')`);
     const waiting = sql(`begin; set local statement_timeout='30s'; set local application_name='${waitingName}';
       ${actor(fixtureIds.user)} select ${request(staleKey, 1)}; commit;`);
     waitingResult = waiting.result.then(value => ({ value }), error => ({ error }));
     await waitFor(`exists(select 1 from pg_stat_activity waiting join pg_stat_activity holding
       on holding.pid=any(pg_blocking_pids(waiting.pid))
-      where waiting.application_name='${waitingName}' and holding.application_name='${recipientName}')`);
+      where waiting.application_name='${waitingName}' and holding.application_name='${waitingClaimName}')`);
   } catch (error) {
     recipientBarrierError = error;
   } finally {
     recipientChange.release();
   }
-  const [recipientUpdated, staleRequest] = await Promise.all([recipientResult, waitingResult]);
+  const [recipientUpdated, staleRequest, staleClaim] = await Promise.all(
+    [recipientResult, waitingResult, waitingClaimResult]);
   if (recipientBarrierError) throw recipientBarrierError;
   assert.ifError(recipientUpdated.error);
   assert.ok(staleRequest.error, "Concurrent recipient change must invalidate the old destination");
   assert.match(staleRequest.error.message, /FACILITATOR_MANUAL_HOLD: Current verified recipient required/);
+  assert.ok(staleClaim.error, "Concurrent recipient change must also block the pending claim");
+  assert.match(staleClaim.error.message, /FACILITATOR_MANUAL_HOLD: Recipient changed or is not verified/);
   const totals = matchJson(await run(`select jsonb_build_object(
     'requests',(select count(*) from public.facilitator_manual_requests where user_id='${fixtureIds.user}'),
     'allocations',(select count(*) from public.facilitator_manual_allocations),
