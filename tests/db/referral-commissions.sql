@@ -300,7 +300,13 @@ begin
         'public.facilitator_manual_status_internal(uuid)','execute')
       and not has_function_privilege(role_name,
         'public.facilitator_manual_lock_recipient(uuid,uuid)','execute')
+      and not has_function_privilege(role_name,
+        'public.facilitator_manual_reconfirm_internal(uuid,uuid,uuid,uuid,boolean)','execute')
+      and not has_function_privilege(role_name,
+        'public.facilitator_manual_rebind_internal(uuid,uuid,uuid,uuid,uuid,boolean)','execute')
       and not has_table_privilege(role_name,'public.facilitator_manual_requests','select')
+      and not has_table_privilege(role_name,'public.facilitator_manual_reconfirmations','select')
+      and not has_table_privilege(role_name,'public.facilitator_manual_rebindings','insert')
       and not has_table_privilege(role_name,'public.facilitator_manual_receipts','insert'),
       role_name||' cannot access the disabled manual model');
   end loop;
@@ -325,6 +331,20 @@ begin
     blocked:=true;
   end;
   perform pg_temp.assert_true(blocked,'manual status is hard disabled');
+  blocked:=false;
+  begin perform public.facilitator_manual_reconfirm_internal(null,null,null,null,false);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_MANUAL_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'manual confirmation is hard disabled');
+  blocked:=false;
+  begin perform public.facilitator_manual_rebind_internal(null,null,null,null,null,false);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_MANUAL_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'manual rebinding is hard disabled');
   blocked:=false;
   begin perform public.facilitator_reservation_create_internal(null,null,null,null,'KES',1,'[]'::jsonb);
   exception when raise_exception then
@@ -410,6 +430,68 @@ begin
       blocked:=true;
     end;
     perform pg_temp.assert_true(blocked,'manual source cap includes retained requests without any cash inventory');
+    declare changed_recipient uuid; changed_evidence uuid; confirmation uuid; binding uuid;
+      confirm_key uuid:=extensions.gen_random_uuid(); bind_key uuid:=extensions.gen_random_uuid();
+    begin
+      insert into public.facilitator_recipient_versions(user_id,request_key,full_name,phone,ownership_attested,consent_version)
+        values(u,extensions.gen_random_uuid(),'Changed fictional facilitator','254700000006',true,
+          'facilitator-mpesa-recipient-v1') returning revision_id into changed_recipient;
+      insert into public.facilitator_recipient_evidence(revision_id,external_reference,sha256,submitted_by)
+        values(changed_recipient,extensions.gen_random_uuid(),repeat('d',64),owner_id) returning id into changed_evidence;
+      insert into public.facilitator_recipient_checks(revision_id,evidence_id,checked_by,owner_solo)
+        values(changed_recipient,changed_evidence,checker,false);
+      perform set_config('request.jwt.claim.sub',owner_id::text,true);
+      blocked:=false;
+      begin
+        perform public.facilitator_manual_rebind_internal(manual_id,null,bind_key,changed_recipient,null,true);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_MANUAL_HOLD:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'changed destination requires beneficiary reconfirmation');
+      blocked:=false;
+      begin
+        perform public.facilitator_manual_reconfirm_internal(manual_id,changed_recipient,null,confirm_key,true);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_MANUAL_AUTH:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'leadership cannot reconfirm on the beneficiary behalf');
+      perform set_config('request.jwt.claim.sub',u::text,true);
+      confirmation:=public.facilitator_manual_reconfirm_internal(manual_id,changed_recipient,null,confirm_key,true);
+      perform pg_temp.assert_true(confirmation=public.facilitator_manual_reconfirm_internal(
+        manual_id,changed_recipient,null,confirm_key,true),'confirmation retry acknowledges history');
+      perform set_config('request.jwt.claim.sub',admin_id::text,true);
+      blocked:=false;
+      begin
+        perform public.facilitator_manual_rebind_internal(manual_id,null,bind_key,changed_recipient,confirmation,true);
+      exception when raise_exception then
+        if sqlerrm <> 'SuperAdmin access required.' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'destination review requires current leadership');
+      perform set_config('request.jwt.claim.sub',owner_id::text,true);
+      binding:=public.facilitator_manual_rebind_internal(manual_id,null,bind_key,changed_recipient,confirmation,true);
+      perform pg_temp.assert_true(binding=public.facilitator_manual_rebind_internal(
+        manual_id,null,bind_key,changed_recipient,confirmation,true)
+        and (select sum(amount_minor)=600 from public.facilitator_manual_allocations where request_id=manual_id),
+        'rebinding and historical replay retain the original liability');
+      result:=public.facilitator_manual_action_internal(manual_id,extensions.gen_random_uuid(),
+        'processing',null,10,null,true,true);
+      perform pg_temp.assert_true(result->>'state'='processing','claim uses the reviewed current destination');
+      blocked:=false;
+      begin
+        perform public.facilitator_manual_rebind_internal(manual_id,binding,extensions.gen_random_uuid(),
+          changed_recipient,null,true);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_MANUAL_CONFLICT:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'claimed destination cannot be rebound');
+      raise exception 'SYNTHETIC_MANUAL_REBIND_ROLLBACK';
+    exception when raise_exception then
+      if sqlerrm <> 'SYNTHETIC_MANUAL_REBIND_ROLLBACK' then raise; end if;
+    end;
     declare cid uuid; wid uuid; adjustment uuid;
     begin
       select contribution_id into cid from public.referral_funding_reviews where id=source;

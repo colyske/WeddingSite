@@ -68,10 +68,35 @@ create table public.facilitator_manual_reports (
   created_at timestamptz not null default clock_timestamp(),
   unique(request_id,action_key,transaction_reference,actor_id)
 );
+create table public.facilitator_manual_reconfirmations (
+  id uuid primary key default extensions.gen_random_uuid(),
+  request_id uuid not null references public.facilitator_manual_requests(id),
+  recipient_revision uuid not null references public.facilitator_recipient_versions(revision_id),
+  expected_binding uuid,
+  request_key uuid not null,
+  actor_id uuid not null references public.profiles(id),
+  confirmed_at timestamptz not null default clock_timestamp(),
+  unique(actor_id,request_key)
+);
+create table public.facilitator_manual_rebindings (
+  id uuid primary key default extensions.gen_random_uuid(),
+  sequence bigint generated always as identity unique,
+  request_id uuid not null references public.facilitator_manual_requests(id),
+  previous_binding uuid references public.facilitator_manual_rebindings(id),
+  recipient_revision uuid not null references public.facilitator_recipient_versions(revision_id),
+  reconfirmation_id uuid references public.facilitator_manual_reconfirmations(id),
+  action_key uuid not null unique,
+  reviewed_by uuid not null references public.profiles(id),
+  reviewed_at timestamptz not null default clock_timestamp()
+);
+alter table public.facilitator_manual_reconfirmations add constraint facilitator_manual_confirmation_binding_fk
+  foreign key(expected_binding) references public.facilitator_manual_rebindings(id);
+create index facilitator_manual_rebinding_request on public.facilitator_manual_rebindings(request_id,sequence desc);
 do $$ declare t text; begin
   foreach t in array array['facilitator_manual_requests','facilitator_manual_allocations',
     'facilitator_manual_events','facilitator_manual_claims','facilitator_manual_receipts',
-    'facilitator_manual_incidents','facilitator_manual_reports'] loop
+    'facilitator_manual_incidents','facilitator_manual_reports',
+    'facilitator_manual_reconfirmations','facilitator_manual_rebindings'] loop
     execute format('alter table public.%I enable row level security',t);
     execute format('revoke all on public.%I from public,anon,authenticated,service_role',t);
     execute format('create trigger immutable before update or delete on public.%I
@@ -248,17 +273,126 @@ begin
   return result;
 end $$;
 
+create function public.facilitator_manual_reconfirm_internal(
+  p_request uuid,p_recipient uuid,p_expected uuid,p_key uuid,p_confirmed boolean
+) returns uuid language plpgsql security definer set search_path='' set row_security=off as $$
+declare r public.facilitator_manual_requests; old public.facilitator_manual_reconfirmations;
+  latest uuid; result uuid;
+begin
+  if not public.facilitator_manual_enabled() then
+    raise exception 'FACILITATOR_MANUAL_DISABLED: Manual payout model is disabled.';
+  end if;
+  if current_setting('transaction_isolation')<>'read committed' then
+    raise exception 'FACILITATOR_MANUAL_CONFLICT: READ COMMITTED is required.';
+  end if;
+  if auth.uid() is null or p_request is null or p_recipient is null or p_key is null
+    or p_confirmed is distinct from true then
+    raise exception 'FACILITATOR_MANUAL_INPUT: Explicit recipient confirmation is required.';
+  end if;
+  perform pg_advisory_xact_lock(71110001);
+  perform pg_advisory_xact_lock(71110002);
+  perform 1 from public.profiles where id=auth.uid() for update;
+  select * into r from public.facilitator_manual_requests where id=p_request and user_id=auth.uid();
+  if not found then raise exception 'FACILITATOR_MANUAL_AUTH: Only the beneficiary can confirm.'; end if;
+  select * into old from public.facilitator_manual_reconfirmations where actor_id=auth.uid() and request_key=p_key;
+  if found then
+    if (old.request_id,old.recipient_revision,old.expected_binding)
+      is distinct from (p_request,p_recipient,p_expected) then
+      raise exception 'FACILITATOR_MANUAL_CONFLICT: Confirmation retry changed.';
+    end if;
+    return old.id;
+  end if;
+  if public.facilitator_manual_state(p_request) in ('paid','cancelled')
+    or exists(select 1 from public.facilitator_manual_claims where request_id=p_request) then
+    raise exception 'FACILITATOR_MANUAL_CONFLICT: Claimed or terminal requests cannot change destination.';
+  end if;
+  select id into latest from public.facilitator_manual_rebindings
+    where request_id=p_request order by sequence desc limit 1;
+  if latest is distinct from p_expected then
+    raise exception 'FACILITATOR_MANUAL_CONFLICT: Destination binding changed; reload.';
+  end if;
+  if not public.facilitator_manual_lock_recipient(r.user_id,p_recipient) then
+    raise exception 'FACILITATOR_MANUAL_HOLD: Current verified recipient required.';
+  end if;
+  insert into public.facilitator_manual_reconfirmations(request_id,recipient_revision,expected_binding,request_key,actor_id)
+    values(p_request,p_recipient,p_expected,p_key,auth.uid()) returning id into result;
+  return result;
+end $$;
+
+create function public.facilitator_manual_rebind_internal(
+  p_request uuid,p_expected uuid,p_key uuid,p_recipient uuid,p_reconfirmation uuid,p_confirmed boolean
+) returns uuid language plpgsql security definer set search_path='' set row_security=off as $$
+declare r public.facilitator_manual_requests; old public.facilitator_manual_rebindings;
+  latest public.facilitator_manual_rebindings; current_recipient uuid; result uuid;
+begin
+  if not public.facilitator_manual_enabled() then
+    raise exception 'FACILITATOR_MANUAL_DISABLED: Manual payout model is disabled.';
+  end if;
+  if current_setting('transaction_isolation')<>'read committed' then
+    raise exception 'FACILITATOR_MANUAL_CONFLICT: READ COMMITTED is required.';
+  end if;
+  if auth.uid() is null or p_request is null or p_recipient is null or p_key is null
+    or p_confirmed is distinct from true then
+    raise exception 'FACILITATOR_MANUAL_INPUT: Confirm the destination review.';
+  end if;
+  perform pg_advisory_xact_lock(71110001);
+  perform pg_advisory_xact_lock(71110002);
+  perform 1 from public.profiles where id=auth.uid() for share;
+  perform public.require_staff('superadmin');
+  select * into r from public.facilitator_manual_requests where id=p_request;
+  if not found then raise exception 'FACILITATOR_MANUAL_CONFLICT: Request not found.'; end if;
+  select * into old from public.facilitator_manual_rebindings where action_key=p_key;
+  if found then
+    if (old.request_id,old.previous_binding,old.recipient_revision,old.reconfirmation_id,old.reviewed_by)
+      is distinct from (p_request,p_expected,p_recipient,p_reconfirmation,auth.uid()) then
+      raise exception 'FACILITATOR_MANUAL_CONFLICT: Destination review retry changed.';
+    end if;
+    return old.id;
+  end if;
+  if public.facilitator_manual_state(p_request) in ('paid','cancelled')
+    or exists(select 1 from public.facilitator_manual_claims where request_id=p_request) then
+    raise exception 'FACILITATOR_MANUAL_CONFLICT: Claimed or terminal requests cannot change destination.';
+  end if;
+  perform 1 from public.profiles where id=r.user_id for update;
+  select * into latest from public.facilitator_manual_rebindings
+    where request_id=p_request order by sequence desc limit 1;
+  if latest.id is distinct from p_expected then
+    raise exception 'FACILITATOR_MANUAL_CONFLICT: Destination binding changed; reload.';
+  end if;
+  current_recipient:=coalesce(latest.recipient_revision,r.recipient_revision);
+  if p_recipient is distinct from current_recipient then
+    if not exists(select 1 from public.facilitator_manual_reconfirmations c
+      where c.id=p_reconfirmation and c.request_id=p_request and c.actor_id=r.user_id
+        and c.recipient_revision=p_recipient and c.expected_binding is not distinct from p_expected) then
+      raise exception 'FACILITATOR_MANUAL_HOLD: Beneficiary must confirm the changed recipient.';
+    end if;
+  elsif p_reconfirmation is not null then
+    raise exception 'FACILITATOR_MANUAL_INPUT: Unexpected recipient confirmation.';
+  end if;
+  if not public.facilitator_manual_lock_recipient(r.user_id,p_recipient) then
+    raise exception 'FACILITATOR_MANUAL_HOLD: Current verified recipient required.';
+  end if;
+  perform public.facilitator_manual_check_sources(r.user_id,r.currency);
+  insert into public.facilitator_manual_rebindings(request_id,previous_binding,recipient_revision,
+    reconfirmation_id,action_key,reviewed_by)
+    values(p_request,p_expected,p_recipient,p_reconfirmation,p_key,auth.uid()) returning id into result;
+  return result;
+end $$;
+
 create function public.facilitator_manual_evidence_digest(p_request uuid) returns text
 language sql stable security definer set search_path='' set row_security=off as $$
-  select encode(extensions.digest(jsonb_build_array(r.recipient_revision,r.currency,
+  select encode(extensions.digest(jsonb_build_array(coalesce(binding.recipient_revision,r.recipient_revision),
+    binding.id,r.currency,
     jsonb_agg(jsonb_build_array(a.contribution_id,f.id,f.source_digest,b.source_digest)
       order by a.contribution_id))::text,'sha256'),'hex')
   from public.facilitator_manual_requests r
+  left join lateral (select id,recipient_revision from public.facilitator_manual_rebindings
+    where request_id=r.id order by sequence desc limit 1) binding on true
   join public.facilitator_manual_allocations a on a.request_id=r.id
   join public.referral_balances b on b.contribution_id=a.contribution_id
   join lateral (select id,source_digest from public.referral_funding_reviews
     where contribution_id=a.contribution_id order by recorded_at desc,id desc limit 1) f on true
-  where r.id=p_request group by r.id,r.recipient_revision,r.currency
+  where r.id=p_request group by r.id,r.recipient_revision,binding.id,binding.recipient_revision,r.currency
 $$;
 
 create function public.facilitator_manual_status_internal(p_request uuid) returns jsonb
@@ -298,6 +432,7 @@ create function public.facilitator_manual_action_internal(
 ) returns jsonb language plpgsql security definer set search_path='' set row_security=off as $$
 declare r public.facilitator_manual_requests; c public.facilitator_manual_claims;
   old public.facilitator_manual_events; role_name public.platform_role; reviewer uuid;
+  binding public.facilitator_manual_rebindings;
   current_state text; v_evidence text; ref text:=upper(btrim(p_reference));
 begin
   if not public.facilitator_manual_enabled() then
@@ -376,7 +511,16 @@ begin
       raise exception 'FACILITATOR_MANUAL_CONFLICT: Already claimed; do not resend.';
     end if;
     perform 1 from public.profiles where id=r.user_id for update;
-    if not public.facilitator_manual_lock_recipient(r.user_id,r.recipient_revision) then
+    select * into binding from public.facilitator_manual_rebindings
+      where request_id=p_request order by sequence desc limit 1;
+    if binding.id is not null then
+      perform 1 from public.profiles where id=binding.reviewed_by
+        and platform_role in ('owner','superadmin') for share;
+      if not found then
+        raise exception 'FACILITATOR_MANUAL_HOLD: Destination reviewer authority changed.';
+      end if;
+    end if;
+    if not public.facilitator_manual_lock_recipient(r.user_id,coalesce(binding.recipient_revision,r.recipient_revision)) then
       raise exception 'FACILITATOR_MANUAL_HOLD: Recipient changed or is not verified.';
     end if;
     perform public.facilitator_manual_check_sources(r.user_id,r.currency);
@@ -438,6 +582,8 @@ revoke all on function public.facilitator_manual_enabled(),public.facilitator_ma
   public.facilitator_manual_source_cap(uuid,uuid,text),public.facilitator_manual_check_sources(uuid,text),
   public.facilitator_manual_evidence_digest(uuid),
   public.facilitator_manual_status_internal(uuid),
+  public.facilitator_manual_reconfirm_internal(uuid,uuid,uuid,uuid,boolean),
+  public.facilitator_manual_rebind_internal(uuid,uuid,uuid,uuid,uuid,boolean),
   public.facilitator_manual_request_internal(uuid,uuid,text,bigint,jsonb,boolean),
   public.facilitator_manual_action_internal(uuid,uuid,text,text,bigint,text,boolean,boolean)
   from public,anon,authenticated,service_role;

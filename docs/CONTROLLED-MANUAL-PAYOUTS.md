@@ -103,13 +103,19 @@ After such a conflict the historical state may still be `paid`; any future
 status surface must display the unresolved incident and prohibit resending,
 not present that state as an unqualified successful payment. A private disabled
 status routine models that distinction; it is not exposed as an API or UI.
+Private append-only destination rebinding requires a current leadership
+review and, for a changed recipient, confirmation by the beneficiary against
+the expected previous binding. Claims use the latest binding and retain the
+original source allocations. A claimed request cannot be rebound; retries
+acknowledge history rather than establishing current readiness. This model has
+not yet been verified under concurrent rebinding or all profile-lock orders.
 Historical request and action retries acknowledge prior records and never
 authorize a send or resend. Tests enable the model only inside a rolled-back
 synthetic transaction; the migration has no activation mechanism.
 
 This is not a usable payout service: it has no beneficiary or operator API/UI,
-no reciprocal cross-rail receipt or incident protection, and no safe destination
-rebinding after recipient changes. The model inherits incomplete provider
+no reciprocal cross-rail receipt or incident protection, and no exposed
+destination-rebinding workflow. The model inherits incomplete provider
 ingress and attribution-link visibility and has not established concurrency or
 scale safety. A two-session CI regression covers competing requests and claims,
 their retries, duplicate manual receipt reports, a recipient revision changing
