@@ -410,6 +410,52 @@ begin
       blocked:=true;
     end;
     perform pg_temp.assert_true(blocked,'manual source cap includes retained requests without any cash inventory');
+    declare cid uuid; wid uuid; adjustment uuid;
+    begin
+      select contribution_id into cid from public.referral_funding_reviews where id=source;
+      select wedding_id into wid from public.contributions where id=cid;
+      insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
+        amount_minor,currency,status,refund_fee_allocation)
+        values('stripe','refund','manual-synthetic-refund',cid,wid,50000,'KES','processed','platform')
+        returning id into adjustment;
+      blocked:=false;
+      begin
+        perform public.facilitator_manual_check_sources(u,'KES');
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_MANUAL_HOLD:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked
+        and (select sum(amount_minor)=600 from public.facilitator_manual_allocations where request_id=manual_id),
+        'same-transaction refund blocks admission and retains the original liability');
+      raise exception 'SYNTHETIC_MANUAL_REFUND_ROLLBACK';
+    exception when raise_exception then
+      if sqlerrm <> 'SYNTHETIC_MANUAL_REFUND_ROLLBACK' then raise; end if;
+    end;
+    declare cid uuid; wid uuid; adjustment uuid;
+    begin
+      select contribution_id into cid from public.referral_funding_reviews where id=source;
+      select wedding_id into wid from public.contributions where id=cid;
+      insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
+        amount_minor,currency,status)
+        values('stripe','dispute','manual-synthetic-dispute',cid,wid,50000,'KES','lost') returning id into adjustment;
+      insert into public.financial_adjustment_ledger(adjustment_id,wedding_id,contribution_id,entry_type,
+        couple_net_delta_minor,currency,allocation,provider,provider_adjustment_id)
+        values(adjustment,wid,cid,'dispute_debit',-50000,'KES','provider_verified','stripe','manual-synthetic-dispute');
+      blocked:=false;
+      begin
+        perform public.facilitator_manual_check_sources(u,'KES');
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_MANUAL_HOLD:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked
+        and (select sum(amount_minor)=600 from public.facilitator_manual_allocations where request_id=manual_id),
+        'same-transaction dispute blocks admission and retains the original liability');
+      raise exception 'SYNTHETIC_MANUAL_DISPUTE_ROLLBACK';
+    exception when raise_exception then
+      if sqlerrm <> 'SYNTHETIC_MANUAL_DISPUTE_ROLLBACK' then raise; end if;
+    end;
     declare other_user uuid:=(select id from referral_actors where kind='other');
       creator uuid:=(select id from referral_actors where kind='outsider');
       disclosure jsonb; code text; wid uuid; cid uuid; review_id uuid; second_recipient uuid;

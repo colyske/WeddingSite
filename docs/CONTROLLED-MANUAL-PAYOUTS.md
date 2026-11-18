@@ -88,6 +88,9 @@ bound to the current source evidence, recipient and fee. Source deficits hold
 the beneficiary's affected currency rather than unrelated users' commissions;
 provider inbox conflicts remain global source holds, and manual receipt
 incidents hold new processing across the modeled rail.
+A same-transaction recorded refund or dispute invalidates source evidence and
+holds subsequent admission without releasing the original modeled liability;
+this is not evidence that all external adjustment events are captured.
 A recorded fee is an operator
 observation, not a deduction from couple funds or proof of external liquidity.
 Conflicting reports are retained as incidents without changing the prior receipt.
