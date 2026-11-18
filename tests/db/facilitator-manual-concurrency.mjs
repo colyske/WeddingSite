@@ -108,12 +108,12 @@ try {
     return [a.value, b];
   }
   const firstKey = randomUUID(), competingKey = randomUUID(), replayKey = randomUUID(), changedKey = randomUUID();
-  const [firstOutput, competing] = await race(request(firstKey, 600), request(competingKey, 600));
+  const [firstOutput, competing] = await race(request(firstKey, 500), request(competingKey, 600));
   const first = requestId(firstOutput);
   assert.ok(first, "First request must commit");
   assert.ok(competing.error, "Concurrent over-allocation must fail");
   assert.match(competing.error.message, /FACILITATOR_MANUAL_HOLD:/);
-  const [secondOutput, replay] = await race(request(replayKey, 300), request(replayKey, 300));
+  const [secondOutput, replay] = await race(request(replayKey, 200), request(replayKey, 200));
   const second = requestId(secondOutput);
   assert.ok(second, "Remaining source capacity can be reserved");
   assert.ifError(replay.error);
@@ -272,6 +272,11 @@ try {
     '${fixtureIds.user}','${updatedRevision}');`), "t", "New synthetic recipient is ready for source race");
   const adjustmentName = `manual_adjustment_${randomUUID()}`, adjustedRequestName = `manual_adjusted_${randomUUID()}`;
   const adjustmentKey = randomUUID();
+  const adjustedCall = `public.facilitator_manual_request_internal(
+    '${adjustmentKey}','${updatedRevision}','KES',1,
+    jsonb_build_array(jsonb_build_object('review','${fixtureIds.review}','amount','1')),true)`;
+  const control = await run(`begin; ${actor(fixtureIds.user)} select ${adjustedCall}; rollback;`);
+  assert.ok(requestId(control), "Identical request succeeds with spare source capacity before the refund");
   const adjustment = sql(`begin; set local statement_timeout='30s';
     set local idle_in_transaction_session_timeout='45s'; set local application_name='${adjustmentName}';
     select pg_advisory_xact_lock(71110001);
@@ -286,9 +291,7 @@ try {
     await waitFor(`exists(select 1 from pg_stat_activity where application_name='${adjustmentName}'
       and state='idle in transaction' and wait_event='ClientRead')`);
     const adjusted = sql(`begin; set local statement_timeout='30s'; set local application_name='${adjustedRequestName}';
-      ${actor(fixtureIds.user)} select public.facilitator_manual_request_internal(
-        '${adjustmentKey}','${updatedRevision}','KES',1,
-        jsonb_build_array(jsonb_build_object('review','${fixtureIds.review}','amount','1')),true); commit;`);
+      ${actor(fixtureIds.user)} select ${adjustedCall}; commit;`);
     adjustedResult = adjusted.result.then(value => ({ value }), error => ({ error }));
     await waitFor(`exists(select 1 from pg_stat_activity waiting join pg_stat_activity holding
       on holding.pid=any(pg_blocking_pids(waiting.pid))
@@ -303,7 +306,7 @@ try {
   if (adjustmentBarrierError) throw adjustmentBarrierError;
   assert.ifError(adjustmentCommitted.error);
   assert.ok(adjustedRequest.error, "Committed refund must hold subsequent source admission");
-  assert.match(adjustedRequest.error.message, /FACILITATOR_MANUAL_HOLD:/);
+  assert.match(adjustedRequest.error.message, /FACILITATOR_MANUAL_HOLD: Current checked source evidence is required/);
   const totals = matchJson(await run(`select jsonb_build_object(
     'requests',(select count(*) from public.facilitator_manual_requests where user_id='${fixtureIds.user}'),
     'allocations',(select count(*) from public.facilitator_manual_allocations),
@@ -315,7 +318,7 @@ try {
     'claims',(select count(*) from public.facilitator_manual_claims),
     'receipts',(select count(*) from public.facilitator_manual_receipts),
     'incidents',(select count(*) from public.facilitator_manual_incidents));`));
-  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 1000, failed: 0, stale: 0,
+  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 800, failed: 0, stale: 0,
     checker_failed: 0, adjustment_failed: 0, claims: 2, receipts: 1, incidents: 1 });
   console.log("Concurrent synthetic requests and claims serialize; retries acknowledge history without additional liabilities.");
 } finally {

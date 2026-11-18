@@ -93,8 +93,9 @@ causes source revalidation to hold without releasing the original modeled
 liability; this test does not exercise concurrent ingestion or establish that
 all external adjustment events are captured.
 The concurrency fixture separately tests a synthetic refund writer that
-explicitly takes the accounting lock before inserting its adjustment. It does
-not prove that every provider ingress path observes that lock protocol.
+explicitly takes the accounting lock before inserting its adjustment; the same
+request succeeds in a rolled-back control before the refund. This does not
+prove that every provider ingress path observes that lock protocol.
 A recorded fee is an operator
 observation, not a deduction from couple funds or proof of external liquidity.
 Conflicting reports are retained as incidents without changing the prior receipt.
