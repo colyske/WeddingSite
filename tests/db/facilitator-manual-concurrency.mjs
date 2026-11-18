@@ -138,13 +138,42 @@ try {
   assert.ifError(initialReplay.error);
   assert.equal(matchJson(initialReplay.value).replayed, true,
     "Identical retry racing the first claim is only historical acknowledgment");
+  const recipientName = `manual_recipient_${randomUUID()}`, waitingName = `manual_waiting_${randomUUID()}`;
+  const recipientChange = sql(`begin; set local statement_timeout='30s';
+    set local idle_in_transaction_session_timeout='45s'; set local application_name='${recipientName}';
+    ${actor(fixtureIds.user)}
+    select public.facilitator_recipient_submit('${randomUUID()}','Changed synthetic facilitator','254700000004',
+      true,'facilitator-mpesa-recipient-v1');\n`, true);
+  const recipientResult = recipientChange.result.then(value => ({ value }), error => ({ error }));
+  let waitingResult, recipientBarrierError;
+  const staleKey = randomUUID();
+  try {
+    await waitFor(`exists(select 1 from pg_stat_activity where application_name='${recipientName}'
+      and state='idle in transaction' and wait_event='ClientRead')`);
+    const waiting = sql(`begin; set local statement_timeout='30s'; set local application_name='${waitingName}';
+      ${actor(fixtureIds.user)} select ${request(staleKey, 1)}; commit;`);
+    waitingResult = waiting.result.then(value => ({ value }), error => ({ error }));
+    await waitFor(`exists(select 1 from pg_stat_activity waiting join pg_stat_activity holding
+      on holding.pid=any(pg_blocking_pids(waiting.pid))
+      where waiting.application_name='${waitingName}' and holding.application_name='${recipientName}')`);
+  } catch (error) {
+    recipientBarrierError = error;
+  } finally {
+    recipientChange.release();
+  }
+  const [recipientUpdated, staleRequest] = await Promise.all([recipientResult, waitingResult]);
+  if (recipientBarrierError) throw recipientBarrierError;
+  assert.ifError(recipientUpdated.error);
+  assert.ok(staleRequest.error, "Concurrent recipient change must invalidate the old destination");
+  assert.match(staleRequest.error.message, /FACILITATOR_MANUAL_HOLD: Current verified recipient required/);
   const totals = matchJson(await run(`select jsonb_build_object(
     'requests',(select count(*) from public.facilitator_manual_requests where user_id='${fixtureIds.user}'),
     'allocations',(select count(*) from public.facilitator_manual_allocations),
     'total',(select sum(amount_minor) from public.facilitator_manual_allocations),
     'failed',(select count(*) from public.facilitator_manual_requests where request_key='${competingKey}'),
+    'stale',(select count(*) from public.facilitator_manual_requests where request_key='${staleKey}'),
     'claims',(select count(*) from public.facilitator_manual_claims));`));
-  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 1000, failed: 0, claims: 2 });
+  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 1000, failed: 0, stale: 0, claims: 2 });
   console.log("Concurrent synthetic requests and claims serialize; retries acknowledge history without additional liabilities.");
 } finally {
   if (gateChanged) await run(gateReset);
