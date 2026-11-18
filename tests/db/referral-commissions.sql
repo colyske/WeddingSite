@@ -312,8 +312,18 @@ begin
   first_id:=public.facilitator_reservation_create_internal(key_id,u,recipient,inventory,'KES',600,allocations);
   retry_id:=public.facilitator_reservation_create_internal(key_id,u,recipient,inventory,'KES',600,allocations);
   perform pg_temp.assert_true(first_id=retry_id,'identical request retains one reservation');
+  blocked:=false;
+  begin
+    perform public.facilitator_reservation_evaluate_internal(key_id,u,recipient,inventory,'KES',600,allocations,true);
+  exception when raise_exception then
+    if sqlerrm not in ('Staff access required.','SuperAdmin access required.') then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'non-leadership actor cannot revalidate a reservation');
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
   perform pg_temp.assert_true(first_id=public.facilitator_reservation_evaluate_internal(
     key_id,u,recipient,inventory,'KES',600,allocations,true),'existing reservation revalidates without double charging');
+  perform set_config('request.jwt.claim.sub',u::text,true);
   perform pg_temp.assert_true((select count(*)=1 and sum(amount_minor)=600 from public.facilitator_reservation_allocations),
     'allocation reserves the requested source amount');
   blocked:=false;
@@ -344,6 +354,7 @@ begin
     from public.facilitator_funding_attestations where id=inventory returning id into newer_inventory;
   insert into public.facilitator_funding_attestation_checks(attestation_id,checked_by,owner_solo)
     values(newer_inventory,checker,false);
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
   blocked:=false;
   begin
     perform public.facilitator_reservation_evaluate_internal(key_id,u,recipient,inventory,'KES',600,allocations,true);
@@ -352,6 +363,7 @@ begin
     blocked:=true;
   end;
   perform pg_temp.assert_true(blocked,'revalidation rejects superseded evidence despite historical replay');
+  perform set_config('request.jwt.claim.sub',u::text,true);
   perform pg_temp.assert_true(first_id=public.facilitator_reservation_create_internal(
     key_id,u,recipient,inventory,'KES',600,allocations),'replay only acknowledges prior reservation');
   blocked:=false;

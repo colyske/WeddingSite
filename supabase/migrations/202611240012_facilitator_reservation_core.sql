@@ -92,6 +92,7 @@ begin
   end if;
   perform pg_advisory_xact_lock(71110001);
   perform pg_advisory_xact_lock(71110002);
+  if p_revalidate then perform public.require_staff('superadmin'); end if;
   perform 1 from public.profiles where id=p_user for update;
   select * into prior from public.facilitator_reservation_requests where user_id=p_user and request_key=p_key;
   if found then
@@ -235,7 +236,7 @@ begin
         -review.losses_minor-review.holds_minor-review.other_commitments_minor));
     select coalesce(sum(amount_minor::numeric),0) into used from public.facilitator_reservation_allocations
       where contribution_id=review.contribution_id;
-    if used+case when p_revalidate then 0 else entry.amount end>cap then
+    if used+(case when p_revalidate then 0 else entry.amount end)>cap then
       raise exception 'FACILITATOR_RESERVATION_HOLD: Source cannot cover all retained allocations.';
     end if;
     if not p_revalidate then
