@@ -29,6 +29,7 @@ create table public.facilitator_manual_events (
   fee_minor bigint,
   owner_solo boolean,
   transaction_reference text,
+  evidence_digest text,
   actor_id uuid not null references public.profiles(id),
   created_at timestamptz not null default clock_timestamp()
 );
@@ -52,15 +53,25 @@ create table public.facilitator_manual_receipts (
 create table public.facilitator_manual_incidents (
   id bigint generated always as identity primary key,
   request_id uuid not null references public.facilitator_manual_claims(request_id),
-  action_key uuid not null unique,
+  action_key uuid not null,
   transaction_reference text not null,
   actor_id uuid not null references public.profiles(id),
-  created_at timestamptz not null default clock_timestamp()
+  created_at timestamptz not null default clock_timestamp(),
+  unique(request_id,action_key,transaction_reference,actor_id)
+);
+create table public.facilitator_manual_reports (
+  id bigint generated always as identity primary key,
+  request_id uuid not null references public.facilitator_manual_claims(request_id),
+  action_key uuid not null,
+  transaction_reference text not null,
+  actor_id uuid not null references public.profiles(id),
+  created_at timestamptz not null default clock_timestamp(),
+  unique(request_id,action_key,transaction_reference,actor_id)
 );
 do $$ declare t text; begin
   foreach t in array array['facilitator_manual_requests','facilitator_manual_allocations',
     'facilitator_manual_events','facilitator_manual_claims','facilitator_manual_receipts',
-    'facilitator_manual_incidents'] loop
+    'facilitator_manual_incidents','facilitator_manual_reports'] loop
     execute format('alter table public.%I enable row level security',t);
     execute format('revoke all on public.%I from public,anon,authenticated,service_role',t);
     execute format('create trigger immutable before update or delete on public.%I
@@ -114,9 +125,9 @@ begin
       -f.holds_minor-f.other_commitments_minor));
 end $$;
 
--- Recheck every retained source, across beneficiaries and currencies. Cancelled
--- unclaimed requests are released; paid and uncertain claims remain liabilities.
-create function public.facilitator_manual_check_sources() returns void
+-- A source deficit freezes its beneficiary and currency, including unrelated
+-- sources in that bucket. Paid and uncertain claims remain liabilities.
+create function public.facilitator_manual_check_sources(p_user uuid,p_currency text) returns void
 language plpgsql security definer set search_path='' set row_security=off as $$
 declare x record; cap numeric;
 begin
@@ -127,7 +138,7 @@ begin
     select a.contribution_id,r.user_id,r.currency,sum(a.amount_minor::numeric) amount
     from public.facilitator_manual_allocations a
     join public.facilitator_manual_requests r on r.id=a.request_id
-    where public.facilitator_manual_state(r.id)<>'cancelled'
+    where r.user_id=p_user and r.currency=p_currency and public.facilitator_manual_state(r.id)<>'cancelled'
     group by a.contribution_id,r.user_id,r.currency order by a.contribution_id
   loop
     perform 1 from public.contributions where id=x.contribution_id for update;
@@ -188,7 +199,7 @@ begin
   if not public.facilitator_payout_recipient_ready(auth.uid(),p_recipient) then
     raise exception 'FACILITATOR_MANUAL_HOLD: Current verified recipient required.';
   end if;
-  perform public.facilitator_manual_check_sources();
+  perform public.facilitator_manual_check_sources(auth.uid(),p_currency);
   for x in select (e->>'review')::uuid review_id,(e->>'amount')::bigint amount
     from jsonb_array_elements(p_allocations) e order by (e->>'review')::uuid loop
     select * into f from public.referral_funding_reviews where id=x.review_id;
@@ -207,19 +218,32 @@ begin
       raise exception 'FACILITATOR_MANUAL_HOLD: Source cannot cover the request and retained liabilities.';
     end if;
   end loop;
-  if (select count(distinct f.contribution_id) from jsonb_array_elements(p_allocations) e
-      join public.referral_funding_reviews f on f.id=(e->>'review')::uuid)<>jsonb_array_length(p_allocations) then
+  if (select count(distinct fr.contribution_id) from jsonb_array_elements(p_allocations) e
+      join public.referral_funding_reviews fr on fr.id=(e->>'review')::uuid)<>jsonb_array_length(p_allocations) then
     raise exception 'FACILITATOR_MANUAL_INPUT: Duplicate source.';
   end if;
   insert into public.facilitator_manual_requests(request_key,user_id,recipient_revision,currency,amount_minor,allocation_digest)
     values(p_key,auth.uid(),p_recipient,p_currency,p_amount,digest) returning id into result;
   insert into public.facilitator_manual_allocations(request_id,contribution_id,review_id,source_digest,amount_minor)
-    select result,f.contribution_id,f.id,f.source_digest,(e->>'amount')::bigint
-    from jsonb_array_elements(p_allocations) e join public.referral_funding_reviews f on f.id=(e->>'review')::uuid;
+    select result,fr.contribution_id,fr.id,fr.source_digest,(e->>'amount')::bigint
+    from jsonb_array_elements(p_allocations) e join public.referral_funding_reviews fr on fr.id=(e->>'review')::uuid;
   insert into public.facilitator_manual_events(request_id,action_key,state,actor_id)
     values(result,p_key,'requested',auth.uid());
   return result;
 end $$;
+
+create function public.facilitator_manual_evidence_digest(p_request uuid) returns text
+language sql stable security definer set search_path='' set row_security=off as $$
+  select encode(extensions.digest(jsonb_build_array(r.recipient_revision,r.currency,
+    jsonb_agg(jsonb_build_array(a.contribution_id,f.id,f.source_digest,b.source_digest)
+      order by a.contribution_id))::text,'sha256'),'hex')
+  from public.facilitator_manual_requests r
+  join public.facilitator_manual_allocations a on a.request_id=r.id
+  join public.referral_balances b on b.contribution_id=a.contribution_id
+  join lateral (select id,source_digest from public.referral_funding_reviews
+    where contribution_id=a.contribution_id order by recorded_at desc,id desc limit 1) f on true
+  where r.id=p_request group by r.id,r.recipient_revision,r.currency
+$$;
 
 create function public.facilitator_manual_action_internal(
   p_request uuid,p_key uuid,p_action text,p_reason text,p_fee bigint,
@@ -227,7 +251,7 @@ create function public.facilitator_manual_action_internal(
 ) returns jsonb language plpgsql security definer set search_path='' set row_security=off as $$
 declare r public.facilitator_manual_requests; c public.facilitator_manual_claims;
   old public.facilitator_manual_events; role_name public.platform_role; reviewer uuid;
-  current_state text; ref text:=upper(btrim(p_reference));
+  current_state text; evidence text; ref text:=upper(btrim(p_reference));
 begin
   if not public.facilitator_manual_enabled() then
     raise exception 'FACILITATOR_MANUAL_DISABLED: Manual payout model is disabled.';
@@ -241,8 +265,9 @@ begin
     or (p_action='hold' and (p_reason is null or p_reason not in
       ('recipient_check','funds_review','operator_unavailable','outcome_uncertain','other_review')))
     or (p_action<>'hold' and p_reason is not null)
-    or (p_action<>'processing' and (p_fee is not null or p_owner_solo))
-    or (p_action='processing' and (p_fee is null or p_fee not between 0 and 9007199254740991))
+    or (p_action not in ('reviewed','processing') and p_fee is not null)
+    or (p_action<>'processing' and p_owner_solo)
+    or (p_action in ('reviewed','processing') and (p_fee is null or p_fee not between 0 and 9007199254740991))
     or (p_action<>'paid' and p_reference is not null)
     or (p_action='paid' and (ref is null or ref !~ '^[A-Z0-9][A-Z0-9._:-]{0,119}$')) then
     raise exception 'FACILITATOR_MANUAL_INPUT: Confirm a valid action and its fields.';
@@ -256,6 +281,25 @@ begin
   end if;
   select * into r from public.facilitator_manual_requests where id=p_request;
   if not found then raise exception 'FACILITATOR_MANUAL_CONFLICT: Request not found.'; end if;
+  select * into c from public.facilitator_manual_claims where request_id=p_request;
+  if p_action='paid' then
+    if c.request_id is null or c.sender_id is distinct from auth.uid() then
+      raise exception 'FACILITATOR_MANUAL_AUTH: Only the claimed sender may report an outcome.';
+    end if;
+    insert into public.facilitator_manual_reports(request_id,action_key,transaction_reference,actor_id)
+      values(p_request,p_key,ref,auth.uid()) on conflict do nothing;
+    if exists(select 1 from public.facilitator_manual_receipts
+        where request_id=p_request and transaction_reference<>ref)
+      or exists(select 1 from public.facilitator_manual_incidents where request_id=p_request)
+      or exists(select 1 from public.facilitator_manual_events
+        where action_key=p_key and (request_id<>p_request or state<>'paid'
+          or transaction_reference is distinct from ref)) then
+      insert into public.facilitator_manual_incidents(request_id,action_key,transaction_reference,actor_id)
+        values(p_request,p_key,ref,auth.uid()) on conflict do nothing;
+      return jsonb_build_object('state',public.facilitator_manual_state(p_request),'conflict',true,
+        'message','Conflicting report retained; do not resend.');
+    end if;
+  end if;
   select * into old from public.facilitator_manual_events where action_key=p_key;
   if found then
     if (old.request_id,old.state,old.reason,old.actor_id,old.fee_minor,old.owner_solo,old.transaction_reference)
@@ -270,8 +314,11 @@ begin
     raise exception 'FACILITATOR_MANUAL_CONFLICT: Action retry changed; do not resend.';
   end if;
   current_state:=public.facilitator_manual_state(p_request);
-  select * into c from public.facilitator_manual_claims where request_id=p_request;
   if current_state in ('paid','cancelled') then
+    if p_action='paid' and exists(select 1 from public.facilitator_manual_receipts
+      where request_id=p_request and transaction_reference=ref and reported_by=auth.uid()) then
+      return jsonb_build_object('state','paid','replayed',true);
+    end if;
     raise exception 'FACILITATOR_MANUAL_CONFLICT: Request is terminal.';
   end if;
   if p_action='cancelled' and c.request_id is not null then
@@ -285,15 +332,26 @@ begin
     if not public.facilitator_payout_recipient_ready(r.user_id,r.recipient_revision) then
       raise exception 'FACILITATOR_MANUAL_HOLD: Recipient changed or is not verified.';
     end if;
-    perform public.facilitator_manual_check_sources();
+    perform public.facilitator_manual_check_sources(r.user_id,r.currency);
+    evidence:=public.facilitator_manual_evidence_digest(p_request);
+    if evidence is null then raise exception 'FACILITATOR_MANUAL_HOLD: Source evidence is missing.'; end if;
   end if;
   if p_action='processing' then
+    if exists(select 1 from public.facilitator_manual_events h where h.request_id=p_request and h.state='hold')
+      and not exists(select 1 from public.facilitator_manual_events e
+        where e.request_id=p_request and e.state='reviewed'
+          and e.id>(select max(h.id) from public.facilitator_manual_events h
+            where h.request_id=p_request and h.state='hold')
+          and e.evidence_digest=evidence and e.fee_minor=p_fee) then
+      raise exception 'FACILITATOR_MANUAL_HOLD: A fresh confirmed review must resolve the hold.';
+    end if;
     if p_owner_solo then
       reviewer:=null;
     else
       select e.actor_id into reviewer from public.facilitator_manual_events e
         join public.profiles p on p.id=e.actor_id and p.platform_role in ('admin','superadmin','owner')
         where e.request_id=p_request and e.state='reviewed' and e.actor_id<>auth.uid()
+          and e.evidence_digest=evidence and e.fee_minor=p_fee
           and e.id>coalesce((select max(h.id) from public.facilitator_manual_events h
             where h.request_id=p_request and h.state='hold'),0)
         order by e.id desc limit 1;
@@ -307,12 +365,6 @@ begin
     insert into public.facilitator_manual_claims(request_id,sender_id,reviewer_id,owner_solo,fee_minor)
       values(p_request,auth.uid(),reviewer,p_owner_solo,p_fee);
   elsif p_action='paid' then
-    if c.request_id is null or c.sender_id is distinct from auth.uid() then
-      raise exception 'FACILITATOR_MANUAL_AUTH: Only the claimed sender may report an outcome.';
-    end if;
-    if exists(select 1 from public.facilitator_manual_incidents where request_id=p_request) then
-      raise exception 'FACILITATOR_MANUAL_HOLD: A conflicting outcome requires review; do not resend.';
-    end if;
     if exists(select 1 from public.facilitator_manual_receipts where provider='daraja' and transaction_reference=ref)
       or exists(select 1 from public.simple_payout_receipts where provider='daraja' and transaction_reference=ref)
       or exists(select 1 from public.manual_payout_receipts where provider='daraja' and transaction_reference=ref)
@@ -327,13 +379,16 @@ begin
     insert into public.facilitator_manual_receipts(request_id,provider,transaction_reference,reported_by)
       values(p_request,'daraja',ref,auth.uid());
   end if;
-  insert into public.facilitator_manual_events(request_id,action_key,state,reason,fee_minor,owner_solo,transaction_reference,actor_id)
-    values(p_request,p_key,p_action,p_reason,p_fee,case when p_action='processing' then p_owner_solo else null end,ref,auth.uid());
+  insert into public.facilitator_manual_events(request_id,action_key,state,reason,fee_minor,owner_solo,
+    transaction_reference,evidence_digest,actor_id)
+    values(p_request,p_key,p_action,p_reason,p_fee,case when p_action='processing' then p_owner_solo else null end,
+      ref,evidence,auth.uid());
   return jsonb_build_object('state',p_action,'operator_reported',p_action='paid');
 end $$;
 
 revoke all on function public.facilitator_manual_enabled(),public.facilitator_manual_state(uuid),
-  public.facilitator_manual_source_cap(uuid,uuid,text),public.facilitator_manual_check_sources(),
+  public.facilitator_manual_source_cap(uuid,uuid,text),public.facilitator_manual_check_sources(uuid,text),
+  public.facilitator_manual_evidence_digest(uuid),
   public.facilitator_manual_request_internal(uuid,uuid,text,bigint,jsonb,boolean),
   public.facilitator_manual_action_internal(uuid,uuid,text,text,bigint,text,boolean,boolean)
   from public,anon,authenticated,service_role;

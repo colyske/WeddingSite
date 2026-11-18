@@ -82,8 +82,14 @@ Migration `202611240017` adds a separate ungranted, hard-disabled manual-workflo
 model. It reserves checked contribution-specific commission without an inventory
 or account identifier, preserves original source allocations, and models staff
 review, Owner-solo or independently reviewed claims, uncertain holds, cancellation
-before claim, and operator-reported receipts. A recorded fee is an operator
+before claim, and operator-reported receipts. A pre-claim hold needs a new
+confirmed review, including for Owner-solo processing. An independent review is
+bound to the current source evidence, recipient and fee. Source deficits hold
+the beneficiary's affected currency rather than unrelated users' commissions;
+provider inbox conflicts and manual receipt incidents remain global holds.
+A recorded fee is an operator
 observation, not a deduction from couple funds or proof of external liquidity.
+Conflicting reports are retained as incidents without changing the prior receipt.
 Historical request and action retries acknowledge prior records and never
 authorize a send or resend. Tests enable the model only inside a rolled-back
 synthetic transaction; the migration has no activation mechanism.
