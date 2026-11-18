@@ -159,13 +159,22 @@ liabilities. Immediate link exclusions also do not yet cover concurrent
 attribution/link write skew or a transient link removed before attribution in one
 transaction. These remain blockers to any exposure or activation.
 
-Migration `202611240019` does not prove those exclusions. Its history misses
-links removed before the migration, pre-existing client memberships deleted
-afterward, and initial wedding owners changed before attribution. Its trigger
-changes affect live wedding, membership, and attribution writers even while
-the payout gate is off. Multi-wedding and row-lock ordering, repeatable-read
-visibility, and whole-transaction retry behavior remain unproven. Do not apply
-this migration to production until those effects and gaps are resolved.
+Migration `202611240019` retains the proposed link-order functions as
+unattached prototypes; it does not replace the preceding wedding, membership,
+or attribution trigger functions. The prototypes do not prove exclusions:
+their history misses links removed before the migration, pre-existing client
+memberships deleted afterward, and initial owners changed before attribution.
+Multi-wedding and row-lock ordering, repeatable-read visibility, and
+whole-transaction retry behavior remain unproven. A separate constant-false
+attribution guard holds every manual source, even if the manual gate is changed.
+The link-order race test temporarily attaches the prototypes only on a
+disposable CI database and restores the preceding functions in `finally`; an
+abrupt termination can skip cleanup.
+
+The preceding migrations also change live trigger behavior and have not been
+shown safe against the production baseline. Do not apply the migration batch to
+production until its live-writer impact and the remaining eligibility gaps are
+resolved. Neither a detached prototype nor the source hold verifies history.
 
 Migration `202611240018` alone can reject a conflicting payout receipt after an
 external transfer has already occurred, rolling back the receipt transaction.

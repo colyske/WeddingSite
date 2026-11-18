@@ -4,7 +4,8 @@ import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 
 const container = process.env.REFERRAL_TEST_DB_CONTAINER;
-if (container !== "supabase_db_weddingsite") throw new Error("An isolated local CI database is required.");
+if (process.env.CI !== "true" || process.env.GITHUB_ACTIONS !== "true"
+  || container !== "supabase_db_weddingsite") throw new Error("An isolated GitHub Actions database is required.");
 function sql(input, hold = false) {
   const child = spawn("docker", ["exec", "-i", container, "psql", "-X", "-U", "postgres",
     "-d", "postgres", "-At", "-v", "ON_ERROR_STOP=1"]);
@@ -31,7 +32,7 @@ const waitFor = condition => run(`do $$ begin for i in 1..1000 loop
 end loop; raise exception 'Concurrency barrier timed out'; end $$;`);
 
 const creator = randomUUID(), referrer = randomUUID(), revision = randomUUID();
-const cases = ["concurrent_link_first", "concurrent_attribution_first", "link_unlink_attribution"]
+const cases = ["concurrent_link_first", "concurrent_attribution_first", "link_unlink_attribution", "disabled_baseline"]
   .map(name => ({ name, wedding: randomUUID(), intent: randomUUID(), app: `referral_order_${randomUUID()}` }));
 const weddings = cases.map(c => `'${c.wedding}'`).join(",");
 const attribution = c => `insert into public.referral_attributions
@@ -42,7 +43,15 @@ const membership = c => `insert into public.wedding_memberships(wedding_id,user_
 const events = c => run(`select count(*) from public.referral_eligibility_events
   where wedding_id='${c.wedding}' and reason='client_membership' and linked_user_id='${referrer}';`);
 let fixtureCreated = false;
+let originalDefinitions;
+let prototypeInstalled = false;
 try {
+  originalDefinitions = JSON.parse(await run(`select json_agg(pg_get_functiondef(p.oid) order by p.proname)::text
+    from pg_proc p where p.pronamespace='public'::regnamespace and p.proname in
+      ('referral_link_try_lock','referral_record_current_link','referral_record_attribution_link');`));
+  assert.equal(originalDefinitions.length, 3);
+  assert.ok(originalDefinitions.every(definition => !definition.includes("71110003")
+    && !definition.includes("referral_link_history")), "Unsafe prototype must not replace live trigger functions");
   await run(`begin;
     insert into auth.users(id) values('${creator}'),('${referrer}');
     insert into public.referral_accounts(user_id,opted_in,terms_version)
@@ -53,6 +62,30 @@ try {
       values('${c.intent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1');`).join("\n")}
     commit;`);
   fixtureCreated = true;
+
+  // With the prototype detached, a held prototype lock must not block a live link.
+  const baseline = cases[3];
+  const heldBaseline = sql(`begin; set local idle_in_transaction_session_timeout='30s';
+    set local application_name='${baseline.app}';
+    select pg_advisory_xact_lock(71110003,hashtext('${baseline.wedding}'));\n`, true);
+  const baselineResult = heldBaseline.result.then(value => ({ value }), error => ({ error }));
+  try {
+    await waitFor(`exists(select 1 from pg_stat_activity where application_name='${baseline.app}'
+      and state='idle in transaction' and wait_event='ClientRead')`);
+    await run(`set statement_timeout='2s'; ${membership(baseline)}`);
+  } finally { heldBaseline.release(); }
+  const baselineOutcome = await baselineResult;
+  if (baselineOutcome.error) throw baselineOutcome.error;
+
+  // Attach the retained prototype only in this disposable database, to keep
+  // its narrow research tests without changing deployed trigger behavior.
+  prototypeInstalled = true;
+  await run(`do $$ declare name text; definition text; begin
+    foreach name in array array['referral_link_try_lock','referral_record_current_link','referral_record_attribution_link'] loop
+      definition:=pg_get_functiondef(('public.'||name||'_prototype()')::regprocedure);
+      execute replace(definition,'public.'||name||'_prototype()','public.'||name||'()');
+    end loop;
+  end $$;`);
 
   // Link transaction first: the attribution waits, then must observe the committed link.
   const [linkFirst, attributionFirst, inTransaction] = cases;
@@ -95,7 +128,8 @@ try {
   assert.equal(await events(inTransaction), "1", "Same-transaction link/unlink is still excluded");
   console.log("Link and attribution writers are ordered; historical links are excluded.");
 } finally {
-  if (fixtureCreated) await run(`begin;
+  try {
+    if (fixtureCreated) await run(`begin;
     alter table public.referral_eligibility_events disable trigger referral_eligibility_events_immutable;
     delete from public.referral_eligibility_events where wedding_id in (${weddings});
     alter table public.referral_eligibility_events enable trigger referral_eligibility_events_immutable;
@@ -115,4 +149,7 @@ try {
     delete from auth.users where id in ('${creator}','${referrer}');
     delete from public.audit_events where table_name='profiles' and record_id in ('${creator}','${referrer}');
     commit;`);
+  } finally {
+    if (prototypeInstalled) await run(originalDefinitions.map(definition => definition.trimEnd() + ";").join("\n"));
+  }
 }

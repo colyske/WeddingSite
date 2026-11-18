@@ -1,12 +1,6 @@
--- Coordinate link/attribution exclusions. Link writers and the attribution
--- writer previously each checked the other's committed state, so concurrent
--- transactions (or link -> unlink -> attribution in one transaction) could miss
--- each other. A per-wedding transaction lock and the existing fail-fast
--- accounting try-locks order the
--- two writers, and an immutable link history lets attribution see links that
--- were removed earlier in the same transaction. History begins with this
--- migration; links previously removed cannot be reconstructed here. Existing
--- caller lock ordering and deadlocks require separate verification.
+-- Retain the proposed link-order implementation as unattached prototypes.
+-- It cannot establish complete historical eligibility and its lock ordering
+-- is unsafe for live writers. The existing triggers keep their predecessors.
 create table public.referral_link_history (
   wedding_id uuid not null,
   user_id uuid not null,
@@ -19,7 +13,7 @@ revoke all on public.referral_link_history from public,anon,authenticated,servic
 create trigger immutable before update or delete on public.referral_link_history
   for each row execute function public.referral_immutable();
 
-create or replace function public.referral_link_try_lock() returns trigger
+create function public.referral_link_try_lock_prototype() returns trigger
 language plpgsql security definer set search_path='' set row_security=off as $$
 declare relevant boolean:=false; v_wedding uuid; touches boolean:=false;
 begin
@@ -45,7 +39,7 @@ begin
   return new;
 end $$;
 
-create or replace function public.referral_record_current_link() returns trigger
+create function public.referral_record_current_link_prototype() returns trigger
 language plpgsql security definer set search_path='' set row_security=off as $$
 declare v_wedding_id uuid; v_user_id uuid; v_reason text;
 begin
@@ -73,7 +67,7 @@ begin
   return new;
 end $$;
 
-create or replace function public.referral_record_attribution_link() returns trigger
+create function public.referral_record_attribution_link_prototype() returns trigger
 language plpgsql security definer set search_path='' set row_security=off as $$
 declare owner_link boolean; client_link boolean;
 begin
@@ -99,4 +93,27 @@ begin
     end if;
   end if;
   return new;
+end $$;
+
+revoke all on function public.referral_link_try_lock_prototype(),
+  public.referral_record_current_link_prototype(),public.referral_record_attribution_link_prototype()
+  from public,anon,authenticated,service_role;
+
+-- A separate hard hold prevents a later manual-gate change from treating
+-- unproven attribution history as payable. Review requires a new migration.
+create function public.facilitator_manual_attribution_proven() returns boolean
+language sql immutable set search_path='' as $$ select false $$;
+revoke all on function public.facilitator_manual_attribution_proven() from public,anon,authenticated,service_role;
+
+do $$
+declare definition text; marker text:='  select * into c from public.contributions where id=p_contribution;';
+begin
+  definition:=pg_get_functiondef('public.facilitator_manual_source_cap(uuid,uuid,text)'::regprocedure);
+  if length(definition)-length(replace(definition,marker,''))<>length(marker) then
+    raise exception 'Unexpected facilitator source cap predecessor';
+  end if;
+  execute replace(definition,marker,
+    '  if not public.facilitator_manual_attribution_proven() then
+    raise exception ''FACILITATOR_MANUAL_HOLD: Attribution history has not been substantiated.'';
+  end if;' || E'\n' || marker);
 end $$;

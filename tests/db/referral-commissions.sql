@@ -423,11 +423,26 @@ begin
   end;
   perform pg_temp.assert_true(blocked,'staff workspace is hard disabled');
 end $$;
+-- Synthetic-only overrides; this transaction is rolled back.
+create or replace function public.facilitator_manual_enabled() returns boolean
+language sql immutable set search_path='' as $$ select true $$;
+do $$
+declare held boolean:=false;
+begin
+  begin perform public.facilitator_manual_source_cap(null,null,null);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_MANUAL_HOLD: Attribution history has not been substantiated.%' then raise; end if;
+    held:=true;
+  end;
+  perform pg_temp.assert_true(held and public.facilitator_manual_enabled()
+    and not public.facilitator_manual_attribution_proven(),
+    'unsubstantiated attribution stays held even when the manual gate is enabled');
+end $$;
+create or replace function public.facilitator_manual_attribution_proven() returns boolean
+language sql immutable set search_path='' as $$ select true $$;
 create or replace function public.facilitator_reservation_core_enabled() returns boolean
 language sql immutable set search_path='' as $$ select true $$;
 create or replace function public.facilitator_shadow_claim_enabled() returns boolean
-language sql immutable set search_path='' as $$ select true $$;
-create or replace function public.facilitator_manual_enabled() returns boolean
 language sql immutable set search_path='' as $$ select true $$;
 do $$
 declare u uuid:=(select id from referral_actors where kind='referrer');

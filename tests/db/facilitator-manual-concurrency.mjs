@@ -42,17 +42,21 @@ const fixture = readFileSync("tests/db/referral-commissions.sql", "utf8")
   .split("savepoint synthetic_reservation_core;")[0];
 assert.ok(fixture.includes("insert into referral_actors values('funding-review',r)"));
 const gateReset = `create or replace function public.facilitator_manual_enabled() returns boolean
+  language sql immutable set search_path='' as $$ select false $$;
+  create or replace function public.facilitator_manual_attribution_proven() returns boolean
   language sql immutable set search_path='' as $$ select false $$;`;
 let gateChanged = false;
 try {
-  const initialGate = await run("select public.facilitator_manual_enabled();");
-  assert.equal(initialGate, "f", "Manual model must start disabled");
+  const initialGate = await run("select public.facilitator_manual_enabled(), public.facilitator_manual_attribution_proven();");
+  assert.equal(initialGate, "f|f", "Manual model and attribution must start held");
   gateChanged = true;
   const seed = await run(`${fixture}
     do $$ begin
       if public.facilitator_manual_enabled() then raise exception 'Manual model must start disabled'; end if;
     end $$;
     create or replace function public.facilitator_manual_enabled() returns boolean
+      language sql immutable set search_path='' as $$ select true $$;
+    create or replace function public.facilitator_manual_attribution_proven() returns boolean
       language sql immutable set search_path='' as $$ select true $$;
     do $$ declare v uuid; e uuid;
     begin
