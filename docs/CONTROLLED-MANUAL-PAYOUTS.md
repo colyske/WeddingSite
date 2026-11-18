@@ -55,6 +55,9 @@ the evaluator nor a binding authorizes a transfer, and neither is exposed to API
 roles. Synthetic handling permits Admin, SuperAdmin and Owner, with an independent
 eligible reviewer unless the protected Owner explicitly elects solo review; the
 separate recipient, funding and binding evidence reviews remain leadership-only.
+For an Owner-solo shadow claim, its recorded reviewer identifies the binding
+evidence reviewer, not a second payout reviewer. Any future audit or operator
+view must distinguish that evidence review from the explicit solo decision.
 The existing couple simple-payout implementation currently limits its operator RPC
 to Owner/SuperAdmin; the broader facilitator handling is user-directed and does not
 change that couple path. The private binding evaluator loads the latest reviewed binding by ID and
