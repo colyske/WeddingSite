@@ -41,7 +41,9 @@ const raceCases = [
   { isolation: "read committed", committedBeforeLink: false },
   { isolation: "repeatable read", committedBeforeLink: true },
   { isolation: "read committed", committedBeforeLink: true }
-].map(item => ({ ...item, creator: randomUUID(), intent: randomUUID() }));
+].flatMap(item => ["membership", "owner"].map(writer => ({
+  ...item, writer, creator: randomUUID(), intent: randomUUID()
+})));
 const raceCreators = raceCases.map(item => `'${item.creator}'`).join(",");
 const raceIntents = raceCases.map(item => `'${item.intent}'`).join(",");
 const revision = randomUUID(), holderName = `referral_link_holder_${randomUUID()}`;
@@ -211,7 +213,7 @@ try {
   "An uncommitted attribution and a transient read-committed client link can miss one another");
 
   // The actual creation path commits the wedding and attribution together.
-  for (const { isolation, committedBeforeLink, creator: raceCreator, intent: raceIntent } of raceCases) {
+  for (const { isolation, committedBeforeLink, writer, creator: raceCreator, intent: raceIntent } of raceCases) {
     const createName = `referral_fresh_create_${randomUUID()}`, linkName = `referral_fresh_link_${randomUUID()}`;
     const link = sql(`begin isolation level ${isolation}; set local statement_timeout='20s';
       set local idle_in_transaction_session_timeout='25s'; set local application_name='${linkName}';
@@ -244,8 +246,17 @@ try {
         const committed = await creationResult;
         if (committed.error) throw committed.error;
       }
-      link.write(`select public.set_workspace_member_role('${weddingId}','${referrer}','client');
-        select public.set_workspace_member_role('${weddingId}','${referrer}','admin');\n`);
+      if (writer === "membership") {
+        link.write(`select public.set_workspace_member_role('${weddingId}','${referrer}','client');
+          select public.set_workspace_member_role('${weddingId}','${referrer}','admin');\n`);
+      } else {
+        // Owner reassignment is a privileged database write, not a browser RPC.
+        link.write(`reset role;
+          with changed as (update public.weddings set client_owner_id='${referrer}'
+            where id='${weddingId}' returning id)
+            select 'OWNER_CHANGED:' || count(*) from changed;
+          update public.weddings set client_owner_id='${raceCreator}' where id='${weddingId}';\n`);
+      }
       link.release();
       await waitFor(`not exists(select 1 from pg_stat_activity where application_name='${linkName}')
         or exists(select 1 from pg_stat_activity where application_name='${linkName}' and wait_event_type='Lock')`);
@@ -258,23 +269,27 @@ try {
     const [linked, created] = await Promise.all([linkResult, creationResult]);
     if (caseError) throw caseError;
     if (created.error) throw created.error;
+    const description = `${writer}, ${isolation}, creation ${committedBeforeLink ? "committed" : "pending"}`;
     if (linked.error) {
       assert.match(linked.error.message, /foreign key|serialize|REFERRAL_ACCOUNTING_BUSY/i);
       assert.equal(await run(`select count(*) from public.wedding_memberships
         where wedding_id='${weddingId}' and user_id='${referrer}';`), "0");
-      console.log(`${isolation}, creation ${committedBeforeLink ? "committed" : "pending"}: link rejected`);
+      assert.equal(await run(`select client_owner_id from public.weddings where id='${weddingId}';`), raceCreator);
+      console.log(`${description}: write rejected: ${linked.error.message.trim()}`);
+    } else if (writer === "owner") {
+      const changed = linked.value.match(/OWNER_CHANGED:(\d+)/);
+      assert.ok(changed, "The privileged owner update must report its affected rows");
+      assert.equal(changed[1], isolation === "read committed" && committedBeforeLink ? "1" : "0");
+      const eventCount = await run(`select count(*) from public.referral_eligibility_events
+        where wedding_id='${weddingId}' and reason='owner_account';`);
+      assert.equal(eventCount, changed[1], "Every transient owner change must retain its exclusion");
+      assert.equal(await run(`select client_owner_id from public.weddings where id='${weddingId}';`), raceCreator);
+      console.log(`${description}: ${changed[1]} row(s) changed, ${eventCount} exclusion(s) recorded`);
     } else {
       assert.equal(await run(`select count(*) from public.referral_eligibility_events
         where wedding_id='${weddingId}' and reason='client_membership';`), "1",
       `${isolation} accepted a transient link without durable exclusion`);
-      console.log(`${isolation}, creation ${committedBeforeLink ? "committed" : "pending"}: exclusion recorded`);
-    }
-    if (isolation === "read committed" && committedBeforeLink) {
-      await run(`begin; update public.weddings set client_owner_id='${referrer}' where id='${weddingId}';
-        update public.weddings set client_owner_id='${raceCreator}' where id='${weddingId}'; commit;`);
-      assert.equal(await run(`select count(*) from public.referral_eligibility_events
-        where wedding_id='${weddingId}' and reason='owner_account';`), "1",
-      "A later transient owner change must retain its exclusion");
+      console.log(`${description}: exclusion recorded`);
     }
   }
   console.log("Relevant account links and existing-link attribution fail fast under accounting lock.");
