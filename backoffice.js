@@ -273,6 +273,10 @@
         <h3>Append-only policy history</h3>${table(["Time", "Old rate (basis points)", "New rate (basis points)", "Enabled"], history.map(h => `<tr><td>${esc(h.created_at)}</td><td>${esc(h.old_values.rate_basis_points)}</td><td>${esc(h.new_values.rate_basis_points)}</td><td>${esc(h.new_values.enabled)}</td></tr>`))}
         <h3>Signed estimate journal (latest 100)</h3>${table(["ID", "Contribution reference", "Wedding reference", "Currency", "Estimate adjustment", "Net verified basis", "Hold reasons"], ledger.entries.map(l => `<tr><td>${esc(l.id)}</td><td>${esc(l.contribution_id)}</td><td>${esc(l.wedding_id)}</td><td>${esc(l.currency)}</td><td>${esc(format(l.estimate_delta_minor, l.currency))}</td><td>${esc(format(l.basis_minor, l.currency))}</td><td>${esc(l.hold_reasons.join(", "))}</td></tr>`))}
         ${ledger.entries.length === 100 ? `<button type="button" id="referral-older" data-before="${esc(ledger.entries.at(-1).id)}">Load older journal entries</button><pre id="referral-older-entries"></pre>` : ""}
+        <h3>Verified adjustment conflicts</h3>
+        <p>Inspect up to 100 recent conflicting observations. Each review is audited. A conflict is not automatically resolved or reversed, and this list does not cover every provider observation.</p>
+        <button type="button" id="adjustment-conflicts-load">Review adjustment conflicts</button>
+        <pre id="adjustment-conflicts-results" aria-live="polite"></pre>
         <h3>Platform fee funding evidence</h3>
         <p>Record evidence for the actual platform-owned settled fee, costs, losses, holds and other commitments in the contribution currency. Never include couple funds or personal details. A review is not a reservation, payment authorization or proof of current cash.</p>
         ${owner ? `<form id="referral-funding-form">
@@ -665,6 +669,22 @@
 
     const panel = $("panel");
     panel.addEventListener("click", async (e) => {
+      if (e.target.closest("#adjustment-conflicts-load")) {
+        const button = e.target.closest("#adjustment-conflicts-load");
+        const output = $("adjustment-conflicts-results");
+        button.disabled = true;
+        output.textContent = "Loading…";
+        try {
+          const result = await post("verified-adjustment-conflicts", {});
+          if (!Array.isArray(result.conflicts)) throw new Error("Conflict review returned an invalid response.");
+          output.textContent = result.conflicts.length ? JSON.stringify(result.conflicts, null, 2) :
+            "No recorded inbox conflicts. Other provider observations are not covered by this list.";
+        } catch (error) {
+          output.textContent = "Conflict review unavailable.";
+          toast(error.message, true);
+        } finally { button.disabled = false; }
+        return;
+      }
       const fill = e.target.closest("[data-manual-prefill]");
       if (fill) {
         const { action, values } = JSON.parse(fill.dataset.manualPrefill);

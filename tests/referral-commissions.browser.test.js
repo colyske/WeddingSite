@@ -254,6 +254,39 @@ test("Leadership reviews the exact facilitator recipient revision", { skip }, as
   await ctx.close();
 });
 
+test("Leadership explicitly reviews conflicts without treating absence as payout readiness", { skip }, async () => {
+  const { ctx, page } = await context();
+  let reads = 0, fail = false;
+  await page.route("**/api/admin*", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    if (action === "role") return fulfill(route, { role: "superadmin" });
+    if (action === "referral-policy") return fulfill(route, { policy: { ...disclosure, first_effective_at: null } });
+    if (action === "referral-history") return fulfill(route, { history: [] });
+    if (action === "referral-ledger") return fulfill(route, { entries: [] });
+    if (action === "verified-adjustment-conflicts") {
+      reads++;
+      assert.equal(route.request().method(), "POST");
+      return fail ? fulfill(route, { error: "Review unavailable" }, 503) :
+        fulfill(route, { conflicts: [{ provider: "stripe", payment_reference: "<fixture>", previously_processed: true }] });
+    }
+    return fulfill(route, { records: [], reviews: [], queue: {}, adjustments: {}, cases: [], settlement: {} });
+  });
+  await page.goto(`${base}/admin.html`);
+  await page.click('[data-tab="referrals"]');
+  await page.waitForSelector("#adjustment-conflicts-load");
+  assert.equal(reads, 0, "Opening the panel does not read or audit conflict details");
+  await page.click("#adjustment-conflicts-load");
+  await page.waitForFunction(() => document.querySelector("#adjustment-conflicts-results").textContent.includes("<fixture>"));
+  assert.equal(await page.locator("#adjustment-conflicts-results fixture").count(), 0, "Provider evidence is rendered as text");
+  assert.match(await page.locator("#adjustment-conflicts-results").textContent(), /previously_processed/);
+  fail = true;
+  await page.click("#adjustment-conflicts-load");
+  await page.waitForFunction(() => document.querySelector("#adjustment-conflicts-results").textContent.includes("unavailable"));
+  assert.equal(reads, 2);
+  assert.match(await page.locator("body").textContent(), /Payable: zero/);
+  await ctx.close();
+});
+
 test.after(async () => {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));

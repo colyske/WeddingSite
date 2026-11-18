@@ -31,9 +31,10 @@ The verified-adjustment inbox is a default-off infrastructure change. If
 `VERIFIED_ADJUSTMENT_INBOX_ENABLED` is explicitly enabled after review, signed
 Stripe and Paystack contribution adjustments are staged before their locked
 database processor. The daily authenticated worker retries committed pending
-observations and reports failures and identity conflicts; those conflicts require
-operator investigation via the leadership-only `admin_verified_adjustment_conflicts`
-RPC. A durable identity conflict is acknowledged to avoid repeated delivery,
+observations and reports failures and identity conflicts; leadership can inspect
+the latest 100 recorded conflicts from the client referrals back office. Each
+review is audited and the list does not cover all provider observations.
+A durable identity conflict is acknowledged to avoid repeated delivery,
 but is not applied or cleared automatically. A conflict or pending observation
 must block any future facilitator payout path. The inbox retains normalized financial identifiers and
 a payload digest, not raw payloads or signatures. Live Paystack still requires

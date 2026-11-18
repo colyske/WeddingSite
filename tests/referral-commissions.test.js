@@ -154,6 +154,54 @@ test("funding evidence requires leadership and never invokes payment providers",
   }
 });
 
+test("adjustment conflict review requires leadership, actor JWT and an audited RPC", async () => {
+  const savedFetch = globalThis.fetch;
+  const saved = { SUPABASE_URL: process.env.SUPABASE_URL, SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY };
+  Object.assign(process.env, { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "anon-fixture" });
+  let role = "admin", fail = false;
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    const parsed = new URL(url);
+    assert.equal(parsed.origin, "https://db.example");
+    if (parsed.pathname === "/auth/v1/user") return Response.json({ id: uuid });
+    if (parsed.pathname === "/rest/v1/profiles") return Response.json([{ platform_role: role }]);
+    assert.equal(parsed.pathname, "/rest/v1/rpc/admin_verified_adjustment_conflicts");
+    calls.push({ authorization: options.headers.Authorization, body: JSON.parse(options.body) });
+    if (fail) return Response.json({ message: "database unavailable" }, { status: 500 });
+    return Response.json([{ provider: "stripe", conflict_kind: "changed_delivery" }]);
+  };
+  const invoke = async method => {
+    const headers = {};
+    const res = response();
+    res.setHeader = (key, value) => { headers[key] = value; };
+    await admin({ method, query: { action: "verified-adjustment-conflicts" },
+      headers: { authorization: "Bearer fixture-actor" }, body: {} }, res);
+    return { res, headers };
+  };
+  try {
+    for (role of ["client", "admin"]) {
+      assert.equal((await invoke("POST")).res.statusCode, 403);
+      assert.equal(calls.length, 0);
+    }
+    for (role of ["superadmin", "owner"]) {
+      const { res, headers } = await invoke("POST");
+      assert.equal(res.statusCode, 200);
+      assert.equal(headers["Cache-Control"], "no-store");
+      assert.deepEqual(res.data.conflicts, [{ provider: "stripe", conflict_kind: "changed_delivery" }]);
+      assert.deepEqual(calls.at(-1), { authorization: "Bearer fixture-actor", body: {} });
+    }
+    assert.equal((await invoke("GET")).res.statusCode, 404);
+    assert.equal(calls.length, 2);
+    fail = true;
+    assert.equal((await invoke("POST")).res.statusCode, 503);
+  } finally {
+    globalThis.fetch = savedFetch;
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
 test("held-only schema, signed netting and grants have no financial activation", () => {
   const policy = read("supabase/migrations/202611040001_referral_attribution_policy.sql");
   const estimates = read("supabase/migrations/202611040002_referral_held_estimates.sql");

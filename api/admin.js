@@ -143,7 +143,8 @@ export default async function handler(req, res) {
     return sendJson(res, 403, { error: "Leadership access required." });
   }
   if ((["referral-policy", "referral-history", "referral-ledger", "referral-funding-reviews",
-        "referral-funding-check", "facilitator-funding-attestations", "facilitator-funding-check"].includes(action) && !["owner", "superadmin"].includes(role)) ||
+        "referral-funding-check", "facilitator-funding-attestations", "facilitator-funding-check",
+        "verified-adjustment-conflicts"].includes(action) && !["owner", "superadmin"].includes(role)) ||
       (["referral-policy-save", "referral-funding-create", "facilitator-funding-create"].includes(action) && role !== "owner")) {
     return sendJson(res, 403, { error: "Your role does not allow this referral action." });
   }
@@ -164,6 +165,10 @@ export default async function handler(req, res) {
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
     const invalidContent = contentError(body);
     if (invalidContent) return sendJson(res, 400, { error: invalidContent });
+    if (action === "verified-adjustment-conflicts") {
+      res.setHeader("Cache-Control", "no-store");
+      return sendJson(res, 200, { conflicts: await rpc("admin_verified_adjustment_conflicts", token) });
+    }
     if (action.startsWith("manual-payout-")) {
       const command = manualPayoutCommand(action.slice("manual-payout-".length), body, role);
       if (command.error) return sendJson(res, command.status, { error: command.error });
