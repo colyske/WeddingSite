@@ -35,6 +35,19 @@ assertions for isolated synthetic tests only; real custody identity, complete
 provider admission, all source locks, shared liabilities and cross-rail receipts
 remain unresolved. Existing allocations are retained if their source changes;
 the foundation has no cancellation, claim, paid or deficit-resolution workflow.
+Historical request retries acknowledge the original reservation without checking
+current readiness. A separate private leadership-only evaluator rechecks the
+original evidence without adding the obligation twice. Because it requires those
+exact original revisions to remain current, a newer inventory, review or recipient
+revision can permanently block that reservation; there is no audited rebinding
+workflow yet. Neither result authorizes a transfer.
+
+The current inventory guard holds contradictory amounts for the same latest
+snapshot time, but a newer snapshot can supersede that check without an explicit
+conflict resolution. It does not prove custody exclusivity or find other-rail
+liabilities. Immediate link exclusions also do not yet cover concurrent
+attribution/link write skew or a transient link removed before attribution in one
+transaction. These remain blockers to any exposure or activation.
 
 The verified-adjustment inbox is a default-off infrastructure change. If
 `VERIFIED_ADJUSTMENT_INBOX_ENABLED` is explicitly enabled after review, signed

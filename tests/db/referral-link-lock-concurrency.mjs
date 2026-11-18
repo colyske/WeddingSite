@@ -30,6 +30,7 @@ const waitFor = condition => run(`do $$ begin for i in 1..1000 loop
   perform pg_sleep(0.01);
 end loop; raise exception 'Concurrency barrier timed out'; end $$;`);
 const creator = randomUUID(), referrer = randomUUID(), wedding = randomUUID(), intent = randomUUID();
+const linkedWedding = randomUUID(), linkedIntent = randomUUID();
 const revision = randomUUID(), holderName = `referral_link_holder_${randomUUID()}`;
 let fixtureCreated = false;
 try {
@@ -38,9 +39,11 @@ try {
     insert into public.referral_accounts(user_id,opted_in,terms_version)
       values('${referrer}',true,'client-referrals-v1');
     insert into public.weddings(id,couple_names,currency,client_owner_id)
-      values('${wedding}','Fictional couple','KES','${creator}');
+      values('${wedding}','Fictional couple','KES','${creator}'),
+        ('${linkedWedding}','Fictional linked couple','KES','${referrer}');
     insert into public.referral_intents(id,creator_id,referrer_id,state,consumed_at,disclosed_revision,disclosed_terms_version)
-      values('${intent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1');
+      values('${intent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1'),
+        ('${linkedIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1');
     insert into public.referral_attributions(wedding_id,referrer_id,creator_id,intent_id,disclosed_revision,terms_version,eligible)
       values('${wedding}','${referrer}','${creator}','${intent}','${revision}','client-referrals-v1',true);
     commit;`);
@@ -56,6 +59,14 @@ try {
     await run(`update public.weddings set couple_names='Unrelated edit' where id='${wedding}';`);
     await assert.rejects(run(`update public.weddings set client_owner_id='${referrer}' where id='${wedding}';`),
       /REFERRAL_ACCOUNTING_BUSY/, "Relevant owner change fails fast rather than waiting after row lock");
+    await assert.rejects(run(`insert into public.wedding_memberships(wedding_id,user_id,role)
+      values('${wedding}','${referrer}','client');`),
+      /REFERRAL_ACCOUNTING_BUSY/, "Relevant client membership fails fast");
+    await assert.rejects(run(`insert into public.referral_attributions
+      (wedding_id,referrer_id,creator_id,intent_id,disclosed_revision,terms_version,eligible)
+      values('${linkedWedding}','${referrer}','${creator}','${linkedIntent}','${revision}','client-referrals-v1',true);`),
+      /REFERRAL_ACCOUNTING_BUSY/, "Attribution with an existing matching owner fails fast");
+    assert.equal(await run(`select count(*) from public.referral_attributions where wedding_id='${linkedWedding}';`), "0");
     assert.equal(await run(`select count(*) from public.referral_eligibility_events where wedding_id='${wedding}';`), "0");
   } catch (caught) {
     error = caught;
@@ -68,18 +79,23 @@ try {
   await run(`update public.weddings set client_owner_id='${referrer}' where id='${wedding}';`);
   assert.equal(await run(`select count(*) from public.referral_eligibility_events
     where wedding_id='${wedding}' and reason='owner_account';`), "1");
-  console.log("Account-link writes fail fast under accounting lock; unrelated wedding edits remain available.");
+  await run(`insert into public.referral_attributions
+    (wedding_id,referrer_id,creator_id,intent_id,disclosed_revision,terms_version,eligible)
+    values('${linkedWedding}','${referrer}','${creator}','${linkedIntent}','${revision}','client-referrals-v1',true);`);
+  assert.equal(await run(`select count(*) from public.referral_eligibility_events
+    where wedding_id='${linkedWedding}' and reason='owner_account';`), "1");
+  console.log("Relevant account links and existing-link attribution fail fast under accounting lock.");
 } finally {
   if (fixtureCreated) await run(`begin;
     alter table public.referral_eligibility_events disable trigger referral_eligibility_events_immutable;
-    delete from public.referral_eligibility_events where wedding_id='${wedding}';
+    delete from public.referral_eligibility_events where wedding_id in ('${wedding}','${linkedWedding}');
     alter table public.referral_eligibility_events enable trigger referral_eligibility_events_immutable;
     alter table public.referral_attributions disable trigger referral_attribution_immutable;
-    delete from public.referral_attributions where wedding_id='${wedding}';
+    delete from public.referral_attributions where wedding_id in ('${wedding}','${linkedWedding}');
     alter table public.referral_attributions enable trigger referral_attribution_immutable;
-    delete from public.referral_intents where id='${intent}';
+    delete from public.referral_intents where id in ('${intent}','${linkedIntent}');
     alter table public.weddings disable trigger weddings_no_delete;
-    delete from public.weddings where id='${wedding}';
+    delete from public.weddings where id in ('${wedding}','${linkedWedding}');
     alter table public.weddings enable trigger weddings_no_delete;
     delete from public.referral_accounts where user_id='${referrer}';
     delete from public.profiles where id in ('${creator}','${referrer}');
