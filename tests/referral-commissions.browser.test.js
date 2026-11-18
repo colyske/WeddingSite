@@ -377,6 +377,44 @@ test("staff incident review preserves the no-resend warning", { skip }, async ()
   await ctx.close();
 });
 
+test("send start never offers an automatic retry after success or a lost response", { skip }, async () => {
+  for (const lost of [false, true]) {
+    const { ctx, page } = await context();
+    let started = false, calls = 0;
+    await page.route("**/api/referrals*", route => {
+      const action = new URL(route.request().url()).searchParams.get("action");
+      if (action === "manual-staff-workspace") return fulfill(route, [{ request_id: uuid, amount_minor: "600",
+        currency: "KES", state: "processing", do_not_resend: true, send_started: started,
+        send_outcome_unknown: started }]);
+      if (action === "manual-send-start") {
+        calls++; started = true;
+        return lost ? fulfill(route, { error: "Connection lost" }, 503)
+          : fulfill(route, { send_authorized: true, expected_name: "Test recipient", phone: "254700000003" });
+      }
+      return fulfill(route, {});
+    });
+    await page.goto(`${base}/facilitator-payouts.html`);
+    const button = page.getByRole("button", { name: "Start one manual send" });
+    const form = page.locator("form").filter({ has: button });
+    await form.locator("input[type=checkbox]").check();
+    await button.click();
+    await page.waitForFunction(() => document.querySelector("#requests").textContent.toLowerCase().includes(
+      "do not retry") || document.querySelector("#requests").textContent.includes("One-time authorization"));
+    assert.equal(await button.isDisabled(), true);
+    if (lost) {
+      assert.match(await form.textContent(), /unknown.*Do not retry or send/i);
+      assert.doesNotMatch(await form.textContent(), /254700000003/);
+    } else {
+      assert.match(await form.textContent(), /Never reuse this response or resend/);
+    }
+    await page.reload();
+    await page.waitForFunction(() => document.querySelector("#requests").textContent.includes("outcome is unknown"));
+    assert.equal(await page.getByRole("button", { name: "Start one manual send" }).count(), 0);
+    assert.equal(calls, 1);
+    await ctx.close();
+  }
+});
+
 test.after(async () => {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));

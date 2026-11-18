@@ -85,18 +85,18 @@ try {
   const request = (key, amount) => `public.facilitator_manual_request_internal(
     '${key}','${fixtureIds.recipient}','KES',${amount},
     jsonb_build_array(jsonb_build_object('review','${fixtureIds.review}','amount','${amount}')),true)`;
-  async function race(firstCall, secondCall, user = fixtureIds.user) {
+  async function race(firstCall, secondCall, user = fixtureIds.user, authenticated = false) {
     const firstName = `manual_first_${randomUUID()}`, secondName = `manual_second_${randomUUID()}`;
     const first = sql(`begin; set local statement_timeout='30s';
       set local idle_in_transaction_session_timeout='45s'; set local application_name='${firstName}';
-      ${actor(user)} select ${firstCall};\n`, true);
+      ${actor(user)} ${authenticated ? "set local role authenticated;" : ""} select ${firstCall};\n`, true);
     const aResult = first.result.then(value => ({ value }), error => ({ error }));
     let bResult, barrierError;
     try {
       await waitFor(`exists(select 1 from pg_stat_activity where application_name='${firstName}'
         and state='idle in transaction' and wait_event='ClientRead')`);
       const second = sql(`begin; set local statement_timeout='30s'; set local application_name='${secondName}';
-        ${actor(user)} select ${secondCall}; commit;`);
+        ${actor(user)} ${authenticated ? "set local role authenticated;" : ""} select ${secondCall}; commit;`);
       bResult = second.result.then(value => ({ value }), error => ({ error }));
       await waitFor(`exists(select 1 from pg_stat_activity waiting join pg_stat_activity holding
         on holding.pid=any(pg_blocking_pids(waiting.pid))
@@ -180,6 +180,101 @@ try {
   assert.ifError(initialReplay.error);
   assert.equal(matchJson(initialReplay.value).replayed, true,
     "Identical retry racing the first claim is only historical acknowledgment");
+  const firstStartKey = randomUUID(), fourthStartKey = randomUUID();
+  const start = (payout, key) => `public.facilitator_manual_send_start('${payout}','${key}',true)`;
+  const checked = (payout, key) => `public.facilitator_manual_send_checked('${payout}','${key}')`;
+  const wrapper = (user, expression, ending = "commit") => `begin; ${actor(user)}
+    set local role authenticated; select ${expression}; ${ending};`;
+  await assert.rejects(run(wrapper(fixtureIds.admin, start(first, firstStartKey))),
+    /FACILITATOR_MANUAL_AUTH: Claim is not accessible/);
+  await run(`create or replace function public.facilitator_manual_attribution_proven() returns boolean
+    language sql immutable set search_path='' as $$ select false $$;`);
+  await assert.rejects(run(wrapper(fixtureIds.owner, start(first, firstStartKey))),
+    /FACILITATOR_MANUAL_HOLD:/, "Manual gate alone cannot start a send");
+  await run(`create or replace function public.facilitator_manual_attribution_proven() returns boolean
+    language sql immutable set search_path='' as $$ select true $$;`);
+  const rolledBack = matchJson(await run(wrapper(fixtureIds.owner, start(first, firstStartKey), "rollback")));
+  assert.equal(rolledBack.started, true);
+  assert.equal(rolledBack.send_authorized, false);
+  assert.equal(rolledBack.phone, undefined, "A result from a rolled-back outer transaction has no destination");
+  assert.equal(await run(`select count(*) from public.facilitator_manual_send_starts where request_id='${first}';`), "0");
+  const [firstStart, competingStart] = await race(
+    start(first, firstStartKey), start(first, randomUUID()), fixtureIds.owner, true);
+  assert.equal(matchJson(firstStart).started, true);
+  assert.equal(matchJson(firstStart).send_authorized, false);
+  assert.ifError(competingStart.error);
+  assert.equal(matchJson(competingStart.value).started, false);
+  assert.equal(matchJson(competingStart.value).phone, undefined);
+  for (const key of [firstStartKey, randomUUID()]) {
+    const replayStart = matchJson(await run(wrapper(fixtureIds.owner, start(first, key))));
+    assert.equal(replayStart.started, false, "Lost response and retries cannot issue another start");
+    assert.equal(replayStart.send_authorized, false);
+    assert.equal(replayStart.phone, undefined);
+  }
+  const firstChecked = matchJson(await run(wrapper(fixtureIds.owner, checked(first, firstStartKey))));
+  assert.equal(firstChecked.send_authorized, false, "Direct checked read cannot authorize");
+  assert.equal(firstChecked.phone, "254700000003");
+  await assert.rejects(run(wrapper(fixtureIds.admin, checked(first, firstStartKey))),
+    /FACILITATOR_MANUAL_AUTH: Send start is not accessible/);
+  const firstStatus = matchJson(await run(`begin; ${actor(fixtureIds.user)}
+    select public.facilitator_manual_status_internal('${first}'); commit;`));
+  assert.equal(firstStatus.send_started, true);
+  assert.equal(firstStatus.send_outcome_unknown, true);
+  await assert.rejects(run(wrapper(fixtureIds.owner,
+    `public.facilitator_manual_staff_action('${first}','${randomUUID()}','cancelled',null,null,null,false,true)`)),
+  /Claimed payout cannot be released/);
+  assert.equal(matchJson(await run(wrapper(fixtureIds.owner, start(fourth, fourthStartKey)))).started, true);
+  const sixthOutput = await run(`begin; ${actor(fixtureIds.user)} select ${request(randomUUID(), 10)}; commit;`);
+  const sixth = requestId(sixthOutput), sixthStartKey = randomUUID();
+  assert.ok(sixth);
+  await run(`begin; ${actor(fixtureIds.admin)}
+    select public.facilitator_manual_staff_action('${sixth}','${randomUUID()}',
+      'reviewed',null,10,null,false,true); commit;`);
+  await run(`begin; ${actor(fixtureIds.superadmin)}
+    select public.facilitator_manual_staff_action('${sixth}','${randomUUID()}',
+      'processing',null,10,null,false,true); commit;`);
+  assert.equal(matchJson(await run(wrapper(fixtureIds.superadmin, start(sixth, sixthStartKey)))).started, true);
+  await run(`update public.profiles set platform_role='client' where id='${fixtureIds.admin}';`);
+  await assert.rejects(run(wrapper(fixtureIds.superadmin, checked(sixth, sixthStartKey))),
+    /FACILITATOR_MANUAL_HOLD: Reviewer authority changed/);
+  await run(`update public.profiles set platform_role='admin' where id='${fixtureIds.admin}';`);
+  const simplePayout = randomUUID();
+  await run(`begin;
+    insert into public.simple_payout_requests(id,request_key,wedding_id,requested_by,amount_minor,currency,partner_slot,kyc_hash)
+      select '${simplePayout}','${randomUUID()}',c.wedding_id,'${fixtureIds.user}',1,'KES',1,'fixture'
+      from public.contributions c join public.referral_funding_reviews f on f.contribution_id=c.id
+      where f.id='${fixtureIds.review}';
+    insert into public.simple_payout_incidents(payout_id,provider,transaction_reference,actor_id)
+      values('${simplePayout}','daraja','SYNTHETIC-INCIDENT','${fixtureIds.owner}'); commit;`);
+  try {
+    await assert.rejects(run(wrapper(fixtureIds.owner, checked(fourth, fourthStartKey))),
+      /FACILITATOR_MANUAL_HOLD: Payout or cross-rail incident requires review/);
+  } finally {
+    await run(`begin; alter table public.simple_payout_incidents disable trigger simple_payout_immutable;
+      delete from public.simple_payout_incidents where payout_id='${simplePayout}';
+      alter table public.simple_payout_incidents enable trigger simple_payout_immutable;
+      alter table public.simple_payout_requests disable trigger simple_payout_immutable;
+      delete from public.simple_payout_requests where id='${simplePayout}';
+      alter table public.simple_payout_requests enable trigger simple_payout_immutable; commit;`);
+  }
+  await assert.rejects(run(`begin;
+    insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
+      amount_minor,currency,status,refund_fee_allocation)
+      select 'stripe','refund','manual-start-test-refund',c.id,c.wedding_id,50000,'KES','processed','platform'
+      from public.contributions c join public.referral_funding_reviews f on f.contribution_id=c.id
+      where f.id='${fixtureIds.review}';
+    ${actor(fixtureIds.owner)} set local role authenticated;
+    select ${checked(fourth, fourthStartKey)}; commit;`), /FACILITATOR_MANUAL_HOLD:/,
+  "A newly observed refund blocks the checked read");
+  await run(`create or replace function public.facilitator_manual_attribution_proven() returns boolean
+    language sql immutable set search_path='' as $$ select false $$;`);
+  await assert.rejects(run(wrapper(fixtureIds.owner, checked(fourth, fourthStartKey))), /FACILITATOR_MANUAL_HOLD:/);
+  await run(`create or replace function public.facilitator_manual_attribution_proven() returns boolean
+    language sql immutable set search_path='' as $$ select true $$;`);
+  await run(`update public.profiles set platform_role='client' where id='${fixtureIds.superadmin}';`);
+  await assert.rejects(run(wrapper(fixtureIds.owner, checked(fourth, fourthStartKey))),
+    /FACILITATOR_MANUAL_HOLD: Recipient changed or is not verified/);
+  await run(`update public.profiles set platform_role='superadmin' where id='${fixtureIds.superadmin}';`);
   const report = (payout, key) => `public.facilitator_manual_action_internal(
     '${payout}','${key}','paid',null,null,'synthetic-race-reference',false,true)`;
   const [paidOutput, duplicateReport] = await race(
@@ -192,6 +287,12 @@ try {
     select public.facilitator_manual_status_internal('${second}'); commit;`));
   assert.equal(incidentStatus.state, "outcome_review_required", "Incident is visible, not unqualified paid");
   assert.equal(incidentStatus.do_not_resend, true);
+  await assert.rejects(run(wrapper(fixtureIds.owner, checked(fourth, fourthStartKey))),
+    /FACILITATOR_MANUAL_HOLD: Payout or cross-rail incident requires review/,
+    "An unrelated incident appearing after start blocks the checked read");
+  assert.equal(matchJson(await run(wrapper(fixtureIds.owner, start(fourth, fourthStartKey)))).started, false);
+  assert.equal(await run(`select count(*) from public.facilitator_manual_send_starts
+    where request_id='${fourth}';`), "1", "Blocked recheck retains the uncertain start");
   await run(`begin; ${actor(fixtureIds.admin)}
     select public.facilitator_manual_action_internal('${third}','${randomUUID()}',
       'reviewed',null,10,null,false,true); commit;`);
@@ -385,8 +486,8 @@ try {
     'claims',(select count(*) from public.facilitator_manual_claims),
     'receipts',(select count(*) from public.facilitator_manual_receipts),
     'incidents',(select count(*) from public.facilitator_manual_incidents));`));
-  assert.deepEqual(totals, { requests: 5, allocations: 5, total: 950, failed: 0, stale: 0,
-    checker_failed: 0, adjustment_failed: 0, claims: 4, receipts: 1, incidents: 1 });
+  assert.deepEqual(totals, { requests: 6, allocations: 6, total: 960, failed: 0, stale: 0,
+    checker_failed: 0, adjustment_failed: 0, claims: 5, receipts: 1, incidents: 1 });
   console.log("Concurrent synthetic requests and claims serialize; retries acknowledge history without additional liabilities.");
 } finally {
   if (gateChanged) await run(gateReset);

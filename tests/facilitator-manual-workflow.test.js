@@ -8,6 +8,67 @@ const response = () => ({
   json(data) { this.data = data; }, end(text) { this.data = JSON.parse(text); }
 });
 
+test("send start authorizes only after a committed first start and a separate checked read", async () => {
+  const savedFetch = globalThis.fetch;
+  const saved = { SUPABASE_URL: process.env.SUPABASE_URL, SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY };
+  Object.assign(process.env, { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "test-anon" });
+  let mode = "first", role = "owner";
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    const path = new URL(url).pathname;
+    if (path === "/auth/v1/user") return Response.json({ id });
+    if (path === "/rest/v1/profiles") return Response.json([{ platform_role: role }]);
+    calls.push({ path, authorization: options.headers.Authorization });
+    if (path.endsWith("_send_start")) {
+      if (mode === "timeout") throw new Error("transport lost");
+      if (mode === "replay") return Response.json({ started: false, send_authorized: false });
+      if (mode === "invalid") return Response.json({ started: "true", send_authorized: false });
+      return Response.json({ started: true, send_authorized: false });
+    }
+    if (path.endsWith("_send_checked")) {
+      if (mode === "blocked") return Response.json({ message: "FACILITATOR_MANUAL_HOLD: Incident." }, { status: 400 });
+      if (mode === "read-timeout") throw new Error("transport lost");
+      return Response.json({ request_id: id, expected_name: "Test recipient", phone: "254700000003",
+        send_authorized: false, historical_only: true });
+    }
+    throw new Error("Unexpected RPC");
+  };
+  const invoke = async body => {
+    const res = response();
+    await referrals({ method: "POST", query: { action: "manual-send-start" },
+      headers: { authorization: "Bearer fixture-token" }, body }, res);
+    return res;
+  };
+  try {
+    const body = { id, key: id, confirmed: true };
+    role = "client";
+    assert.equal((await invoke(body)).statusCode, 403);
+    role = "owner";
+    assert.equal((await invoke({ ...body, sender: id })).statusCode, 400);
+    const first = await invoke(body);
+    assert.equal(first.statusCode, 200);
+    assert.equal(first.data.send_authorized, true);
+    assert.equal(first.data.phone, "254700000003");
+    assert.deepEqual(calls.map(call => call.path.split("/").at(-1)),
+      ["facilitator_manual_send_start", "facilitator_manual_send_checked"]);
+    assert.ok(calls.every(call => call.authorization === "Bearer fixture-token"));
+    for (mode of ["replay", "invalid", "timeout", "blocked", "read-timeout"]) {
+      calls.length = 0;
+      const result = await invoke(body);
+      assert.equal(result.data.send_authorized, mode === "replay" ? false : undefined);
+      assert.equal(result.data.phone, undefined);
+      assert.equal(result.statusCode, mode === "replay" ? 200 : 409);
+      if (mode !== "replay") assert.match(result.data.error, /unknown.*Do not retry or send/i);
+      assert.equal(calls.length, ["blocked", "read-timeout"].includes(mode) ? 2 : 1);
+    }
+  } finally {
+    globalThis.fetch = savedFetch;
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
 test("manual payout endpoints require actor authentication, staff roles and exact valid inputs", async () => {
   const savedFetch = globalThis.fetch;
   const saved = { SUPABASE_URL: process.env.SUPABASE_URL, SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY };

@@ -190,8 +190,17 @@ the simple, controlled manual and B2C reconciliation RPCs into their existing
 incident or account-hold paths before the defensive trigger. This does not
 establish complete cross-rail reconciliation or cover every writer and ordering.
 The payout gate must remain off until the other cross-rail risks are resolved.
-A current-destination read never authorizes a first send; a safe one-time manual
-authorization and uncertain-outcome procedure are still needed.
+A current-destination read never authorizes a send. The disabled send-start
+path records one immutable start per claim and returns no authorization or
+destination from that transaction. Only the server can issue a first-send
+response, after the start commits and a separate checked read revalidates the
+claim, sources, recipient, reviewer and incident holds. Replays never issue
+another authorization. A lost response or failed checked read leaves the
+start and claim retained with an unknown outcome: do not retry or resend;
+investigate and report any real transfer. This is not a guarantee of external
+cash or a way to prevent an operator from sending twice outside the site.
+Sources remain independently held and the workflow must not be enabled without
+review and resolution of the attribution and live-writer blockers.
 
 The verified-adjustment inbox is a default-off infrastructure change. If
 `VERIFIED_ADJUSTMENT_INBOX_ENABLED` is explicitly enabled after review, signed

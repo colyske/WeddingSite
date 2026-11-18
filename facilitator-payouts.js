@@ -26,6 +26,9 @@
       card.append(element("h2", `${WSReferrals.money(row.amount_minor, row.currency)} — ${row.state}`));
       card.append(element("p", `Request ${row.request_id}. ${row.do_not_resend ? "Claimed: do not resend." : "Not claimed."}`));
       if (row.operator_reported) card.append(element("p", "Operator reported a transfer; external transfer is not verified."));
+      if (row.send_outcome_unknown) {
+        card.append(element("p", "Send start recorded; outcome is unknown. Do not retry or resend. Investigate and report any actual transfer."));
+      }
       if (row.do_not_resend) {
         const reveal = element("button", "Reveal my claimed recipient");
         reveal.type = "button";
@@ -51,6 +54,31 @@
           finally { current.disabled = false; }
         });
         card.append(current, currentDetails);
+        if (row.state === "processing" && !row.send_started) {
+          const form = element("form");
+          const confirm = element("input"); confirm.type = "checkbox"; confirm.required = true;
+          const confirmLabel = element("label", " I checked external funding, reversals and prior transfers. A lost response means an unknown outcome; I will not retry or resend.");
+          confirmLabel.prepend(confirm);
+          const button = element("button", "Start one manual send"); button.type = "submit";
+          const result = element("p");
+          form.append(confirmLabel, button, result);
+          form.addEventListener("submit", async event => {
+            event.preventDefault();
+            button.disabled = true;
+            try {
+              const start = await WSReferrals.request("manual-send-start",
+                { id: row.request_id, key: crypto.randomUUID(), confirmed: confirm.checked });
+              if (start.send_authorized === true) {
+                result.textContent = `One-time authorization: ${start.expected_name}, ${start.phone}. No transfer was made by this site. Never reuse this response or resend.`;
+              } else {
+                result.textContent = "No authorization was issued. The claim remains held; do not resend.";
+              }
+            } catch {
+              result.textContent = "Send-start outcome may be unknown. Do not retry or send; inspect the retained claim and investigate.";
+            }
+          });
+          card.append(form);
+        }
       }
       for (const incident of row.incidents || []) {
         const section = element("section");

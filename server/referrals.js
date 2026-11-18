@@ -38,7 +38,7 @@ export default async function handler(req, res) {
     }
     const ownerActions = ["recipient-workspace", "recipient-evidence", "recipient-verify"];
     const staffActions = ["manual-staff-workspace", "manual-staff-action", "manual-sender-snapshot",
-      "manual-sender-current", "manual-incident-evidence", "manual-incident-review"];
+      "manual-sender-current", "manual-send-start", "manual-incident-evidence", "manual-incident-review"];
     const readActions = ["recipient-mine", "recipient-workspace", "manual-workspace", "manual-staff-workspace",
       "manual-sender-snapshot", "manual-sender-current"];
     if (!["consent", "capture", "recipient-mine", "recipient-submit", "manual-workspace", "manual-submit",
@@ -68,6 +68,30 @@ export default async function handler(req, res) {
     }
     const body = parseBody(req);
     if (!body) return sendJson(res, 400, { error: "Invalid referral request." });
+    if (action === "manual-send-start") {
+      if (!exactFields(body, ["id", "key", "confirmed"]) || !UUID.test(body.id || "") ||
+        !UUID.test(body.key || "") || body.confirmed !== true) {
+        return sendJson(res, 400, { error: "Confirm the claimed payout and send start." });
+      }
+      try {
+        const start = await rpc("facilitator_manual_send_start", session.token,
+          { p_request: body.id, p_key: body.key, p_confirmed: true });
+        if (start?.started === false && start.send_authorized === false) {
+          return sendJson(res, 200, { send_authorized: false, do_not_resend: true });
+        }
+        if (start?.started !== true || start.send_authorized !== false) throw new Error("Invalid start response");
+        const checked = await rpc("facilitator_manual_send_checked", session.token,
+          { p_request: body.id, p_key: body.key });
+        if (checked?.request_id !== body.id || checked.send_authorized !== false ||
+          typeof checked.expected_name !== "string" || typeof checked.phone !== "string") {
+          throw new Error("Invalid checked destination");
+        }
+        return sendJson(res, 200, { ...checked, historical_only: false, send_authorized: true, do_not_resend: true });
+      } catch {
+        console.error("Facilitator send start or post-commit check failed; outcome uncertain.");
+        return sendJson(res, 409, { error: "Send-start outcome may be unknown. Do not retry or send; inspect the retained claim and investigate." });
+      }
+    }
     if (action === "manual-incident-evidence" || action === "manual-incident-review") {
       if (typeof body.incident !== "string" || !/^[1-9][0-9]{0,18}$/.test(body.incident) ||
         BigInt(body.incident) > 9223372036854775807n || body.confirmed !== true) {
