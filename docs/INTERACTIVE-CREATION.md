@@ -37,12 +37,15 @@ featured-sponsor, song-request and VIP surfaces. Visibility does not authorize
 payment rails or create inventory, publication eligibility or transactions.
 Unconfigured products remain visible as incomplete private-preview sections.
 
-KES uses the current showcase Celebration fund target: **KES 500,000**
-(`50000000` minor units), with no raised balance. Other currencies use the selected template's first goal only when it is
-explicitly configured in that exact currency. Current Owner amount presets are
-guest contribution choices, not fundraising targets. Without a matching
-template goal the fund stays visibly incomplete and must be explicitly priced
-before publication. No KES goal is converted or relabelled. The isolated
+The selected template's first goal and milestones are used only when its currency
+matches the wedding currency. The showcase goal is **KES 1,400,000**
+(`140000000` minor units), with no raised balance. Without a matching goal, KES
+retains the **KES 500,000** fallback; other currencies have an incomplete fund
+that must be priced before publication, with the source milestones left
+unpriced for the couple to fill in. A KES fallback does not copy foreign
+milestone amounts. Current Owner
+amount presets are guest contribution choices, not fundraising targets. No
+source amount is converted or relabelled. The isolated
 `creationFundPreset` contract and transactional SQL initializer must stay in
 sync if this preset changes.
 
@@ -52,7 +55,9 @@ financial-history weddings cannot use this draft reset. The database enforces
 permanent revenue flags and a positive, same-currency visible fund for published
 interactive weddings; the existing publication/payment checks remain
 authoritative. The new additive migration must be applied before deploying code
-that selects `interactive_creation`.
+that selects `interactive_creation`. Apply `202611230001_interactive_starter_goal.sql`
+before deploying the corrected starter-goal behavior; it replaces the preset
+function only and does not change existing wedding or financial records.
 
 Fund saves carry the editor's expected currency and lock the wedding row in the
 service-only save wrapper. A stale pre-change editor cannot restore/relabel an

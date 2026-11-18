@@ -42,7 +42,7 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
         interactive_creation: true, starter_structure: structuredClone(structure), published_at: null
       };
       const campaigns = [{ id, name: seed.setup.campaigns[0].name, purpose: seed.setup.campaigns[0].purpose,
-        goal_minor: 50000000, currency: "KES", enabled: true, milestones: seed.setup.campaigns[0].milestones.map(item => ({
+        goal_minor: seed.setup.campaigns[0].goalMinor, currency: "KES", enabled: true, milestones: seed.setup.campaigns[0].milestones.map(item => ({
           name: item.name, target_minor: item.targetMinor, description: item.description, reached: false
         })) }];
       const context = await browser.newContext({ viewport, reducedMotion: "reduce" });
@@ -123,7 +123,7 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       await frame.locator("#couple-names").filter({ hasText: "Amina & David" }).waitFor();
       await frame.locator("#campaigns [data-primary-editor]").waitFor();
       assert.equal(await frame.locator("#bids").isVisible(), true);
-      assert.match(await frame.locator("#campaigns").innerText(), /500,000/);
+      assert.match(await frame.locator("#campaigns").innerText(), /1,400,000/);
       assert.match(await frame.locator("#campaigns").innerText(), /KES\s*0/);
       assert.match(await frame.locator("#story").innerText(), /borrowed watering can/);
       assert.equal(await frame.locator("#prewedding-display .venue-card").count(), 5);

@@ -3,11 +3,17 @@ const pick = (record, keys) => Object.fromEntries(keys.map(key => [key, record?.
 const featureKeys = ["giving", "sponsors", "featured_sponsors", "song_requests", "vip_seating"];
 export const permanentFeatures = Object.fromEntries(featureKeys.map(key => [key, true]));
 
-// No foreign-currency fallback: KES is the showcase's accounting currency.
+// Never relabel a source goal in another currency.
 export function creationFundPreset(currency, setup) {
-  if (currency === "KES") return 50000000;
   const amount = setup?.currency === currency ? setup.campaigns?.[0]?.goalMinor : null;
-  return Number.isSafeInteger(amount) && amount > 0 && amount <= 100000000000 ? amount : null;
+  if (amount != null) {
+    if (typeof amount !== "number" || !Number.isInteger(amount) || amount < 0) {
+      throw new Error("Starter amounts must be integer minor units.");
+    }
+    if (amount < 1 || amount > 100000000000) throw new Error("Starter amount is outside allowed limits.");
+    return amount;
+  }
+  return currency === "KES" ? 50000000 : null;
 }
 
 export function interactivePreview(wedding, campaigns = []) {

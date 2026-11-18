@@ -14,6 +14,7 @@ const initializer = JSON.stringify({
 }).replaceAll("'", "''");
 
 const migration = readFileSync(new URL("../../supabase/migrations/202611210001_interactive_wedding_creation.sql", import.meta.url), "utf8");
+const goalFix = readFileSync(new URL("../../supabase/migrations/202611230001_interactive_starter_goal.sql", import.meta.url), "utf8");
 const result = spawnSync("docker", ["exec", "-i", "supabase_db_weddingsite", "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1"], {
   encoding: "utf8", input: `
 create temporary table interactive_before(kind text,payload jsonb);
@@ -37,6 +38,39 @@ for t in select distinct kind from interactive_before loop
 end loop;
 if exists(select 1 from public.weddings where interactive_creation) then
   raise exception 'Upgrade opted existing weddings into new behavior';
+end if;
+end $$;
+-- Reproduce the released preset's rejection against the actual showcase values.
+do $$ declare blocked boolean := false; preset bigint; begin
+  preset := public.interactive_fund_preset('KES','${initializer}'::jsonb->'starterSetup');
+  if preset<>50000000 then raise exception 'Unexpected predecessor preset'; end if;
+  begin
+    perform public.starter_minor(('${initializer}'::jsonb)#>'{starterSetup,campaigns,0,milestones,1,targetMinor}',1,preset);
+  exception when raise_exception then blocked := sqlerrm like 'Starter amount is outside allowed limits%'; end;
+  if not blocked then raise exception 'Showcase failure was not reproduced'; end if;
+end $$;
+begin; ${goalFix} rollback;
+do $$ begin
+  if public.interactive_fund_preset('KES','${initializer}'::jsonb->'starterSetup')<>50000000 then
+    raise exception 'Goal fix rollback did not restore predecessor';
+  end if;
+end $$;
+begin; ${goalFix}
+insert into supabase_migrations.schema_migrations(version,name,statements)
+  values('202611230001','interactive_starter_goal',array[]::text[]);
+commit;
+do $$ declare t text; changed boolean; projection text; begin
+for t in select distinct kind from interactive_before where kind<>'weddings' loop
+  execute format('select exists((select payload from interactive_before where kind=%L except select to_jsonb(x) from public.%I x)
+    union all (select to_jsonb(x) from public.%I x except select payload from interactive_before where kind=%L))',
+    t,t,t,t) into changed;
+  if changed then raise exception 'Goal fix changed historical %',t; end if;
+end loop;
+if exists((select payload from interactive_before where kind='weddings'
+    except select to_jsonb(w)-'interactive_creation'-'page_content'-'creation_content_reviewed' from public.weddings w)
+  union all (select to_jsonb(w)-'interactive_creation'-'page_content'-'creation_content_reviewed' from public.weddings w
+    except select payload from interactive_before where kind='weddings')) then
+  raise exception 'Goal fix changed historical weddings';
 end if;
 end $$;
 begin;
@@ -63,6 +97,10 @@ begin
     or (select count(*) from public.fundraising_milestones where wedding_id=w.id)<>2 then
     raise exception 'Initializer lost programme or milestone definitions';
   end if;
+  if not exists(select 1 from public.fundraising_streams where wedding_id=w.id and currency='KES' and goal_minor=140000000)
+    or not exists(select 1 from public.fundraising_milestones where wedding_id=w.id and target_minor=80000000) then
+    raise exception 'Showcase goal or milestone not saved';
+  end if;
   perform public.save_wedding_content(w.id,'{"page_content":{"story:0":"Our saved heading","welcome:1":""}}');
   if (select page_content from public.weddings where id=w.id)<>'{"story:0":"Our saved heading","welcome:1":""}'::jsonb then
     raise exception 'Editorial save/reload lost replacements or deletions';
@@ -81,4 +119,4 @@ rollback;
 });
 if (result.error) throw result.error;
 assert.equal(result.status, 0, `${result.stderr}\n${result.stdout.slice(-6000)}`);
-console.log("Interactive creation populated upgrade/DDL rollback preserves existing weddings, financial and policy rows.");
+console.log("Reproduced showcase rejection on predecessor; goal fix upgrade/rollback preserves historical data and creates the showcase draft.");
