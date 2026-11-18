@@ -284,6 +284,11 @@ begin
         'public.facilitator_shadow_uncertain_internal(uuid,uuid,boolean)','execute')
       and not has_table_privilege(role_name,'public.facilitator_shadow_claims','select'),
       role_name||' cannot access private shadow claims');
+    perform pg_temp.assert_true(not has_function_privilege(role_name,
+      'public.facilitator_shadow_observe_internal(uuid,uuid,text,text,bigint,text,timestamptz,boolean)','execute')
+      and not has_table_privilege(role_name,'public.facilitator_shadow_observations','select')
+      and not has_table_privilege(role_name,'public.facilitator_shadow_observation_incidents','select'),
+      role_name||' cannot access private shadow observations');
     perform pg_temp.assert_true(not has_table_privilege(role_name,'public.facilitator_reservation_requests','select')
       and not has_table_privilege(role_name,'public.facilitator_reservation_allocations','insert'),
       role_name||' cannot access private reservation ledger');
@@ -316,6 +321,13 @@ begin
     blocked:=true;
   end;
   perform pg_temp.assert_true(blocked,'shadow claim is separately hard disabled');
+  blocked:=false;
+  begin perform public.facilitator_shadow_observe_internal(null,null,null,null,null,null,null,false);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_SHADOW_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'shadow observation is hard disabled');
 end $$;
 create or replace function public.facilitator_reservation_core_enabled() returns boolean
 language sql immutable set search_path='' as $$ select true $$;
@@ -545,6 +557,47 @@ begin
       perform pg_temp.assert_true((select count(*)=2 from public.facilitator_shadow_claim_events where request_id=first_id)
         and (select sum(amount_minor)=600 from public.facilitator_reservation_allocations where request_id=first_id),
         'uncertain hold and replay retain one claim and liability');
+      declare observation_key uuid:=extensions.gen_random_uuid(); moment timestamptz:=clock_timestamp();
+        report jsonb; repeated jsonb; altered jsonb;
+      begin
+        report:=public.facilitator_shadow_observe_internal(first_id,observation_key,'daraja',
+          'fictional-ref-1',600,'KES',moment,true);
+        repeated:=public.facilitator_shadow_observe_internal(first_id,observation_key,'daraja',
+          ' FICTIONAL-REF-1 ',600,'KES',moment,true);
+        perform pg_temp.assert_true(report->>'status'='observed' and report->>'incident'='false'
+          and repeated->>'observation_id'=report->>'observation_id' and repeated->>'replayed'='true',
+          'synthetic observation retry is normalized and idempotent');
+        altered:=public.facilitator_shadow_observe_internal(first_id,observation_key,'daraja',
+          'fictional-ref-2',600,'KES',moment,true);
+        perform pg_temp.assert_true(altered->>'incident'='true'
+          and exists(select 1 from public.facilitator_shadow_observation_incidents
+            where observation_id=(altered->>'observation_id')::uuid and reason='changed_retry'),
+          'changed replay persists its conflicting observation and incident');
+        altered:=public.facilitator_shadow_observe_internal(first_id,extensions.gen_random_uuid(),'daraja',
+          'fictional-ref-1',600,'KES',moment,true);
+        perform pg_temp.assert_true(exists(select 1 from public.facilitator_shadow_observation_incidents
+          where observation_id=(altered->>'observation_id')::uuid and reason='duplicate_reference'),
+          'duplicate synthetic reference records an incident');
+        altered:=public.facilitator_shadow_observe_internal(first_id,extensions.gen_random_uuid(),'daraja',
+          'fictional-ref-3',599,'KES',moment,true);
+        perform pg_temp.assert_true(exists(select 1 from public.facilitator_shadow_observation_incidents
+          where observation_id=(altered->>'observation_id')::uuid and reason='request_mismatch'),
+          'amount mismatch retains the observation and incident');
+        perform pg_temp.assert_true((select count(*)=4 from public.facilitator_shadow_observations where request_id=first_id)
+          and (select sum(amount_minor)=600 from public.facilitator_reservation_allocations where request_id=first_id),
+          'observations do not release or pay the reservation');
+        perform set_config('request.jwt.claim.sub',owner_id::text,true);
+        blocked:=false;
+        begin
+          perform public.facilitator_shadow_observe_internal(first_id,extensions.gen_random_uuid(),'daraja',
+            'fictional-ref-4',600,'KES',moment,true);
+        exception when raise_exception then
+          if sqlerrm not like 'FACILITATOR_SHADOW_AUTH:%' then raise; end if;
+          blocked:=true;
+        end;
+        perform pg_temp.assert_true(blocked,'other leader cannot impersonate claimed sender');
+        perform set_config('request.jwt.claim.sub',checker::text,true);
+      end;
       blocked:=false;
       begin
         perform public.facilitator_reservation_rebind_internal(first_id,changed_binding,extensions.gen_random_uuid(),
