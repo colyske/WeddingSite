@@ -269,6 +269,12 @@ begin
     perform pg_temp.assert_true(not has_function_privilege(role_name,
       'public.facilitator_reservation_evaluate_internal(uuid,uuid,uuid,uuid,text,bigint,jsonb,boolean)','execute'),
       role_name||' cannot execute reservation revalidation');
+    perform pg_temp.assert_true(not has_function_privilege(role_name,
+      'public.facilitator_reservation_rebind_internal(uuid,uuid,uuid,uuid,uuid,jsonb,uuid,boolean)','execute')
+      and not has_function_privilege(role_name,
+        'public.facilitator_reservation_reconfirm_internal(uuid,uuid,uuid,uuid,boolean)','execute')
+      and not has_table_privilege(role_name,'public.facilitator_reservation_rebindings','select'),
+      role_name||' cannot access private rebinding');
     perform pg_temp.assert_true(not has_table_privilege(role_name,'public.facilitator_reservation_requests','select')
       and not has_table_privilege(role_name,'public.facilitator_reservation_allocations','insert'),
       role_name||' cannot access private reservation ledger');
@@ -326,6 +332,97 @@ begin
   perform set_config('request.jwt.claim.sub',u::text,true);
   perform pg_temp.assert_true((select count(*)=1 and sum(amount_minor)=600 from public.facilitator_reservation_allocations),
     'allocation reserves the requested source amount');
+  declare fresh_inventory uuid; fresh_review uuid; fresh_recipient uuid; fresh_evidence uuid;
+    binding uuid; changed_binding uuid; consent uuid; action_key uuid:=extensions.gen_random_uuid(); fresh_allocations jsonb;
+  begin
+    insert into public.facilitator_funding_attestations(request_key,currency,custody_scope_reference,
+      period_start,as_of,expires_at,cash_minor,unpaid_costs_minor,holds_minor,other_commitments_minor,
+      exclusive_platform_funded_asserted,evidence_reference,evidence_sha256,recorded_by,recorded_at)
+      select extensions.gen_random_uuid(),currency,custody_scope_reference,period_start,now()-interval '30 minutes',
+        expires_at,2000,0,0,0,true,extensions.gen_random_uuid(),repeat('c',64),owner_id,clock_timestamp()+interval '1 second'
+      from public.facilitator_funding_attestations where id=inventory returning id into fresh_inventory;
+    insert into public.facilitator_funding_attestation_checks(attestation_id,checked_by,owner_solo)
+      values(fresh_inventory,checker,false);
+    insert into public.referral_funding_reviews(contribution_id,source_digest,currency,estimate_minor,
+      platform_fee_minor,settled_platform_fee_minor,provider_cost_minor,losses_minor,holds_minor,
+      other_commitments_minor,evidence_reference,evidence_sha256,recorded_by,recorded_at)
+      select contribution_id,source_digest,currency,estimate_minor,platform_fee_minor,settled_platform_fee_minor,
+        provider_cost_minor,losses_minor,holds_minor,other_commitments_minor,extensions.gen_random_uuid(),
+        repeat('e',64),owner_id,clock_timestamp()+interval '1 second'
+      from public.referral_funding_reviews where id=source returning id into fresh_review;
+    insert into public.referral_funding_review_checks(review_id,checked_by,owner_solo)
+      values(fresh_review,checker,false);
+    fresh_allocations:=jsonb_build_array(jsonb_build_object('review',fresh_review,'amount','600'));
+    blocked:=false;
+    begin
+      perform public.facilitator_reservation_rebind_internal(first_id,null,action_key,recipient,
+        fresh_inventory,fresh_allocations,null,true);
+    exception when raise_exception then
+      if sqlerrm not in ('Staff access required.','SuperAdmin access required.') then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'beneficiary cannot approve evidence binding');
+    perform set_config('request.jwt.claim.sub',owner_id::text,true);
+    binding:=public.facilitator_reservation_rebind_internal(first_id,null,action_key,recipient,
+      fresh_inventory,fresh_allocations,null,true);
+    perform pg_temp.assert_true(binding=public.facilitator_reservation_rebind_internal(first_id,null,action_key,
+      recipient,fresh_inventory,fresh_allocations,null,true),'binding replay is historical and idempotent');
+    blocked:=false;
+    begin
+      perform public.facilitator_reservation_rebind_internal(first_id,binding,extensions.gen_random_uuid(),recipient,
+        fresh_inventory,jsonb_build_array(jsonb_build_object('review',fresh_review,'amount','599')),null,true);
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_RESERVATION_INPUT:%'
+        and sqlerrm not like 'FACILITATOR_RESERVATION_CONFLICT:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'rebinding cannot change source liabilities');
+    insert into public.facilitator_recipient_versions(user_id,request_key,full_name,phone,ownership_attested,consent_version)
+      values(u,extensions.gen_random_uuid(),'Fictional facilitator','254700000004',true,'facilitator-mpesa-recipient-v1')
+      returning revision_id into fresh_recipient;
+    insert into public.facilitator_recipient_evidence(revision_id,external_reference,sha256,submitted_by)
+      values(fresh_recipient,extensions.gen_random_uuid(),repeat('a',64),owner_id) returning id into fresh_evidence;
+    insert into public.facilitator_recipient_checks(revision_id,evidence_id,checked_by,owner_solo)
+      values(fresh_recipient,fresh_evidence,checker,false);
+    blocked:=false;
+    begin
+      perform public.facilitator_reservation_rebind_internal(first_id,binding,extensions.gen_random_uuid(),fresh_recipient,
+        fresh_inventory,fresh_allocations,null,true);
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'changed recipient requires beneficiary reconfirmation');
+    blocked:=false;
+    begin
+      perform public.facilitator_reservation_reconfirm_internal(first_id,fresh_recipient,binding,extensions.gen_random_uuid(),true);
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_RESERVATION_AUTH:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'leadership cannot confirm on behalf of beneficiary');
+    perform set_config('request.jwt.claim.sub',u::text,true);
+    consent:=public.facilitator_reservation_reconfirm_internal(first_id,fresh_recipient,binding,extensions.gen_random_uuid(),true);
+    perform set_config('request.jwt.claim.sub',owner_id::text,true);
+    changed_binding:=public.facilitator_reservation_rebind_internal(first_id,binding,extensions.gen_random_uuid(),
+      fresh_recipient,fresh_inventory,fresh_allocations,consent,true);
+    perform pg_temp.assert_true(changed_binding is not null and
+      (select count(*)=1 and sum(amount_minor)=600 from public.facilitator_reservation_allocations),
+      'changed recipient binding retains the original source allocation');
+    blocked:=false;
+    begin
+      perform public.facilitator_reservation_rebind_internal(first_id,binding,extensions.gen_random_uuid(),
+        fresh_recipient,fresh_inventory,fresh_allocations,consent,true);
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_RESERVATION_CONFLICT:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'stale prior binding and consent cannot be reused');
+    raise exception 'SYNTHETIC_REBIND_ROLLBACK';
+  exception when raise_exception then
+    if sqlerrm <> 'SYNTHETIC_REBIND_ROLLBACK' then raise; end if;
+  end;
+  perform set_config('request.jwt.claim.sub',u::text,true);
   blocked:=false;
   begin
     perform public.facilitator_reservation_create_internal(key_id,u,recipient,inventory,'KES',599,

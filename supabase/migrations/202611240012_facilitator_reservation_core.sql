@@ -96,11 +96,25 @@ begin
   perform 1 from public.profiles where id=p_user for update;
   select * into prior from public.facilitator_reservation_requests where user_id=p_user and request_key=p_key;
   if found then
-    if (prior.recipient_revision,prior.inventory_id,prior.currency,prior.amount_minor,prior.allocation_digest)
+    if not p_revalidate and (prior.recipient_revision,prior.inventory_id,prior.currency,prior.amount_minor,prior.allocation_digest)
       is distinct from (p_recipient,p_inventory,p_currency,p_amount,allocation_digest) then
       raise exception 'FACILITATOR_RESERVATION_CONFLICT: This key belongs to a different request.';
     end if;
     if not p_revalidate then return prior.id; end if;
+    if (prior.currency,prior.amount_minor) is distinct from (p_currency,p_amount)
+      or (select count(*) from public.facilitator_reservation_allocations where request_id=prior.id)
+        <>jsonb_array_length(p_allocations)
+      or exists(select 1 from jsonb_array_elements(p_allocations) x
+        left join public.referral_funding_reviews f on f.id=(x->>'review')::uuid
+        left join public.facilitator_reservation_allocations a
+          on a.request_id=prior.id and a.contribution_id=f.contribution_id
+        where a.request_id is null or a.amount_minor is distinct from (x->>'amount')::bigint
+          or a.source_digest is distinct from f.source_digest)
+      or (select count(distinct f.contribution_id) from jsonb_array_elements(p_allocations) x
+          join public.referral_funding_reviews f on f.id=(x->>'review')::uuid)
+        <>jsonb_array_length(p_allocations) then
+      raise exception 'FACILITATOR_RESERVATION_CONFLICT: Revalidation must retain original sources and liabilities.';
+    end if;
   elsif p_revalidate then
     raise exception 'FACILITATOR_RESERVATION_CONFLICT: Existing reservation is required for revalidation.';
   end if;
@@ -112,7 +126,9 @@ begin
     raise exception 'FACILITATOR_RESERVATION_HOLD: The current recipient revision is not verified.';
   end if;
   select * into inventory from public.facilitator_funding_attestations where id=p_inventory;
-  if not found or inventory.currency is distinct from p_currency or inventory.expires_at<=clock_timestamp()
+  if not found or inventory.currency is distinct from p_currency
+    or (p_revalidate and inventory.custody_scope_reference is distinct from prior.custody_scope_reference)
+    or inventory.expires_at<=clock_timestamp()
     or not exists(select 1 from public.facilitator_funding_attestation_checks where attestation_id=inventory.id)
     or inventory.id is distinct from (select latest.id from public.facilitator_funding_attestations latest
       where latest.custody_scope_reference=inventory.custody_scope_reference and latest.currency=inventory.currency

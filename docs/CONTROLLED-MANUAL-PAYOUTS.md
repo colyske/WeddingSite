@@ -37,10 +37,15 @@ remain unresolved. Existing allocations are retained if their source changes;
 the foundation has no cancellation, claim, paid or deficit-resolution workflow.
 Historical request retries acknowledge the original reservation without checking
 current readiness. A separate private leadership-only evaluator rechecks the
-original evidence without adding the obligation twice. Because it requires those
-exact original revisions to remain current, a newer inventory, review or recipient
-revision can permanently block that reservation; there is no audited rebinding
-workflow yet. Neither result authorizes a transfer.
+current evidence without adding the obligation twice. Private, hard-disabled
+rebinding records preserve the original beneficiary, custody scope, currency,
+contribution allocations, source digest and liabilities. Each rebind records the
+reviewing leader and links to the preceding binding. Changing recipient revision
+requires an explicit beneficiary confirmation tied to that preceding binding.
+Evidence with a changed source digest remains held; rebinding does not resolve
+refunds or deficits. Replays acknowledge history, not present readiness. Neither
+the evaluator nor a binding authorizes a transfer, and neither is exposed to API
+roles.
 
 The current inventory guard holds contradictory amounts for the same latest
 snapshot time, but a newer snapshot can supersede that check without an explicit
