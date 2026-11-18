@@ -29,6 +29,10 @@ select pg_temp.assert_true(public.referral_available_cap(10000,8880,2000,0,0,100
 do $$
 declare signature text; role_name text;
 begin
+  perform pg_temp.assert_true(has_function_privilege('authenticated','public.facilitator_manual_workspace()','execute')
+    and not has_function_privilege('anon','public.facilitator_manual_workspace()','execute')
+    and not has_function_privilege('service_role','public.facilitator_manual_staff_action(uuid,uuid,text,text,bigint,text,boolean,boolean)','execute'),
+    'manual workflow wrappers require an authenticated user and remain gated');
   foreach role_name in array array['anon','authenticated','service_role'] loop
     foreach signature in array array['referral_reconcile_estimate(uuid)','referral_snapshot_contribution()',
       'referral_available_cap(bigint,bigint,bigint,bigint,bigint,bigint,bigint,bigint,bigint)'] loop
@@ -400,6 +404,20 @@ begin
     blocked:=true;
   end;
   perform pg_temp.assert_true(blocked,'manual source quote is hard disabled');
+  blocked:=false;
+  begin perform public.facilitator_manual_workspace();
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_MANUAL_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'beneficiary workspace is hard disabled');
+  blocked:=false;
+  begin perform public.facilitator_manual_staff_workspace();
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_MANUAL_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'staff workspace is hard disabled');
 end $$;
 create or replace function public.facilitator_reservation_core_enabled() returns boolean
 language sql immutable set search_path='' as $$ select true $$;
@@ -434,6 +452,10 @@ begin
       and result->>'reserved'='false' and result->>'external_cash_verified'='false'
       and result->>'send_authorized'='false',
       'source quote is bounded, advisory and does not attest cash');
+    result:=public.facilitator_manual_workspace();
+    perform pg_temp.assert_true(jsonb_array_length(result->'sources')=1
+      and result->'sources'->0->>'review_id'=source::text
+      and jsonb_array_length(result->'requests')=0,'beneficiary workspace shows own reviewed source');
     perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='other'),true);
     blocked:=false;
     begin perform public.facilitator_manual_source_quote_internal(source,'KES');
@@ -443,8 +465,25 @@ begin
     end;
     perform pg_temp.assert_true(blocked,'another beneficiary cannot quote this source');
     perform set_config('request.jwt.claim.sub',u::text,true);
-    manual_id:=public.facilitator_manual_request_internal(request_key,recipient,'KES',600,
-      jsonb_build_array(jsonb_build_object('review',source,'amount','600')),true);
+    manual_id:=public.facilitator_manual_submit(request_key,recipient,source,600,true);
+    perform pg_temp.assert_true(manual_id=public.facilitator_manual_submit(request_key,recipient,source,600,true),
+      'beneficiary submission retry returns the original request');
+    result:=public.facilitator_manual_workspace();
+    perform pg_temp.assert_true(result->'sources'->0->>'capacity_minor'='400'
+      and result->'requests'->0->>'request_id'=manual_id::text,
+      'beneficiary workspace shows the reservation and status');
+    blocked:=false;
+    begin perform public.facilitator_manual_staff_workspace();
+    exception when raise_exception then
+      if sqlerrm <> 'Staff access required.' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'beneficiary cannot access staff workspace');
+    perform set_config('request.jwt.claim.sub',admin_id::text,true);
+    result:=public.facilitator_manual_staff_workspace();
+    perform pg_temp.assert_true(result->0->>'request_id'=manual_id::text
+      and result->0->>'state'='requested','Admin can see the staff queue');
+    perform set_config('request.jwt.claim.sub',u::text,true);
     result:=public.facilitator_manual_source_quote_internal(source,'KES');
     perform pg_temp.assert_true(result->>'capacity_minor'='400',
       'source quote subtracts the retained request without adding a liability');
@@ -527,7 +566,7 @@ begin
         blocked:=true;
       end;
       perform pg_temp.assert_true(blocked,'stale previous binding cannot be reused');
-      result:=public.facilitator_manual_action_internal(manual_id,extensions.gen_random_uuid(),
+      result:=public.facilitator_manual_staff_action(manual_id,extensions.gen_random_uuid(),
         'processing',null,10,null,true,true);
       perform pg_temp.assert_true(result->>'state'='processing'
         and exists(select 1 from public.facilitator_manual_claims c where c.request_id=manual_id
@@ -536,7 +575,7 @@ begin
       insert into public.facilitator_recipient_versions(user_id,request_key,full_name,phone,ownership_attested,consent_version)
         values(u,extensions.gen_random_uuid(),'Later fictional facilitator','254700000007',true,
           'facilitator-mpesa-recipient-v1');
-      result:=public.facilitator_manual_claim_snapshot_internal(manual_id);
+      result:=public.facilitator_manual_sender_snapshot(manual_id);
       perform pg_temp.assert_true(result->>'revision'=changed_recipient::text
         and result->>'binding_id'=binding::text and result->>'phone'='254700000006'
         and result->>'expected_name'='Changed fictional facilitator'

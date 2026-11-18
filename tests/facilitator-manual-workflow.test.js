@@ -1,0 +1,60 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import referrals from "../server/referrals.js";
+
+const id = "550e8400-e29b-41d4-a716-446655440000";
+const response = () => ({
+  setHeader() {}, status(code) { this.statusCode = code; return this; },
+  json(data) { this.data = data; }, end(text) { this.data = JSON.parse(text); }
+});
+
+test("manual payout endpoints require actor authentication, staff roles and exact valid inputs", async () => {
+  const savedFetch = globalThis.fetch;
+  const saved = { SUPABASE_URL: process.env.SUPABASE_URL, SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY };
+  Object.assign(process.env, { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "test-anon" });
+  const calls = [];
+  let role = "client", disabled = false;
+  globalThis.fetch = async (url, options) => {
+    const parsed = new URL(url);
+    assert.equal(parsed.origin, "https://db.example");
+    if (parsed.pathname === "/auth/v1/user") return Response.json({ id });
+    if (parsed.pathname === "/rest/v1/profiles") return Response.json([{ platform_role: role }]);
+    assert.match(parsed.pathname, /^\/rest\/v1\/rpc\/facilitator_manual_/);
+    calls.push({ path: parsed.pathname, body: JSON.parse(options.body), authorization: options.headers.Authorization });
+    if (disabled) return Response.json({ message: "FACILITATOR_MANUAL_DISABLED: Manual payouts are not available." }, { status: 400 });
+    return Response.json(parsed.pathname.endsWith("_workspace") ? [] : id);
+  };
+  const invoke = async (action, method, body, authenticated = true) => {
+    const res = response();
+    await referrals({ method, query: { action, id }, headers: authenticated ? { authorization: "Bearer fixture-token" } : {}, body }, res);
+    return res;
+  };
+  try {
+    assert.equal((await invoke("manual-workspace", "GET", null, false)).statusCode, 401);
+    assert.equal((await invoke("manual-staff-workspace", "GET")).statusCode, 403);
+    assert.equal(calls.length, 0);
+    const valid = { key: id, recipient: id, review: id, amount: 100, confirmed: true };
+    for (const body of [{ ...valid, amount: 0 }, { ...valid, amount: 0.1 }, { ...valid, actor: id }, { ...valid, confirmed: false }]) {
+      assert.equal((await invoke("manual-submit", "POST", body)).statusCode, 400);
+    }
+    assert.equal((await invoke("manual-submit", "POST", valid)).statusCode, 200);
+    assert.equal(calls.at(-1).authorization, "Bearer fixture-token");
+    assert.deepEqual(calls.at(-1).body, { p_key: id, p_recipient: id, p_review: id, p_amount: 100, p_confirmed: true });
+    role = "admin";
+    assert.equal((await invoke("manual-staff-workspace", "GET")).statusCode, 200);
+    const action = { id, key: id, action: "processing", reason: null, fee: 0, reference: null, ownerSolo: true, confirmed: true };
+    assert.equal((await invoke("manual-staff-action", "POST", action)).statusCode, 403);
+    role = "owner";
+    assert.equal((await invoke("manual-staff-action", "POST", action)).statusCode, 200);
+    assert.equal(calls.at(-1).body.p_owner_solo, true);
+    disabled = true;
+    const unavailable = await invoke("manual-workspace", "GET");
+    assert.equal(unavailable.statusCode, 503);
+    assert.match(unavailable.data.error, /not available/);
+  } finally {
+    globalThis.fetch = savedFetch;
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});

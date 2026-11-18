@@ -1,5 +1,9 @@
 export function referralError(error) {
   const message = String(error?.message || "");
+  if (/FACILITATOR_MANUAL_DISABLED:/.test(message)) return [503, "Facilitator payout requests are not available yet."];
+  if (/FACILITATOR_MANUAL_(HOLD|CONFLICT):/.test(message)) return [409, message.split(/FACILITATOR_MANUAL_(?:HOLD|CONFLICT):/)[1].trim()];
+  if (/FACILITATOR_MANUAL_INPUT:/.test(message)) return [400, message.split("FACILITATOR_MANUAL_INPUT:")[1].trim()];
+  if (/FACILITATOR_MANUAL_AUTH:/.test(message)) return [403, "You cannot access this facilitator payout action."];
   if (/FACILITATOR_RECIPIENT_CONFLICT:/.test(message)) return [409, message.split("FACILITATOR_RECIPIENT_CONFLICT:")[1].trim()];
   if (/FACILITATOR_RECIPIENT_INPUT:/.test(message)) return [400, message.split("FACILITATOR_RECIPIENT_INPUT:")[1].trim()];
   if (/FACILITATOR_RECIPIENT_AUTH:/.test(message)) return [401, "Sign in to manage facilitator recipient details."];

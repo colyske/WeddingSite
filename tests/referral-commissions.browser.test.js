@@ -287,6 +287,66 @@ test("Leadership explicitly reviews conflicts without treating absence as payout
   await ctx.close();
 });
 
+test("facilitator can request a reviewed source and see the requested status", { skip }, async () => {
+  const { ctx, page } = await context();
+  const sent = [];
+  let submitted = false;
+  await page.route("**/api/referrals*", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    if (action === "summary") return fulfill(route, { account: { code, opted_in: true,
+      consent_at: "2026-11-01", terms_version: "client-referrals-v1" }, referral_count: 0, weddings: [] });
+    if (action === "recipient-mine") return fulfill(route, { recipient: { revision, status: "verified",
+      full_name: "Synthetic recipient", phone: "254700000003" } });
+    if (action === "manual-workspace") return fulfill(route, { sources: [{ review_id: uuid,
+      capacity_minor: submitted ? "400" : "1000", currency: "KES" }], requests: submitted ?
+      [{ request_id: uuid, amount_minor: "600", currency: "KES", state: "requested", do_not_resend: false }] : [] });
+    if (action === "manual-submit") {
+      sent.push(JSON.parse(route.request().postData())); submitted = true;
+      return fulfill(route, { request_id: uuid });
+    }
+    return fulfill(route, {});
+  });
+  await page.goto(`${base}/referrals.html`);
+  await page.waitForSelector("#manual-payout-form", { state: "visible" });
+  await page.fill("#manual-payout-amount", "600");
+  await page.check("#manual-payout-confirm");
+  await page.click("#manual-payout-form button");
+  await page.waitForFunction(() => document.querySelector("#manual-payout-history").textContent.includes("requested"));
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].recipient, revision);
+  assert.equal(sent[0].amount, 600);
+  assert.equal(sent[0].confirmed, true);
+  assert.match(await page.textContent("#referral-notice"), /No transfer/);
+  await ctx.close();
+});
+
+test("staff queue offers manual claim with explicit confirmation and no automatic send", { skip }, async () => {
+  const { ctx, page } = await context();
+  const sent = [];
+  await page.route("**/api/referrals*", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    if (action === "manual-staff-workspace") return fulfill(route, [{ request_id: uuid, amount_minor: "600",
+      currency: "KES", state: "requested", do_not_resend: false }]);
+    if (action === "manual-staff-action") {
+      sent.push(JSON.parse(route.request().postData()));
+      return fulfill(route, { state: "processing" });
+    }
+    return fulfill(route, {});
+  });
+  await page.goto(`${base}/facilitator-payouts.html`);
+  await page.waitForSelector("#requests form");
+  await page.locator("#requests select").first().selectOption("processing");
+  await page.locator("#requests input[type=number]").fill("10");
+  await page.locator("#requests input[type=checkbox]").last().check();
+  await page.locator("#requests button[type=submit]").click();
+  await page.waitForFunction(() => document.querySelector("#notice").textContent.includes("No transfer"));
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].action, "processing");
+  assert.equal(sent[0].fee, 10);
+  assert.equal(sent[0].ownerSolo, false);
+  await ctx.close();
+});
+
 test.after(async () => {
   if (browser) await browser.close();
   await new Promise(resolve => server.close(resolve));

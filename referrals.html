@@ -50,6 +50,20 @@
         <button type="submit">Save recipient revision</button>
       </form>
     </section>
+    <section class="card" id="manual-payout-section" hidden>
+      <h2>Facilitator payout request</h2>
+      <p>Request a reviewed KES commission source to your verified recipient. A request reserves commission; it does not send money. External cash is checked by staff.</p>
+      <p id="manual-payout-notice" role="status" aria-live="polite"></p>
+      <form id="manual-payout-form" hidden>
+        <label for="manual-payout-source">Reviewed commission source</label>
+        <select id="manual-payout-source" required></select>
+        <label for="manual-payout-amount">Amount in KES minor units (100 = KES 1)</label>
+        <input id="manual-payout-amount" type="number" min="1" step="1" required>
+        <label><input id="manual-payout-confirm" type="checkbox" required> I request this amount to my current verified M-Pesa recipient.</label>
+        <button type="submit">Request payout</button>
+      </form>
+      <div id="manual-payout-history"></div>
+    </section>
     <section class="card">
       <h2>My referred weddings</h2>
       <p id="referral-count"></p>

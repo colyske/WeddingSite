@@ -115,7 +115,8 @@ recipient revision. A claimed request cannot be rebound; retries
 acknowledge history rather than establishing current readiness. A disabled,
 ungranted internal disclosure lets only the current staff sender read that
 historical claim destination and records each reveal. It deliberately returns
-no send authority, does not revalidate readiness, and is not an API or UI.
+no send authority and does not revalidate readiness. A sender-only wrapper is
+available to the staff interface, but remains blocked by the false model gate.
 Historical request and action retries acknowledge prior records and never
 authorize a send or resend. SQL tests enable the model inside a rolled-back
 synthetic transaction. The concurrency test instead commits synthetic fixtures
@@ -123,8 +124,9 @@ and temporarily enables the gate in a disposable CI database, restoring it in
 `finally`; abrupt termination can skip cleanup, so never run it on a persistent
 database. The migration has no activation mechanism.
 
-This is not a usable payout service: it has no beneficiary or operator API/UI,
-no reciprocal cross-rail receipt or incident protection, and no exposed
+This is not a usable payout service: the beneficiary and staff interfaces and
+their authenticated wrappers are blocked by the false gate. It has no complete
+reciprocal cross-rail receipt or incident protection, and no exposed
 destination-rebinding workflow. The model inherits incomplete provider
 ingress and attribution-link visibility and has not established concurrency or
 scale safety. A two-session CI regression covers competing requests and claims,

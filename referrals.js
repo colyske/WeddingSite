@@ -4,6 +4,8 @@
   const notice = text => { $("referral-notice").textContent = text; };
   let recipientRequestKey = null;
   let recipientRequestPayload = null;
+  let recipientRevision = null;
+  const payoutPendingKey = "ws-facilitator-payout-pending";
   if (!WS.token()) {
     location.replace("/signin.html?next=" + encodeURIComponent("/referrals.html"));
     return;
@@ -26,6 +28,7 @@
     }
     if (account) {
       const { recipient } = await WSReferrals.request("recipient-mine");
+      recipientRevision = recipient?.status === "verified" ? recipient.revision : null;
       if (recipient) {
         $("recipient-name").value = recipient.full_name;
         $("recipient-phone").value = recipient.phone;
@@ -39,6 +42,32 @@
         $("recipient-name").value = "";
         $("recipient-phone").value = "";
         $("recipient-status").textContent = "No recipient details saved yet. Your referral activity remains held and no payout is available.";
+      }
+    }
+    $("manual-payout-section").hidden = !account;
+    if (account) {
+      try {
+        const workspace = await WSReferrals.request("manual-workspace");
+        const sources = workspace.sources.filter(source => BigInt(source.capacity_minor) > 0n);
+        $("manual-payout-source").replaceChildren(...sources.map(source => {
+          const option = document.createElement("option");
+          option.value = source.review_id;
+          option.textContent = `${source.review_id}: up to ${WSReferrals.money(source.capacity_minor, source.currency)}`;
+          return option;
+        }));
+        $("manual-payout-form").hidden = !recipientRevision || !sources.length;
+        $("manual-payout-notice").textContent = !recipientRevision ? "A current verified recipient is required."
+          : !sources.length ? "No reviewed source is currently available." : "Choose one reviewed source for this request.";
+        $("manual-payout-history").replaceChildren(...workspace.requests.map(request => {
+          const line = document.createElement("p");
+          line.textContent = `${WSReferrals.money(request.amount_minor, request.currency)} — ${request.state}` +
+            (request.do_not_resend ? " (claimed; do not resend)" : "");
+          return line;
+        }));
+      } catch (error) {
+        $("manual-payout-form").hidden = true;
+        $("manual-payout-history").replaceChildren();
+        $("manual-payout-notice").textContent = error.message;
       }
     }
     $("referral-count").textContent = `${summary.referral_count} wedding referral(s). Commission is paid after funds are cleared.`;
@@ -86,6 +115,27 @@
       recipientRequestKey = null;
       recipientRequestPayload = null;
       notice(`Recipient revision saved (${result.status}). Older revisions are not usable for future payout work.`);
+    } catch (error) { notice(error.message); }
+    finally { button.disabled = false; }
+  });
+  $("manual-payout-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const button = event.currentTarget.querySelector("button");
+    const payload = { recipient: recipientRevision, review: $("manual-payout-source").value,
+      amount: Number($("manual-payout-amount").value), confirmed: $("manual-payout-confirm").checked };
+    if (!Number.isSafeInteger(payload.amount) || payload.amount < 1 || !payload.confirmed || !payload.recipient) return;
+    const fingerprint = JSON.stringify(payload);
+    const pending = sessionStorage.getItem(payoutPendingKey);
+    const previous = pending ? JSON.parse(pending) : null;
+    const payoutRequestKey = previous?.fingerprint === fingerprint ? previous.key : crypto.randomUUID();
+    sessionStorage.setItem(payoutPendingKey, JSON.stringify({ key: payoutRequestKey, fingerprint }));
+    button.disabled = true;
+    try {
+      await WSReferrals.request("manual-submit", { ...payload, key: payoutRequestKey });
+      sessionStorage.removeItem(payoutPendingKey);
+      $("manual-payout-confirm").checked = false;
+      await load();
+      notice("Payout request recorded. No transfer has been made.");
     } catch (error) { notice(error.message); }
     finally { button.disabled = false; }
   });
