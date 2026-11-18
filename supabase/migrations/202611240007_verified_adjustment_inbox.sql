@@ -27,7 +27,8 @@ create table public.verified_adjustment_inbox_conflicts (
   currency text not null,
   provider_state text not null,
   occurred_at timestamptz,
-  conflict_kind text not null check (conflict_kind in ('changed_delivery','legacy_event_mismatch')),
+  conflict_kind text not null check (conflict_kind in
+    ('changed_delivery','legacy_event_mismatch','adjustment_identity_mismatch')),
   observed_at timestamptz not null default clock_timestamp(),
   primary key(inbox_id,payload_sha256,conflict_kind)
 );
@@ -94,6 +95,7 @@ end $$;
 create function public.process_verified_adjustment(p_id uuid) returns jsonb
 language plpgsql security definer set search_path='' set row_security=off as $$
 declare item public.verified_adjustment_inbox; previous public.provider_adjustment_events;
+  other public.verified_adjustment_inbox;
 begin
   if auth.role() is distinct from 'service_role' then raise exception 'Service role required.'; end if;
   perform pg_advisory_xact_lock(71110001);
@@ -117,6 +119,43 @@ begin
       values(item.id,item.payload_sha256,previous.event_type,previous.provider_adjustment_id,
         previous.provider_payment_reference,previous.amount_minor,previous.currency,
         previous.provider_state,previous.occurred_at,'legacy_event_mismatch') on conflict do nothing;
+    return jsonb_build_object('processed',false,'conflict',true);
+  end if;
+  -- Paystack event IDs are raw-payload digests. Different lifecycle events may
+  -- share an adjustment ID, but must not change its amount, currency or payment.
+  select * into other from public.verified_adjustment_inbox candidate
+    where candidate.id<>item.id and candidate.provider=item.provider
+      and candidate.adjustment_id=item.adjustment_id
+      and (candidate.event_type like 'refund.%' or candidate.event_type like 'charge.refund.%'
+        or candidate.event_type='charge.refunded')
+        = (item.event_type like 'refund.%' or item.event_type like 'charge.refund.%'
+          or item.event_type='charge.refunded')
+      and (candidate.payment_reference,candidate.amount_minor,candidate.currency)
+        is distinct from (item.payment_reference,item.amount_minor,item.currency)
+    order by candidate.received_at,candidate.id limit 1;
+  if found then
+    insert into public.verified_adjustment_inbox_conflicts(inbox_id,payload_sha256,event_type,
+      adjustment_id,payment_reference,amount_minor,currency,provider_state,occurred_at,conflict_kind)
+      values(item.id,other.payload_sha256,other.event_type,other.adjustment_id,other.payment_reference,
+        other.amount_minor,other.currency,other.provider_state,other.occurred_at,'adjustment_identity_mismatch')
+      on conflict do nothing;
+    return jsonb_build_object('processed',false,'conflict',true);
+  end if;
+  select * into previous from public.provider_adjustment_events event
+    where event.provider=item.provider and event.provider_adjustment_id=item.adjustment_id
+      and (event.event_type like 'refund.%' or event.event_type like 'charge.refund.%'
+        or event.event_type='charge.refunded')
+        = (item.event_type like 'refund.%' or item.event_type like 'charge.refund.%'
+          or item.event_type='charge.refunded')
+      and (event.provider_payment_reference,event.amount_minor,event.currency::text)
+        is distinct from (item.payment_reference,item.amount_minor,item.currency)
+    order by event.received_at,event.id limit 1;
+  if found then
+    insert into public.verified_adjustment_inbox_conflicts(inbox_id,payload_sha256,event_type,
+      adjustment_id,payment_reference,amount_minor,currency,provider_state,occurred_at,conflict_kind)
+      values(item.id,item.payload_sha256,previous.event_type,previous.provider_adjustment_id,
+        previous.provider_payment_reference,previous.amount_minor,previous.currency,previous.provider_state,
+        previous.occurred_at,'adjustment_identity_mismatch') on conflict do nothing;
     return jsonb_build_object('processed',false,'conflict',true);
   end if;
   perform public.record_provider_adjustment(item.provider,item.event_id,item.event_type,item.adjustment_id,

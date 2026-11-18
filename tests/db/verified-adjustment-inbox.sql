@@ -1,8 +1,25 @@
 -- Synthetic signed-observation fixtures; no provider calls and no retained data.
 begin;
+create temporary table inbox_actors(kind text primary key,id uuid not null);
+grant select on inbox_actors to authenticated;
 create function pg_temp.assert_inbox(ok boolean,label text) returns void language plpgsql as $$
 begin if ok is distinct from true then raise exception 'Adjustment inbox regression: %',label; end if; end $$;
-grant execute on function pg_temp.assert_inbox(boolean,text) to service_role;
+grant execute on function pg_temp.assert_inbox(boolean,text) to service_role,authenticated;
+do $$
+declare k text; u uuid;
+begin
+  foreach k in array array['owner','superadmin','admin','user'] loop
+    u:=extensions.gen_random_uuid();
+    insert into auth.users(id,email,email_confirmed_at) values(u,
+      case when k='owner' then (select owner_email from public.protected_platform_owner where singleton)
+        else k||'@adjustment-inbox.example.test' end,now());
+    insert into inbox_actors values(k,u);
+    if k='owner' then perform public.bootstrap_protected_owner(u);
+    elsif k in ('superadmin','admin') then
+      update public.profiles set platform_role=k::public.platform_role where id=u;
+    end if;
+  end loop;
+end $$;
 
 do $$
 declare role_name text; t text;
@@ -54,6 +71,23 @@ begin
   perform pg_temp.assert_inbox((public.pending_verified_adjustments()->>'conflicts')::integer=1,
     'conflicts are surfaced to worker');
 end $$;
+do $$
+declare first_id uuid; second_id uuid; conflict_id uuid; result jsonb;
+begin
+  first_id:=(public.stage_verified_adjustment('paystack',repeat('1',64),'refund.pending',
+    'paystack-refund','paystack-payment',100,'KES','refund_pending',null,repeat('1',64))->>'id')::uuid;
+  perform pg_temp.assert_inbox((public.process_verified_adjustment(first_id)->>'processed')::boolean,
+    'first Paystack observation recorded');
+  second_id:=(public.stage_verified_adjustment('paystack',repeat('2',64),'refund.processed',
+    'paystack-refund','paystack-payment',100,'KES','refund_processed',null,repeat('2',64))->>'id')::uuid;
+  perform pg_temp.assert_inbox((public.process_verified_adjustment(second_id)->>'processed')::boolean,
+    'legitimate Paystack lifecycle update is not a conflict');
+  conflict_id:=(public.stage_verified_adjustment('paystack',repeat('3',64),'refund.processed',
+    'paystack-refund','paystack-payment',101,'KES','refund_processed',null,repeat('3',64))->>'id')::uuid;
+  result:=public.process_verified_adjustment(conflict_id);
+  perform pg_temp.assert_inbox((result->>'conflict')::boolean and not (result->>'processed')::boolean,
+    'different amount for the same Paystack adjustment is held');
+end $$;
 reset role;
 select pg_temp.assert_inbox((select count(*)=1 and min(outcome)='unmatched'
   from public.provider_adjustment_events where provider_event_id='evt_inbox_fixture'),
@@ -62,6 +96,29 @@ select pg_temp.assert_inbox(not public.verified_adjustment_inbox_clear_for_payou
   'an unresolved conflict blocks future facilitator payout readiness');
 select pg_temp.assert_inbox((select count(*)=1 and min(conflict_kind)='changed_delivery'
   and min(adjustment_id)='refund_fixture' and min(payload_sha256)=repeat('b',64)
-  from public.verified_adjustment_inbox_conflicts),
+  from public.verified_adjustment_inbox_conflicts where conflict_kind='changed_delivery'),
   'conflicting normalized evidence remains available for investigation');
+select pg_temp.assert_inbox(exists(select 1 from public.verified_adjustment_inbox_conflicts
+  where conflict_kind='adjustment_identity_mismatch' and amount_minor=100),
+  'Paystack conflicting identity preserves prior evidence');
+set local role authenticated;
+select set_config('request.jwt.claim.role','authenticated',true);
+do $$
+declare actor record; blocked boolean;
+begin
+  for actor in select * from inbox_actors loop
+    perform set_config('request.jwt.claim.sub',actor.id::text,true);
+    blocked:=false;
+    begin
+      perform public.admin_verified_adjustment_conflicts();
+    exception when raise_exception then blocked:=true; end;
+    perform pg_temp.assert_inbox(blocked=(actor.kind not in ('owner','superadmin')),
+      'conflict review permission for '||actor.kind);
+  end loop;
+end $$;
+reset role;
+select pg_temp.assert_inbox((select count(*)=2 from public.audit_events
+  where action='verified_adjustment_conflicts_read'
+    and actor_id in (select id from inbox_actors where kind in ('owner','superadmin'))),
+  'successful leadership reads are audited');
 rollback;
