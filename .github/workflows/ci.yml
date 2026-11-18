@@ -180,6 +180,8 @@ jobs:
         env:
           FACILITATOR_MANUAL_TEST_DB_CONTAINER: supabase_db_weddingsite
         run: node tests/db/facilitator-manual-concurrency.mjs
+      - name: Test reciprocal payout reference guards without retaining fixtures
+        run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/payout-reference-guard.sql
       - name: Stop isolated Supabase
         if: always()
         run: supabase stop --no-backup
