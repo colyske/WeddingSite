@@ -65,7 +65,7 @@ try {
   try {
     await waitFor(`exists(select 1 from pg_stat_activity where application_name='${holderName}'
       and state='idle in transaction' and wait_event='ClientRead')`);
-    const creation = await run(`begin; set local statement_timeout='2s';
+    await run(`begin; set local statement_timeout='2s';
       set local role authenticated;
       select set_config('request.jwt.claim.sub','${freshCreator}',true);
       select public.create_wedding_draft('${createKey}',jsonb_build_object(
@@ -77,9 +77,12 @@ try {
           'termsVersion','client-referrals-v1')));
       reset role;
       set constraints all immediate;
-      select count(*) from public.referral_attributions where intent_id='${freshIntent}';
+      do $$ begin
+        if (select count(*) from public.referral_attributions where intent_id='${freshIntent}') <> 1 then
+          raise exception 'Fresh referred draft did not create its attribution';
+        end if;
+      end $$;
       rollback;`);
-    assert.equal(creation.split("\n").at(-1), "1", "Fresh referred draft succeeds during unrelated accounting");
     await run(`update public.weddings set couple_names='Unrelated edit' where id='${wedding}';`);
     await assert.rejects(run(`begin; set local statement_timeout='2s';
       update public.weddings set couple_names='Must roll back owner' where id='${wedding}';

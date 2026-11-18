@@ -175,6 +175,13 @@ The preceding migrations also change live trigger behavior and have not been
 shown safe against the production baseline. Do not apply the migration batch to
 production until its live-writer impact and the remaining eligibility gaps are
 resolved. Neither a detached prototype nor the source hold verifies history.
+Under the accounting lock, the authenticated `set_workspace_member_role` RPC
+can fail with `REFERRAL_ACCOUNTING_BUSY` when inserting or changing a referred
+facilitator to a client. The error rolls back the caller's entire transaction,
+including preceding writes; retrying only the failed statement is insufficient.
+The disposable concurrency fixture exercises this RPC, owner and attribution
+writes, and fresh referred draft creation. No universal caller retry or safe
+lock ordering for arbitrary pre-locked transactions has been established.
 
 Migration `202611240018` alone can reject a conflicting payout receipt after an
 external transfer has already occurred, rolling back the receipt transaction.
