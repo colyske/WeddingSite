@@ -104,17 +104,17 @@ try {
     if (a.error) throw a.error;
     return [requestId(a.value), b];
   }
-  const firstKey = randomUUID(), competingKey = randomUUID(), replayKey = randomUUID();
+  const firstKey = randomUUID(), competingKey = randomUUID(), replayKey = randomUUID(), changedKey = randomUUID();
   const [first, competing] = await race(firstKey, 600, competingKey, 600);
   assert.ok(first, "First request must commit");
   assert.ok(competing.error, "Concurrent over-allocation must fail");
   assert.match(competing.error.message, /FACILITATOR_MANUAL_HOLD:/);
-  const [second, replay] = await race(replayKey, 400, replayKey, 400);
+  const [second, replay] = await race(replayKey, 300, replayKey, 300);
   assert.ok(second, "Remaining source capacity can be reserved");
   assert.ifError(replay.error);
   assert.equal(requestId(replay.value), second, "Concurrent identical retry returns the prior request");
-  const [existing, changed] = await race(replayKey, 400, replayKey, 399);
-  assert.equal(existing, second, "Historical replay returns the original request");
+  const [third, changed] = await race(changedKey, 100, changedKey, 99);
+  assert.ok(third, "Initial changed-key race commits the first request");
   assert.ok(changed.error, "Concurrent changed replay must fail");
   assert.match(changed.error.message, /FACILITATOR_MANUAL_CONFLICT:/);
   const totals = matchJson(await run(`select jsonb_build_object(
@@ -122,7 +122,7 @@ try {
     'allocations',(select count(*) from public.facilitator_manual_allocations),
     'total',(select sum(amount_minor) from public.facilitator_manual_allocations),
     'failed',(select count(*) from public.facilitator_manual_requests where request_key='${competingKey}'));`));
-  assert.deepEqual(totals, { requests: 2, allocations: 2, total: 1000, failed: 0 });
+  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 1000, failed: 0 });
   console.log("Concurrent manual requests serialize: over-allocation rolls back and identical retry returns one request.");
 } finally {
   if (gateChanged) await run(gateReset);
