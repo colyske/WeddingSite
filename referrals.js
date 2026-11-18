@@ -48,7 +48,8 @@
     if (account) {
       try {
         const workspace = await WSReferrals.request("manual-workspace");
-        const sources = workspace.sources.filter(source => BigInt(source.capacity_minor) > 0n);
+        const heldSources = workspace.sources.filter(source => source.held);
+        const sources = workspace.sources.filter(source => !source.held && BigInt(source.capacity_minor) > 0n);
         $("manual-payout-source").replaceChildren(...sources.map(source => {
           const option = document.createElement("option");
           option.value = source.review_id;
@@ -56,8 +57,10 @@
           return option;
         }));
         $("manual-payout-form").hidden = !recipientRevision || !sources.length;
-        $("manual-payout-notice").textContent = !recipientRevision ? "A current verified recipient is required."
-          : !sources.length ? "No reviewed source is currently available." : "Choose one reviewed source for this request.";
+        $("manual-payout-notice").textContent = (!recipientRevision ? "A current verified recipient is required."
+          : !sources.length ? "No reviewed source is currently available." : "Choose one reviewed source for this request.") +
+          (heldSources.length ? ` ${heldSources.length} reviewed source(s) are held and need staff review.` : "") +
+          (workspace.sources_truncated ? " Only the first 100 reviewed sources are shown; contact staff for the rest." : "");
         $("manual-payout-history").replaceChildren(...workspace.requests.map(request => {
           const line = document.createElement("p");
           line.textContent = `${WSReferrals.money(request.amount_minor, request.currency)} — ${request.state}` +

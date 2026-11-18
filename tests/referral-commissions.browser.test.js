@@ -298,7 +298,8 @@ test("facilitator can request a reviewed source and see the requested status", {
     if (action === "recipient-mine") return fulfill(route, { recipient: { revision, status: "verified",
       full_name: "Synthetic recipient", phone: "254700000003" } });
     if (action === "manual-workspace") return fulfill(route, { sources: [{ review_id: uuid,
-      capacity_minor: submitted ? "400" : "1000", currency: "KES" }], requests: submitted ?
+      capacity_minor: submitted ? "400" : "1000", currency: "KES" },
+      { review_id: revision, currency: "KES", held: true, reason: "Source requires review." }], requests: submitted ?
       [{ request_id: uuid, amount_minor: "600", currency: "KES", state: "requested", do_not_resend: false }] : [] });
     if (action === "manual-submit") {
       sent.push(JSON.parse(route.request().postData())); submitted = true;
@@ -308,6 +309,8 @@ test("facilitator can request a reviewed source and see the requested status", {
   });
   await page.goto(`${base}/referrals.html`);
   await page.waitForSelector("#manual-payout-form", { state: "visible" });
+  assert.match(await page.textContent("#manual-payout-notice"), /1 reviewed source\(s\) are held/);
+  assert.equal(await page.locator("#manual-payout-source option").count(), 1);
   await page.fill("#manual-payout-amount", "600");
   await page.check("#manual-payout-confirm");
   await page.click("#manual-payout-form button");

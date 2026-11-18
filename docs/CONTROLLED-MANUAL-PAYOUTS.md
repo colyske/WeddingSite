@@ -95,7 +95,9 @@ all external adjustment events are captured.
 An ungranted, disabled single-source quote uses the same source-cap and retained
 liability calculation as request admission. It is not a complete beneficiary
 balance, a reservation, proof of external cash, or authority to send. Stale
-quotes must be revalidated at request time.
+quotes must be revalidated at request time. The disabled beneficiary workspace
+shows a held source explicitly rather than hiding request history; it reports
+when its 100-source list is truncated.
 The concurrency fixture separately tests a synthetic refund writer that
 explicitly takes the accounting lock before inserting its adjustment; the same
 request succeeds in a rolled-back control before the refund. This does not

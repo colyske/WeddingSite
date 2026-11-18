@@ -2,7 +2,7 @@
 -- They make no provider calls and do not authorize any external transfer.
 create function public.facilitator_manual_workspace() returns jsonb
 language plpgsql volatile security definer set search_path='' set row_security=off as $$
-declare item record; sources jsonb:='[]'::jsonb; requests jsonb;
+declare item record; sources jsonb:='[]'::jsonb; requests jsonb; truncated boolean:=false;
 begin
   if not public.facilitator_manual_enabled() then
     raise exception 'FACILITATOR_MANUAL_DISABLED: Manual payouts are not available.';
@@ -24,13 +24,20 @@ begin
     limit 101
   loop
     if jsonb_array_length(sources)>=100 then
-      raise exception 'FACILITATOR_MANUAL_HOLD: Too many reviewed sources for this workspace; contact support.';
+      truncated:=true;
+      exit;
     end if;
-    sources:=sources||jsonb_build_array(public.facilitator_manual_source_quote_internal(item.id,'KES'));
+    begin
+      sources:=sources||jsonb_build_array(public.facilitator_manual_source_quote_internal(item.id,'KES'));
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_MANUAL_HOLD:%' then raise; end if;
+      sources:=sources||jsonb_build_array(jsonb_build_object('review_id',item.id,'currency','KES',
+        'held',true,'reason',substring(sqlerrm from length('FACILITATOR_MANUAL_HOLD:')+1)));
+    end;
   end loop;
   select coalesce(jsonb_agg(public.facilitator_manual_status_internal(r.id) order by r.created_at desc),'[]'::jsonb)
     into requests from public.facilitator_manual_requests r where r.user_id=auth.uid();
-  return jsonb_build_object('sources',sources,'requests',requests);
+  return jsonb_build_object('sources',sources,'sources_truncated',truncated,'requests',requests);
 end $$;
 
 create function public.facilitator_manual_submit(p_key uuid,p_recipient uuid,p_review uuid,p_amount bigint,p_confirmed boolean)

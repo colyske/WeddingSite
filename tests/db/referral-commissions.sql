@@ -639,6 +639,11 @@ begin
         blocked:=true;
       end;
       perform pg_temp.assert_true(blocked,'refund also holds the source quote');
+      result:=public.facilitator_manual_workspace();
+      perform pg_temp.assert_true(result->'sources'->0->>'held'='true'
+        and not (result->'sources'->0 ? 'capacity_minor')
+        and result->'requests'->0->>'request_id'=manual_id::text,
+        'held source is explicit and does not hide request history');
       raise exception 'SYNTHETIC_MANUAL_REFUND_ROLLBACK';
     exception when raise_exception then
       if sqlerrm <> 'SYNTHETIC_MANUAL_REFUND_ROLLBACK' then raise; end if;
