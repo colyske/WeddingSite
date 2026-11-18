@@ -113,6 +113,10 @@ try {
   assert.ok(second, "Remaining source capacity can be reserved");
   assert.ifError(replay.error);
   assert.equal(requestId(replay.value), second, "Concurrent identical retry returns the prior request");
+  const [existing, changed] = await race(replayKey, 400, replayKey, 399);
+  assert.equal(existing, second, "Historical replay returns the original request");
+  assert.ok(changed.error, "Concurrent changed replay must fail");
+  assert.match(changed.error.message, /FACILITATOR_MANUAL_CONFLICT:/);
   const totals = matchJson(await run(`select jsonb_build_object(
     'requests',(select count(*) from public.facilitator_manual_requests where user_id='${fixtureIds.user}'),
     'allocations',(select count(*) from public.facilitator_manual_allocations),
