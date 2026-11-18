@@ -78,7 +78,9 @@ try {
     delete from public.referral_attributions where wedding_id='${wedding}';
     alter table public.referral_attributions enable trigger referral_attribution_immutable;
     delete from public.referral_intents where id='${intent}';
+    alter table public.weddings disable trigger weddings_no_delete;
     delete from public.weddings where id='${wedding}';
+    alter table public.weddings enable trigger weddings_no_delete;
     delete from public.referral_accounts where user_id='${referrer}';
     delete from public.profiles where id in ('${creator}','${referrer}');
     delete from auth.users where id in ('${creator}','${referrer}');
