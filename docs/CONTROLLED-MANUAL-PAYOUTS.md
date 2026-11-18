@@ -50,6 +50,12 @@ revalidates it; the lower-level evaluator accepts caller-supplied evidence and i
 not proof that any binding or recipient confirmation exists. Neither routine
 creates a claim. A future processing implementation must atomically validate the
 latest binding and establish a safe cross-rail claim under the applicable locks.
+Migration `202611240015` adds a separately hard-disabled, ungranted synthetic
+shadow claim and uncertain-hold model. It retains liabilities, permits only one
+claim, and prevents rebinding a claimed destination. It is not a payout claim,
+contains no paid or release transition, makes no transfer, and must not be used
+to authorize an operator send. Cross-rail claims, incidents and provider intake
+remain prerequisites for any real processing workflow.
 
 The current inventory guard holds contradictory amounts for the same latest
 snapshot time, but a newer snapshot can supersede that check without an explicit

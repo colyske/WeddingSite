@@ -278,6 +278,12 @@ begin
       and not has_table_privilege(role_name,'public.facilitator_reservation_rebindings','select')
       and not has_table_privilege(role_name,'public.facilitator_reservation_reconfirmations','insert'),
       role_name||' cannot access private rebinding');
+    perform pg_temp.assert_true(not has_function_privilege(role_name,
+      'public.facilitator_shadow_claim_internal(uuid,uuid,uuid,boolean,boolean)','execute')
+      and not has_function_privilege(role_name,
+        'public.facilitator_shadow_uncertain_internal(uuid,uuid,boolean)','execute')
+      and not has_table_privilege(role_name,'public.facilitator_shadow_claims','select'),
+      role_name||' cannot access private shadow claims');
     perform pg_temp.assert_true(not has_table_privilege(role_name,'public.facilitator_reservation_requests','select')
       and not has_table_privilege(role_name,'public.facilitator_reservation_allocations','insert'),
       role_name||' cannot access private reservation ledger');
@@ -303,8 +309,17 @@ begin
     blocked:=true;
   end;
   perform pg_temp.assert_true(blocked,'reconfirmation is hard disabled');
+  blocked:=false;
+  begin perform public.facilitator_shadow_claim_internal(null,null,null,false,false);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_SHADOW_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'shadow claim is separately hard disabled');
 end $$;
 create or replace function public.facilitator_reservation_core_enabled() returns boolean
+language sql immutable set search_path='' as $$ select true $$;
+create or replace function public.facilitator_shadow_claim_enabled() returns boolean
 language sql immutable set search_path='' as $$ select true $$;
 do $$
 declare u uuid:=(select id from referral_actors where kind='referrer');
@@ -502,6 +517,44 @@ begin
       blocked:=true;
     end;
     perform pg_temp.assert_true(blocked,'stale prior binding and consent cannot be reused');
+    declare claim_key uuid:=extensions.gen_random_uuid(); hold_key uuid:=extensions.gen_random_uuid();
+    begin
+      blocked:=false;
+      begin
+        perform public.facilitator_shadow_claim_internal(first_id,changed_binding,claim_key,false,true);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_SHADOW_AUTH:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'reviewer cannot claim without explicit owner solo');
+      perform set_config('request.jwt.claim.sub',checker::text,true);
+      perform pg_temp.assert_true(first_id=public.facilitator_shadow_claim_internal(
+        first_id,changed_binding,claim_key,false,true),'independent leader creates one shadow claim');
+      perform pg_temp.assert_true(first_id=public.facilitator_shadow_claim_internal(
+        first_id,changed_binding,claim_key,false,true),'claim retry acknowledges history only');
+      blocked:=false;
+      begin
+        perform public.facilitator_shadow_claim_internal(first_id,changed_binding,extensions.gen_random_uuid(),false,true);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_SHADOW_CONFLICT:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'second claim is denied');
+      perform public.facilitator_shadow_uncertain_internal(first_id,hold_key,true);
+      perform public.facilitator_shadow_uncertain_internal(first_id,hold_key,true);
+      perform pg_temp.assert_true((select count(*)=2 from public.facilitator_shadow_claim_events where request_id=first_id)
+        and (select sum(amount_minor)=600 from public.facilitator_reservation_allocations where request_id=first_id),
+        'uncertain hold and replay retain one claim and liability');
+      blocked:=false;
+      begin
+        perform public.facilitator_reservation_rebind_internal(first_id,changed_binding,extensions.gen_random_uuid(),
+          fresh_recipient,fresh_inventory,fresh_allocations,null,true);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_RESERVATION_CONFLICT:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'claimed destination cannot be rebound');
+    end;
     raise exception 'SYNTHETIC_REBIND_ROLLBACK';
   exception when raise_exception then
     if sqlerrm <> 'SYNTHETIC_REBIND_ROLLBACK' then raise; end if;

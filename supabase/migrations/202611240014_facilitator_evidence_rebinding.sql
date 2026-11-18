@@ -111,6 +111,9 @@ begin
     end if;
     return prior.id;
   end if;
+  if exists(select 1 from public.facilitator_shadow_claims where request_id=p_request) then
+    raise exception 'FACILITATOR_RESERVATION_CONFLICT: Claimed destination cannot be rebound.';
+  end if;
   select * into latest from public.facilitator_reservation_rebindings
     where request_id=p_request order by sequence desc limit 1;
   if latest.id is distinct from p_expected then
