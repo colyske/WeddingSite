@@ -37,6 +37,19 @@
       </div>
       <button id="referral-withdraw" type="button">Withdraw opt-in</button>
     </section>
+    <section id="recipient-section" class="card" hidden>
+      <h2>Facilitator M-Pesa recipient details</h2>
+      <p>Provide your own name and phone. This is your declaration and consent only; it is not provider identity verification or a payout. An Owner or SuperAdmin must review the exact saved revision against external evidence before it can be used for any later manual payout work. Updating these details supersedes older revisions.</p>
+      <p id="recipient-status" role="status" aria-live="polite"></p>
+      <form id="recipient-form">
+        <label for="recipient-name">Your own name</label>
+        <input id="recipient-name" name="name" autocomplete="name" minlength="2" maxlength="120" required>
+        <label for="recipient-phone">Your own Kenyan M-Pesa phone</label>
+        <input id="recipient-phone" name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="2547XXXXXXXX" required>
+        <label><input id="recipient-consent" type="checkbox" required> I confirm these are my own recipient details, authorize their storage for facilitator recipient review, and consent to review of this exact revision against external evidence. I understand this does not verify my identity with a provider or authorize a payout.</label>
+        <button type="submit">Save recipient revision</button>
+      </form>
+    </section>
     <section class="card">
       <h2>My referred weddings</h2>
       <p id="referral-count"></p>

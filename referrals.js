@@ -2,6 +2,8 @@
   "use strict";
   const $ = id => document.getElementById(id);
   const notice = text => { $("referral-notice").textContent = text; };
+  let recipientRequestKey = null;
+  let recipientRequestPayload = null;
   if (!WS.token()) {
     location.replace("/signin.html?next=" + encodeURIComponent("/referrals.html"));
     return;
@@ -11,6 +13,7 @@
     const account = summary.account;
     $("referral-account").hidden = !account;
     $("referral-consent-form").hidden = account?.opted_in === true;
+    $("recipient-section").hidden = !account;
     if (account) {
       $("referral-consent-status").textContent = `${account.opted_in ? "Opted in" : "Withdrawn"}; consent recorded ${account.consent_at}, terms ${account.terms_version}.`;
       const referralLink = account.opted_in ? `${location.origin}/dashboard.html?client_ref=${account.code}` : "";
@@ -20,6 +23,23 @@
       $("referral-share-copy").disabled = !account.opted_in;
       $("referral-copy").disabled = !account.opted_in;
       $("referral-withdraw").disabled = !account.opted_in;
+    }
+    if (account) {
+      const { recipient } = await WSReferrals.request("recipient-mine");
+      if (recipient) {
+        $("recipient-name").value = recipient.full_name;
+        $("recipient-phone").value = recipient.phone;
+        const status = recipient.status === "verified" ?
+          "This exact revision was reviewed against recorded external evidence by platform leadership. This is not M-Pesa/provider identity verification or payout authorization." :
+          recipient.status === "review_pending" ?
+            "External evidence is recorded. Leadership review of this exact revision is pending." :
+            "This revision is pending: leadership must record and check external evidence for the exact revision.";
+        $("recipient-status").textContent = `Revision ${recipient.revision}: ${status}`;
+      } else {
+        $("recipient-name").value = "";
+        $("recipient-phone").value = "";
+        $("recipient-status").textContent = "No recipient details saved yet. Your referral activity remains held and no payout is available.";
+      }
     }
     $("referral-count").textContent = `${summary.referral_count} wedding referral(s). Commission is paid after funds are cleared.`;
     $("referral-results").replaceChildren(...summary.weddings.map(row => {
@@ -40,6 +60,32 @@
       await WSReferrals.request("consent", { optedIn: true, termsVersion: "client-referrals-v1" });
       await load();
       notice("You’re opted in. Your referral link and eligible commission activity are ready to track.");
+    } catch (error) { notice(error.message); }
+    finally { button.disabled = false; }
+  });
+  $("recipient-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (!$("recipient-consent").checked) return;
+    const button = form.querySelector("button");
+    const payload = {
+      fullName: $("recipient-name").value.trim(),
+      phone: $("recipient-phone").value.trim(),
+      consent: true,
+      consentVersion: "facilitator-mpesa-recipient-v1"
+    };
+    if (!recipientRequestKey || JSON.stringify(payload) !== JSON.stringify(recipientRequestPayload)) {
+      recipientRequestKey = crypto.randomUUID();
+      recipientRequestPayload = payload;
+    }
+    button.disabled = true;
+    try {
+      const result = await WSReferrals.request("recipient-submit", { ...payload, requestKey: recipientRequestKey });
+      await load();
+      $("recipient-consent").checked = false;
+      recipientRequestKey = null;
+      recipientRequestPayload = null;
+      notice(`Recipient revision saved (${result.status}). Older revisions are not usable for future payout work.`);
     } catch (error) { notice(error.message); }
     finally { button.disabled = false; }
   });

@@ -1,5 +1,32 @@
 # Controlled manual external payouts (default OFF)
 
+## Facilitator funding review prerequisite
+
+The referral ledger records estimates, not payable balances. The Owner can record
+per-contribution funding reviews in the client referrals back office using an
+external evidence UUID and SHA-256 digest. The review records the actual settled
+platform fee and explicit provider cost, loss, hold and other-commitment amounts
+in the contribution currency. A SuperAdmin can independently check it; the Owner
+can explicitly record a solo review. Evidence is not uploaded or independently
+verified by the application. Do not enter couple funds or personal information.
+
+The recorded fee cannot exceed the contribution's platform fee, and the known
+provider fee cannot be omitted from cost. Only verified, live, time-released,
+eligible estimates without active adjustment or identity-link holds can be
+reviewed. A changed contribution, adjustment, settlement route or availability
+date invalidates the review. These records do not reserve funds, establish a
+period-wide platform cash and liability inventory, make estimates payable,
+authorize a payout or send money. Historical estimates remain subject to their
+original policy and evidence; no entries are backfilled.
+
+The back office also accepts an Owner's expiring, currency-specific manual
+inventory assertion for a separately identified exclusive platform-funded
+custody scope. It records cash, unpaid costs, holds, other commitments and
+external evidence; a second leader or explicit Owner solo review can check the
+assertion. The application cannot independently establish account exclusivity
+or validate the external evidence. An inventory assertion is not a spendable
+balance, a reservation or authority to transfer.
+
 This is a bounded **unactivated control plane**, not launch-ready withdrawals or an
 authorized funded rail. Migration `202611110001` does not enable any payment or payout
 provider, initiate transfers, contact an external service, copy B2C branch code, or

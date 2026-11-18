@@ -63,6 +63,8 @@ const GET_ACTIONS = {
   "manual-payout-simple": async t => rpc("simple_payout_workspace", t),
   "referral-policy": async t => ({ policy: await rpc("referral_admin_policy", t) }),
   "referral-history": async t => ({ history: await rpc("referral_admin_history", t) }),
+  "referral-funding-reviews": async t => ({ reviews: await rpc("referral_funding_reviews_list", t) }),
+  "facilitator-funding-attestations": async t => rpc("facilitator_funding_attestations_list", t),
   "referral-ledger": async (t, q) => {
     if (q.before !== undefined && !/^[1-9][0-9]{0,18}$/.test(q.before)) throw new Error("Invalid referral cursor.");
     return rpc("referral_admin_ledger", t, { p_before: q.before || null });
@@ -120,6 +122,7 @@ function safeMessage(error) {
   if (/authority revoked|current authorized intake actor/i.test(m)) return [403, "Your current role no longer authorizes this action."];
   if (/already claimed|receipt|statement|insufficient|canonical|idempotency|held custody|uncertain outcome|incident/i.test(m)) return [409, "Manual payout remains held or blocked. Review the current state and evidence; never resend an uncertain transfer."];
   if (/REFERRAL_CONFLICT:/.test(m)) return referralError(error);
+  if (/REFERRAL_FUNDING:|FACILITATOR_FUNDING:/.test(m)) return [409, m.split(/REFERRAL_FUNDING:|FACILITATOR_FUNDING:/)[1].trim()];
   const moderation = m.match(/MODERATION:\s*([^\n]{1,300})/);
   if (moderation) return [409, moderation[1].trim()];
   if (/another staff|different/i.test(m)) return [409, "A different staff member must approve this payout."];
@@ -139,8 +142,9 @@ export default async function handler(req, res) {
   if (action.startsWith("manual-payout-") && !["owner", "superadmin"].includes(role)) {
     return sendJson(res, 403, { error: "Leadership access required." });
   }
-  if ((["referral-policy", "referral-history", "referral-ledger"].includes(action) && !["owner", "superadmin"].includes(role)) ||
-      (action === "referral-policy-save" && role !== "owner")) {
+  if ((["referral-policy", "referral-history", "referral-ledger", "referral-funding-reviews",
+        "referral-funding-check", "facilitator-funding-attestations", "facilitator-funding-check"].includes(action) && !["owner", "superadmin"].includes(role)) ||
+      (["referral-policy-save", "referral-funding-create", "facilitator-funding-create"].includes(action) && role !== "owner")) {
     return sendJson(res, 403, { error: "Your role does not allow this referral action." });
   }
   if ((LEADERSHIP_ACTIONS.has(action) && !["owner", "superadmin"].includes(role)) ||
@@ -176,6 +180,51 @@ export default async function handler(req, res) {
       }
       return sendJson(res, 200, { policy: await rpc("referral_owner_policy", token, {
         p_enabled: body.enabled, p_rate_basis_points: body.rateBasisPoints, p_revision: body.revision, p_confirmed: true
+      }) });
+    }
+    if (action === "referral-funding-create") {
+      const amounts = ["settled", "cost", "losses", "holds", "commitments"];
+      if (body.confirmed !== true || !UUID.test(String(body.contribution || "")) ||
+          !UUID.test(String(body.reference || "")) || !/^[0-9a-f]{64}$/.test(String(body.sha256 || "")) ||
+          amounts.some(key => !Number.isSafeInteger(body[key]) || body[key] < 0)) {
+        return sendJson(res, 400, { error: "Confirm the contribution, evidence and all nonnegative minor-unit amounts." });
+      }
+      return sendJson(res, 200, { id: await rpc("referral_funding_review_create", token, {
+        p_contribution: body.contribution, p_settled: body.settled, p_cost: body.cost,
+        p_losses: body.losses, p_holds: body.holds, p_commitments: body.commitments,
+        p_reference: body.reference, p_sha256: body.sha256, p_confirmed: true
+      }) });
+    }
+    if (action === "referral-funding-check") {
+      if (body.confirmed !== true || !UUID.test(String(body.id || "")) || typeof body.owner_solo !== "boolean" ||
+          (body.owner_solo && role !== "owner")) {
+        return sendJson(res, 400, { error: "Confirm the review and a valid reviewer." });
+      }
+      return sendJson(res, 200, { checked: await rpc("referral_funding_review_check", token, {
+        p_id: body.id, p_owner_solo: body.owner_solo, p_confirmed: true
+      }) });
+    }
+    if (action === "facilitator-funding-create") {
+      const amounts = ["cash_minor", "unpaid_costs_minor", "holds_minor", "other_commitments_minor"];
+      const dates = ["period_start", "as_of", "expires_at"];
+      if (body.confirmed !== true || body.exclusive_platform_funded !== true ||
+          ![body.key, body.custody_scope_reference, body.evidence_reference].every(v => UUID.test(String(v || ""))) ||
+          !/^[A-Z]{3}$/.test(String(body.currency || "")) || !/^[0-9a-f]{64}$/.test(String(body.evidence_sha256 || "")) ||
+          amounts.some(key => !Number.isSafeInteger(body[key]) || body[key] < 0) ||
+          dates.some(key => typeof body[key] !== "string" || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(body[key]) || !Number.isFinite(Date.parse(body[key])))) {
+        return sendJson(res, 400, { error: "Confirm the exclusive platform-funded custody assertion and complete inventory evidence." });
+      }
+      const args = Object.fromEntries(["key", "currency", "custody_scope_reference", ...dates, ...amounts,
+        "evidence_reference", "evidence_sha256", "exclusive_platform_funded"].map(key => [`p_${key}`, body[key]]));
+      return sendJson(res, 200, { id: await rpc("facilitator_funding_attestation_create", token, { ...args, p_confirmed: true }) });
+    }
+    if (action === "facilitator-funding-check") {
+      if (body.confirmed !== true || !UUID.test(String(body.id || "")) || typeof body.owner_solo !== "boolean" ||
+          (body.owner_solo && role !== "owner")) {
+        return sendJson(res, 400, { error: "Confirm the review and a valid reviewer." });
+      }
+      return sendJson(res, 200, { checked: await rpc("facilitator_funding_attestation_check", token, {
+        p_id: body.id, p_owner_solo: body.owner_solo, p_confirmed: true
       }) });
     }
 

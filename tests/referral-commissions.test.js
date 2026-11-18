@@ -99,6 +99,61 @@ test("referral leadership HTTP boundaries and stale Owner CAS are explicit", asy
   }
 });
 
+test("funding evidence requires leadership and never invokes payment providers", async () => {
+  const savedFetch = globalThis.fetch;
+  const saved = { SUPABASE_URL: process.env.SUPABASE_URL, SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY };
+  Object.assign(process.env, { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "anon-fixture" });
+  let role = "admin";
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    const parsed = new URL(url);
+    assert.equal(parsed.origin, "https://db.example");
+    if (parsed.pathname === "/auth/v1/user") return Response.json({ id: uuid });
+    if (parsed.pathname === "/rest/v1/profiles") return Response.json([{ platform_role: role }]);
+    assert.match(parsed.pathname, /^\/rest\/v1\/rpc\/(?:referral|facilitator)_funding_/);
+    calls.push({ path: parsed.pathname, body: JSON.parse(options.body), authorization: options.headers.Authorization });
+    return Response.json(parsed.pathname.endsWith("_list") ? [] : uuid);
+  };
+  const invoke = async (action, method, body) => {
+    const res = response();
+    await admin({ method, query: { action }, headers: { authorization: "Bearer fixture" }, body }, res);
+    return res;
+  };
+  const review = { contribution: uuid, settled: 1000, cost: 100, losses: 0, holds: 0,
+    commitments: 0, reference: uuid, sha256: "a".repeat(64), confirmed: true };
+  try {
+    assert.equal((await invoke("referral-funding-create", "POST", review)).statusCode, 403);
+    assert.equal((await invoke("referral-funding-reviews", "GET")).statusCode, 403);
+    assert.equal(calls.length, 0);
+    role = "superadmin";
+    assert.equal((await invoke("referral-funding-create", "POST", review)).statusCode, 403);
+    assert.equal((await invoke("referral-funding-check", "POST", { id: uuid, owner_solo: true, confirmed: true })).statusCode, 400);
+    assert.equal((await invoke("referral-funding-check", "POST", { id: uuid, owner_solo: false, confirmed: true })).statusCode, 200);
+    assert.equal(calls.at(-1).authorization, "Bearer fixture");
+    role = "owner";
+    for (const bad of [null, -1, 0.1, Number.MAX_SAFE_INTEGER + 1]) {
+      assert.equal((await invoke("referral-funding-create", "POST", { ...review, cost: bad })).statusCode, 400);
+    }
+    assert.equal((await invoke("referral-funding-create", "POST", review)).statusCode, 200);
+    assert.deepEqual(calls.at(-1).body, { p_contribution: uuid, p_settled: 1000, p_cost: 100,
+      p_losses: 0, p_holds: 0, p_commitments: 0, p_reference: uuid, p_sha256: "a".repeat(64), p_confirmed: true });
+    const inventory = { key: uuid, currency: "KES", custody_scope_reference: uuid,
+      period_start: "2026-01-01T00:00:00Z", as_of: "2026-01-02T00:00:00Z",
+      expires_at: "2026-01-03T00:00:00Z", cash_minor: 10000, unpaid_costs_minor: 500,
+      holds_minor: 200, other_commitments_minor: 300, evidence_reference: uuid,
+      evidence_sha256: "b".repeat(64), exclusive_platform_funded: true, confirmed: true };
+    assert.equal((await invoke("facilitator-funding-create", "POST", { ...inventory, exclusive_platform_funded: false })).statusCode, 400);
+    assert.equal((await invoke("facilitator-funding-create", "POST", inventory)).statusCode, 200);
+    assert.equal(calls.at(-1).body.p_cash_minor, 10000);
+    assert.equal(calls.at(-1).body.p_exclusive_platform_funded, true);
+  } finally {
+    globalThis.fetch = savedFetch;
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
 test("held-only schema, signed netting and grants have no financial activation", () => {
   const policy = read("supabase/migrations/202611040001_referral_attribution_policy.sql");
   const estimates = read("supabase/migrations/202611040002_referral_held_estimates.sql");

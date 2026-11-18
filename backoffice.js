@@ -27,6 +27,13 @@
     if (!res.ok) throw new Error(data.error || "Request failed.");
     return data;
   }
+  async function recipientRequest(action, body) {
+    const res = await WS.api("/api/referrals?action=" + action, body === undefined ? {} :
+      { method: "POST", body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Recipient review failed.");
+    return data;
+  }
 
   const moneyMap = (obj) => {
     const keys = Object.keys(obj || {});
@@ -241,8 +248,9 @@
   }
   const panels = {
     async referrals(el) {
-      const [{ policy }, { history }, ledger] = await Promise.all([
-        get("referral-policy"), get("referral-history"), get("referral-ledger")
+      const [{ policy }, { history }, ledger, { reviews = [] }, { records: inventories = [] }, { recipients = [] }] = await Promise.all([
+        get("referral-policy"), get("referral-history"), get("referral-ledger"), get("referral-funding-reviews"),
+        get("facilitator-funding-attestations"), recipientRequest("recipient-workspace")
       ]);
       const owner = role === "owner";
       const format = (minor, currency) => {
@@ -263,8 +271,43 @@
           <button type="submit">${owner ? "Save referral policy" : "Owner access required"}</button></fieldset></form>
         <p>First effective time: ${esc(policy.first_effective_at || "Not activated")}. Terms ${esc(policy.terms_version)}.</p>
         <h3>Append-only policy history</h3>${table(["Time", "Old rate (basis points)", "New rate (basis points)", "Enabled"], history.map(h => `<tr><td>${esc(h.created_at)}</td><td>${esc(h.old_values.rate_basis_points)}</td><td>${esc(h.new_values.rate_basis_points)}</td><td>${esc(h.new_values.enabled)}</td></tr>`))}
-        <h3>Signed estimate journal (latest 100)</h3>${table(["ID", "Wedding reference", "Currency", "Estimate adjustment", "Net verified basis", "Hold reasons"], ledger.entries.map(l => `<tr><td>${esc(l.id)}</td><td>${esc(l.wedding_id)}</td><td>${esc(l.currency)}</td><td>${esc(format(l.estimate_delta_minor, l.currency))}</td><td>${esc(format(l.basis_minor, l.currency))}</td><td>${esc(l.hold_reasons.join(", "))}</td></tr>`))}
+        <h3>Signed estimate journal (latest 100)</h3>${table(["ID", "Contribution reference", "Wedding reference", "Currency", "Estimate adjustment", "Net verified basis", "Hold reasons"], ledger.entries.map(l => `<tr><td>${esc(l.id)}</td><td>${esc(l.contribution_id)}</td><td>${esc(l.wedding_id)}</td><td>${esc(l.currency)}</td><td>${esc(format(l.estimate_delta_minor, l.currency))}</td><td>${esc(format(l.basis_minor, l.currency))}</td><td>${esc(l.hold_reasons.join(", "))}</td></tr>`))}
         ${ledger.entries.length === 100 ? `<button type="button" id="referral-older" data-before="${esc(ledger.entries.at(-1).id)}">Load older journal entries</button><pre id="referral-older-entries"></pre>` : ""}
+        <h3>Platform fee funding evidence</h3>
+        <p>Record evidence for the actual platform-owned settled fee, costs, losses, holds and other commitments in the contribution currency. Never include couple funds or personal details. A review is not a reservation, payment authorization or proof of current cash.</p>
+        ${owner ? `<form id="referral-funding-form">
+          ${[["contribution", "Contribution reference", "text"], ["settled", "Settled platform fee (minor units)", "number"], ["cost", "Provider costs (minor units)", "number"], ["losses", "Losses (minor units)", "number"], ["holds", "Holds (minor units)", "number"], ["commitments", "Other commitments (minor units)", "number"], ["reference", "External evidence UUID", "text"], ["sha256", "Evidence SHA-256", "text"]].map(([name,label,type]) => `<label>${esc(label)}<input name="${name}" type="${type}"${type === "number" ? ' min="0" step="1"' : ""} required data-contact-allowed autocomplete="off"></label>`).join("")}
+          <label><input type="checkbox" name="confirmed" required> I reviewed the actual evidence and confirm every amount. No funds are reserved or transferred.</label>
+          <button type="submit">Record funding review</button></form>` : ""}
+        ${reviews.map(r => `<article><p>Contribution ${esc(r.contribution_id)}, ${esc(r.currency)}; evidence ${esc(r.evidence_reference)}, SHA-256 ${esc(r.evidence_sha256)}; recorded by ${esc(r.recorded_by)}. Source ${r.source_changed ? "changed — review stale" : "unchanged"}; ${r.checked_by ? `checked by ${esc(r.checked_by)}` : "not checked"}.</p>
+          <p>Estimate ${esc(format(r.estimate_minor, r.currency))}; platform fee ${esc(format(r.platform_fee_minor, r.currency))}; settled platform fee ${esc(format(r.settled_platform_fee_minor, r.currency))}; provider costs ${esc(format(r.provider_cost_minor, r.currency))}; losses ${esc(format(r.losses_minor, r.currency))}; holds ${esc(format(r.holds_minor, r.currency))}; other commitments ${esc(format(r.other_commitments_minor, r.currency))}.</p>
+          ${!r.checked_by && !r.source_changed ? `<form data-referral-funding-check="${esc(r.id)}">
+            ${owner ? '<label><input type="checkbox" name="owner_solo"> Explicit protected-Owner solo review</label>' : ""}
+            <label><input type="checkbox" name="confirmed" required> I checked the evidence and amounts independently, or explicitly selected Owner solo review.</label><button type="submit">Check evidence</button></form>` : ""}</article>`).join("")}
+        <h3>Platform cash and obligations inventory</h3>
+        <p>These are manual assertions, not a verified balance. Record only platform-owned funds in an exclusive scope, after independently accounting for all costs, holds and other commitments. No couple money or merchant-wide balance can be treated as platform funds.</p>
+        ${owner ? `<form id="facilitator-funding-form">
+          ${[["currency", "Currency (ISO code)", "text"], ["custody_scope_reference", "Exclusive custody scope UUID", "text"], ["period_start", "Period start (UTC)", "text"], ["as_of", "Statement time (UTC)", "text"], ["expires_at", "Inventory expires (UTC, at most seven days)", "text"], ["cash_minor", "Platform cash (minor units)", "number"], ["unpaid_costs_minor", "Unpaid costs (minor units)", "number"], ["holds_minor", "Holds (minor units)", "number"], ["other_commitments_minor", "Other commitments (minor units)", "number"], ["evidence_reference", "Evidence UUID", "text"], ["evidence_sha256", "Evidence SHA-256", "text"]].map(([name,label,type]) => `<label>${esc(label)}<input name="${name}" type="${type}"${type === "number" ? ' min="0" step="1"' : ""} required data-contact-allowed autocomplete="off"></label>`).join("")}
+          <p>Enter times as UTC ISO timestamps, for example 2026-01-01T00:00:00Z.</p>
+          <label><input type="checkbox" name="exclusive_platform_funded" required> I assert this is exclusively platform-owned cash, separated from couple funds and other uses.</label>
+          <label><input type="checkbox" name="confirmed" required> I reviewed the actual evidence and complete liabilities. This does not authorize payouts.</label>
+          <button type="submit">Record inventory assertion</button></form>` : ""}
+        ${inventories.map(r => `<article><p>Scope ${esc(r.custody_scope_reference)}, ${esc(r.currency)}; ${esc(r.as_of)}–${esc(r.expires_at)}; evidence ${esc(r.evidence_reference)}, SHA-256 ${esc(r.evidence_sha256)}; ${r.stale ? "stale" : "current assertion"}; ${r.checked_by ? `checked by ${esc(r.checked_by)}` : "not checked"}.</p>
+          <p>Cash ${esc(format(r.cash_minor, r.currency))}; unpaid costs ${esc(format(r.unpaid_costs_minor, r.currency))}; holds ${esc(format(r.holds_minor, r.currency))}; commitments ${esc(format(r.other_commitments_minor, r.currency))}.</p>
+          ${!r.checked_by && !r.stale ? `<form data-facilitator-funding-check="${esc(r.id)}">
+            ${owner ? '<label><input type="checkbox" name="owner_solo"> Explicit protected-Owner solo review</label>' : ""}
+            <label><input type="checkbox" name="confirmed" required> I checked the actual inventory evidence and amounts.</label><button type="submit">Check inventory assertion</button></form>` : ""}</article>`).join("")}
+        <h3>Facilitator recipient review</h3>
+        <p>Private recipient names and phones are shown only to leadership and each reveal is audited. Review external identity and M-Pesa account evidence for the exact revision; this is a manual check, not provider verification.</p>
+        ${recipients.map(r => `<article><p>User ${esc(r.user_id)}, revision ${esc(r.revision)}: ${esc(r.full_name)} · ${esc(r.phone)}. Status: ${esc(r.status)}.</p>
+          ${!r.evidence_id ? `<form data-recipient-evidence="${esc(r.revision)}">
+            <label>External evidence UUID<input name="reference" required data-contact-allowed autocomplete="off"></label>
+            <label>Evidence SHA-256<input name="sha256" pattern="[0-9a-f]{64}" required data-contact-allowed autocomplete="off"></label>
+            <label><input type="checkbox" name="confirmed" required> I recorded evidence for this exact recipient revision.</label><button type="submit">Record recipient evidence</button></form>` :
+          `<p>Evidence ${esc(r.evidence_reference)}; SHA-256 ${esc(r.evidence_sha256)}; submitted by ${esc(r.evidence_submitted_by)}.</p>
+            ${!r.checked_by ? `<form data-recipient-verify="${esc(r.revision)}" data-evidence="${esc(r.evidence_id)}">
+              ${owner ? '<label><input type="checkbox" name="ownerSolo"> Explicit protected-Owner solo review</label>' : ""}
+              <label><input type="checkbox" name="confirmed" required> I checked this identity, phone and evidence for this revision.</label><button type="submit">Verify recipient evidence</button></form>` : `<p>Checked by ${esc(r.checked_by)}${r.owner_solo ? " (Owner solo)" : ""}.</p>`}`}</article>`).join("")}
         <p>Partner accounts are not explicitly linked on this schema. Self-referral checks use creator, owner and client-authority account IDs only, not email. Ordinary helper grants do not invalidate a referral.
         Future payout blockers: verified platform revenue, commitments, eligibility/fraud controls, identity/KYC, tax review and separately approved payout authorization.</p>`;
     },
@@ -781,6 +824,67 @@
           manualKeys.delete(form.dataset.keyContext);
           toast(manualResult);
           await show("payouts");
+        } catch (error) { toast(error.message, true); button.disabled = false; }
+        return;
+      }
+      if (e.target.matches("[data-recipient-evidence], [data-recipient-verify]")) {
+        e.preventDefault();
+        const form = e.target, button = form.querySelector("button");
+        button.disabled = true;
+        try {
+          if (form.dataset.recipientEvidence) {
+            await recipientRequest("recipient-evidence", { revision: form.dataset.recipientEvidence,
+              reference: form.elements.reference.value.trim(), sha256: form.elements.sha256.value.trim(),
+              confirmed: form.elements.confirmed.checked });
+          } else {
+            await recipientRequest("recipient-verify", { revision: form.dataset.recipientVerify,
+              evidenceId: form.dataset.evidence, ownerSolo: form.elements.ownerSolo?.checked === true,
+              confirmed: form.elements.confirmed.checked });
+          }
+          await show("referrals");
+          toast("Recipient evidence review recorded. This does not authorize a payout.");
+        } catch (error) { toast(error.message, true); button.disabled = false; }
+        return;
+      }
+      if (e.target.id === "facilitator-funding-form" || e.target.matches("[data-facilitator-funding-check]")) {
+        e.preventDefault();
+        const form = e.target, button = form.querySelector("button");
+        button.disabled = true;
+        try {
+          if (form.id === "facilitator-funding-form") {
+            const keys = ["currency", "custody_scope_reference", "period_start", "as_of", "expires_at", "evidence_reference", "evidence_sha256"];
+            const body = Object.fromEntries(keys.map(k => [k, form.elements[k].value.trim()]));
+            for (const key of ["cash_minor", "unpaid_costs_minor", "holds_minor", "other_commitments_minor"]) body[key] = Number(form.elements[key].value);
+            body.key = manualKey("facilitator-funding");
+            body.exclusive_platform_funded = form.elements.exclusive_platform_funded.checked;
+            body.confirmed = form.elements.confirmed.checked;
+            await post("facilitator-funding-create", body);
+            manualKeys.delete("facilitator-funding");
+          } else {
+            await post("facilitator-funding-check", { id: form.dataset.facilitatorFundingCheck,
+              owner_solo: form.elements.owner_solo?.checked === true, confirmed: form.elements.confirmed.checked });
+          }
+          await show("referrals");
+          toast("Inventory assertion recorded. No funds are reserved or payouts authorized.");
+        } catch (error) { toast(error.message, true); button.disabled = false; }
+        return;
+      }
+      if (e.target.id === "referral-funding-form" || e.target.matches("[data-referral-funding-check]")) {
+        e.preventDefault();
+        const form = e.target, button = form.querySelector("button");
+        button.disabled = true;
+        try {
+          if (form.id === "referral-funding-form") {
+            const body = Object.fromEntries(["contribution", "reference", "sha256"].map(k => [k, form.elements[k].value.trim()]));
+            for (const key of ["settled", "cost", "losses", "holds", "commitments"]) body[key] = Number(form.elements[key].value);
+            body.confirmed = form.elements.confirmed.checked;
+            await post("referral-funding-create", body);
+          } else {
+            await post("referral-funding-check", { id: form.dataset.referralFundingCheck,
+              owner_solo: form.elements.owner_solo?.checked === true, confirmed: form.elements.confirmed.checked });
+          }
+          await show("referrals");
+          toast("Funding review recorded. Estimates remain held; no payout was authorized.");
         } catch (error) { toast(error.message, true); button.disabled = false; }
         return;
       }

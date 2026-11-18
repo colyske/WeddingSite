@@ -174,6 +174,42 @@ select pg_temp.assert_true((select held_estimate_minor=1000 from public.referral
 select pg_temp.assert_true((select held_estimate_minor=2000 from public.referral_balances where contribution_id=(select id from referral_actors where kind='new-rate')),'new payment gets new rate');
 select pg_temp.assert_true((select held_estimate_minor=0 and currency='USD' from public.referral_balances where contribution_id=(select id from referral_actors where kind='test-money')),'verified matured test USD excluded');
 
+-- Owner reconciliation records are evidence only; they cannot unlock the balance.
+update public.contributions set funds_available_at=now()-interval '1 day'
+  where id=(select id from referral_actors where kind='paid');
+set constraints all immediate;
+set constraints all deferred;
+do $$
+declare cid uuid:=(select id from referral_actors where kind='paid'); r uuid; blocked boolean;
+begin
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='admin'),true);
+  blocked:=false;
+  begin perform public.referral_funding_review_create(cid,8880,2000,0,0,0,extensions.gen_random_uuid(),repeat('a',64),true);
+  exception when others then blocked:=true; end;
+  perform pg_temp.assert_true(blocked,'ordinary admin cannot record funding review');
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='owner'),true);
+  blocked:=false;
+  begin perform public.referral_funding_review_create(cid,8881,2000,0,0,0,extensions.gen_random_uuid(),repeat('a',64),true);
+  exception when others then blocked:=true; end;
+  perform pg_temp.assert_true(blocked,'settled platform fee cannot exceed recorded fee');
+  blocked:=false;
+  begin perform public.referral_funding_review_create(cid,8880,0,0,0,0,extensions.gen_random_uuid(),repeat('a',64),true);
+  exception when others then blocked:=true; end;
+  perform pg_temp.assert_true(blocked,'known provider cost cannot be omitted');
+  r:=public.referral_funding_review_create(cid,8880,2000,0,0,0,extensions.gen_random_uuid(),repeat('a',64),true);
+  insert into referral_actors values('funding-review',r);
+  blocked:=false;
+  begin perform public.referral_funding_review_check(r,false,true);
+  exception when others then blocked:=true; end;
+  perform pg_temp.assert_true(blocked,'submitter cannot independently review');
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='superadmin'),true);
+  perform pg_temp.assert_true(public.referral_funding_review_check(r,false,true),'independent review');
+  perform pg_temp.assert_true(public.referral_funding_review_check(r,false,true),'same check replay');
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='referrer'),true);
+  perform pg_temp.assert_true(public.referral_my_summary()->>'payable_minor'='0','funding review does not create payable balance');
+end $$;
+
 do $$
 declare cid uuid:=(select id from referral_actors where kind='paid'); wid uuid; aid uuid; before_count bigint;
 begin
@@ -188,6 +224,13 @@ end $$;
 set constraints all immediate;
 set constraints all deferred;
 select pg_temp.assert_true((select held_estimate_minor=500 from public.referral_balances where contribution_id=(select id from referral_actors where kind='paid')),'half refund nets basis');
+do $$
+declare rows jsonb;
+begin
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='owner'),true);
+  rows:=public.referral_funding_reviews_list();
+  perform pg_temp.assert_true((rows->0->>'source_changed')::boolean,'refund invalidates prior funding review');
+end $$;
 select pg_temp.assert_true(exists(select 1 from public.referral_estimate_ledger where contribution_id=(select id from referral_actors where kind='paid') and estimate_delta_minor=-500),'negative adjustment preserved');
 do $$
 declare cid uuid:=(select id from referral_actors where kind='paid'); n bigint;

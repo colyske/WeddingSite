@@ -37,6 +37,7 @@ async function context(authenticated = true) {
   if (authenticated) await ctx.addInitScript(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "actor-token", role: "client" })));
   const page = await ctx.newPage();
   await page.route("**/api/guest?action=style*", route => fulfill(route, { style: showcaseStyle }));
+  await page.route("**/api/referrals*", route => fulfill(route, { recipients: [] }));
   return { ctx, page };
 }
 async function fillWedding(page) {
@@ -62,7 +63,7 @@ test("first valid client link survives sign-in and later codes cannot overwrite 
   await page.waitForSelector("#client-referral-disclosure", { state: "visible" });
   assert.deepEqual(captured, [code]);
   assert.match(await page.textContent("#client-referral-details"), /8\.88%/);
-  assert.match(await page.textContent("#client-referral-details"), /held and unpayable/i);
+  assert.match(await page.textContent("#client-referral-details"), /paid after funds are cleared/i);
   assert.equal(new URL(page.url()).search, "");
   await ctx.close();
 });
@@ -127,10 +128,10 @@ test("referrer opt-in, exact currency-separated aggregates and withdrawal", { sk
   await page.click("#referral-consent-form button");
   await page.waitForSelector("#referral-account", { state: "visible" });
   assert.match(await page.inputValue("#referral-link"), /client_ref=aaaaaaaa/);
-  assert.match(await page.textContent("#referral-results"), /HELD estimate KES 0\.00/);
-  assert.match(await page.textContent("#referral-results"), /ineligible \(provable owner\/client account link\)/);
+  assert.match(await page.textContent("#referral-results"), /tracked 2% commission KES 0\.00/);
+  assert.match(await page.textContent("#referral-results"), /not eligible \(account is connected to this wedding\)/);
   assert.match(await page.textContent("#referral-results"), /USD 90,071,992,547,409\.93/);
-  assert.match(await page.textContent("#referral-results"), /payable USD 0\.00/);
+  assert.match(await page.textContent("#referral-results"), /tracked 2% commission USD 0\.09/);
   await page.click("#referral-withdraw");
   await page.waitForFunction(() => document.querySelector("#referral-notice").textContent.includes("withdrawn"));
   assert.equal(await page.inputValue("#referral-link"), "");
@@ -170,6 +171,87 @@ test("Owner editing, SuperAdmin read-only and Admin exclusion", { skip }, async 
     }
     await ctx.close();
   }
+});
+
+test("Owner records platform funding evidence without claiming a payout", { skip }, async () => {
+  const { ctx, page } = await context();
+  const writes = [];
+  await page.route("**/api/admin*", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    if (action === "role") return fulfill(route, { role: "owner" });
+    if (action === "referral-policy") return fulfill(route, { policy: { ...disclosure, first_effective_at: null } });
+    if (action === "referral-history") return fulfill(route, { history: [] });
+    if (action === "referral-ledger") return fulfill(route, { entries: [], payable_minor: "0" });
+    if (action === "referral-funding-reviews") return fulfill(route, { reviews: [] });
+    if (action === "referral-funding-create") {
+      writes.push(JSON.parse(route.request().postData()));
+      return fulfill(route, { id: uuid });
+    }
+    return fulfill(route, { queue: {}, adjustments: {}, cases: [], settlement: {} });
+  });
+  await page.goto(`${base}/admin.html`);
+  await page.click('[data-tab="referrals"]');
+  await page.waitForSelector("#referral-funding-form");
+  for (const [name, value] of Object.entries({ contribution: uuid, settled: "8880", cost: "2000",
+    losses: "0", holds: "0", commitments: "0", reference: revision, sha256: "a".repeat(64) })) {
+    await page.fill(`#referral-funding-form [name="${name}"]`, value);
+  }
+  await page.check('#referral-funding-form [name="confirmed"]');
+  await page.click("#referral-funding-form button");
+  await page.waitForFunction(() => document.querySelector("#notice").textContent.includes("no payout was authorized"), null,
+    { timeout: 10000 }).catch(async error => {
+    const notice = await page.locator("#notice").textContent();
+    await ctx.close();
+    throw new Error(`${error.message}; notice: ${notice}; writes: ${JSON.stringify(writes)}`);
+  });
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].settled, 8880);
+  assert.equal(writes[0].cost, 2000);
+  assert.match(await page.locator("body").textContent(), /Payable: zero/);
+  await ctx.close();
+});
+
+test("Leadership reviews the exact facilitator recipient revision", { skip }, async () => {
+  const { ctx, page } = await context();
+  const writes = [];
+  let evidenceId = null, checked = false;
+  await page.route("**/api/admin*", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    if (action === "role") return fulfill(route, { role: "owner" });
+    if (action === "referral-policy") return fulfill(route, { policy: { ...disclosure, first_effective_at: null } });
+    if (action === "referral-history") return fulfill(route, { history: [] });
+    if (action === "referral-ledger") return fulfill(route, { entries: [] });
+    return fulfill(route, { records: [], reviews: [], queue: {}, adjustments: {}, cases: [], settlement: {} });
+  });
+  await page.route("**/api/referrals*", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    if (action === "recipient-workspace") return fulfill(route, { recipients: [{
+      user_id: uuid, revision, full_name: "Fixture Facilitator", phone: "254700000003",
+      status: checked ? "verified" : evidenceId ? "review_pending" : "evidence_required",
+      evidence_id: evidenceId, evidence_reference: uuid, evidence_sha256: "a".repeat(64),
+      evidence_submitted_by: uuid, checked_by: checked ? uuid : null, owner_solo: checked
+    }] });
+    writes.push({ action, body: JSON.parse(route.request().postData()) });
+    if (action === "recipient-evidence") { evidenceId = uuid; return fulfill(route, { evidence_id: uuid }); }
+    if (action === "recipient-verify") { checked = true; return fulfill(route, { verified: true }); }
+    return fulfill(route, {});
+  });
+  await page.goto(`${base}/admin.html`);
+  await page.click('[data-tab="referrals"]');
+  await page.waitForSelector("[data-recipient-evidence]");
+  await page.fill('[data-recipient-evidence] [name="reference"]', uuid);
+  await page.fill('[data-recipient-evidence] [name="sha256"]', "a".repeat(64));
+  await page.check('[data-recipient-evidence] [name="confirmed"]');
+  await page.click("[data-recipient-evidence] button");
+  await page.waitForSelector("[data-recipient-verify]");
+  await page.check('[data-recipient-verify] [name="ownerSolo"]');
+  await page.check('[data-recipient-verify] [name="confirmed"]');
+  await page.click("[data-recipient-verify] button");
+  await page.waitForFunction(() => document.body.textContent.includes("Checked by"));
+  assert.deepEqual(writes.map(item => item.action), ["recipient-evidence", "recipient-verify"]);
+  assert.equal(writes[1].body.revision, revision);
+  assert.equal(writes[1].body.ownerSolo, true);
+  await ctx.close();
 });
 
 test.after(async () => {
