@@ -16,14 +16,19 @@ run(readiness.replace(/rollback;\s*$/, () => read("./facilitator-reference-obser
 
 const b2c = read("./b2c.sql");
 const marker = "  receipt_at:=clock_timestamp();";
+const setup = "do $$\ndeclare owner_id uuid:=";
 assert.equal(b2c.split(marker).length, 2);
-run(b2c.replace(marker, () => `${marker}
-  -- Synthetic pre-existing facilitator reference; all changes roll back below.
-  begin
-    perform set_config('session_replication_role','replica',true);
-    insert into public.facilitator_manual_receipts(request_id,provider,transaction_reference,reported_by)
-      values(extensions.gen_random_uuid(),'daraja','SYNRECEIPT',owner_id);
-    perform set_config('session_replication_role','origin',true);
+assert.equal(b2c.split(setup).length, 2);
+const b2cFixture = b2c.replace(setup, () => `
+-- The synthetic receipt has no backing claim; callback-trigger behavior is
+-- covered separately by payout-reference-guard.sql.
+set local session_replication_role=replica;
+insert into public.facilitator_manual_receipts(request_id,provider,transaction_reference,reported_by)
+  values(extensions.gen_random_uuid(),'daraja','SYNRECEIPT',extensions.gen_random_uuid());
+set local session_replication_role=origin;
+alter table public.b2c_callback_events disable trigger facilitator_b2c_reference_incident;
+${setup}`);
+run(b2cFixture.replace(marker, () => `${marker}
     perform pg_temp.b2c_reject(format('select pg_temp.b2c_reconcile(%L,%L,%L,%L,%L,%L,100,%L)',
       dispatch,receipt_evidence,paid_evidence,account,statement,line,receipt_at),'Independent final');
     perform set_config('request.jwt.claim.sub',staff_id::text,true);
@@ -42,8 +47,6 @@ run(b2c.replace(marker, () => `${marker}
       or (select count(*) from public.manual_payout_account_holds where payout_id=payout and evidence_id=paid_evidence)<>1 then
       raise exception 'B2C facilitator collision replay was not idempotent';
     end if;
-    raise exception using errcode='P9999',message='Rollback synthetic facilitator collision';
-  exception when sqlstate 'P9999' then null;
-  end;
+    return;
 `));
 console.log("Facilitator reference collisions retain simple, manual, and B2C observations and claims.");

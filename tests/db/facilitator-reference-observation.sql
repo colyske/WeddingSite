@@ -1,6 +1,10 @@
 -- Appended to the rolled-back readiness fixture on a fully migrated disposable DB.
 reset role;
 savepoint facilitator_simple_collision;
+set local session_replication_role=replica;
+insert into public.facilitator_manual_receipts(request_id,provider,transaction_reference,reported_by)
+  values(extensions.gen_random_uuid(),'daraja','FAC-SIMPLE-CONFLICT',(select id from mr_ids where key='owner'));
+set local session_replication_role=origin;
 do $$
 declare p uuid; sender uuid; k uuid:=extensions.gen_random_uuid(); result jsonb;
 begin
@@ -13,10 +17,6 @@ begin
   perform pg_temp.actor('owner');
   perform public.simple_payout_action(p,extensions.gen_random_uuid(),'processing',null,null,null,true,true,true);
   sender:=(select id from mr_ids where key='owner');
-  perform set_config('session_replication_role','replica',true);
-  insert into public.facilitator_manual_receipts(request_id,provider,transaction_reference,reported_by)
-    values(extensions.gen_random_uuid(),'daraja','FAC-SIMPLE-CONFLICT',sender);
-  perform set_config('session_replication_role','origin',true);
   perform pg_temp.actor('admin');
   perform pg_temp.reject(format('select public.simple_payout_action(%L,%L,''paid'',null,null,''fac-simple-conflict'',false,true,true)',p,k),
     'Leadership access required');
@@ -40,6 +40,10 @@ end $$;
 rollback to facilitator_simple_collision;
 
 savepoint facilitator_controlled_collision;
+set local session_replication_role=replica;
+insert into public.facilitator_manual_receipts(request_id,provider,transaction_reference,reported_by)
+  values(extensions.gen_random_uuid(),'daraja','FAC-MANUAL-CONFLICT',(select id from mr_ids where key='owner'));
+set local session_replication_role=origin;
 do $$
 declare p uuid; e uuid; sender uuid; at_report timestamptz;
 begin
@@ -50,10 +54,6 @@ begin
   e:=pg_temp.evidence('receipt',true);
   sender:=(select id from mr_ids where key='owner');
   at_report:=clock_timestamp();
-  perform set_config('session_replication_role','replica',true);
-  insert into public.facilitator_manual_receipts(request_id,provider,transaction_reference,reported_by)
-    values(extensions.gen_random_uuid(),'daraja','FAC-MANUAL-CONFLICT',sender);
-  perform set_config('session_replication_role','origin',true);
   perform pg_temp.actor('checker');
   perform pg_temp.reject(format('select public.manual_payout_report(%L,''fac-manual-conflict'',1000,100,''KES'',%L,%L)',
     p,at_report,e),'Protected Owner');
