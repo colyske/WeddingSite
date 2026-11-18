@@ -104,8 +104,9 @@ no reciprocal cross-rail receipt or incident protection, and no safe destination
 rebinding after recipient changes. The model inherits incomplete provider
 ingress and attribution-link visibility and has not established concurrency or
 scale safety. A two-session CI regression covers competing requests and claims,
-their retries, and a recipient revision changing before request admission; it
-does not cover all source, recipient-checker, role or cross-rail races. Its source evidence is manually attested rather than independently
+their retries, a recipient revision changing before request admission, and
+revocation of an independent claim reviewer; it does not cover all source,
+recipient-checker, role or cross-rail races. Its source evidence is manually attested rather than independently
 verified by the application. Do not expose it or interpret synthetic `paid` as
 an actual transfer. External cash decisions remain with the operator.
 

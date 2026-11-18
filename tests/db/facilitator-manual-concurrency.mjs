@@ -67,6 +67,8 @@ try {
     end $$;
     select jsonb_build_object('user',(select id from referral_actors where kind='referrer'),
       'owner',(select id from referral_actors where kind='owner'),
+      'admin',(select id from referral_actors where kind='admin'),
+      'superadmin',(select id from referral_actors where kind='superadmin'),
       'recipient',(select id from referral_actors where kind='race-recipient'),
       'review',(select id from referral_actors where kind='funding-review'));
     commit;`);
@@ -117,7 +119,8 @@ try {
   assert.ifError(replay.error);
   assert.equal(requestId(replay.value), second, "Concurrent identical retry returns the prior request");
   const [thirdOutput, changed] = await race(request(changedKey, 100), request(changedKey, 99));
-  assert.ok(requestId(thirdOutput), "Initial changed-key race commits the first request");
+  const third = requestId(thirdOutput);
+  assert.ok(third, "Initial changed-key race commits the first request");
   assert.ok(changed.error, "Concurrent changed replay must fail");
   assert.match(changed.error.message, /FACILITATOR_MANUAL_CONFLICT:/);
   const claimKey = randomUUID();
@@ -138,6 +141,35 @@ try {
   assert.ifError(initialReplay.error);
   assert.equal(matchJson(initialReplay.value).replayed, true,
     "Identical retry racing the first claim is only historical acknowledgment");
+  await run(`begin; ${actor(fixtureIds.admin)}
+    select public.facilitator_manual_action_internal('${third}','${randomUUID()}',
+      'reviewed',null,10,null,false,true); commit;`);
+  const revokeName = `manual_revoke_${randomUUID()}`, claimName = `manual_claim_${randomUUID()}`;
+  const revoke = sql(`begin; set local statement_timeout='30s';
+    set local idle_in_transaction_session_timeout='45s'; set local application_name='${revokeName}';
+    update public.profiles set platform_role='client' where id='${fixtureIds.admin}';\n`, true);
+  const revokeResult = revoke.result.then(value => ({ value }), error => ({ error }));
+  let blockedClaimResult, roleBarrierError;
+  try {
+    await waitFor(`exists(select 1 from pg_stat_activity where application_name='${revokeName}'
+      and state='idle in transaction' and wait_event='ClientRead')`);
+    const blockedClaim = sql(`begin; set local statement_timeout='30s'; set local application_name='${claimName}';
+      ${actor(fixtureIds.superadmin)} select public.facilitator_manual_action_internal(
+        '${third}','${randomUUID()}','processing',null,10,null,false,true); commit;`);
+    blockedClaimResult = blockedClaim.result.then(value => ({ value }), error => ({ error }));
+    await waitFor(`exists(select 1 from pg_stat_activity waiting join pg_stat_activity holding
+      on holding.pid=any(pg_blocking_pids(waiting.pid))
+      where waiting.application_name='${claimName}' and holding.application_name='${revokeName}')`);
+  } catch (error) {
+    roleBarrierError = error;
+  } finally {
+    revoke.release();
+  }
+  const [revoked, blockedClaim] = await Promise.all([revokeResult, blockedClaimResult]);
+  if (roleBarrierError) throw roleBarrierError;
+  assert.ifError(revoked.error);
+  assert.ok(blockedClaim.error, "Reviewer revocation must prevent the claim");
+  assert.match(blockedClaim.error.message, /FACILITATOR_MANUAL_AUTH: Reviewer authority changed/);
   const recipientName = `manual_recipient_${randomUUID()}`, waitingName = `manual_waiting_${randomUUID()}`;
   const recipientChange = sql(`begin; set local statement_timeout='30s';
     set local idle_in_transaction_session_timeout='45s'; set local application_name='${recipientName}';
