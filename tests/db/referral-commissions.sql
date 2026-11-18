@@ -894,10 +894,10 @@ begin
         result:=public.facilitator_manual_staff_workspace();
         perform pg_temp.assert_true(exists(select 1 from jsonb_array_elements(result) req
           cross join lateral jsonb_array_elements(req->'incidents') incident
-          cross join lateral jsonb_array_elements(incident->'evidence') evidence
+          cross join lateral jsonb_array_elements(incident->'evidence') evidence_row
           where req->>'request_id'=manual_id::text and incident->>'id'=inc.id::text
-            and evidence->>'id'=ev::text and evidence->>'external_reference'=ev_ref::text
-            and evidence->>'sha256'=repeat('a',64)),
+            and evidence_row->>'id'=ev::text and evidence_row->>'external_reference'=ev_ref::text
+            and evidence_row->>'sha256'=repeat('a',64)),
           'staff can find and verify the submitted external evidence reference and digest');
         blocked:=false;
         begin perform public.facilitator_manual_incident_review(inc.id,ev,false,true);
