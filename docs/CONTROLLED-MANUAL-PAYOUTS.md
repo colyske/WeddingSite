@@ -27,6 +27,15 @@ assertion. The application cannot independently establish account exclusivity
 or validate the external evidence. An inventory assertion is not a spendable
 balance, a reservation or authority to transfer.
 
+Migration `202611240012` introduces an internal, hard-disabled reservation
+foundation with immutable source allocations. No API role can invoke it, and
+there is no activation mechanism in this migration. It is not a request UI,
+operator workflow or authorization to pay. Its accounting uses reviewed
+assertions for isolated synthetic tests only; real custody identity, complete
+provider admission, all source locks, shared liabilities and cross-rail receipts
+remain unresolved. Existing allocations are retained if their source changes;
+the foundation has no cancellation, claim, paid or deficit-resolution workflow.
+
 The verified-adjustment inbox is a default-off infrastructure change. If
 `VERIFIED_ADJUSTMENT_INBOX_ENABLED` is explicitly enabled after review, signed
 Stripe and Paystack contribution adjustments are staged before their locked

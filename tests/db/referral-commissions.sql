@@ -256,6 +256,106 @@ begin
   perform pg_temp.assert_true(public.referral_my_summary()->>'payable_minor'='0','funding review does not create payable balance');
 end $$;
 
+-- Exercise the private foundation only in a rolled-back synthetic transaction.
+-- Replacing this constant is not an operational activation mechanism.
+savepoint synthetic_reservation_core;
+do $$
+declare role_name text; blocked boolean;
+begin
+  foreach role_name in array array['anon','authenticated','service_role'] loop
+    perform pg_temp.assert_true(not has_function_privilege(role_name,
+      'public.facilitator_reservation_create_internal(uuid,uuid,uuid,uuid,text,bigint,jsonb)','execute'),
+      role_name||' cannot execute private reservation core');
+    perform pg_temp.assert_true(not has_table_privilege(role_name,'public.facilitator_reservation_requests','select')
+      and not has_table_privilege(role_name,'public.facilitator_reservation_allocations','insert'),
+      role_name||' cannot access private reservation ledger');
+  end loop;
+  blocked:=false;
+  begin perform public.facilitator_reservation_create_internal(null,null,null,null,'KES',1,'[]'::jsonb);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'reservation core is hard disabled');
+end $$;
+create or replace function public.facilitator_reservation_core_enabled() returns boolean
+language sql immutable set search_path='' as $$ select true $$;
+do $$
+declare u uuid:=(select id from referral_actors where kind='referrer');
+  owner_id uuid:=(select id from referral_actors where kind='owner');
+  checker uuid:=(select id from referral_actors where kind='superadmin');
+  source uuid:=(select id from referral_actors where kind='funding-review');
+  recipient uuid; evidence uuid; inventory uuid; key_id uuid:=extensions.gen_random_uuid();
+  first_id uuid; retry_id uuid; allocations jsonb; blocked boolean;
+begin
+  insert into public.facilitator_recipient_versions(user_id,request_key,full_name,phone,ownership_attested,consent_version)
+    values(u,extensions.gen_random_uuid(),'Fictional facilitator','254700000003',true,'facilitator-mpesa-recipient-v1')
+    returning revision_id into recipient;
+  insert into public.facilitator_recipient_evidence(revision_id,external_reference,sha256,submitted_by)
+    values(recipient,extensions.gen_random_uuid(),repeat('a',64),owner_id) returning id into evidence;
+  insert into public.facilitator_recipient_checks(revision_id,evidence_id,checked_by,owner_solo)
+    values(recipient,evidence,checker,false);
+  insert into public.facilitator_funding_attestations(request_key,currency,custody_scope_reference,
+    period_start,as_of,expires_at,cash_minor,unpaid_costs_minor,holds_minor,other_commitments_minor,
+    exclusive_platform_funded_asserted,evidence_reference,evidence_sha256,recorded_by)
+    values(extensions.gen_random_uuid(),'KES',extensions.gen_random_uuid(),now()-interval '2 days',
+      now()-interval '1 hour',now()+interval '1 day',2000,0,0,0,true,
+      extensions.gen_random_uuid(),repeat('b',64),owner_id) returning id into inventory;
+  insert into public.facilitator_funding_attestation_checks(attestation_id,checked_by,owner_solo)
+    values(inventory,checker,false);
+  perform set_config('request.jwt.claim.sub',u::text,true);
+  allocations:=jsonb_build_array(jsonb_build_object('review',source,'amount','600'));
+  first_id:=public.facilitator_reservation_create_internal(key_id,u,recipient,inventory,'KES',600,allocations);
+  retry_id:=public.facilitator_reservation_create_internal(key_id,u,recipient,inventory,'KES',600,allocations);
+  perform pg_temp.assert_true(first_id=retry_id,'identical request retains one reservation');
+  perform pg_temp.assert_true((select count(*)=1 and sum(amount_minor)=600 from public.facilitator_reservation_allocations),
+    'allocation reserves the requested source amount');
+  blocked:=false;
+  begin
+    perform public.facilitator_reservation_create_internal(key_id,u,recipient,inventory,'KES',599,
+      jsonb_build_array(jsonb_build_object('review',source,'amount','599')));
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_CONFLICT:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'changed idempotency replay denied');
+  blocked:=false;
+  begin
+    perform public.facilitator_reservation_create_internal(extensions.gen_random_uuid(),u,recipient,inventory,'KES',401,
+      jsonb_build_array(jsonb_build_object('review',source,'amount','401')));
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'source cannot be over-allocated');
+  perform pg_temp.assert_true((select count(*)=1 from public.facilitator_reservation_requests),
+    'failed reservation rolled back atomically');
+  update public.referral_balances set held_estimate_minor=100
+    where contribution_id=(select id from referral_actors where kind='paid');
+  blocked:=false;
+  begin
+    perform public.facilitator_reservation_create_internal(extensions.gen_random_uuid(),u,recipient,inventory,'KES',1,
+      jsonb_build_array(jsonb_build_object('review',source,'amount','1')));
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'source deficit blocks additional allocation');
+  perform pg_temp.assert_true((select sum(amount_minor)=600 from public.facilitator_reservation_allocations),
+    'source deficit does not release existing reservation');
+  perform set_config('request.jwt.claim.sub',owner_id::text,true);
+  blocked:=false;
+  begin
+    perform public.facilitator_reservation_create_internal(extensions.gen_random_uuid(),u,recipient,inventory,'KES',1,
+      jsonb_build_array(jsonb_build_object('review',source,'amount','1')));
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_AUTH:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'another user cannot request on behalf of the facilitator');
+end $$;
+rollback to savepoint synthetic_reservation_core;
+
 do $$
 declare cid uuid:=(select id from referral_actors where kind='paid'); wid uuid; aid uuid; before_count bigint;
 begin
