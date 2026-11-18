@@ -32,11 +32,12 @@ end loop; raise exception 'Concurrency barrier timed out'; end $$;`);
 const creator = randomUUID(), referrer = randomUUID(), wedding = randomUUID(), intent = randomUUID();
 const linkedWedding = randomUUID(), linkedIntent = randomUUID();
 const updateWedding = randomUUID(), updateIntent = randomUUID();
+const freshCreator = randomUUID(), freshIntent = randomUUID(), createKey = randomUUID();
 const revision = randomUUID(), holderName = `referral_link_holder_${randomUUID()}`;
 let fixtureCreated = false;
 try {
   await run(`begin;
-    insert into auth.users(id) values('${creator}'),('${referrer}');
+    insert into auth.users(id) values('${creator}'),('${referrer}'),('${freshCreator}');
     insert into public.referral_accounts(user_id,opted_in,terms_version)
       values('${referrer}',true,'client-referrals-v1');
     insert into public.weddings(id,couple_names,currency,client_owner_id)
@@ -47,6 +48,8 @@ try {
       values('${intent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1'),
         ('${linkedIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1'),
         ('${updateIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1');
+    insert into public.referral_intents(id,creator_id,referrer_id)
+      values('${freshIntent}','${freshCreator}','${referrer}');
     insert into public.wedding_memberships(wedding_id,user_id,role)
       values('${updateWedding}','${referrer}','admin');
     insert into public.referral_attributions(wedding_id,referrer_id,creator_id,intent_id,disclosed_revision,terms_version,eligible)
@@ -62,6 +65,21 @@ try {
   try {
     await waitFor(`exists(select 1 from pg_stat_activity where application_name='${holderName}'
       and state='idle in transaction' and wait_event='ClientRead')`);
+    const creation = await run(`begin; set local statement_timeout='2s';
+      set local role authenticated;
+      select set_config('request.jwt.claim.sub','${freshCreator}',true);
+      select public.create_wedding_draft('${createKey}',jsonb_build_object(
+        'slug','race-${createKey}','coupleNames','Fresh couple','weddingDate',null,'location',null,
+        'currency','KES','maxCapacity',150,'palette',jsonb_build_array('#244b3a'),
+        'paletteNames',jsonb_build_array('Forest Green'),'timeZone','Africa/Nairobi',
+        'venues','[]'::jsonb,'referral',jsonb_build_object('intentId','${freshIntent}',
+          'decision','accept','revision',public.referral_disclosure()->>'revision',
+          'termsVersion','client-referrals-v1')));
+      reset role;
+      set constraints all immediate;
+      select count(*) from public.referral_attributions where intent_id='${freshIntent}';
+      rollback;`);
+    assert.equal(creation.split("\n").at(-1), "1", "Fresh referred draft succeeds during unrelated accounting");
     await run(`update public.weddings set couple_names='Unrelated edit' where id='${wedding}';`);
     await assert.rejects(run(`begin; set local statement_timeout='2s';
       update public.weddings set couple_names='Must roll back owner' where id='${wedding}';
@@ -123,14 +141,14 @@ try {
     alter table public.referral_attributions disable trigger referral_attribution_immutable;
     delete from public.referral_attributions where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}');
     alter table public.referral_attributions enable trigger referral_attribution_immutable;
-    delete from public.referral_intents where id in ('${intent}','${linkedIntent}','${updateIntent}');
+    delete from public.referral_intents where id in ('${intent}','${linkedIntent}','${updateIntent}','${freshIntent}');
     delete from public.wedding_memberships where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}');
     alter table public.weddings disable trigger weddings_no_delete;
     delete from public.weddings where id in ('${wedding}','${linkedWedding}','${updateWedding}');
     alter table public.weddings enable trigger weddings_no_delete;
     delete from public.referral_accounts where user_id='${referrer}';
-    delete from public.profiles where id in ('${creator}','${referrer}');
-    delete from auth.users where id in ('${creator}','${referrer}');
-    delete from public.audit_events where table_name='profiles' and record_id in ('${creator}','${referrer}');
+    delete from public.profiles where id in ('${creator}','${referrer}','${freshCreator}');
+    delete from auth.users where id in ('${creator}','${referrer}','${freshCreator}');
+    delete from public.audit_events where table_name='profiles' and record_id in ('${creator}','${referrer}','${freshCreator}');
     commit;`);
 }
