@@ -18,7 +18,7 @@ for (const page of ["privacy.html", "terms.html"]) {
   });
 }
 
-test("facilitator guide uses product SVG artwork and clear onsite setup instructions", () => {
+test("facilitator guide uses illustrative artwork and clear, qualified onsite instructions", () => {
   const html = read("facilitator.html");
   assert.match(html, /class="facilitator-art"/);
   assert.match(html, /role="img" aria-labelledby="facilitator-art-title/);
@@ -27,12 +27,17 @@ test("facilitator guide uses product SVG artwork and clear onsite setup instruct
   assert.match(html, /Open sample wedding/);
   assert.match(html, /same link for every couple/);
   assert.match(html, /phone or laptop/);
-  assert.match(html, /I'll set up your wedding website on Join Our Wedding site for you\./);
+  assert.match(html, /I'll help you set up your wedding website on Join Our Wedding\./);
   assert.match(html, /Here's the link to set up your wedding site: \[your referral link\]\./);
   assert.match(html, /class="facilitator-step-message"/);
   assert.match(html, /2%/);
   assert.match(html, /Facilitator commission/);
-  assert.match(html, /paid after funds are cleared/i);
+  assert.match(html, /paid after (eligible )?funds (are )?clear/i);
+  assert.match(html, /couples can decline referral attribution/i);
+  assert.match(html, /publication and contribution fees may apply/i);
+  assert.match(html, /not a promise of earnings/i);
+  assert.match(html, /12 weddings in a month/);
+  assert.doesNotMatch(html, /4-8%|92-96%|setup is free/i);
   assert.doesNotMatch(html, /manual payout|manually paid|HELD estimates only|payable: zero|no transfer route|doesn.t enable payouts/i);
 });
 
