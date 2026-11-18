@@ -34,6 +34,7 @@ const creator = randomUUID(), referrer = randomUUID(), wedding = randomUUID(), i
 const linkedWedding = randomUUID(), linkedIntent = randomUUID();
 const updateWedding = randomUUID(), updateIntent = randomUUID();
 const staleWedding = randomUUID(), staleIntent = randomUUID();
+const pendingWedding = randomUUID(), pendingIntent = randomUUID();
 const freshCreator = randomUUID(), freshIntent = randomUUID(), createKey = randomUUID();
 const revision = randomUUID(), holderName = `referral_link_holder_${randomUUID()}`;
 let fixtureCreated = false;
@@ -46,12 +47,14 @@ try {
       values('${wedding}','Fictional couple','KES','${creator}'),
         ('${linkedWedding}','Fictional linked couple','KES','${referrer}'),
         ('${updateWedding}','Fictional existing member','KES','${creator}'),
-        ('${staleWedding}','Fictional stale snapshot','KES','${creator}');
+        ('${staleWedding}','Fictional stale snapshot','KES','${creator}'),
+        ('${pendingWedding}','Fictional concurrent attribution','KES','${creator}');
     insert into public.referral_intents(id,creator_id,referrer_id,state,consumed_at,disclosed_revision,disclosed_terms_version)
       values('${intent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1'),
         ('${linkedIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1'),
         ('${updateIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1'),
-        ('${staleIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1');
+        ('${staleIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1'),
+        ('${pendingIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1');
     insert into public.referral_intents(id,creator_id,referrer_id)
       values('${freshIntent}','${freshCreator}','${referrer}');
     insert into public.wedding_memberships(wedding_id,user_id,role)
@@ -169,19 +172,45 @@ try {
   assert.equal(await run(`select count(*) from public.referral_eligibility_events
     where wedding_id='${staleWedding}';`), "0",
   "An older repeatable-read writer can miss a newly committed attribution and its transient client link");
+  const pendingName = `referral_pending_${randomUUID()}`;
+  const pending = sql(`begin; set local statement_timeout='20s';
+    set local idle_in_transaction_session_timeout='25s'; set local application_name='${pendingName}';
+    insert into public.referral_attributions
+      (wedding_id,referrer_id,creator_id,intent_id,disclosed_revision,terms_version,eligible)
+      values('${pendingWedding}','${referrer}','${creator}','${pendingIntent}','${revision}','client-referrals-v1',true);\n`, true);
+  const pendingResult = pending.result.then(value => ({ value }), error => ({ error }));
+  let pendingError;
+  try {
+    await waitFor(`exists(select 1 from pg_stat_activity where application_name='${pendingName}'
+      and state='idle in transaction' and wait_event='ClientRead')`);
+    await run(`begin; set local statement_timeout='2s'; set local role authenticated;
+      select set_config('request.jwt.claim.sub','${creator}',true);
+      select public.set_workspace_member_role('${pendingWedding}','${referrer}','client');
+      select public.set_workspace_member_role('${pendingWedding}','${referrer}','admin'); commit;`);
+  } catch (caught) {
+    pendingError = caught;
+  } finally {
+    pending.release();
+  }
+  const pendingOutcome = await pendingResult;
+  if (pendingError) throw pendingError;
+  if (pendingOutcome.error) throw pendingOutcome.error;
+  assert.equal(await run(`select count(*) from public.referral_eligibility_events
+    where wedding_id='${pendingWedding}';`), "0",
+  "An uncommitted attribution and a transient read-committed client link can miss one another");
   console.log("Relevant account links and existing-link attribution fail fast under accounting lock.");
 } finally {
   if (fixtureCreated) await run(`begin;
     alter table public.referral_eligibility_events disable trigger referral_eligibility_events_immutable;
-    delete from public.referral_eligibility_events where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}');
+    delete from public.referral_eligibility_events where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}');
     alter table public.referral_eligibility_events enable trigger referral_eligibility_events_immutable;
     alter table public.referral_attributions disable trigger referral_attribution_immutable;
-    delete from public.referral_attributions where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}');
+    delete from public.referral_attributions where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}');
     alter table public.referral_attributions enable trigger referral_attribution_immutable;
-    delete from public.referral_intents where id in ('${intent}','${linkedIntent}','${updateIntent}','${staleIntent}','${freshIntent}');
-    delete from public.wedding_memberships where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}');
+    delete from public.referral_intents where id in ('${intent}','${linkedIntent}','${updateIntent}','${staleIntent}','${pendingIntent}','${freshIntent}');
+    delete from public.wedding_memberships where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}');
     alter table public.weddings disable trigger weddings_no_delete;
-    delete from public.weddings where id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}');
+    delete from public.weddings where id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}');
     alter table public.weddings enable trigger weddings_no_delete;
     delete from public.referral_accounts where user_id='${referrer}';
     delete from public.profiles where id in ('${creator}','${referrer}','${freshCreator}');
