@@ -427,7 +427,7 @@ begin
       end;
       perform pg_temp.assert_true(blocked
         and (select sum(amount_minor)=600 from public.facilitator_manual_allocations where request_id=manual_id),
-        'same-transaction refund blocks admission and retains the original liability');
+        'same-transaction refund blocks source revalidation and retains the original liability');
       raise exception 'SYNTHETIC_MANUAL_REFUND_ROLLBACK';
     exception when raise_exception then
       if sqlerrm <> 'SYNTHETIC_MANUAL_REFUND_ROLLBACK' then raise; end if;
@@ -451,7 +451,7 @@ begin
       end;
       perform pg_temp.assert_true(blocked
         and (select sum(amount_minor)=600 from public.facilitator_manual_allocations where request_id=manual_id),
-        'same-transaction dispute blocks admission and retains the original liability');
+        'same-transaction dispute blocks source revalidation and retains the original liability');
       raise exception 'SYNTHETIC_MANUAL_DISPUTE_ROLLBACK';
     exception when raise_exception then
       if sqlerrm <> 'SYNTHETIC_MANUAL_DISPUTE_ROLLBACK' then raise; end if;
