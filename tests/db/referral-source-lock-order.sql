@@ -13,7 +13,11 @@ begin
     ('public.admin_resolve_provider_refund(uuid,text,boolean)','from public.contributions where id = a.contribution_id for update'),
     ('public.admin_match_unresolved_refund(bigint,uuid,boolean)','from public.provider_adjustment_events where id = p_event_id for update'),
     ('public.admin_set_refund_policy(text,boolean)','from public.platform_policies where id for update'),
-    ('public.admin_save_policies(jsonb)','from public.platform_policies where id for update')
+    ('public.admin_save_policies(jsonb)','from public.platform_policies where id for update'),
+    ('public.record_expense(uuid,text,text,bigint,text,date,boolean)','if not public.has_wedding_role(p_wedding_id,'),
+    ('public.record_reconciliation(uuid,text,text,bigint,bigint,text,text,boolean)','if not public.has_wedding_role(p_wedding_id,'),
+    ('public.save_budget_line(uuid,text,bigint,bigint,text,boolean)','if not public.has_wedding_role(p_wedding_id,'),
+    ('public.request_payout(uuid,bigint,text,text,boolean)','if not public.has_wedding_role(p_wedding_id,')
   ) as entries(signature, first_source_lock)
   loop
     definition:=pg_get_functiondef(item.signature::regprocedure);

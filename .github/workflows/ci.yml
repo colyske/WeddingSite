@@ -114,6 +114,10 @@ jobs:
         run: node tests/db/provider-adjustment-lock-concurrency.mjs
       - name: Test referral and refund review lock ordering
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/referral-source-lock-order.sql
+      - name: Race legacy finance writers against the accounting lock
+        env:
+          FINANCE_LOCK_TEST_DB_CONTAINER: supabase_db_weddingsite
+        run: node tests/db/finance-source-lock-concurrency.mjs
       - name: Test verified adjustment inbox without retaining fixtures
         run: docker exec -i supabase_db_weddingsite psql -U postgres -d postgres --set ON_ERROR_STOP=1 < tests/db/verified-adjustment-inbox.sql
       - name: Race verified adjustment inbox against an accounting lock
