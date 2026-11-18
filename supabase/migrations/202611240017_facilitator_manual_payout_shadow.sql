@@ -35,6 +35,8 @@ create table public.facilitator_manual_events (
 );
 create table public.facilitator_manual_claims (
   request_id uuid primary key references public.facilitator_manual_requests(id),
+  recipient_revision uuid not null references public.facilitator_recipient_versions(revision_id),
+  binding_id uuid,
   sender_id uuid not null references public.profiles(id),
   reviewer_id uuid references public.profiles(id),
   owner_solo boolean not null,
@@ -91,6 +93,8 @@ create table public.facilitator_manual_rebindings (
 );
 alter table public.facilitator_manual_reconfirmations add constraint facilitator_manual_confirmation_binding_fk
   foreign key(expected_binding) references public.facilitator_manual_rebindings(id);
+alter table public.facilitator_manual_claims add constraint facilitator_manual_claim_binding_fk
+  foreign key(binding_id) references public.facilitator_manual_rebindings(id);
 create index facilitator_manual_rebinding_request on public.facilitator_manual_rebindings(request_id,sequence desc);
 do $$ declare t text; begin
   foreach t in array array['facilitator_manual_requests','facilitator_manual_allocations',
@@ -553,8 +557,10 @@ begin
     if exists(select 1 from public.facilitator_manual_incidents) then
       raise exception 'FACILITATOR_MANUAL_HOLD: A duplicate receipt requires review; do not send.';
     end if;
-    insert into public.facilitator_manual_claims(request_id,sender_id,reviewer_id,owner_solo,fee_minor)
-      values(p_request,auth.uid(),reviewer,p_owner_solo,p_fee);
+    insert into public.facilitator_manual_claims(
+      request_id,recipient_revision,binding_id,sender_id,reviewer_id,owner_solo,fee_minor)
+      values(p_request,coalesce(binding.recipient_revision,r.recipient_revision),binding.id,
+        auth.uid(),reviewer,p_owner_solo,p_fee);
   elsif p_action='paid' then
     if exists(select 1 from public.facilitator_manual_receipts where provider='daraja' and transaction_reference=ref)
       or exists(select 1 from public.simple_payout_receipts where provider='daraja' and transaction_reference=ref)

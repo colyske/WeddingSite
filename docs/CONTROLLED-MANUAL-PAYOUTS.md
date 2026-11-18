@@ -106,9 +106,11 @@ status routine models that distinction; it is not exposed as an API or UI.
 Private append-only destination rebinding requires a current leadership
 review and, for a changed recipient, confirmation by the beneficiary against
 the expected previous binding. Claims use the latest binding and retain the
-original source allocations. A claimed request cannot be rebound; retries
+original source allocations; the immutable claim snapshots that binding and
+recipient revision. A claimed request cannot be rebound; retries
 acknowledge history rather than establishing current readiness. This model has
-not yet been verified under concurrent rebinding or all profile-lock orders.
+not yet been verified under concurrent rebinding or all profile-lock orders;
+it has no sender-facing snapshot or authority to send.
 Historical request and action retries acknowledge prior records and never
 authorize a send or resend. Tests enable the model only inside a rolled-back
 synthetic transaction; the migration has no activation mechanism.

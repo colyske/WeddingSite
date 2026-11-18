@@ -474,11 +474,27 @@ begin
       binding:=public.facilitator_manual_rebind_internal(manual_id,null,bind_key,changed_recipient,confirmation,true);
       perform pg_temp.assert_true(binding=public.facilitator_manual_rebind_internal(
         manual_id,null,bind_key,changed_recipient,confirmation,true)
-        and (select sum(amount_minor)=600 from public.facilitator_manual_allocations where request_id=manual_id),
-        'rebinding and historical replay retain the original liability');
+        and exists(select 1 from public.facilitator_manual_requests r
+          join public.facilitator_manual_allocations a on a.request_id=r.id
+          join public.referral_funding_reviews f on f.id=source
+          where r.id=manual_id and r.user_id=u and r.currency='KES' and r.amount_minor=600
+            and a.contribution_id=f.contribution_id and a.source_digest=f.source_digest and a.amount_minor=600),
+        'rebinding and historical replay retain beneficiary, currency and original source liability');
+      blocked:=false;
+      begin
+        perform public.facilitator_manual_rebind_internal(manual_id,null,extensions.gen_random_uuid(),
+          changed_recipient,confirmation,true);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_MANUAL_CONFLICT:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'stale previous binding cannot be reused');
       result:=public.facilitator_manual_action_internal(manual_id,extensions.gen_random_uuid(),
         'processing',null,10,null,true,true);
-      perform pg_temp.assert_true(result->>'state'='processing','claim uses the reviewed current destination');
+      perform pg_temp.assert_true(result->>'state'='processing'
+        and exists(select 1 from public.facilitator_manual_claims c where c.request_id=manual_id
+          and c.binding_id=binding and c.recipient_revision=changed_recipient),
+        'claim snapshots the reviewed current destination');
       blocked:=false;
       begin
         perform public.facilitator_manual_rebind_internal(manual_id,binding,extensions.gen_random_uuid(),
