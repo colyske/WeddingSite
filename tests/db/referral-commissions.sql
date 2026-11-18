@@ -399,18 +399,66 @@ begin
     from public.facilitator_funding_attestations where id=inventory returning id into inventory;
   insert into public.facilitator_funding_attestation_checks(attestation_id,checked_by,owner_solo)
     values(inventory,checker,false);
-  update public.weddings set client_owner_id=u where id=(select id from referral_actors where kind='wedding');
-  blocked:=false;
   begin
-    perform public.facilitator_reservation_create_internal(extensions.gen_random_uuid(),u,recipient,inventory,'KES',1,
-      jsonb_build_array(jsonb_build_object('review',source,'amount','1')));
+    update public.weddings set client_owner_id=u where id=(select id from referral_actors where kind='wedding');
+    update public.weddings set client_owner_id=(select id from referral_actors where kind='creator')
+      where id=(select id from referral_actors where kind='wedding');
+    blocked:=false;
+    begin
+      perform public.facilitator_reservation_create_internal(extensions.gen_random_uuid(),u,recipient,inventory,'KES',1,
+        jsonb_build_array(jsonb_build_object('review',source,'amount','1')));
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'transient same-transaction link blocks before deferred eligibility trigger');
+    raise exception 'SYNTHETIC_LINK_ROLLBACK';
   exception when raise_exception then
-    if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD:%' then raise; end if;
-    blocked:=true;
+    if sqlerrm <> 'SYNTHETIC_LINK_ROLLBACK' then raise; end if;
   end;
-  perform pg_temp.assert_true(blocked,'same-transaction account link blocks before deferred eligibility trigger');
-  update public.weddings set client_owner_id=(select id from referral_actors where kind='creator')
-    where id=(select id from referral_actors where kind='wedding');
+  begin
+    insert into public.wedding_memberships(wedding_id,user_id,role)
+      values((select id from referral_actors where kind='wedding'),u,'admin');
+    insert into public.wedding_memberships(wedding_id,user_id,role)
+      values((select id from referral_actors where kind='wedding'),u,'client')
+      on conflict (wedding_id,user_id) do nothing;
+    perform pg_temp.assert_true(not exists(select 1 from public.referral_eligibility_events
+      where wedding_id=(select id from referral_actors where kind='wedding')),
+      'unsuccessful membership insert does not record an exclusion');
+    update public.wedding_memberships set role='client'
+      where wedding_id=(select id from referral_actors where kind='wedding') and user_id=u;
+    update public.wedding_memberships set role='admin'
+      where wedding_id=(select id from referral_actors where kind='wedding') and user_id=u;
+    blocked:=false;
+    begin
+      perform public.facilitator_reservation_create_internal(extensions.gen_random_uuid(),u,recipient,inventory,'KES',1,
+        jsonb_build_array(jsonb_build_object('review',source,'amount','1')));
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'transient client promotion blocks reservation');
+    raise exception 'SYNTHETIC_MEMBERSHIP_ROLLBACK';
+  exception when raise_exception then
+    if sqlerrm <> 'SYNTHETIC_MEMBERSHIP_ROLLBACK' then raise; end if;
+  end;
+  declare new_wedding uuid:=extensions.gen_random_uuid(); new_intent uuid:=extensions.gen_random_uuid();
+  begin
+    insert into public.weddings(id,couple_names,currency,client_owner_id)
+      values(new_wedding,'Fictional linked wedding','KES',u);
+    insert into public.referral_intents(id,creator_id,referrer_id,state,consumed_at,disclosed_revision,disclosed_terms_version)
+      values(new_intent,(select id from referral_actors where kind='creator'),u,'consumed',now(),
+        extensions.gen_random_uuid(),'client-referrals-v1');
+    insert into public.referral_attributions(wedding_id,referrer_id,creator_id,intent_id,disclosed_revision,terms_version,eligible)
+      values(new_wedding,u,(select id from referral_actors where kind='creator'),new_intent,
+        extensions.gen_random_uuid(),'client-referrals-v1',true);
+    perform pg_temp.assert_true(exists(select 1 from public.referral_eligibility_events
+      where wedding_id=new_wedding and reason='owner_account'),
+      'link created before attribution is immediately excluded');
+    raise exception 'SYNTHETIC_ATTRIBUTION_ROLLBACK';
+  exception when raise_exception then
+    if sqlerrm <> 'SYNTHETIC_ATTRIBUTION_ROLLBACK' then raise; end if;
+  end;
   update public.referral_balances set held_estimate_minor=100
     where contribution_id=(select id from referral_actors where kind='paid');
   blocked:=false;
