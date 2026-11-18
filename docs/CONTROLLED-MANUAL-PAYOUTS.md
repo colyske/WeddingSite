@@ -42,10 +42,11 @@ continues to depend on provider redelivery. Publication adjustments, payment
 confirmations and Daraja callbacks do not use this inbox. It does not establish
 complete source locking or authorize facilitator payouts.
 
-The legacy expense, reconciliation, budget and couple payout-request RPCs take
-the accounting lock before checking workspace permissions or changing financial
-records. This is a narrow lock-order safeguard; direct writes and other
-provider or finance entry points are not covered by it.
+The legacy expense, reconciliation, budget and couple payout-request RPCs check
+workspace access before acquiring the accounting lock, and check it again after
+the wait and before changing financial records. This is a narrow lock-order
+safeguard; membership changes, direct writes and other provider or finance entry
+points are not universally serialized by it.
 
 This is a bounded **unactivated control plane**, not launch-ready withdrawals or an
 authorized funded rail. Migration `202611110001` does not enable any payment or payout

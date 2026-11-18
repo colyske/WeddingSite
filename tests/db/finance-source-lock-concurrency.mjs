@@ -1,4 +1,4 @@
-// Isolated local CI database only. No financial fixtures or provider calls.
+// Isolated local CI database only. Synthetic fixtures; no provider calls.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
@@ -30,7 +30,7 @@ const waitFor = condition => run(`do $$ begin for i in 1..1000 loop
   perform pg_sleep(0.01);
 end loop; raise exception 'Concurrency barrier timed out'; end $$;`);
 
-const wedding = randomUUID(), user = randomUUID();
+const wedding = randomUUID(), user = randomUUID(), outsider = randomUUID();
 const holderName = `finance_holder_${randomUUID()}`;
 const calls = [
   `public.record_expense('${wedding}','fixture','fixture',100,'KES',null,true)`,
@@ -38,6 +38,20 @@ const calls = [
   `public.save_budget_line('${wedding}','fixture',100,100,'KES',true)`,
   `public.request_payout('${wedding}',100,'KES',null,true)`
 ];
+await run(`begin;
+  insert into auth.users(id) values('${user}');
+  insert into public.weddings(id,couple_names,currency,client_owner_id)
+    values('${wedding}','Fictional couple','KES','${user}');
+  insert into public.wedding_memberships(wedding_id,user_id,role)
+    values('${wedding}','${user}','client');
+  commit;`);
+try {
+await run(`begin;
+  set local role authenticated;
+  select set_config('request.jwt.claim.sub','${user}',true);
+  select set_config('request.jwt.claim.role','authenticated',true);
+  select ${calls[0]}; select ${calls[1]}; select ${calls[2]};
+  rollback;`);
 const holder = sql(`begin; set local statement_timeout='20s';
   set local idle_in_transaction_session_timeout='25s';
   set local application_name='${holderName}'; select pg_advisory_xact_lock(71110001);\n`, true);
@@ -47,6 +61,14 @@ let barrierError;
 try {
   await waitFor(`exists(select 1 from pg_stat_activity where application_name='${holderName}'
     and state='idle in transaction' and wait_event='ClientRead')`);
+  for (const call of calls) {
+    await assert.rejects(run(`begin; set local statement_timeout='1s'; set local role authenticated;
+      select set_config('request.jwt.claim.sub','${outsider}',true);
+      select set_config('request.jwt.claim.role','authenticated',true);
+      select ${call}; commit;`),
+      /Workspace access denied|Budget editing permission denied|Only the Client or protected Owner/,
+      "Unauthorized actors are rejected without waiting for accounting");
+  }
   for (const call of calls) {
     const name = `finance_worker_${randomUUID()}`;
     const worker = sql(`begin; set local statement_timeout='20s';
@@ -62,6 +84,8 @@ try {
       where waiting.application_name='${name}' and holding.application_name='${holderName}'
       and waiting.wait_event='advisory')`);
   }
+  await run(`delete from public.wedding_memberships
+    where wedding_id='${wedding}' and user_id='${user}';`);
 } catch (error) {
   barrierError = error;
 } finally {
@@ -72,6 +96,17 @@ if (barrierError) throw barrierError;
 if (held.error) throw held.error;
 for (const result of results) {
   assert.match(result.error?.message ?? "", /Workspace access denied|Budget editing permission denied|Only the Client or protected Owner/,
-    "An unauthorized actor remains denied after accounting releases the lock");
+    "An actor revoked while waiting is denied after accounting releases the lock");
 }
-console.log("Retryable finance RPCs wait for accounting before role checks and still deny unauthorized actors.");
+console.log("Finance RPCs reject unauthorized actors early and recheck a revoked actor after accounting.");
+} finally {
+  await run(`begin;
+    delete from public.wedding_memberships where wedding_id='${wedding}';
+    alter table public.weddings disable trigger weddings_no_delete;
+    delete from public.weddings where id='${wedding}';
+    alter table public.weddings enable trigger weddings_no_delete;
+    delete from public.profiles where id='${user}';
+    delete from auth.users where id='${user}';
+    delete from public.audit_events where table_name='profiles' and record_id='${user}';
+    commit;`);
+}
