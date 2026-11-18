@@ -36,13 +36,20 @@ const updateWedding = randomUUID(), updateIntent = randomUUID();
 const staleWedding = randomUUID(), staleIntent = randomUUID();
 const pendingWedding = randomUUID(), pendingIntent = randomUUID();
 const freshCreator = randomUUID(), freshIntent = randomUUID(), createKey = randomUUID();
-const raceCreators = [randomUUID(), randomUUID()], raceIntents = [randomUUID(), randomUUID()];
+const raceCases = [
+  { isolation: "repeatable read", committedBeforeLink: false },
+  { isolation: "read committed", committedBeforeLink: false },
+  { isolation: "repeatable read", committedBeforeLink: true },
+  { isolation: "read committed", committedBeforeLink: true }
+].map(item => ({ ...item, creator: randomUUID(), intent: randomUUID() }));
+const raceCreators = raceCases.map(item => `'${item.creator}'`).join(",");
+const raceIntents = raceCases.map(item => `'${item.intent}'`).join(",");
 const revision = randomUUID(), holderName = `referral_link_holder_${randomUUID()}`;
 let fixtureCreated = false;
 try {
   await run(`begin;
     insert into auth.users(id) values('${creator}'),('${referrer}'),('${freshCreator}'),
-      ('${raceCreators[0]}'),('${raceCreators[1]}');
+      ${raceCases.map(item => `('${item.creator}')`).join(",")};
     update public.profiles set platform_role='superadmin' where id='${referrer}';
     insert into public.referral_accounts(user_id,opted_in,terms_version)
       values('${referrer}',true,'client-referrals-v1');
@@ -60,8 +67,7 @@ try {
         ('${pendingIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1');
     insert into public.referral_intents(id,creator_id,referrer_id)
       values('${freshIntent}','${freshCreator}','${referrer}'),
-        ('${raceIntents[0]}','${raceCreators[0]}','${referrer}'),
-        ('${raceIntents[1]}','${raceCreators[1]}','${referrer}');
+        ${raceCases.map(item => `('${item.intent}','${item.creator}','${referrer}')`).join(",")};
     insert into public.wedding_memberships(wedding_id,user_id,role)
       values('${updateWedding}','${referrer}','admin');
     insert into public.referral_attributions(wedding_id,referrer_id,creator_id,intent_id,disclosed_revision,terms_version,eligible)
@@ -205,7 +211,7 @@ try {
   "An uncommitted attribution and a transient read-committed client link can miss one another");
 
   // The actual creation path commits the wedding and attribution together.
-  for (const [index, isolation] of ["repeatable read", "read committed"].entries()) {
+  for (const { isolation, committedBeforeLink, creator: raceCreator, intent: raceIntent } of raceCases) {
     const createName = `referral_fresh_create_${randomUUID()}`, linkName = `referral_fresh_link_${randomUUID()}`;
     const link = sql(`begin isolation level ${isolation}; set local statement_timeout='20s';
       set local idle_in_transaction_session_timeout='25s'; set local application_name='${linkName}';
@@ -218,12 +224,12 @@ try {
         and state='idle in transaction' and wait_event='ClientRead')`);
       creation = sql(`begin; set local statement_timeout='20s'; set local idle_in_transaction_session_timeout='25s';
         set local application_name='${createName}'; set local role authenticated;
-        select set_config('request.jwt.claim.sub','${raceCreators[index]}',true);
+        select set_config('request.jwt.claim.sub','${raceCreator}',true);
         select public.create_wedding_draft('${randomUUID()}',jsonb_build_object(
           'slug','race-${randomUUID()}','coupleNames','Fresh race','weddingDate',null,'location',null,
           'currency','KES','maxCapacity',150,'palette',jsonb_build_array('#244b3a'),
           'paletteNames',jsonb_build_array('Forest Green'),'timeZone','Africa/Nairobi',
-          'venues','[]'::jsonb,'referral',jsonb_build_object('intentId','${raceIntents[index]}',
+          'venues','[]'::jsonb,'referral',jsonb_build_object('intentId','${raceIntent}',
             'decision','accept','revision',public.referral_disclosure()->>'revision',
             'termsVersion','client-referrals-v1')));\n`, true);
       creationResult = creation.result.then(value => ({ value }), error => ({ error }));
@@ -233,6 +239,11 @@ try {
       assert.ok(line, "Fresh creation must return its UUID before commit");
       weddingId = JSON.parse(line).weddingId;
       assert.match(weddingId, /^[0-9a-f-]{36}$/);
+      if (committedBeforeLink) {
+        creation.release();
+        const committed = await creationResult;
+        if (committed.error) throw committed.error;
+      }
       link.write(`select public.set_workspace_member_role('${weddingId}','${referrer}','client');
         select public.set_workspace_member_role('${weddingId}','${referrer}','admin');\n`);
       link.release();
@@ -249,34 +260,45 @@ try {
     if (created.error) throw created.error;
     if (linked.error) {
       assert.match(linked.error.message, /foreign key|serialize|REFERRAL_ACCOUNTING_BUSY/i);
+      assert.equal(await run(`select count(*) from public.wedding_memberships
+        where wedding_id='${weddingId}' and user_id='${referrer}';`), "0");
+      console.log(`${isolation}, creation ${committedBeforeLink ? "committed" : "pending"}: link rejected`);
     } else {
       assert.equal(await run(`select count(*) from public.referral_eligibility_events
         where wedding_id='${weddingId}' and reason='client_membership';`), "1",
       `${isolation} accepted a transient link without durable exclusion`);
+      console.log(`${isolation}, creation ${committedBeforeLink ? "committed" : "pending"}: exclusion recorded`);
+    }
+    if (isolation === "read committed" && committedBeforeLink) {
+      await run(`begin; update public.weddings set client_owner_id='${referrer}' where id='${weddingId}';
+        update public.weddings set client_owner_id='${raceCreator}' where id='${weddingId}'; commit;`);
+      assert.equal(await run(`select count(*) from public.referral_eligibility_events
+        where wedding_id='${weddingId}' and reason='owner_account';`), "1",
+      "A later transient owner change must retain its exclusion");
     }
   }
   console.log("Relevant account links and existing-link attribution fail fast under accounting lock.");
 } finally {
   if (fixtureCreated) await run(`begin;
-    delete from public.wedding_create_requests where client_owner_id in ('${raceCreators[0]}','${raceCreators[1]}');
+    delete from public.wedding_create_requests where client_owner_id in (${raceCreators});
     alter table public.referral_eligibility_events disable trigger referral_eligibility_events_immutable;
     delete from public.referral_eligibility_events where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}')
-      or wedding_id in (select id from public.weddings where client_owner_id in ('${raceCreators[0]}','${raceCreators[1]}'));
+      or wedding_id in (select id from public.weddings where client_owner_id in (${raceCreators}));
     alter table public.referral_eligibility_events enable trigger referral_eligibility_events_immutable;
     alter table public.referral_attributions disable trigger referral_attribution_immutable;
     delete from public.referral_attributions where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}')
-      or wedding_id in (select id from public.weddings where client_owner_id in ('${raceCreators[0]}','${raceCreators[1]}'));
+      or wedding_id in (select id from public.weddings where client_owner_id in (${raceCreators}));
     alter table public.referral_attributions enable trigger referral_attribution_immutable;
-    delete from public.referral_intents where id in ('${intent}','${linkedIntent}','${updateIntent}','${staleIntent}','${pendingIntent}','${freshIntent}','${raceIntents[0]}','${raceIntents[1]}');
+    delete from public.referral_intents where id in ('${intent}','${linkedIntent}','${updateIntent}','${staleIntent}','${pendingIntent}','${freshIntent}',${raceIntents});
     delete from public.wedding_memberships where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}')
-      or wedding_id in (select id from public.weddings where client_owner_id in ('${raceCreators[0]}','${raceCreators[1]}'));
+      or wedding_id in (select id from public.weddings where client_owner_id in (${raceCreators}));
     alter table public.weddings disable trigger weddings_no_delete;
     delete from public.weddings where id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}','${pendingWedding}')
-      or client_owner_id in ('${raceCreators[0]}','${raceCreators[1]}');
+      or client_owner_id in (${raceCreators});
     alter table public.weddings enable trigger weddings_no_delete;
     delete from public.referral_accounts where user_id='${referrer}';
-    delete from public.profiles where id in ('${creator}','${referrer}','${freshCreator}','${raceCreators[0]}','${raceCreators[1]}');
-    delete from auth.users where id in ('${creator}','${referrer}','${freshCreator}','${raceCreators[0]}','${raceCreators[1]}');
-    delete from public.audit_events where table_name='profiles' and record_id in ('${creator}','${referrer}','${freshCreator}','${raceCreators[0]}','${raceCreators[1]}');
+    delete from public.profiles where id in ('${creator}','${referrer}','${freshCreator}',${raceCreators});
+    delete from auth.users where id in ('${creator}','${referrer}','${freshCreator}',${raceCreators});
+    delete from public.audit_events where table_name='profiles' and record_id in ('${creator}','${referrer}','${freshCreator}',${raceCreators});
     commit;`);
 }
