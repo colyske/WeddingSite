@@ -285,7 +285,8 @@ declare u uuid:=(select id from referral_actors where kind='referrer');
   owner_id uuid:=(select id from referral_actors where kind='owner');
   checker uuid:=(select id from referral_actors where kind='superadmin');
   source uuid:=(select id from referral_actors where kind='funding-review');
-  recipient uuid; evidence uuid; inventory uuid; key_id uuid:=extensions.gen_random_uuid();
+  recipient uuid; evidence uuid; inventory uuid; newer_inventory uuid; adverse_review uuid;
+  key_id uuid:=extensions.gen_random_uuid();
   first_id uuid; retry_id uuid; allocations jsonb; blocked boolean;
 begin
   insert into public.facilitator_recipient_versions(user_id,request_key,full_name,phone,ownership_attested,consent_version)
@@ -330,6 +331,52 @@ begin
   perform pg_temp.assert_true(blocked,'source cannot be over-allocated');
   perform pg_temp.assert_true((select count(*)=1 from public.facilitator_reservation_requests),
     'failed reservation rolled back atomically');
+  insert into public.facilitator_funding_attestations(request_key,currency,custody_scope_reference,
+    period_start,as_of,expires_at,cash_minor,unpaid_costs_minor,holds_minor,other_commitments_minor,
+    exclusive_platform_funded_asserted,evidence_reference,evidence_sha256,recorded_by,recorded_at)
+    select extensions.gen_random_uuid(),currency,custody_scope_reference,period_start,as_of,
+      expires_at,500,0,0,0,true,extensions.gen_random_uuid(),repeat('c',64),owner_id,clock_timestamp()+interval '1 second'
+    from public.facilitator_funding_attestations where id=inventory returning id into newer_inventory;
+  insert into public.facilitator_funding_attestation_checks(attestation_id,checked_by,owner_solo)
+    values(newer_inventory,checker,false);
+  blocked:=false;
+  begin
+    perform public.facilitator_reservation_create_internal(extensions.gen_random_uuid(),u,recipient,inventory,'KES',1,
+      jsonb_build_array(jsonb_build_object('review',source,'amount','1')));
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'older inventory cannot bypass newer adverse evidence');
+  blocked:=false;
+  begin
+    perform public.facilitator_reservation_create_internal(extensions.gen_random_uuid(),u,recipient,newer_inventory,'KES',1,
+      jsonb_build_array(jsonb_build_object('review',source,'amount','1')));
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'pool deficit blocks new reservation');
+  insert into public.facilitator_funding_attestations(request_key,currency,custody_scope_reference,
+    period_start,as_of,expires_at,cash_minor,unpaid_costs_minor,holds_minor,other_commitments_minor,
+    exclusive_platform_funded_asserted,evidence_reference,evidence_sha256,recorded_by,recorded_at)
+    select extensions.gen_random_uuid(),currency,custody_scope_reference,period_start,as_of,
+      expires_at,2000,0,0,0,true,extensions.gen_random_uuid(),repeat('d',64),owner_id,clock_timestamp()+interval '2 seconds'
+    from public.facilitator_funding_attestations where id=inventory returning id into inventory;
+  insert into public.facilitator_funding_attestation_checks(attestation_id,checked_by,owner_solo)
+    values(inventory,checker,false);
+  update public.weddings set client_owner_id=u where id=(select id from referral_actors where kind='wedding');
+  blocked:=false;
+  begin
+    perform public.facilitator_reservation_create_internal(extensions.gen_random_uuid(),u,recipient,inventory,'KES',1,
+      jsonb_build_array(jsonb_build_object('review',source,'amount','1')));
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'same-transaction account link blocks before deferred eligibility trigger');
+  update public.weddings set client_owner_id=(select id from referral_actors where kind='creator')
+    where id=(select id from referral_actors where kind='wedding');
   update public.referral_balances set held_estimate_minor=100
     where contribution_id=(select id from referral_actors where kind='paid');
   blocked:=false;
@@ -343,6 +390,26 @@ begin
   perform pg_temp.assert_true(blocked,'source deficit blocks additional allocation');
   perform pg_temp.assert_true((select sum(amount_minor)=600 from public.facilitator_reservation_allocations),
     'source deficit does not release existing reservation');
+  update public.referral_balances set held_estimate_minor=1000
+    where contribution_id=(select id from referral_actors where kind='paid');
+  insert into public.referral_funding_reviews(contribution_id,source_digest,currency,estimate_minor,
+    platform_fee_minor,settled_platform_fee_minor,provider_cost_minor,losses_minor,holds_minor,
+    other_commitments_minor,evidence_reference,evidence_sha256,recorded_by,recorded_at)
+    select contribution_id,source_digest,currency,estimate_minor,platform_fee_minor,
+      settled_platform_fee_minor,8500,losses_minor,holds_minor,other_commitments_minor,
+      extensions.gen_random_uuid(),repeat('e',64),owner_id,clock_timestamp()+interval '1 second'
+    from public.referral_funding_reviews where id=source returning id into adverse_review;
+  insert into public.referral_funding_review_checks(review_id,checked_by,owner_solo)
+    values(adverse_review,checker,false);
+  blocked:=false;
+  begin
+    perform public.facilitator_reservation_create_internal(extensions.gen_random_uuid(),u,recipient,inventory,'KES',1,
+      jsonb_build_array(jsonb_build_object('review',source,'amount','1')));
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'newer adverse source evidence blocks older allocation and review');
   perform set_config('request.jwt.claim.sub',owner_id::text,true);
   blocked:=false;
   begin

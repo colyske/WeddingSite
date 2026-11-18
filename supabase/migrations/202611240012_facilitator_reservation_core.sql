@@ -64,15 +64,18 @@ begin
   if auth.uid() is null or auth.uid() is distinct from p_user then
     raise exception 'FACILITATOR_RESERVATION_AUTH: Only the facilitator can request their own reservation.';
   end if;
-  if p_key is null or p_recipient is null or p_inventory is null or p_currency !~ '^[A-Z]{3}$'
+  if p_key is null or p_recipient is null or p_inventory is null or p_currency is null or p_currency !~ '^[A-Z]{3}$'
     or p_amount is null or p_amount not between 1 and 9007199254740991
     or jsonb_typeof(p_allocations) is distinct from 'array'
     or jsonb_array_length(p_allocations) not between 1 and 100 then
     raise exception 'FACILITATOR_RESERVATION_INPUT: Invalid request.';
   end if;
   if exists(select 1 from jsonb_array_elements(p_allocations) x
-    where jsonb_typeof(x) is distinct from 'object'
-      or (select count(*) from jsonb_object_keys(x))<>2
+    where jsonb_typeof(x) is distinct from 'object') then
+    raise exception 'FACILITATOR_RESERVATION_INPUT: Invalid allocation.';
+  end if;
+  if exists(select 1 from jsonb_array_elements(p_allocations) x
+    where (select count(*) from jsonb_object_keys(x))<>2
       or coalesce(x->>'review','') !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
       or coalesce(x->>'amount','') !~ '^[1-9][0-9]{0,15}$'
       or (x->>'amount')::numeric>9007199254740991) then
@@ -105,20 +108,38 @@ begin
   end if;
   select * into inventory from public.facilitator_funding_attestations where id=p_inventory;
   if not found or inventory.currency is distinct from p_currency or inventory.expires_at<=clock_timestamp()
-    or not exists(select 1 from public.facilitator_funding_attestation_checks where attestation_id=inventory.id) then
+    or not exists(select 1 from public.facilitator_funding_attestation_checks where attestation_id=inventory.id)
+    or inventory.id is distinct from (select latest.id from public.facilitator_funding_attestations latest
+      where latest.custody_scope_reference=inventory.custody_scope_reference and latest.currency=inventory.currency
+      order by latest.recorded_at desc,latest.id desc limit 1)
+    or exists(select 1 from public.facilitator_funding_attestations earlier
+      where earlier.custody_scope_reference=inventory.custody_scope_reference and earlier.currency=inventory.currency
+        and earlier.as_of>inventory.as_of) then
     raise exception 'FACILITATOR_RESERVATION_HOLD: Current checked inventory is required.';
   end if;
+  for entry in select distinct contribution_id from public.facilitator_reservation_allocations order by contribution_id loop
+    perform 1 from public.contributions where id=entry.contribution_id for update;
+    perform public.referral_reconcile_estimate(entry.contribution_id);
+  end loop;
   if exists(
     select 1 from public.facilitator_reservation_allocations a
     join public.facilitator_reservation_requests r on r.id=a.request_id
-    join public.referral_funding_reviews f on f.id=a.review_id
+    join lateral (select latest.* from public.referral_funding_reviews latest
+      where latest.contribution_id=a.contribution_id order by latest.recorded_at desc,latest.id desc limit 1) f on true
     join public.contributions c on c.id=a.contribution_id
+    join public.referral_contribution_policy policy on policy.contribution_id=a.contribution_id
+    join public.referral_attributions attribution on attribution.wedding_id=policy.wedding_id
+    join public.weddings wedding on wedding.id=policy.wedding_id
     left join public.referral_balances b on b.contribution_id=a.contribution_id
-    where r.custody_scope_reference=inventory.custody_scope_reference and r.currency=p_currency
-      and (b.contribution_id is null or c.payment_status is distinct from 'paid'
+    where (b.contribution_id is null or c.payment_status is distinct from 'paid'
         or c.payment_environment is distinct from 'live'
         or c.verified_provider_payment is distinct from true
         or c.settlement_route is distinct from 'platform_wallet'
+        or wedding.client_owner_id=attribution.referrer_id
+        or exists(select 1 from public.wedding_memberships m where m.wedding_id=wedding.id
+          and m.user_id=attribution.referrer_id and m.role='client')
+        or not exists(select 1 from public.referral_funding_review_checks checked where checked.review_id=f.id)
+        or f.source_digest is distinct from a.source_digest
         or b.hold_reasons && array['provider_cost_unknown','currency_mismatch','adjustment_review_or_hold',
           'overlapping_or_invalid_adjustments','refund_evidence_missing','not_eligible_verified_live_payment',
           'provable_self_account_link','policy_or_consent_off_at_admission']::text[]
@@ -146,10 +167,13 @@ begin
       from jsonb_array_elements(p_allocations) x order by (x->>'review')::uuid loop
     select * into review from public.referral_funding_reviews where id=entry.review_id;
     if not found or review.currency is distinct from p_currency
-      or not exists(select 1 from public.referral_funding_review_checks where review_id=review.id) then
+      or not exists(select 1 from public.referral_funding_review_checks where review_id=review.id)
+      or review.id is distinct from (select latest.id from public.referral_funding_reviews latest
+        where latest.contribution_id=review.contribution_id order by latest.recorded_at desc,latest.id desc limit 1) then
       raise exception 'FACILITATOR_RESERVATION_HOLD: Checked source review is required.';
     end if;
     select * into contribution from public.contributions where id=review.contribution_id for update;
+    perform public.referral_reconcile_estimate(review.contribution_id);
     select * into balance from public.referral_balances where contribution_id=review.contribution_id;
     if contribution.id is null or balance.contribution_id is null
       or not exists(select 1 from public.referral_contribution_policy p join public.referral_attributions a
@@ -161,6 +185,10 @@ begin
       or contribution.settlement_route is distinct from 'platform_wallet'
       or contribution.provider_fee_pending is distinct from false
       or contribution.funds_available_at is null or contribution.funds_available_at>clock_timestamp()
+      or exists(select 1 from public.referral_attributions a join public.weddings w on w.id=a.wedding_id
+        where a.wedding_id=balance.wedding_id and (w.client_owner_id=a.referrer_id
+          or exists(select 1 from public.wedding_memberships m where m.wedding_id=w.id
+            and m.user_id=a.referrer_id and m.role='client')))
       or balance.hold_reasons && array['provider_cost_unknown','currency_mismatch','adjustment_review_or_hold',
         'overlapping_or_invalid_adjustments','refund_evidence_missing','not_eligible_verified_live_payment',
         'provable_self_account_link','policy_or_consent_off_at_admission']::text[]
