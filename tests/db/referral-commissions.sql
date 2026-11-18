@@ -444,6 +444,88 @@ create or replace function public.facilitator_reservation_core_enabled() returns
 language sql immutable set search_path='' as $$ select true $$;
 create or replace function public.facilitator_shadow_claim_enabled() returns boolean
 language sql immutable set search_path='' as $$ select true $$;
+
+-- Characterize legacy ingress gaps only with both guards overridden in this
+-- rolled-back fixture. Synthetic Stripe identities stand in for live sources.
+savepoint legacy_adjustment_identity_gap;
+select pg_temp.payment('legacy-adjustment-a',false,(select id from referral_actors where kind='wedding'));
+set local session_replication_role=replica;
+update public.contributions set provider_name='stripe',payment_environment='live',
+  payment_status='paid',verified_provider_payment=true,paid_amount_minor=100000,
+  platform_fee_minor=8880,net_paid_minor=91120,provider_fee_minor=2000,
+  provider_fee_pending=false,provider_reference='fixture-adjustment-a'
+  where id=(select id from referral_actors where kind='legacy-adjustment-a');
+update public.contributions set provider_name='stripe',provider_reference='fixture-adjustment-b',
+  provider_payment_reference='fixture-adjustment-b'
+  where id=(select id from referral_actors where kind='paid');
+set local session_replication_role=origin;
+do $$
+declare cid uuid:=(select id from referral_actors where kind='paid'); r uuid;
+begin
+  perform set_config('request.jwt.claim.role','service_role',true);
+  perform pg_temp.assert_true(public.record_provider_adjustment('stripe','fixture-adjustment-event-a',
+    'refund.created','fixture-shared-adjustment','fixture-adjustment-a',100,'KES','refund_pending',now()),
+    'legacy first adjustment is recorded');
+  perform pg_temp.assert_true(not public.record_provider_adjustment('stripe','fixture-adjustment-event-a',
+    'refund.created','fixture-other-adjustment','fixture-adjustment-b',200,'KES','refund_pending',now()),
+    'legacy changed delivery with duplicate event ID returns false');
+  perform pg_temp.assert_true((select count(*)=1 and min(provider_payment_reference)='fixture-adjustment-a'
+    from public.provider_adjustment_events where provider='stripe' and provider_event_id='fixture-adjustment-event-a'),
+    'legacy changed duplicate is not separately retained');
+  perform pg_temp.assert_true(public.record_provider_adjustment('stripe','fixture-adjustment-event-b',
+    'refund.created','fixture-shared-adjustment','fixture-adjustment-b',100,'KES','refund_pending',now()),
+    'legacy conflicting adjustment identity is recorded');
+  perform pg_temp.assert_true(exists(select 1 from public.provider_adjustment_events
+    where provider='stripe' and provider_event_id='fixture-adjustment-event-b'
+      and contribution_id=cid and outcome='rejected' and reason_code='adjustment_identity_conflict')
+    and not exists(select 1 from public.payment_adjustments where contribution_id=cid),
+    'identity conflict is linked to source B without a B adjustment');
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='owner'),true);
+  r:=public.referral_funding_review_create(cid,8880,2000,0,0,0,extensions.gen_random_uuid(),repeat('b',64),true);
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='superadmin'),true);
+  perform public.referral_funding_review_check(r,false,true);
+  perform pg_temp.assert_true(public.facilitator_manual_source_cap(cid,
+    (select id from referral_actors where kind='referrer'),'KES')=1000,
+    'KNOWN GAP: a renewed checked review admits source B despite its rejected identity conflict');
+end $$;
+rollback to savepoint legacy_adjustment_identity_gap;
+
+savepoint legacy_unmatched_adjustment_gap;
+set local session_replication_role=replica;
+update public.contributions set provider_name='stripe',provider_reference='fixture-before-payment',
+  provider_payment_reference='fixture-before-payment'
+  where id=(select id from referral_actors where kind='paid');
+set local session_replication_role=origin;
+do $$
+declare cid uuid:=(select id from referral_actors where kind='paid');
+begin
+  perform set_config('request.jwt.claim.role','service_role',true);
+  perform pg_temp.assert_true(public.record_provider_adjustment('stripe','fixture-unmatched-event',
+    'refund.created','fixture-unmatched-adjustment','fixture-later-payment',100,'KES','refund_pending',now()),
+    'legacy event before matching payment is recorded');
+  perform pg_temp.assert_true(exists(select 1 from public.provider_adjustment_events
+    where provider='stripe' and provider_event_id='fixture-unmatched-event'
+      and contribution_id is null and outcome='unmatched'), 'unmatched event has no contribution');
+end $$;
+set local session_replication_role=replica;
+update public.contributions set provider_reference='fixture-later-payment',provider_payment_reference='fixture-later-payment'
+  where id=(select id from referral_actors where kind='paid');
+set local session_replication_role=origin;
+do $$
+declare cid uuid:=(select id from referral_actors where kind='paid'); r uuid;
+begin
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='owner'),true);
+  r:=public.referral_funding_review_create(cid,8880,2000,0,0,0,extensions.gen_random_uuid(),repeat('c',64),true);
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='superadmin'),true);
+  perform public.referral_funding_review_check(r,false,true);
+  perform pg_temp.assert_true(public.facilitator_manual_source_cap(cid,
+    (select id from referral_actors where kind='referrer'),'KES')=1000,
+    'KNOWN GAP: a now-matching unmatched observation does not hold the reviewed source');
+end $$;
+rollback to savepoint legacy_unmatched_adjustment_gap;
+
 do $$
 declare u uuid:=(select id from referral_actors where kind='referrer');
   owner_id uuid:=(select id from referral_actors where kind='owner');
