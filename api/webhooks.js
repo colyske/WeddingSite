@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { sendJson, supabaseRequest } from "../server/supabase.js";
 import {
   darajaConfiguredEnvironment, normalizeStripeAdjustment, normalizeStripePayment, verifyStripeSignature,
@@ -8,6 +8,7 @@ import {
 import { recordPublicationPayment, reconcilePublicationCallback } from "../server/publication-payments.js";
 import { recoverVerifiedDaraja } from "../server/daraja-recovery.js";
 import { paystackEnvironment, recordPaystackPayment, fetchPaystack, verifyPaystackContext, parsePaystackJson } from "../server/paystack.js";
+import { stageVerifiedAdjustment, runVerifiedAdjustmentWorker } from "../server/verified-adjustment-inbox.js";
 
 export const config = { api: { bodyParser: false } };
 
@@ -27,7 +28,10 @@ async function rawBody(req, maxBytes = 1_000_000) {
   return Buffer.concat(chunks);
 }
 
-async function recordAdjustment(adjustment) {
+async function recordAdjustment(adjustment, payloadDigest) {
+  if (process.env.VERIFIED_ADJUSTMENT_INBOX_ENABLED === "true") {
+    return stageVerifiedAdjustment(adjustment, payloadDigest);
+  }
   return supabaseRequest("/rest/v1/rpc/record_provider_adjustment", {
     service: true,
     method: "POST",
@@ -57,7 +61,7 @@ async function handleStripeWebhook(req, res) {
     const event = JSON.parse(raw.toString("utf8"));
     const adjustment = normalizeStripeAdjustment(event);
     if (adjustment) {
-      const result = await recordAdjustment(adjustment);
+      const result = await recordAdjustment(adjustment, createHash("sha256").update(raw).digest("hex"));
       return sendJson(res, 200, { received: true, processed: Boolean(result) });
     }
     const payment = normalizeStripePayment(event);
@@ -125,7 +129,7 @@ async function handlePaystackWebhook(req, res) {
           return sendJson(res, 200, { received: true, processed: true });
         }
       }
-      const result = await recordAdjustment(adjustment);
+      const result = await recordAdjustment(adjustment, digest);
       return sendJson(res, 200, { received: true, processed: Boolean(result) });
     }
     const payment = normalizePaystackPayment(event);
@@ -273,6 +277,28 @@ async function handleDarajaCallback(req, res) {
 }
 
 export default async function handler(req, res) {
+  if (req.query?.action === "adjustment-worker") {
+    if (req.method !== "GET") {
+      res.setHeader("Allow", "GET");
+      return sendJson(res, 405, { error: "Method not allowed." });
+    }
+    const secret = process.env.CRON_SECRET;
+    const supplied = Buffer.from(req.headers.authorization || "");
+    const expected = Buffer.from(`Bearer ${secret || ""}`);
+    if (!secret || supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+      return sendJson(res, 401, { error: "Scheduler authentication required." });
+    }
+    if (process.env.VERIFIED_ADJUSTMENT_INBOX_ENABLED !== "true") {
+      return sendJson(res, 200, { enabled: false });
+    }
+    try {
+      const result = await runVerifiedAdjustmentWorker();
+      return sendJson(res, result.failed || result.conflicts ? 503 : 200, result);
+    } catch (error) {
+      console.error("Verified adjustment worker failed", error.message);
+      return sendJson(res, 503, { error: "Verified adjustment worker requires retry." });
+    }
+  }
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return sendJson(res, 405, { error: "Method not allowed." });

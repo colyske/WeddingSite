@@ -27,6 +27,18 @@ assertion. The application cannot independently establish account exclusivity
 or validate the external evidence. An inventory assertion is not a spendable
 balance, a reservation or authority to transfer.
 
+The verified-adjustment inbox is a default-off infrastructure change. If
+`VERIFIED_ADJUSTMENT_INBOX_ENABLED` is explicitly enabled after review, signed
+Stripe and Paystack contribution adjustments are staged before their locked
+database processor. The daily authenticated worker retries committed pending
+observations and reports failures and identity conflicts; those conflicts require
+operator investigation. The inbox retains normalized financial identifiers and
+a payload digest, not raw payloads or signatures. Live Paystack still requires
+its independent provider check before staging: a failure before that point
+continues to depend on provider redelivery. Publication adjustments, payment
+confirmations and Daraja callbacks do not use this inbox. It does not establish
+complete source locking or authorize facilitator payouts.
+
 This is a bounded **unactivated control plane**, not launch-ready withdrawals or an
 authorized funded rail. Migration `202611110001` does not enable any payment or payout
 provider, initiate transfers, contact an external service, copy B2C branch code, or

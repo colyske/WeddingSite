@@ -20,6 +20,10 @@
     {
       "path": "/api/b2c?action=worker",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/webhooks?action=adjustment-worker",
+      "schedule": "30 15 * * *"
     }
   ],
   "headers": [
