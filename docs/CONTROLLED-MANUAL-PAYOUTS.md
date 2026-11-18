@@ -108,9 +108,8 @@ review and, for a changed recipient, confirmation by the beneficiary against
 the expected previous binding. Claims use the latest binding and retain the
 original source allocations; the immutable claim snapshots that binding and
 recipient revision. A claimed request cannot be rebound; retries
-acknowledge history rather than establishing current readiness. This model has
-not yet been verified under concurrent rebinding or all profile-lock orders;
-it has no sender-facing snapshot or authority to send.
+acknowledge history rather than establishing current readiness. The model has
+no sender-facing snapshot or authority to send.
 Historical request and action retries acknowledge prior records and never
 authorize a send or resend. Tests enable the model only inside a rolled-back
 synthetic transaction; the migration has no activation mechanism.
@@ -122,7 +121,10 @@ ingress and attribution-link visibility and has not established concurrency or
 scale safety. A two-session CI regression covers competing requests and claims,
 their retries, duplicate manual receipt reports, a recipient revision changing
 before request admission and claim, and revocation of the recipient checker or an independent claim reviewer. It
-does not cover all source, role, lock-order or cross-rail races. Its source evidence is manually attested rather than independently
+also covers a claim waiting for a same-recipient rebind, and identical
+confirmation and changed-recipient rebind retries waiting for their first
+commit. It does not cover every rebind ordering, or all source, role, lock-order
+or cross-rail races. Its source evidence is manually attested rather than independently
 verified by the application. Do not expose it or interpret synthetic `paid` as
 an actual transfer. External cash decisions remain with the operator.
 Its private request, action and status entry points reject isolation levels

@@ -126,6 +126,26 @@ try {
   const claimKey = randomUUID();
   const claim = (key, payout = first) => `public.facilitator_manual_action_internal(
     '${payout}','${key}','processing',null,10,null,true,true)`;
+  const rebind = (payout, expected, key, recipient, confirmation = null) =>
+    `public.facilitator_manual_rebind_internal('${payout}',${expected ? `'${expected}'` : "null"},
+      '${key}','${recipient}',${confirmation ? `'${confirmation}'` : "null"},true)`;
+  const fourthOutput = await run(`begin; ${actor(fixtureIds.user)} select ${request(randomUUID(), 100)}; commit;`);
+  const fourth = requestId(fourthOutput);
+  assert.ok(fourth, "Additional request has capacity for a rebind/claim race");
+  const [bindingOutput, waitingClaim] = await race(
+    rebind(fourth, null, randomUUID(), fixtureIds.recipient),
+    claim(randomUUID(), fourth), fixtureIds.owner);
+  const claimBinding = requestId(bindingOutput);
+  assert.ok(claimBinding, "Destination review commits before the waiting claim");
+  assert.ifError(waitingClaim.error);
+  assert.equal(matchJson(waitingClaim.value).state, "processing");
+  assert.equal(await run(`select count(*) from public.facilitator_manual_claims
+    where request_id='${fourth}' and binding_id='${claimBinding}'
+      and recipient_revision='${fixtureIds.recipient}';`), "1",
+  "Claim snapshots the binding committed while it waited");
+  await assert.rejects(run(`begin; ${actor(fixtureIds.owner)}
+    select ${rebind(fourth, claimBinding, randomUUID(), fixtureIds.recipient)}; commit;`),
+  /FACILITATOR_MANUAL_CONFLICT: Claimed or terminal requests cannot change destination/);
   const [claimOutput, otherClaim] = await race(claim(claimKey), claim(randomUUID()), fixtureIds.owner);
   assert.equal(matchJson(claimOutput).state, "processing", "Owner claims the synthetic payout");
   assert.ok(otherClaim.error, "Concurrent second claim must fail");
@@ -270,6 +290,27 @@ try {
     select '${updatedRevision}',id,'${fixtureIds.owner}',true from evidence;`);
   assert.equal(await run(`select public.facilitator_payout_recipient_ready(
     '${fixtureIds.user}','${updatedRevision}');`), "t", "New synthetic recipient is ready for source race");
+  const confirmKey = randomUUID();
+  const confirmation = `public.facilitator_manual_reconfirm_internal(
+    '${third}','${updatedRevision}',null,'${confirmKey}',true)`;
+  const [confirmationOutput, confirmationReplay] = await race(confirmation, confirmation);
+  const confirmationId = requestId(confirmationOutput);
+  assert.ok(confirmationId, "Beneficiary confirms the changed destination");
+  assert.ifError(confirmationReplay.error);
+  assert.equal(requestId(confirmationReplay.value), confirmationId,
+    "Identical confirmation racing its initial commit acknowledges the original");
+  const rebindKey = randomUUID();
+  const changedBindingCall = rebind(third, null, rebindKey, updatedRevision, confirmationId);
+  const [changedBindingOutput, changedBindingReplay] = await race(
+    changedBindingCall, changedBindingCall, fixtureIds.owner);
+  const changedBinding = requestId(changedBindingOutput);
+  assert.ok(changedBinding, "Confirmed changed destination is bound");
+  assert.ifError(changedBindingReplay.error);
+  assert.equal(requestId(changedBindingReplay.value), changedBinding,
+    "Identical rebind racing its initial commit acknowledges the original");
+  await assert.rejects(run(`begin; ${actor(fixtureIds.owner)}
+    select ${rebind(third, null, randomUUID(), updatedRevision, confirmationId)}; commit;`),
+  /FACILITATOR_MANUAL_CONFLICT: Destination binding changed; reload/);
   const adjustmentName = `manual_adjustment_${randomUUID()}`, adjustedRequestName = `manual_adjusted_${randomUUID()}`;
   const adjustmentKey = randomUUID();
   const adjustedCall = `public.facilitator_manual_request_internal(
@@ -325,8 +366,8 @@ try {
     'claims',(select count(*) from public.facilitator_manual_claims),
     'receipts',(select count(*) from public.facilitator_manual_receipts),
     'incidents',(select count(*) from public.facilitator_manual_incidents));`));
-  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 800, failed: 0, stale: 0,
-    checker_failed: 0, adjustment_failed: 0, claims: 2, receipts: 1, incidents: 1 });
+  assert.deepEqual(totals, { requests: 4, allocations: 4, total: 900, failed: 0, stale: 0,
+    checker_failed: 0, adjustment_failed: 0, claims: 3, receipts: 1, incidents: 1 });
   console.log("Concurrent synthetic requests and claims serialize; retries acknowledge history without additional liabilities.");
 } finally {
   if (gateChanged) await run(gateReset);
