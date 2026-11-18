@@ -147,6 +147,20 @@ try {
   await assert.rejects(run(`begin; ${actor(fixtureIds.owner)}
     select ${rebind(fourth, claimBinding, randomUUID(), fixtureIds.recipient)}; commit;`),
   /FACILITATOR_MANUAL_CONFLICT: Claimed or terminal requests cannot change destination/);
+  const fifthOutput = await run(`begin; ${actor(fixtureIds.user)} select ${request(randomUUID(), 50)}; commit;`);
+  const fifth = requestId(fifthOutput);
+  assert.ok(fifth, "Additional request has capacity for the reverse claim/rebind race");
+  const [claimedFirst, rejectedRebind] = await race(
+    claim(randomUUID(), fifth), rebind(fifth, null, randomUUID(), fixtureIds.recipient), fixtureIds.owner);
+  assert.equal(matchJson(claimedFirst).state, "processing", "Claim commits before the waiting rebind");
+  assert.ok(rejectedRebind.error, "Rebind waiting on the initial claim must fail");
+  assert.match(rejectedRebind.error.message,
+    /FACILITATOR_MANUAL_CONFLICT: Claimed or terminal requests cannot change destination/);
+  assert.equal(await run(`select count(*) from public.facilitator_manual_claims
+    where request_id='${fifth}' and binding_id is null
+      and recipient_revision='${fixtureIds.recipient}'
+      and not exists(select 1 from public.facilitator_manual_rebindings where request_id='${fifth}');`), "1",
+  "Claim retains the original recipient and the rejected rebind leaves no binding");
   const [claimOutput, otherClaim] = await race(claim(claimKey), claim(randomUUID()), fixtureIds.owner);
   assert.equal(matchJson(claimOutput).state, "processing", "Owner claims the synthetic payout");
   assert.ok(otherClaim.error, "Concurrent second claim must fail");
@@ -367,8 +381,8 @@ try {
     'claims',(select count(*) from public.facilitator_manual_claims),
     'receipts',(select count(*) from public.facilitator_manual_receipts),
     'incidents',(select count(*) from public.facilitator_manual_incidents));`));
-  assert.deepEqual(totals, { requests: 4, allocations: 4, total: 900, failed: 0, stale: 0,
-    checker_failed: 0, adjustment_failed: 0, claims: 3, receipts: 1, incidents: 1 });
+  assert.deepEqual(totals, { requests: 5, allocations: 5, total: 950, failed: 0, stale: 0,
+    checker_failed: 0, adjustment_failed: 0, claims: 4, receipts: 1, incidents: 1 });
   console.log("Concurrent synthetic requests and claims serialize; retries acknowledge history without additional liabilities.");
 } finally {
   if (gateChanged) await run(gateReset);

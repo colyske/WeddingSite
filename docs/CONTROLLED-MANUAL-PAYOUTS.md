@@ -124,9 +124,10 @@ ingress and attribution-link visibility and has not established concurrency or
 scale safety. A two-session CI regression covers competing requests and claims,
 their retries, duplicate manual receipt reports, a recipient revision changing
 before request admission and claim, and revocation of the recipient checker or an independent claim reviewer. It
-also covers a claim waiting for a same-recipient rebind, and identical
-confirmation and changed-recipient rebind retries waiting for their first
-commit. It does not cover every rebind ordering, or all source, role, lock-order
+also covers a claim waiting for a same-recipient rebind, a same-recipient rebind
+waiting for a claim, and identical confirmation and changed-recipient rebind
+retries waiting for their first commit. It does not cover every rebind ordering,
+or all source, role, lock-order
 or cross-rail races. Its source evidence is manually attested rather than independently
 verified by the application. Do not expose it or interpret synthetic `paid` as
 an actual transfer. External cash decisions remain with the operator.
