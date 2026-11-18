@@ -266,6 +266,9 @@ begin
     perform pg_temp.assert_true(not has_function_privilege(role_name,
       'public.facilitator_reservation_create_internal(uuid,uuid,uuid,uuid,text,bigint,jsonb)','execute'),
       role_name||' cannot execute private reservation core');
+    perform pg_temp.assert_true(not has_function_privilege(role_name,
+      'public.facilitator_reservation_evaluate_internal(uuid,uuid,uuid,uuid,text,bigint,jsonb,boolean)','execute'),
+      role_name||' cannot execute reservation revalidation');
     perform pg_temp.assert_true(not has_table_privilege(role_name,'public.facilitator_reservation_requests','select')
       and not has_table_privilege(role_name,'public.facilitator_reservation_allocations','insert'),
       role_name||' cannot access private reservation ledger');
@@ -309,6 +312,8 @@ begin
   first_id:=public.facilitator_reservation_create_internal(key_id,u,recipient,inventory,'KES',600,allocations);
   retry_id:=public.facilitator_reservation_create_internal(key_id,u,recipient,inventory,'KES',600,allocations);
   perform pg_temp.assert_true(first_id=retry_id,'identical request retains one reservation');
+  perform pg_temp.assert_true(first_id=public.facilitator_reservation_evaluate_internal(
+    key_id,u,recipient,inventory,'KES',600,allocations,true),'existing reservation revalidates without double charging');
   perform pg_temp.assert_true((select count(*)=1 and sum(amount_minor)=600 from public.facilitator_reservation_allocations),
     'allocation reserves the requested source amount');
   blocked:=false;
@@ -339,6 +344,16 @@ begin
     from public.facilitator_funding_attestations where id=inventory returning id into newer_inventory;
   insert into public.facilitator_funding_attestation_checks(attestation_id,checked_by,owner_solo)
     values(newer_inventory,checker,false);
+  blocked:=false;
+  begin
+    perform public.facilitator_reservation_evaluate_internal(key_id,u,recipient,inventory,'KES',600,allocations,true);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_RESERVATION_HOLD:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'revalidation rejects superseded evidence despite historical replay');
+  perform pg_temp.assert_true(first_id=public.facilitator_reservation_create_internal(
+    key_id,u,recipient,inventory,'KES',600,allocations),'replay only acknowledges prior reservation');
   blocked:=false;
   begin
     perform public.facilitator_reservation_create_internal(extensions.gen_random_uuid(),u,recipient,inventory,'KES',1,

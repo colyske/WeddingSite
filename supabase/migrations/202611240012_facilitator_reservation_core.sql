@@ -41,9 +41,9 @@ create function public.facilitator_reservation_core_enabled() returns boolean
 language sql immutable set search_path='' as $$ select false $$;
 revoke all on function public.facilitator_reservation_core_enabled() from public,anon,authenticated,service_role;
 
-create function public.facilitator_reservation_create_internal(
+create function public.facilitator_reservation_evaluate_internal(
   p_key uuid,p_user uuid,p_recipient uuid,p_inventory uuid,p_currency text,
-  p_amount bigint,p_allocations jsonb
+  p_amount bigint,p_allocations jsonb,p_revalidate boolean
 ) returns uuid language plpgsql security definer set search_path='' set row_security=off as $$
 declare
   inventory public.facilitator_funding_attestations;
@@ -57,11 +57,12 @@ declare
   used numeric;
   cap numeric;
   result uuid;
+  additional numeric;
 begin
   if not public.facilitator_reservation_core_enabled() then
     raise exception 'FACILITATOR_RESERVATION_DISABLED: Reservation core is not enabled.';
   end if;
-  if auth.uid() is null or auth.uid() is distinct from p_user then
+  if auth.uid() is null or p_revalidate is null or (not p_revalidate and auth.uid() is distinct from p_user) then
     raise exception 'FACILITATOR_RESERVATION_AUTH: Only the facilitator can request their own reservation.';
   end if;
   if p_key is null or p_recipient is null or p_inventory is null or p_currency is null or p_currency !~ '^[A-Z]{3}$'
@@ -98,8 +99,11 @@ begin
       is distinct from (p_recipient,p_inventory,p_currency,p_amount,allocation_digest) then
       raise exception 'FACILITATOR_RESERVATION_CONFLICT: This key belongs to a different request.';
     end if;
-    return prior.id;
+    if not p_revalidate then return prior.id; end if;
+  elsif p_revalidate then
+    raise exception 'FACILITATOR_RESERVATION_CONFLICT: Existing reservation is required for revalidation.';
   end if;
+  additional:=case when p_revalidate then 0 else p_amount end;
   if not public.verified_adjustment_inbox_clear_for_payout() then
     raise exception 'FACILITATOR_RESERVATION_HOLD: Provider observations require review.';
   end if;
@@ -181,14 +185,18 @@ begin
   end if;
   select coalesce(sum(amount_minor::numeric),0) into used from public.facilitator_reservation_requests
     where custody_scope_reference=inventory.custody_scope_reference and currency=p_currency;
-  if used+p_amount > greatest(0::numeric,inventory.cash_minor::numeric-inventory.unpaid_costs_minor
+  if used+additional > greatest(0::numeric,inventory.cash_minor::numeric-inventory.unpaid_costs_minor
     -inventory.holds_minor-inventory.other_commitments_minor) then
     raise exception 'FACILITATOR_RESERVATION_HOLD: Inventory cannot cover all retained reservations.';
   end if;
-  insert into public.facilitator_reservation_requests(request_key,user_id,recipient_revision,inventory_id,
-    custody_scope_reference,currency,amount_minor,allocation_digest)
-    values(p_key,p_user,p_recipient,p_inventory,inventory.custody_scope_reference,p_currency,p_amount,allocation_digest)
-    returning id into result;
+  if p_revalidate then
+    result:=prior.id;
+  else
+    insert into public.facilitator_reservation_requests(request_key,user_id,recipient_revision,inventory_id,
+      custody_scope_reference,currency,amount_minor,allocation_digest)
+      values(p_key,p_user,p_recipient,p_inventory,inventory.custody_scope_reference,p_currency,p_amount,allocation_digest)
+      returning id into result;
+  end if;
   for entry in select (x->>'review')::uuid as review_id,(x->>'amount')::bigint as amount
       from jsonb_array_elements(p_allocations) x order by (x->>'review')::uuid loop
     select * into review from public.referral_funding_reviews where id=entry.review_id;
@@ -227,13 +235,25 @@ begin
         -review.losses_minor-review.holds_minor-review.other_commitments_minor));
     select coalesce(sum(amount_minor::numeric),0) into used from public.facilitator_reservation_allocations
       where contribution_id=review.contribution_id;
-    if used+entry.amount>cap then
+    if used+case when p_revalidate then 0 else entry.amount end>cap then
       raise exception 'FACILITATOR_RESERVATION_HOLD: Source cannot cover all retained allocations.';
     end if;
-    insert into public.facilitator_reservation_allocations(request_id,contribution_id,review_id,source_digest,amount_minor)
-      values(result,review.contribution_id,review.id,review.source_digest,entry.amount);
+    if not p_revalidate then
+      insert into public.facilitator_reservation_allocations(request_id,contribution_id,review_id,source_digest,amount_minor)
+        values(result,review.contribution_id,review.id,review.source_digest,entry.amount);
+    end if;
   end loop;
   return result;
 end $$;
+revoke all on function public.facilitator_reservation_evaluate_internal(uuid,uuid,uuid,uuid,text,bigint,jsonb,boolean)
+  from public,anon,authenticated,service_role;
+
+create function public.facilitator_reservation_create_internal(
+  p_key uuid,p_user uuid,p_recipient uuid,p_inventory uuid,p_currency text,
+  p_amount bigint,p_allocations jsonb
+) returns uuid language sql security definer set search_path='' set row_security=off as $$
+  select public.facilitator_reservation_evaluate_internal(
+    p_key,p_user,p_recipient,p_inventory,p_currency,p_amount,p_allocations,false)
+$$;
 revoke all on function public.facilitator_reservation_create_internal(uuid,uuid,uuid,uuid,text,bigint,jsonb)
   from public,anon,authenticated,service_role;
