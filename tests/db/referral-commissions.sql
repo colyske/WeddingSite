@@ -399,6 +399,66 @@ begin
       blocked:=true;
     end;
     perform pg_temp.assert_true(blocked,'manual source cap includes retained requests without any cash inventory');
+    declare other_user uuid:=(select id from referral_actors where kind='other');
+      creator uuid:=(select id from referral_actors where kind='outsider');
+      disclosure jsonb; code text; wid uuid; cid uuid; review_id uuid; second_recipient uuid;
+      second_evidence uuid; second_request uuid; adverse uuid;
+    begin
+      perform set_config('request.jwt.claim.sub',other_user::text,true);
+      code:=public.referral_set_consent(true,'client-referrals-v1')->>'code';
+      perform set_config('request.jwt.claim.sub',creator::text,true);
+      perform public.referral_capture(code);
+      disclosure:=public.referral_disclosure();
+      wid:=public.referral_create_wedding('manual-second-referral','Private couple',current_date+30,'Local venue','KES',100,
+        array['#244b3a'],jsonb_build_array(jsonb_build_object('name','Venue','eventDate',(current_date+30)::text,
+          'eventTime','10:00','address','Local address','kind','main')),
+        (disclosure->>'intent_id')::uuid,'accept',(disclosure->>'revision')::uuid,disclosure->>'terms_version');
+      cid:=pg_temp.payment('manual-second-payment',true,wid);
+      perform set_config('request.jwt.claim.role','service_role',true);
+      perform public.record_verified_payment('daraja','manual-second-event',cid,100000,'KES',cid::text,2000,now(),cid::text);
+      update public.contributions set funds_available_at=now()-interval '1 day' where id=cid;
+      perform set_config('request.jwt.claim.role','authenticated',true);
+      perform set_config('request.jwt.claim.sub',owner_id::text,true);
+      review_id:=public.referral_funding_review_create(cid,8880,2000,0,0,0,
+        extensions.gen_random_uuid(),repeat('c',64),true);
+      perform public.referral_funding_review_check(review_id,true,true);
+      insert into public.facilitator_recipient_versions(user_id,request_key,full_name,phone,ownership_attested,consent_version)
+        values(other_user,extensions.gen_random_uuid(),'Second fictional facilitator','254700000005',true,
+          'facilitator-mpesa-recipient-v1') returning revision_id into second_recipient;
+      insert into public.facilitator_recipient_evidence(revision_id,external_reference,sha256,submitted_by)
+        values(second_recipient,extensions.gen_random_uuid(),repeat('c',64),owner_id) returning id into second_evidence;
+      insert into public.facilitator_recipient_checks(revision_id,evidence_id,checked_by,owner_solo)
+        values(second_recipient,second_evidence,owner_id,true);
+      insert into public.referral_funding_reviews(contribution_id,source_digest,currency,estimate_minor,
+        platform_fee_minor,settled_platform_fee_minor,provider_cost_minor,losses_minor,holds_minor,
+        other_commitments_minor,evidence_reference,evidence_sha256,recorded_by,recorded_at)
+        select contribution_id,source_digest,currency,estimate_minor,platform_fee_minor,settled_platform_fee_minor,
+          provider_cost_minor,losses_minor,holds_minor,other_commitments_minor,extensions.gen_random_uuid(),
+          repeat('f',64),owner_id,clock_timestamp()+interval '1 second'
+        from public.referral_funding_reviews where id=source returning id into adverse;
+      perform set_config('request.jwt.claim.sub',u::text,true);
+      blocked:=false;
+      begin
+        perform public.facilitator_manual_request_internal(extensions.gen_random_uuid(),recipient,'KES',1,
+          jsonb_build_array(jsonb_build_object('review',adverse,'amount','1')),true);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_MANUAL_HOLD:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'adverse source holds its original beneficiary');
+      perform set_config('request.jwt.claim.sub',other_user::text,true);
+      second_request:=public.facilitator_manual_request_internal(extensions.gen_random_uuid(),second_recipient,'KES',300,
+        jsonb_build_array(jsonb_build_object('review',review_id,'amount','300')),true);
+      perform set_config('request.jwt.claim.sub',owner_id::text,true);
+      result:=public.facilitator_manual_action_internal(second_request,extensions.gen_random_uuid(),
+        'processing',null,10,null,true,true);
+      perform pg_temp.assert_true(result->>'state'='processing'
+        and (select sum(amount_minor)=600 from public.facilitator_manual_allocations where request_id=manual_id),
+        'unrelated beneficiary can request and process while first beneficiary source is held');
+      raise exception 'SYNTHETIC_SECOND_BENEFICIARY_ROLLBACK';
+    exception when raise_exception then
+      if sqlerrm <> 'SYNTHETIC_SECOND_BENEFICIARY_ROLLBACK' then raise; end if;
+    end;
     blocked:=false;
     begin
       perform public.facilitator_manual_action_internal(manual_id,extensions.gen_random_uuid(),

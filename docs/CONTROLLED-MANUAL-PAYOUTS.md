@@ -86,10 +86,14 @@ before claim, and operator-reported receipts. A pre-claim hold needs a new
 confirmed review, including for Owner-solo processing. An independent review is
 bound to the current source evidence, recipient and fee. Source deficits hold
 the beneficiary's affected currency rather than unrelated users' commissions;
-provider inbox conflicts and manual receipt incidents remain global holds.
+provider inbox conflicts remain global source holds, and manual receipt
+incidents hold new processing across the modeled rail.
 A recorded fee is an operator
 observation, not a deduction from couple funds or proof of external liquidity.
 Conflicting reports are retained as incidents without changing the prior receipt.
+After such a conflict the historical state may still be `paid`; any future
+status surface must display the unresolved incident and prohibit resending,
+not present that state as an unqualified successful payment.
 Historical request and action retries acknowledge prior records and never
 authorize a send or resend. Tests enable the model only inside a rolled-back
 synthetic transaction; the migration has no activation mechanism.

@@ -251,7 +251,7 @@ create function public.facilitator_manual_action_internal(
 ) returns jsonb language plpgsql security definer set search_path='' set row_security=off as $$
 declare r public.facilitator_manual_requests; c public.facilitator_manual_claims;
   old public.facilitator_manual_events; role_name public.platform_role; reviewer uuid;
-  current_state text; evidence text; ref text:=upper(btrim(p_reference));
+  current_state text; v_evidence text; ref text:=upper(btrim(p_reference));
 begin
   if not public.facilitator_manual_enabled() then
     raise exception 'FACILITATOR_MANUAL_DISABLED: Manual payout model is disabled.';
@@ -333,8 +333,8 @@ begin
       raise exception 'FACILITATOR_MANUAL_HOLD: Recipient changed or is not verified.';
     end if;
     perform public.facilitator_manual_check_sources(r.user_id,r.currency);
-    evidence:=public.facilitator_manual_evidence_digest(p_request);
-    if evidence is null then raise exception 'FACILITATOR_MANUAL_HOLD: Source evidence is missing.'; end if;
+    v_evidence:=public.facilitator_manual_evidence_digest(p_request);
+    if v_evidence is null then raise exception 'FACILITATOR_MANUAL_HOLD: Source evidence is missing.'; end if;
   end if;
   if p_action='processing' then
     if exists(select 1 from public.facilitator_manual_events h where h.request_id=p_request and h.state='hold')
@@ -342,7 +342,7 @@ begin
         where e.request_id=p_request and e.state='reviewed'
           and e.id>(select max(h.id) from public.facilitator_manual_events h
             where h.request_id=p_request and h.state='hold')
-          and e.evidence_digest=evidence and e.fee_minor=p_fee) then
+          and e.evidence_digest=v_evidence and e.fee_minor=p_fee) then
       raise exception 'FACILITATOR_MANUAL_HOLD: A fresh confirmed review must resolve the hold.';
     end if;
     if p_owner_solo then
@@ -351,7 +351,7 @@ begin
       select e.actor_id into reviewer from public.facilitator_manual_events e
         join public.profiles p on p.id=e.actor_id and p.platform_role in ('admin','superadmin','owner')
         where e.request_id=p_request and e.state='reviewed' and e.actor_id<>auth.uid()
-          and e.evidence_digest=evidence and e.fee_minor=p_fee
+          and e.evidence_digest=v_evidence and e.fee_minor=p_fee
           and e.id>coalesce((select max(h.id) from public.facilitator_manual_events h
             where h.request_id=p_request and h.state='hold'),0)
         order by e.id desc limit 1;
@@ -382,7 +382,7 @@ begin
   insert into public.facilitator_manual_events(request_id,action_key,state,reason,fee_minor,owner_solo,
     transaction_reference,evidence_digest,actor_id)
     values(p_request,p_key,p_action,p_reason,p_fee,case when p_action='processing' then p_owner_solo else null end,
-      ref,evidence,auth.uid());
+      ref,v_evidence,auth.uid());
   return jsonb_build_object('state',p_action,'operator_reported',p_action='paid');
 end $$;
 
