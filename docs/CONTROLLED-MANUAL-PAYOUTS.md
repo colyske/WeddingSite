@@ -161,8 +161,10 @@ transaction. Disposable races reproduce a missed transient client link both
 when a REPEATABLE READ transaction predates attribution and when a READ
 COMMITTED link transaction overlaps an uncommitted attribution. Both use the
 authenticated membership RPC and a synthetic privileged attribution insert on
-an existing wedding, and leave no exclusion event. They do not prove the
-normal fresh-wedding creation path exposes that schedule. Restricting only the
+an existing wedding, and leave no exclusion event. The client-to-admin RPCs
+run in one explicit transaction, not two independent PostgREST requests.
+These tests do not prove the normal fresh-wedding creation path exposes that
+schedule. Restricting only the
 isolation level does not close the demonstrated trigger gap. These remain
 blockers to any exposure or activation.
 
