@@ -1,4 +1,5 @@
 -- Appended to the rolled-back readiness fixture on a fully migrated disposable DB.
+reset role;
 savepoint facilitator_simple_collision;
 do $$
 declare p uuid; sender uuid; k uuid:=extensions.gen_random_uuid(); result jsonb;
