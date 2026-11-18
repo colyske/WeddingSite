@@ -159,6 +159,22 @@ liabilities. Immediate link exclusions also do not yet cover concurrent
 attribution/link write skew or a transient link removed before attribution in one
 transaction. These remain blockers to any exposure or activation.
 
+Migration `202611240019` does not prove those exclusions. Its history misses
+links removed before the migration, pre-existing client memberships deleted
+afterward, and initial wedding owners changed before attribution. Its trigger
+changes affect live wedding, membership, and attribution writers even while
+the payout gate is off. Multi-wedding and row-lock ordering, repeatable-read
+visibility, and whole-transaction retry behavior remain unproven. Do not apply
+this migration to production until those effects and gaps are resolved.
+
+Migration `202611240018` can reject a conflicting simple or controlled payout
+receipt after an external transfer has already occurred, rolling back the
+receipt transaction rather than recording the conflicting observation through
+that rail's hold path. Its trigger is not complete cross-rail reconciliation.
+The payout gate must remain off until this and the other cross-rail risks are
+resolved. A current-destination read never authorizes a first send; a safe
+one-time manual authorization and uncertain-outcome procedure are still needed.
+
 The verified-adjustment inbox is a default-off infrastructure change. If
 `VERIFIED_ADJUSTMENT_INBOX_ENABLED` is explicitly enabled after review, signed
 Stripe and Paystack contribution adjustments are staged before their locked
