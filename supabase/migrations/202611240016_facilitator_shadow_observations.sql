@@ -16,9 +16,10 @@ create table public.facilitator_shadow_observations (
 create index facilitator_shadow_observation_reference
   on public.facilitator_shadow_observations(provider,transaction_reference);
 create table public.facilitator_shadow_observation_incidents (
-  observation_id uuid primary key references public.facilitator_shadow_observations(id),
+  observation_id uuid not null references public.facilitator_shadow_observations(id),
   reason text not null check(reason in ('changed_retry','request_mismatch','duplicate_reference','multiple_observations')),
-  created_at timestamptz not null default clock_timestamp()
+  created_at timestamptz not null default clock_timestamp(),
+  primary key(observation_id,reason)
 );
 do $$ declare t text; begin
   foreach t in array array['facilitator_shadow_observations','facilitator_shadow_observation_incidents'] loop
@@ -34,7 +35,8 @@ create function public.facilitator_shadow_observe_internal(
   p_observed_at timestamptz,p_confirmed boolean
 ) returns jsonb language plpgsql security definer set search_path='' set row_security=off as $$
 declare claim public.facilitator_shadow_claims; r public.facilitator_reservation_requests;
-  digest text; normalized text; observation uuid; reason text;
+  digest text; normalized text; observation uuid;
+  changed_retry boolean; request_mismatch boolean; duplicate_reference boolean; multiple_observations boolean;
 begin
   if not public.facilitator_shadow_claim_enabled() or not public.facilitator_reservation_core_enabled() then
     raise exception 'FACILITATOR_SHADOW_DISABLED: Shadow observations are disabled.';
@@ -69,30 +71,27 @@ begin
       'incident',exists(select 1 from public.facilitator_shadow_observation_incidents where observation_id=observation),
       'replayed',true);
   end if;
-  if exists(select 1 from public.facilitator_shadow_observations where action_key=p_key) then
-    reason:='changed_retry';
-  elsif p_actual is distinct from r.amount_minor or p_currency is distinct from r.currency
-    or p_observed_at<claim.claimed_at or p_observed_at>clock_timestamp() then
-    reason:='request_mismatch';
-  elsif exists(select 1 from public.facilitator_shadow_observations
+  changed_retry:=exists(select 1 from public.facilitator_shadow_observations where action_key=p_key);
+  request_mismatch:=p_actual is distinct from r.amount_minor or p_currency is distinct from r.currency
+    or p_observed_at<claim.claimed_at or p_observed_at>clock_timestamp();
+  duplicate_reference:=exists(select 1 from public.facilitator_shadow_observations
       where provider=p_provider and transaction_reference=normalized)
     or exists(select 1 from public.simple_payout_receipts where provider=p_provider and transaction_reference=normalized)
     or exists(select 1 from public.manual_payout_receipts where provider=p_provider and transaction_reference=normalized)
     or (p_provider='daraja' and exists(select 1 from public.b2c_callback_events
-      where kind='result' and evidence->>'result_code'='0' and upper(evidence->>'transaction_id')=normalized)) then
-    reason:='duplicate_reference';
-  elsif exists(select 1 from public.facilitator_shadow_observations where request_id=p_request) then
-    reason:='multiple_observations';
-  end if;
+      where kind='result' and evidence->>'result_code'='0' and upper(evidence->>'transaction_id')=normalized));
+  multiple_observations:=exists(select 1 from public.facilitator_shadow_observations where request_id=p_request);
   insert into public.facilitator_shadow_observations(request_id,action_key,payload_digest,provider,
     transaction_reference,actual_minor,currency,observed_at,actor_id)
     values(p_request,p_key,digest,p_provider,normalized,p_actual,p_currency,p_observed_at,auth.uid())
     returning id into observation;
-  if reason is not null then
-    insert into public.facilitator_shadow_observation_incidents(observation_id,reason) values(observation,reason);
-  end if;
+  insert into public.facilitator_shadow_observation_incidents(observation_id,reason)
+    select observation,x.reason from (values
+      ('changed_retry',changed_retry),('request_mismatch',request_mismatch),
+      ('duplicate_reference',duplicate_reference),('multiple_observations',multiple_observations)
+    ) x(reason,applies) where x.applies;
   return jsonb_build_object('observation_id',observation,'status','observed',
-    'incident',reason is not null,'replayed',false);
+    'incident',changed_retry or request_mismatch or duplicate_reference or multiple_observations,'replayed',false);
 end $$;
 revoke all on function public.facilitator_shadow_observe_internal(uuid,uuid,text,text,bigint,text,timestamptz,boolean)
   from public,anon,authenticated,service_role;

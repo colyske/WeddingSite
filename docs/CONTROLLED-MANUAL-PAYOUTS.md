@@ -57,8 +57,9 @@ contains no paid or release transition, makes no transfer, and must not be used
 to authorize an operator send. Cross-rail claims, incidents and provider intake
 remain prerequisites for any real processing workflow.
 Migration `202611240016` adds a private, hard-disabled synthetic outcome journal.
-Changed retries and detected mismatches or duplicate references retain an incident
-rather than overwriting evidence. An observation is not a provider receipt, a paid
+Changed retries and detected mismatches or duplicate references retain each applicable
+incident rather than overwriting evidence. Detection remains incomplete and one-sided.
+An observation is not a provider receipt, a paid
 decision, or permission to resend; its one-way checks do not protect other rails
 from subsequently using the same reference.
 

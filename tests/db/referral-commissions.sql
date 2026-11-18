@@ -568,11 +568,12 @@ begin
           and repeated->>'observation_id'=report->>'observation_id' and repeated->>'replayed'='true',
           'synthetic observation retry is normalized and idempotent');
         altered:=public.facilitator_shadow_observe_internal(first_id,observation_key,'daraja',
-          'fictional-ref-2',600,'KES',moment,true);
+          'fictional-ref-1',599,'KES',moment,true);
         perform pg_temp.assert_true(altered->>'incident'='true'
-          and exists(select 1 from public.facilitator_shadow_observation_incidents
-            where observation_id=(altered->>'observation_id')::uuid and reason='changed_retry'),
-          'changed replay persists its conflicting observation and incident');
+          and (select count(*)=4 from public.facilitator_shadow_observation_incidents
+            where observation_id=(altered->>'observation_id')::uuid
+              and reason in ('changed_retry','request_mismatch','duplicate_reference','multiple_observations')),
+          'changed replay retains all applicable conflict incidents');
         altered:=public.facilitator_shadow_observe_internal(first_id,extensions.gen_random_uuid(),'daraja',
           'fictional-ref-1',600,'KES',moment,true);
         perform pg_temp.assert_true(exists(select 1 from public.facilitator_shadow_observation_incidents
