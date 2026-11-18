@@ -829,8 +829,10 @@ begin
       'Admin can review and SuperAdmin can claim');
     result:=public.facilitator_manual_sender_current(manual_id);
     perform pg_temp.assert_true(result->>'revision'=recipient::text
-      and result->>'current_recipient_checked'='true'       and result->>'send_authorized'='true'
-            and result->>'do_not_resend'='true', 'claimed sender may send once to the freshly checked destination; never resend');
+      and result->>'current_recipient_checked'='true'             and result->>'send_authorized'='false'
+            and result->>'do_not_resend'='true', 'claimed sender may audit-read the current verified destination only; repeated reads never authorize a send');
+          result:=public.facilitator_manual_sender_current(manual_id);
+          perform pg_temp.assert_true(result->>'send_authorized'='false', 'replayed read still does not authorize');
     perform set_config('request.jwt.claim.sub',admin_id::text,true);
     blocked:=false;
     begin perform public.facilitator_manual_sender_current(manual_id);

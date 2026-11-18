@@ -582,7 +582,7 @@ begin
   perform public.facilitator_manual_check_sources(r.user_id,r.currency);
   result:=public.facilitator_manual_claim_snapshot_internal(p_request);
   return result||jsonb_build_object('historical_only',false,'current_recipient_checked',true,
-    'send_authorized',true,'do_not_resend',true);
+    'send_authorized',false,'do_not_resend',true);
 end $$;
 
 create function public.facilitator_manual_incident_review_internal(
