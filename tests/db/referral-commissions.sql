@@ -179,6 +179,26 @@ update public.contributions set funds_available_at=now()-interval '1 day'
   where id=(select id from referral_actors where kind='paid');
 set constraints all immediate;
 set constraints all deferred;
+-- Synthetic route change: production admission guards make this field immutable.
+set local session_replication_role=replica;
+update public.contributions set settlement_route='paystack_direct'
+  where id=(select id from referral_actors where kind='paid');
+set local session_replication_role=origin;
+do $$
+declare blocked boolean:=false;
+begin
+  perform set_config('request.jwt.claim.role','authenticated',true);
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='owner'),true);
+  begin
+    perform public.referral_funding_review_create((select id from referral_actors where kind='paid'),
+      8880,2000,0,0,0,extensions.gen_random_uuid(),repeat('a',64),true);
+  exception when raise_exception then blocked:=true; end;
+  perform pg_temp.assert_true(blocked,'direct Paystack split cannot be reviewed as platform-wallet funding');
+end $$;
+set local session_replication_role=replica;
+update public.contributions set settlement_route='platform_wallet'
+  where id=(select id from referral_actors where kind='paid');
+set local session_replication_role=origin;
 do $$
 declare cid uuid:=(select id from referral_actors where kind='paid'); r uuid; blocked boolean;
 begin

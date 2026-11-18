@@ -56,6 +56,7 @@ begin
   select * into b from public.referral_balances where contribution_id=p_contribution;
   if not found or b.held_estimate_minor<=0 or c.payment_environment is distinct from 'live'
     or c.verified_provider_payment is distinct from true or c.payment_status is distinct from 'paid'
+    or c.settlement_route is distinct from 'platform_wallet'
     or c.platform_fee_minor is null or c.platform_fee_minor<=0
     or c.currency is distinct from b.currency
     or c.funds_available_at is null or c.funds_available_at>clock_timestamp()

@@ -12,12 +12,12 @@ verified by the application. Do not enter couple funds or personal information.
 
 The recorded fee cannot exceed the contribution's platform fee, and the known
 provider fee cannot be omitted from cost. Only verified, live, time-released,
-eligible estimates without active adjustment or identity-link holds can be
-reviewed. A changed contribution, adjustment, settlement route or availability
-date invalidates the review. These records do not reserve funds, establish a
-period-wide platform cash and liability inventory, make estimates payable,
-authorize a payout or send money. Historical estimates remain subject to their
-original policy and evidence; no entries are backfilled.
+platform-wallet estimates without active adjustment or identity-link holds can be
+reviewed; direct Paystack splits are excluded. A changed contribution, adjustment,
+settlement route or availability date invalidates the review. These records do
+not reserve funds, establish a period-wide platform cash and liability inventory,
+make estimates payable, authorize a payout or send money. Historical estimates
+remain subject to their original policy and evidence; no entries are backfilled.
 
 The back office also accepts an Owner's expiring, currency-specific manual
 inventory assertion for a separately identified exclusive platform-funded
