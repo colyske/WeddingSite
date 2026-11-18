@@ -68,6 +68,16 @@ begin
     or not exists(select 1 from public.b2c_callback_events where event_key=repeat('b',64)) then
     raise exception 'B2C success did not retain observation and incident';
   end if;
+  -- Replays as b2c_event performs them add neither events nor incidents.
+  for i in 1..3 loop
+    insert into public.b2c_callback_events(dispatch_id,event_key,kind,evidence)
+      select dispatch_id,event_key,kind,evidence from public.b2c_callback_events where event_key=repeat('b',64)
+      on conflict do nothing;
+  end loop;
+  if (select count(*) from public.facilitator_manual_incidents where transaction_reference='REFGUARD1')<>1
+    or (select count(*) from public.b2c_callback_events where event_key=repeat('b',64))<>1 then
+    raise exception 'B2C replay created a repeated event or incident';
+  end if;
   -- Unrelated references and failed results do not create incidents.
   insert into public.b2c_callback_events(dispatch_id,event_key,kind,evidence)
     values(extensions.gen_random_uuid(),repeat('c',64),'result',

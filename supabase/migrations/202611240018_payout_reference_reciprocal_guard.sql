@@ -4,7 +4,11 @@
 -- Receipt writers reject a reference already used on another rail. A provider
 -- success callback is never rejected (that would lose the observation); it
 -- records a facilitator incident, which blocks further claims and outcome
--- reports until reviewed. External funding and past sends stay operator-checked.
+-- reports until reviewed. The incident trigger is AFTER INSERT, so b2c_event's
+-- ON CONFLICT DO NOTHING replays fire nothing, and its key is derived from the
+-- event so any repeat is a no-op. Incidents are immutable and the existing
+-- global incident block has no resolution path; clearing one needs a reviewed
+-- operator change outside this migration. External funding and past sends stay operator-checked.
 create function public.facilitator_reference_receipt_guard() returns trigger
 language plpgsql security definer set search_path='' set row_security=off as $$
 begin
@@ -51,11 +55,12 @@ begin
     where provider='daraja' and transaction_reference=upper(new.evidence->>'transaction_id');
   if found then
     insert into public.facilitator_manual_incidents(request_id,action_key,transaction_reference,actor_id)
-      values(receipt.request_id,extensions.gen_random_uuid(),receipt.transaction_reference,receipt.reported_by);
+      values(receipt.request_id,md5(new.dispatch_id::text||new.event_key)::uuid,receipt.transaction_reference,receipt.reported_by)
+      on conflict do nothing;
   end if;
   return new;
 end $$;
-create trigger facilitator_b2c_reference_incident before insert on public.b2c_callback_events
+create trigger facilitator_b2c_reference_incident after insert on public.b2c_callback_events
   for each row execute function public.facilitator_b2c_reference_incident();
 
 revoke all on function public.facilitator_reference_receipt_guard(),
