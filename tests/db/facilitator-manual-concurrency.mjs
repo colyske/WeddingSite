@@ -141,6 +141,18 @@ try {
   assert.ifError(initialReplay.error);
   assert.equal(matchJson(initialReplay.value).replayed, true,
     "Identical retry racing the first claim is only historical acknowledgment");
+  const report = (payout, key) => `public.facilitator_manual_action_internal(
+    '${payout}','${key}','paid',null,null,'synthetic-race-reference',false,true)`;
+  const [paidOutput, duplicateReport] = await race(
+    report(first, randomUUID()), report(second, randomUUID()), fixtureIds.owner);
+  assert.equal(matchJson(paidOutput).operator_reported, true, "First synthetic report is recorded");
+  assert.ifError(duplicateReport.error);
+  assert.equal(matchJson(duplicateReport.value).conflict, true,
+    "Concurrent duplicate reference is retained as an incident");
+  const incidentStatus = matchJson(await run(`begin; ${actor(fixtureIds.user)}
+    select public.facilitator_manual_status_internal('${second}'); commit;`));
+  assert.equal(incidentStatus.state, "outcome_review_required", "Incident is visible, not unqualified paid");
+  assert.equal(incidentStatus.do_not_resend, true);
   await run(`begin; ${actor(fixtureIds.admin)}
     select public.facilitator_manual_action_internal('${third}','${randomUUID()}',
       'reviewed',null,10,null,false,true); commit;`);
@@ -256,8 +268,11 @@ try {
     'failed',(select count(*) from public.facilitator_manual_requests where request_key='${competingKey}'),
     'stale',(select count(*) from public.facilitator_manual_requests where request_key='${staleKey}'),
     'checker_failed',(select count(*) from public.facilitator_manual_requests where request_key='${checkerRequestKey}'),
-    'claims',(select count(*) from public.facilitator_manual_claims));`));
-  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 1000, failed: 0, stale: 0, checker_failed: 0, claims: 2 });
+    'claims',(select count(*) from public.facilitator_manual_claims),
+    'receipts',(select count(*) from public.facilitator_manual_receipts),
+    'incidents',(select count(*) from public.facilitator_manual_incidents));`));
+  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 1000, failed: 0, stale: 0,
+    checker_failed: 0, claims: 2, receipts: 1, incidents: 1 });
   console.log("Concurrent synthetic requests and claims serialize; retries acknowledge history without additional liabilities.");
 } finally {
   if (gateChanged) await run(gateReset);
