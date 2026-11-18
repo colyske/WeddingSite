@@ -21,7 +21,8 @@ function sql(input, hold = false) {
     });
   });
   if (hold) child.stdin.write(input); else child.stdin.end(input);
-  return { result, release: () => { if (!child.stdin.destroyed) child.stdin.end("commit;\n"); } };
+  return { result, write: input => child.stdin.write(input),
+    release: () => { if (!child.stdin.destroyed) child.stdin.end("commit;\n"); } };
 }
 const run = input => sql(input).result;
 const waitFor = condition => run(`do $$ begin for i in 1..1000 loop
@@ -32,6 +33,7 @@ end loop; raise exception 'Concurrency barrier timed out'; end $$;`);
 const creator = randomUUID(), referrer = randomUUID(), wedding = randomUUID(), intent = randomUUID();
 const linkedWedding = randomUUID(), linkedIntent = randomUUID();
 const updateWedding = randomUUID(), updateIntent = randomUUID();
+const staleWedding = randomUUID(), staleIntent = randomUUID();
 const freshCreator = randomUUID(), freshIntent = randomUUID(), createKey = randomUUID();
 const revision = randomUUID(), holderName = `referral_link_holder_${randomUUID()}`;
 let fixtureCreated = false;
@@ -43,11 +45,13 @@ try {
     insert into public.weddings(id,couple_names,currency,client_owner_id)
       values('${wedding}','Fictional couple','KES','${creator}'),
         ('${linkedWedding}','Fictional linked couple','KES','${referrer}'),
-        ('${updateWedding}','Fictional existing member','KES','${creator}');
+        ('${updateWedding}','Fictional existing member','KES','${creator}'),
+        ('${staleWedding}','Fictional stale snapshot','KES','${creator}');
     insert into public.referral_intents(id,creator_id,referrer_id,state,consumed_at,disclosed_revision,disclosed_terms_version)
       values('${intent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1'),
         ('${linkedIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1'),
-        ('${updateIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1');
+        ('${updateIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1'),
+        ('${staleIntent}','${creator}','${referrer}','consumed',now(),'${revision}','client-referrals-v1');
     insert into public.referral_intents(id,creator_id,referrer_id)
       values('${freshIntent}','${freshCreator}','${referrer}');
     insert into public.wedding_memberships(wedding_id,user_id,role)
@@ -135,19 +139,49 @@ try {
     values('${linkedWedding}','${referrer}','${creator}','${linkedIntent}','${revision}','client-referrals-v1',true);`);
   assert.equal(await run(`select count(*) from public.referral_eligibility_events
     where wedding_id='${linkedWedding}' and reason='owner_account';`), "1");
+  const staleName = `referral_stale_${randomUUID()}`;
+  const stale = sql(`begin isolation level repeatable read; set local statement_timeout='20s';
+    set local idle_in_transaction_session_timeout='25s'; set local application_name='${staleName}';
+    select count(*) from public.referral_attributions where wedding_id='${staleWedding}';\n`, true);
+  const staleResult = stale.result.then(value => ({ value }), error => ({ error }));
+  let staleError;
+  try {
+    await waitFor(`exists(select 1 from pg_stat_activity where application_name='${staleName}'
+      and state='idle in transaction' and wait_event='ClientRead')`);
+    await run(`insert into public.referral_attributions
+      (wedding_id,referrer_id,creator_id,intent_id,disclosed_revision,terms_version,eligible)
+      values('${staleWedding}','${referrer}','${creator}','${staleIntent}','${revision}','client-referrals-v1',true);`);
+    stale.write(`set local role authenticated;
+      select set_config('request.jwt.claim.sub','${creator}',true);
+      select public.set_workspace_member_role('${staleWedding}','${referrer}','client');
+      select public.set_workspace_member_role('${staleWedding}','${referrer}','admin');
+      set constraints all immediate;\n`);
+  } catch (caught) {
+    staleError = caught;
+  } finally {
+    stale.release();
+  }
+  const staleOutcome = await staleResult;
+  if (staleError) throw staleError;
+  if (staleOutcome.error) throw staleOutcome.error;
+  assert.equal(await run(`select role from public.wedding_memberships
+    where wedding_id='${staleWedding}' and user_id='${referrer}';`), "admin");
+  assert.equal(await run(`select count(*) from public.referral_eligibility_events
+    where wedding_id='${staleWedding}';`), "0",
+  "An older repeatable-read writer can miss a newly committed attribution and its transient client link");
   console.log("Relevant account links and existing-link attribution fail fast under accounting lock.");
 } finally {
   if (fixtureCreated) await run(`begin;
     alter table public.referral_eligibility_events disable trigger referral_eligibility_events_immutable;
-    delete from public.referral_eligibility_events where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}');
+    delete from public.referral_eligibility_events where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}');
     alter table public.referral_eligibility_events enable trigger referral_eligibility_events_immutable;
     alter table public.referral_attributions disable trigger referral_attribution_immutable;
-    delete from public.referral_attributions where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}');
+    delete from public.referral_attributions where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}');
     alter table public.referral_attributions enable trigger referral_attribution_immutable;
-    delete from public.referral_intents where id in ('${intent}','${linkedIntent}','${updateIntent}','${freshIntent}');
-    delete from public.wedding_memberships where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}');
+    delete from public.referral_intents where id in ('${intent}','${linkedIntent}','${updateIntent}','${staleIntent}','${freshIntent}');
+    delete from public.wedding_memberships where wedding_id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}');
     alter table public.weddings disable trigger weddings_no_delete;
-    delete from public.weddings where id in ('${wedding}','${linkedWedding}','${updateWedding}');
+    delete from public.weddings where id in ('${wedding}','${linkedWedding}','${updateWedding}','${staleWedding}');
     alter table public.weddings enable trigger weddings_no_delete;
     delete from public.referral_accounts where user_id='${referrer}';
     delete from public.profiles where id in ('${creator}','${referrer}','${freshCreator}');

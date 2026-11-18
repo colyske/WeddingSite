@@ -69,8 +69,8 @@ export default async function handler(req, res) {
     const body = parseBody(req);
     if (!body) return sendJson(res, 400, { error: "Invalid referral request." });
     if (action === "manual-send-start") {
-      if (!exactFields(body, ["id", "key", "confirmed"]) || !UUID.test(body.id || "") ||
-        !UUID.test(body.key || "") || body.confirmed !== true) {
+      if (!exactFields(body, ["id", "key", "confirmed"]) || typeof body.id !== "string" ||
+        typeof body.key !== "string" || !UUID.test(body.id) || !UUID.test(body.key) || body.confirmed !== true) {
         return sendJson(res, 400, { error: "Confirm the claimed payout and send start." });
       }
       try {

@@ -45,6 +45,9 @@ test("send start authorizes only after a committed first start and a separate ch
     assert.equal((await invoke(body)).statusCode, 403);
     role = "owner";
     assert.equal((await invoke({ ...body, sender: id })).statusCode, 400);
+    assert.equal((await invoke({ ...body, id: [id] })).statusCode, 400);
+    assert.equal((await invoke({ ...body, key: [id] })).statusCode, 400);
+    assert.equal(calls.length, 0);
     const first = await invoke(body);
     assert.equal(first.statusCode, 200);
     assert.equal(first.data.send_authorized, true);
