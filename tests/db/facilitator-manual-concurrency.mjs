@@ -121,8 +121,8 @@ try {
   assert.ok(changed.error, "Concurrent changed replay must fail");
   assert.match(changed.error.message, /FACILITATOR_MANUAL_CONFLICT:/);
   const claimKey = randomUUID();
-  const claim = key => `public.facilitator_manual_action_internal(
-    '${first}','${key}','processing',null,10,null,true,true)`;
+  const claim = (key, payout = first) => `public.facilitator_manual_action_internal(
+    '${payout}','${key}','processing',null,10,null,true,true)`;
   const [claimOutput, otherClaim] = await race(claim(claimKey), claim(randomUUID()), fixtureIds.owner);
   assert.equal(matchJson(claimOutput).state, "processing", "Owner claims the synthetic payout");
   assert.ok(otherClaim.error, "Concurrent second claim must fail");
@@ -131,13 +131,20 @@ try {
   assert.equal(matchJson(claimReplayOutput).replayed, true, "Claim retry is historical acknowledgment");
   assert.ifError(claimReplay.error);
   assert.equal(matchJson(claimReplay.value).replayed, true, "Concurrent claim retry cannot create a new claim");
+  const initialReplayKey = randomUUID();
+  const [initialClaim, initialReplay] = await race(
+    claim(initialReplayKey, second), claim(initialReplayKey, second), fixtureIds.owner);
+  assert.equal(matchJson(initialClaim).state, "processing", "Initial same-key claim succeeds");
+  assert.ifError(initialReplay.error);
+  assert.equal(matchJson(initialReplay.value).replayed, true,
+    "Identical retry racing the first claim is only historical acknowledgment");
   const totals = matchJson(await run(`select jsonb_build_object(
     'requests',(select count(*) from public.facilitator_manual_requests where user_id='${fixtureIds.user}'),
     'allocations',(select count(*) from public.facilitator_manual_allocations),
     'total',(select sum(amount_minor) from public.facilitator_manual_allocations),
     'failed',(select count(*) from public.facilitator_manual_requests where request_key='${competingKey}'),
     'claims',(select count(*) from public.facilitator_manual_claims));`));
-  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 1000, failed: 0, claims: 1 });
+  assert.deepEqual(totals, { requests: 3, allocations: 3, total: 1000, failed: 0, claims: 2 });
   console.log("Concurrent synthetic requests and claims serialize; retries acknowledge history without additional liabilities.");
 } finally {
   if (gateChanged) await run(gateReset);
