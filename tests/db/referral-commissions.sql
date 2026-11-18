@@ -292,7 +292,28 @@ begin
     perform pg_temp.assert_true(not has_table_privilege(role_name,'public.facilitator_reservation_requests','select')
       and not has_table_privilege(role_name,'public.facilitator_reservation_allocations','insert'),
       role_name||' cannot access private reservation ledger');
+    perform pg_temp.assert_true(not has_function_privilege(role_name,
+      'public.facilitator_manual_request_internal(uuid,uuid,text,bigint,jsonb,boolean)','execute')
+      and not has_function_privilege(role_name,
+        'public.facilitator_manual_action_internal(uuid,uuid,text,text,bigint,text,boolean,boolean)','execute')
+      and not has_table_privilege(role_name,'public.facilitator_manual_requests','select')
+      and not has_table_privilege(role_name,'public.facilitator_manual_receipts','insert'),
+      role_name||' cannot access the disabled manual model');
   end loop;
+  blocked:=false;
+  begin perform public.facilitator_manual_request_internal(null,null,null,null,null,false);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_MANUAL_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'manual request is hard disabled');
+  blocked:=false;
+  begin perform public.facilitator_manual_action_internal(null,null,null,null,null,null,false,false);
+  exception when raise_exception then
+    if sqlerrm not like 'FACILITATOR_MANUAL_DISABLED:%' then raise; end if;
+    blocked:=true;
+  end;
+  perform pg_temp.assert_true(blocked,'manual action is hard disabled');
   blocked:=false;
   begin perform public.facilitator_reservation_create_internal(null,null,null,null,'KES',1,'[]'::jsonb);
   exception when raise_exception then
@@ -333,6 +354,8 @@ create or replace function public.facilitator_reservation_core_enabled() returns
 language sql immutable set search_path='' as $$ select true $$;
 create or replace function public.facilitator_shadow_claim_enabled() returns boolean
 language sql immutable set search_path='' as $$ select true $$;
+create or replace function public.facilitator_manual_enabled() returns boolean
+language sql immutable set search_path='' as $$ select true $$;
 do $$
 declare u uuid:=(select id from referral_actors where kind='referrer');
   owner_id uuid:=(select id from referral_actors where kind='owner');
@@ -350,6 +373,115 @@ begin
     values(recipient,extensions.gen_random_uuid(),repeat('a',64),owner_id) returning id into evidence;
   insert into public.facilitator_recipient_checks(revision_id,evidence_id,checked_by,owner_solo)
     values(recipient,evidence,checker,false);
+  declare manual_id uuid; request_key uuid:=extensions.gen_random_uuid(); action_key uuid;
+    result jsonb;
+  begin
+    perform set_config('request.jwt.claim.sub',u::text,true);
+    manual_id:=public.facilitator_manual_request_internal(request_key,recipient,'KES',600,
+      jsonb_build_array(jsonb_build_object('review',source,'amount','600')),true);
+    perform pg_temp.assert_true(manual_id=public.facilitator_manual_request_internal(request_key,recipient,'KES',600,
+      jsonb_build_array(jsonb_build_object('review',source,'amount','600')),true),'manual request replay is historical');
+    blocked:=false;
+    begin
+      perform public.facilitator_manual_request_internal(request_key,recipient,'KES',599,
+        jsonb_build_array(jsonb_build_object('review',source,'amount','599')),true);
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_MANUAL_CONFLICT:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'manual key cannot be reused for a different request');
+    blocked:=false;
+    begin
+      perform public.facilitator_manual_request_internal(extensions.gen_random_uuid(),recipient,'KES',401,
+        jsonb_build_array(jsonb_build_object('review',source,'amount','401')),true);
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_MANUAL_HOLD:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'manual source cap includes retained requests without any cash inventory');
+    blocked:=false;
+    begin
+      perform public.facilitator_manual_action_internal(manual_id,extensions.gen_random_uuid(),
+        'reviewed',null,null,null,false,true);
+    exception when raise_exception then
+      if sqlerrm <> 'Staff access required.' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'nonstaff cannot handle manual payouts');
+    begin
+      perform set_config('request.jwt.claim.sub',owner_id::text,true);
+      result:=public.facilitator_manual_action_internal(manual_id,extensions.gen_random_uuid(),
+        'processing',null,10,null,true,true);
+      perform pg_temp.assert_true(result->>'state'='processing'
+        and (select owner_solo and reviewer_id is null from public.facilitator_manual_claims where request_id=manual_id),
+        'Owner may claim alone without a second payout reviewer');
+      raise exception 'SYNTHETIC_OWNER_SOLO_ROLLBACK';
+    exception when raise_exception then
+      if sqlerrm <> 'SYNTHETIC_OWNER_SOLO_ROLLBACK' then raise; end if;
+    end;
+    perform set_config('request.jwt.claim.sub',admin_id::text,true);
+    perform public.facilitator_manual_action_internal(manual_id,extensions.gen_random_uuid(),
+      'reviewed',null,null,null,false,true);
+    perform set_config('request.jwt.claim.sub',checker::text,true);
+    blocked:=false;
+    begin
+      perform public.facilitator_manual_action_internal(manual_id,extensions.gen_random_uuid(),
+        'processing',null,10,null,true,true);
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_MANUAL_AUTH:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'only Owner can claim solo');
+    action_key:=extensions.gen_random_uuid();
+    result:=public.facilitator_manual_action_internal(manual_id,action_key,'processing',null,10,null,false,true);
+    perform pg_temp.assert_true(result->>'state'='processing'
+      and (select reviewer_id=admin_id and not owner_solo from public.facilitator_manual_claims where request_id=manual_id),
+      'Admin can review and SuperAdmin can claim');
+    result:=public.facilitator_manual_action_internal(manual_id,action_key,'processing',null,10,null,false,true);
+    perform pg_temp.assert_true(result->>'replayed'='true','claim replay is acknowledgment only');
+    perform public.facilitator_manual_action_internal(manual_id,extensions.gen_random_uuid(),
+      'hold','outcome_uncertain',null,null,false,true);
+    blocked:=false;
+    begin
+      perform public.facilitator_manual_action_internal(manual_id,extensions.gen_random_uuid(),
+        'cancelled',null,null,null,false,true);
+    exception when raise_exception then
+      if sqlerrm not like 'FACILITATOR_MANUAL_CONFLICT:%' then raise; end if;
+      blocked:=true;
+    end;
+    perform pg_temp.assert_true(blocked,'uncertain claims cannot be cancelled or released');
+    result:=public.facilitator_manual_action_internal(manual_id,extensions.gen_random_uuid(),
+      'paid',null,null,'synthetic-manual-001',false,true);
+    perform pg_temp.assert_true(result->>'operator_reported'='true'
+      and (select count(*)=1 from public.facilitator_manual_receipts),
+      'sender records only a synthetic operator-reported receipt');
+    declare changed_review uuid;
+    begin
+      insert into public.referral_funding_reviews(contribution_id,source_digest,currency,estimate_minor,
+        platform_fee_minor,settled_platform_fee_minor,provider_cost_minor,losses_minor,holds_minor,
+        other_commitments_minor,evidence_reference,evidence_sha256,recorded_by,recorded_at)
+        select contribution_id,source_digest,currency,estimate_minor,platform_fee_minor,settled_platform_fee_minor,
+          provider_cost_minor,losses_minor,holds_minor,other_commitments_minor,extensions.gen_random_uuid(),
+          repeat('f',64),owner_id,clock_timestamp()+interval '1 second'
+        from public.referral_funding_reviews where id=source returning id into changed_review;
+      perform set_config('request.jwt.claim.sub',u::text,true);
+      blocked:=false;
+      begin
+        perform public.facilitator_manual_request_internal(extensions.gen_random_uuid(),recipient,'KES',1,
+          jsonb_build_array(jsonb_build_object('review',changed_review,'amount','1')),true);
+      exception when raise_exception then
+        if sqlerrm not like 'FACILITATOR_MANUAL_HOLD:%' then raise; end if;
+        blocked:=true;
+      end;
+      perform pg_temp.assert_true(blocked,'unchecked newer source blocks further manual requests');
+      perform pg_temp.assert_true((select count(*)=1 from public.facilitator_manual_claims)
+        and (select sum(amount_minor)=600 from public.facilitator_manual_allocations),
+        'adverse evidence does not erase the existing liability');
+    end;
+    raise exception 'SYNTHETIC_MANUAL_ROLLBACK';
+  exception when raise_exception then
+    if sqlerrm <> 'SYNTHETIC_MANUAL_ROLLBACK' then raise; end if;
+  end;
   insert into public.facilitator_funding_attestations(request_key,currency,custody_scope_reference,
     period_start,as_of,expires_at,cash_minor,unpaid_costs_minor,holds_minor,other_commitments_minor,
     exclusive_platform_funded_asserted,evidence_reference,evidence_sha256,recorded_by)

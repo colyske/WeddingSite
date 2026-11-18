@@ -78,6 +78,24 @@ An observation is not a provider receipt, a paid
 decision, or permission to resend; its one-way checks do not protect other rails
 from subsequently using the same reference.
 
+Migration `202611240017` adds a separate ungranted, hard-disabled manual-workflow
+model. It reserves checked contribution-specific commission without an inventory
+or account identifier, preserves original source allocations, and models staff
+review, Owner-solo or independently reviewed claims, uncertain holds, cancellation
+before claim, and operator-reported receipts. A recorded fee is an operator
+observation, not a deduction from couple funds or proof of external liquidity.
+Historical request and action retries acknowledge prior records and never
+authorize a send or resend. Tests enable the model only inside a rolled-back
+synthetic transaction; the migration has no activation mechanism.
+
+This is not a usable payout service: it has no beneficiary or operator API/UI,
+no reciprocal cross-rail receipt or incident protection, and no safe destination
+rebinding after recipient changes. The model inherits incomplete provider
+ingress and attribution-link visibility and has not established concurrency or
+scale safety. Its source evidence is manually attested rather than independently
+verified by the application. Do not expose it or interpret synthetic `paid` as
+an actual transfer. External cash decisions remain with the operator.
+
 The current inventory guard holds contradictory amounts for the same latest
 snapshot time, but a newer snapshot can supersede that check without an explicit
 conflict resolution. It does not prove custody exclusivity or find other-rail
