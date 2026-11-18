@@ -1,14 +1,14 @@
 -- Reciprocal duplicate-reference protection across the existing manual
 -- facilitator, simple/couple and controlled/B2C receipt rails. Earlier rails
 -- only knew about each other; the facilitator model checked them one way.
--- Receipt writers reject a reference already used on another rail. A provider
--- success callback is never rejected (that would lose the observation); it
--- records a facilitator incident, which blocks further claims and outcome
--- reports until reviewed. The incident trigger is AFTER INSERT, so b2c_event's
+-- Receipt writers reject a reference already used on another rail. A matching
+-- provider success callback records an incident in the same transaction. If
+-- the trigger fails, that callback transaction rolls back and must be retried.
+-- The incident trigger is AFTER INSERT, so b2c_event's
 -- ON CONFLICT DO NOTHING replays fire nothing, and its key is derived from the
 -- event so any repeat is a no-op. Incidents are immutable and the existing
--- global incident block has no resolution path; clearing one needs a reviewed
--- operator change outside this migration. External funding and past sends stay operator-checked.
+-- global incident block has no resolution path in this model. External funding
+-- and past sends stay operator-checked.
 create function public.facilitator_reference_receipt_guard() returns trigger
 language plpgsql security definer set search_path='' set row_security=off as $$
 begin
