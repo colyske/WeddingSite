@@ -20,8 +20,16 @@ create table public.verified_adjustment_inbox (
 create table public.verified_adjustment_inbox_conflicts (
   inbox_id uuid not null references public.verified_adjustment_inbox(id),
   payload_sha256 text not null check (payload_sha256 ~ '^[0-9a-f]{64}$'),
+  event_type text not null,
+  adjustment_id text not null,
+  payment_reference text,
+  amount_minor bigint not null,
+  currency text not null,
+  provider_state text not null,
+  occurred_at timestamptz,
+  conflict_kind text not null check (conflict_kind in ('changed_delivery','legacy_event_mismatch')),
   observed_at timestamptz not null default clock_timestamp(),
-  primary key(inbox_id,payload_sha256)
+  primary key(inbox_id,payload_sha256,conflict_kind)
 );
 create table public.verified_adjustment_inbox_processed (
   inbox_id uuid primary key references public.verified_adjustment_inbox(id),
@@ -74,8 +82,10 @@ begin
       item.provider_state,item.occurred_at,item.payload_sha256)
     is distinct from (p_event_type,p_adjustment_id,p_payment_reference,p_amount_minor,p_currency,
       p_state,p_occurred_at,p_payload_sha256) then
-    insert into public.verified_adjustment_inbox_conflicts(inbox_id,payload_sha256)
-      values(item.id,p_payload_sha256) on conflict do nothing;
+    insert into public.verified_adjustment_inbox_conflicts(inbox_id,payload_sha256,event_type,
+      adjustment_id,payment_reference,amount_minor,currency,provider_state,occurred_at,conflict_kind)
+      values(item.id,p_payload_sha256,p_event_type,p_adjustment_id,p_payment_reference,
+        p_amount_minor,p_currency,p_state,p_occurred_at,'changed_delivery') on conflict do nothing;
   end if;
   return jsonb_build_object('id',item.id,'conflict',exists(
     select 1 from public.verified_adjustment_inbox_conflicts where inbox_id=item.id));
@@ -102,14 +112,47 @@ begin
     previous.amount_minor,previous.currency::text,previous.provider_state,previous.occurred_at)
     is distinct from (item.event_type,item.adjustment_id,item.payment_reference,
       item.amount_minor,item.currency,item.provider_state,item.occurred_at) then
-    insert into public.verified_adjustment_inbox_conflicts(inbox_id,payload_sha256)
-      values(item.id,item.payload_sha256) on conflict do nothing;
+    insert into public.verified_adjustment_inbox_conflicts(inbox_id,payload_sha256,event_type,
+      adjustment_id,payment_reference,amount_minor,currency,provider_state,occurred_at,conflict_kind)
+      values(item.id,item.payload_sha256,previous.event_type,previous.provider_adjustment_id,
+        previous.provider_payment_reference,previous.amount_minor,previous.currency,
+        previous.provider_state,previous.occurred_at,'legacy_event_mismatch') on conflict do nothing;
     return jsonb_build_object('processed',false,'conflict',true);
   end if;
   perform public.record_provider_adjustment(item.provider,item.event_id,item.event_type,item.adjustment_id,
     item.payment_reference,item.amount_minor,item.currency,item.provider_state,item.occurred_at);
   insert into public.verified_adjustment_inbox_processed(inbox_id) values(item.id);
   return jsonb_build_object('processed',true,'replayed',false);
+end $$;
+
+-- A later facilitator payout implementation must hold both locks, in this
+-- order, while checking this function and creating any financial exposure.
+create function public.verified_adjustment_inbox_clear_for_payout() returns boolean
+language sql stable security definer set search_path='' set row_security=off as $$
+  select not exists(select 1 from public.verified_adjustment_inbox_conflicts)
+    and not exists(select 1 from public.verified_adjustment_inbox i
+      where not exists(select 1 from public.verified_adjustment_inbox_processed p where p.inbox_id=i.id))
+$$;
+
+create function public.admin_verified_adjustment_conflicts() returns jsonb
+language plpgsql security definer set search_path='' set row_security=off as $$
+begin
+  perform public.require_staff('superadmin');
+  insert into public.audit_events(actor_id,source,action,table_name,record_id)
+    values(auth.uid(),'user','verified_adjustment_conflicts_read','verified_adjustment_inbox_conflicts','queue');
+  return coalesce((select jsonb_agg(to_jsonb(rowdata) order by rowdata.observed_at desc) from (
+    select i.id,i.provider,i.event_id,i.event_type as original_event_type,
+      i.adjustment_id as original_adjustment_id,i.payment_reference as original_payment_reference,
+      i.amount_minor::text as original_amount_minor,i.currency as original_currency,
+      i.provider_state as original_state,i.occurred_at as original_occurred_at,
+      i.payload_sha256 as original_payload_sha256,c.event_type,c.adjustment_id,c.payment_reference,
+      c.amount_minor::text as amount_minor,c.currency,c.provider_state,c.occurred_at,
+      c.payload_sha256,c.conflict_kind,c.observed_at,
+      exists(select 1 from public.verified_adjustment_inbox_processed p where p.inbox_id=i.id) as previously_processed
+    from public.verified_adjustment_inbox_conflicts c
+    join public.verified_adjustment_inbox i on i.id=c.inbox_id
+    order by c.observed_at desc limit 100
+  ) rowdata),'[]'::jsonb);
 end $$;
 
 create function public.note_verified_adjustment_failure(p_id uuid) returns void
@@ -135,7 +178,9 @@ begin
 end $$;
 
 revoke all on function public.stage_verified_adjustment(text,text,text,text,text,bigint,text,text,timestamptz,text),
-  public.process_verified_adjustment(uuid),public.note_verified_adjustment_failure(uuid),public.pending_verified_adjustments()
+  public.process_verified_adjustment(uuid),public.note_verified_adjustment_failure(uuid),public.pending_verified_adjustments(),
+  public.verified_adjustment_inbox_clear_for_payout(),public.admin_verified_adjustment_conflicts()
   from public,anon,authenticated,service_role;
 grant execute on function public.stage_verified_adjustment(text,text,text,text,text,bigint,text,text,timestamptz,text),
   public.process_verified_adjustment(uuid),public.note_verified_adjustment_failure(uuid),public.pending_verified_adjustments() to service_role;
+grant execute on function public.admin_verified_adjustment_conflicts() to authenticated;

@@ -17,15 +17,23 @@ export async function stageVerifiedAdjustment(adjustment, payloadDigest) {
     p_occurred_at: adjustment.occurredAt,
     p_payload_sha256: payloadDigest
   });
-  if (!staged?.id || staged.conflict) {
-    throw new Error("Verified adjustment identity conflict requires investigation.");
+  if (!staged?.id || typeof staged.conflict !== "boolean") {
+    throw new Error("Verified adjustment intake returned an invalid result.");
   }
-  return processVerifiedAdjustment(staged.id);
+  if (staged.conflict) {
+    console.error("Verified adjustment identity conflict requires investigation", staged.id);
+    return { processed: false, conflict: true };
+  }
+  const result = await processVerifiedAdjustment(staged.id);
+  if (result.conflict) console.error("Verified adjustment identity conflict requires investigation", staged.id);
+  return result;
 }
 
 async function processVerifiedAdjustment(id) {
   const result = await rpc("process_verified_adjustment", { p_id: id });
-  if (result?.processed !== true) throw new Error("Verified adjustment is held for investigation.");
+  if (result?.processed !== true && result?.conflict !== true) {
+    throw new Error("Verified adjustment processing returned an invalid result.");
+  }
   return result;
 }
 
@@ -37,7 +45,8 @@ export async function runVerifiedAdjustmentWorker() {
   let processed = 0, failed = 0;
   for (const id of pending.ids) {
     try {
-      await processVerifiedAdjustment(id);
+      const result = await processVerifiedAdjustment(id);
+      if (!result.processed) throw new Error("Verified adjustment is held for investigation.");
       processed++;
     } catch (error) {
       failed++;

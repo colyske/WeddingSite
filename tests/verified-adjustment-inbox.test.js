@@ -103,7 +103,8 @@ test("worker reports conflicts and failed processing without dropping pending ev
     assert.deepEqual(await runVerifiedAdjustmentWorker(), { processed: 0, failed: 1, conflicts: 1 });
     assert.deepEqual(calls, ["pending_verified_adjustments", "process_verified_adjustment",
       "note_verified_adjustment_failure"]);
-    await assert.rejects(stageVerifiedAdjustment({ provider: "stripe" }, "a".repeat(64)), /identity conflict/);
+    assert.deepEqual(await stageVerifiedAdjustment({ provider: "stripe" }, "a".repeat(64)),
+      { processed: false, conflict: true });
     assert.equal(calls.at(-1), "stage_verified_adjustment", "Conflicts never reach processing");
   } finally {
     globalThis.fetch = savedFetch;

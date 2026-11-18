@@ -62,7 +62,7 @@ async function handleStripeWebhook(req, res) {
     const adjustment = normalizeStripeAdjustment(event);
     if (adjustment) {
       const result = await recordAdjustment(adjustment, createHash("sha256").update(raw).digest("hex"));
-      return sendJson(res, 200, { received: true, processed: Boolean(result) });
+      return sendJson(res, 200, { received: true, processed: result?.conflict ? false : Boolean(result) });
     }
     const payment = normalizeStripePayment(event);
     if (!payment) return sendJson(res, 200, { received: true, processed: false });
@@ -130,7 +130,7 @@ async function handlePaystackWebhook(req, res) {
         }
       }
       const result = await recordAdjustment(adjustment, digest);
-      return sendJson(res, 200, { received: true, processed: Boolean(result) });
+      return sendJson(res, 200, { received: true, processed: result?.conflict ? false : Boolean(result) });
     }
     const payment = normalizePaystackPayment(event);
     if (!payment) return sendJson(res, 200, { received: true, processed: false });

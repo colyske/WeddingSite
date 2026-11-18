@@ -84,6 +84,41 @@ test("lossless Paystack JSON preserves unsigned 64-bit transaction IDs", () => {
   assert.equal(parsePaystackJson('{"id":18446744073709551615,"amount":10005}').id,"18446744073709551615");
   assert.throws(()=>parsePaystackJson('{"amount":1,"amount":2}'));
 });
+test("enabled adjustment inbox stages only after signed Paystack payment context is verified", async () => {
+  const ctx=standardContext(), tx=standardTransaction(ctx), calls=[];
+  const old=process.env.VERIFIED_ADJUSTMENT_INBOX_ENABLED;
+  process.env.VERIFIED_ADJUSTMENT_INBOX_ENABLED="true";
+  let valid=true;
+  globalThis.fetch=async input=>{
+    const url=new URL(input), path=url.pathname;
+    calls.push(path);
+    if (path.startsWith("/transaction/verify/")) return Response.json({status:true,data:valid ? tx : {...tx,amount:1}});
+    if (path==="/rest/v1/contributions") return Response.json([{id:CID,paystack_context:ctx}]);
+    if (path==="/rest/v1/rpc/stage_verified_adjustment") return Response.json({id:CID,conflict:false});
+    if (path==="/rest/v1/rpc/process_verified_adjustment") return Response.json({processed:true});
+    throw new Error(`Unexpected request: ${path}`);
+  };
+  const event={event:"refund.processed",data:{refund_reference:"refund-fixture",transaction_reference:KEY,
+    amount:100,currency:"KES",createdAt:"2026-10-28T01:06:40.000Z"}};
+  const raw=Buffer.from(JSON.stringify(event));
+  const hook=async()=>{
+    const req=Readable.from([raw]);req.method="POST";req.query={provider:"paystack"};
+    req.headers={"x-paystack-signature":createHmac("sha512",env.PAYSTACK_SECRET_KEY).update(raw).digest("hex")};
+    return call(webhooks,req);
+  };
+  try {
+    valid=false;
+    assert.equal((await hook()).statusCode,500);
+    assert.ok(!calls.includes("/rest/v1/rpc/stage_verified_adjustment"));
+    calls.length=0;valid=true;
+    assert.equal((await hook()).statusCode,200);
+    assert.deepEqual(calls,["/transaction/verify/"+KEY,"/rest/v1/contributions",
+      "/rest/v1/rpc/stage_verified_adjustment","/rest/v1/rpc/process_verified_adjustment"]);
+  } finally {
+    if (old===undefined) delete process.env.VERIFIED_ADJUSTMENT_INBOX_ENABLED;
+    else process.env.VERIFIED_ADJUSTMENT_INBOX_ENABLED=old;
+  }
+});
 test("flat split and both fee bearers conserve precision; publication is unsplit", async () => {
   for (const bearer of ["account","subaccount"]) {
     const ctx = context("guest",bearer);

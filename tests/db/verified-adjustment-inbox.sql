@@ -17,6 +17,9 @@ begin
   perform pg_temp.assert_inbox(not has_function_privilege('authenticated',
     'public.stage_verified_adjustment(text,text,text,text,text,bigint,text,text,timestamptz,text)','execute'),
     'users cannot stage verified observations');
+  perform pg_temp.assert_inbox(not has_function_privilege('service_role',
+    'public.verified_adjustment_inbox_clear_for_payout()','execute'),
+    'payout readiness remains internal only');
 end $$;
 
 set local role service_role;
@@ -55,4 +58,10 @@ reset role;
 select pg_temp.assert_inbox((select count(*)=1 and min(outcome)='unmatched'
   from public.provider_adjustment_events where provider_event_id='evt_inbox_fixture'),
   'exactly one original unmatched provider observation');
+select pg_temp.assert_inbox(not public.verified_adjustment_inbox_clear_for_payout(),
+  'an unresolved conflict blocks future facilitator payout readiness');
+select pg_temp.assert_inbox((select count(*)=1 and min(conflict_kind)='changed_delivery'
+  and min(adjustment_id)='refund_fixture' and min(payload_sha256)=repeat('b',64)
+  from public.verified_adjustment_inbox_conflicts),
+  'conflicting normalized evidence remains available for investigation');
 rollback;
