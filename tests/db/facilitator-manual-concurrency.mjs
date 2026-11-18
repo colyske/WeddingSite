@@ -73,8 +73,9 @@ try {
       'review',(select id from referral_actors where kind='funding-review'));
     commit;`);
   const fixtureIds = matchJson(seed);
-  const requestId = value => value.split("\n").find(line =>
-    /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(line) && line !== fixtureIds.user);
+  const requestId = value => value.split("\n").filter(line =>
+    /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(line)
+    && !Object.values(fixtureIds).includes(line)).at(-1);
   const actor = user => `select set_config('request.jwt.claim.role','authenticated',true);
     select set_config('request.jwt.claim.sub','${user}',true);`;
   const request = (key, amount) => `public.facilitator_manual_request_internal(
