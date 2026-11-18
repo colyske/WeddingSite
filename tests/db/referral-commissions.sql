@@ -130,6 +130,32 @@ begin
   perform pg_temp.assert_true(jsonb_array_length(public.referral_my_summary()->'weddings')=0,'unrelated referrer sees no aggregate');
 end $$;
 
+-- A historical owner link must not be inferred from an unrelated later edit.
+set constraints all immediate;
+set constraints all deferred;
+savepoint referral_link_unrelated_edit;
+set local session_replication_role=replica;
+update public.weddings set client_owner_id=(select id from referral_actors where kind='referrer')
+  where id=(select id from referral_actors where kind='wedding');
+set local session_replication_role=origin;
+update public.weddings set couple_names='Edited fixture'
+  where id=(select id from referral_actors where kind='wedding');
+set constraints all immediate;
+select pg_temp.assert_true(not exists(select 1 from public.referral_eligibility_events
+  where wedding_id=(select id from referral_actors where kind='wedding')),
+  'unrelated wedding edit does not manufacture an account link');
+rollback to savepoint referral_link_unrelated_edit;
+set constraints all deferred;
+savepoint referral_link_real_edit;
+update public.weddings set client_owner_id=(select id from referral_actors where kind='referrer')
+  where id=(select id from referral_actors where kind='wedding');
+set constraints all immediate;
+select pg_temp.assert_true(exists(select 1 from public.referral_eligibility_events
+  where wedding_id=(select id from referral_actors where kind='wedding') and reason='owner_account'),
+  'actual owner change records exclusion');
+rollback to savepoint referral_link_real_edit;
+set constraints all deferred;
+
 -- Verified LIVE Daraja fixtures; these do not call any provider or unlock payouts.
 update public.daraja_live_approval set approved=true,shortcode='123456',
   approved_by=(select id from referral_actors where kind='owner'),approved_at=now() where singleton;
