@@ -102,7 +102,7 @@
     const choose = status?.configured === true && !status.supported;
     $("draft-currency-choice").hidden = false;
     $("draft-currency-retry").hidden = !(choose && !draftCurrencies.length) && !status?.unavailable;
-    note.textContent = "Choose your accounting currency first. KES keeps the showcase Celebration fund goal (KES 500,000), with no raised balance. Other currencies start with an incomplete fund: enter your own positive goal before publishing. Changing currency clears affected amounts, never converts them. Collection and publication still require the existing server checks.";
+    note.textContent = "Choose your accounting currency first. A matching-currency starter keeps its first fund goal and milestones; the showcase goal is KES 1,400,000, with no raised balance. Without a matching goal, KES uses a KES 500,000 fallback and other currencies start with an incomplete fund. Changing currency clears affected amounts, never converts them. Collection and publication still require the existing server checks.";
   }
   async function checkDraftCurrency(force = false) {
     const selected = $("draft-currency").value;
@@ -157,7 +157,7 @@
         ? "Author-owned fictional inspiration, not customers, donations or paid sponsorships. Examples are illustrative and editable."
         : "Public reusable configuration only: colours, event types/order, shared venue groups, RSVP choices, features and unpriced sponsor/gift/goal structures. Public visibility is not permission to copy personal content: neutral editable prompts replace original writing, identities, locations and instructions.";
     if (selectedStarter && !pendingStarter) $("inspiration-selection-copy").textContent +=
-      " Your interactive private preview opens next. The Celebration fund uses only the KES showcase goal or a matching-currency template preset; otherwise enter a goal yourself. No guest activity or payment readiness is copied.";
+      " Your interactive private preview opens next. The Celebration fund uses a matching-currency template goal or the KES fallback; otherwise enter a goal yourself. No guest activity or payment readiness is copied.";
   }
   async function chooseStarter(item, { restore = false } = {}) {
     selectedStarter = item; pendingStarter = null;

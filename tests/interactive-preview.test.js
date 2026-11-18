@@ -27,6 +27,18 @@ test("preview projection contains no private workspace data or invented activity
   assert.deepEqual(bundle.leaderboard.bids, []);
   assert.deepEqual(bundle.ledger.ledger, []);
   assert.equal(creationFundPreset("KES"), 50000000);
+  assert.equal(creationFundPreset("KES", { currency: "KES", campaigns: [{ goalMinor: 140000000 }] }), 140000000);
+  assert.equal(creationFundPreset("KES", { currency: "KES", campaigns: [{ goalMinor: 23000000 }] }), 23000000);
+  assert.equal(creationFundPreset("KES", { currency: "USD", campaigns: [{ goalMinor: 12300 }] }), 50000000);
+  for (const invalid of [-1, 1.5, "123", {}, true]) {
+    assert.throws(() => creationFundPreset("KES", { currency: "KES", campaigns: [{ goalMinor: invalid }] }), /integer minor units/);
+  }
+  for (const invalid of [0, 100000000001]) {
+    assert.throws(() => creationFundPreset("KES", { currency: "KES", campaigns: [{ goalMinor: invalid }] }), /outside allowed limits/);
+  }
+  assert.equal(creationFundPreset("KES", { currency: "KES", campaigns: [{ goalMinor: null }] }), 50000000);
+  assert.equal(creationFundPreset("EUR", { currency: "EUR", campaigns: [] }), null);
+  assert.equal(creationFundPreset("EUR", { currency: "KES", campaigns: [{ goalMinor: -1 }] }), null);
   assert.equal(creationFundPreset("EUR"), null);
   assert.equal(creationFundPreset("EUR", { currency: "EUR", campaigns: [{ goalMinor: 12300 }] }), 12300);
   assert.equal(creationFundPreset("EUR", { currency: "KES", campaigns: [{ goalMinor: 12300 }] }), null);
@@ -72,6 +84,38 @@ test("interactive create uses the transactional initializer, stable key, blank d
     globalThis.fetch = oldFetch;
     for (const [key, value] of Object.entries(env)) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+});
+
+test("KES showcase creation passes the actual goal and milestones to the transactional initializer", async () => {
+  const oldFetch = globalThis.fetch;
+  const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"];
+  const env = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  Object.assign(process.env, { SUPABASE_URL: "https://db.example", SUPABASE_ANON_KEY: "anon", SUPABASE_SERVICE_ROLE_KEY: "service" });
+  let input;
+  globalThis.fetch = async (url, options) => {
+    const path = new URL(url).pathname;
+    if (path.endsWith("/create_interactive_wedding")) input = JSON.parse(options.body).p_input;
+    const result = path === "/auth/v1/user" ? { id: owner }
+      : path.endsWith("/create_interactive_wedding") ? { weddingId: id, slug: "wedding" } : [];
+    return new Response(JSON.stringify(result), { headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const style = await publicWeddingStyle("showcase-wedding");
+    const body = { requestKey: id, coupleNames: "", currency: "KES", styleSlug: "showcase-wedding",
+      interactiveCreation: true, starterDeferred: true, starterSetup: style.setup };
+    const response = { status(code) { this.code = code; return this; }, setHeader() {}, json(value) { this.body = value; }, end(text) { this.body = JSON.parse(text); } };
+    await weddings({ method: "POST", headers: { authorization: "Bearer fixture-token" }, query: { action: "create" }, body }, response);
+    assert.equal(response.code, 201);
+    assert.equal(input.currency, "KES");
+    assert.equal(input.starterSetup.currency, "KES");
+    assert.equal(input.starterSetup.campaigns[0].goalMinor, 140000000);
+    assert.deepEqual(input.starterSetup.campaigns[0].milestones.map(item => item.targetMinor), [30000000, 80000000]);
+  } finally {
+    globalThis.fetch = oldFetch;
+    for (const key of keys) {
+      if (env[key] === undefined) delete process.env[key]; else process.env[key] = env[key];
     }
   }
 });

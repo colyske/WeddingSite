@@ -127,6 +127,31 @@ test("supported platform default selects destination currency without changing s
   await close();
 });
 
+for (const [label, query] of [["ordinary dashboard", ""], ["showcase style entry", "?style=showcase-wedding#step=couple"]]) {
+  test(`${label} submits the actual KES showcase goal and milestones`, { skip }, async () => {
+    const id = "77777777-7777-4777-8777-777777777777";
+    const { page, calls, close } = await openDashboard({
+      "collection-capabilities": json(200, {
+        currencies: [{ code: "KES", name: "Kenyan Shilling", methods: [{ name: "M-Pesa", markets: ["Kenya"] }] }],
+        defaultCurrency: { currency: "KES", configured: true, supported: true }
+      }),
+      create: json(201, { weddingId: id, slug: "showcase-draft" })
+    }, query);
+    try {
+      if (!query) await page.click("#create-submit");
+      await page.waitForURL(`**/wedding.html?id=${id}#step=couple`);
+      const creates = calls.filter(call => call.action === "create");
+      assert.equal(creates.length, 1);
+      assert.equal(creates[0].body.styleSlug, "showcase-wedding");
+      assert.equal(creates[0].body.currency, "KES");
+      const setup = creates[0].body.starterSetup;
+      assert.equal(setup.currency, "KES");
+      assert.equal(setup.campaigns[0].goal, "1400000.00");
+      assert.deepEqual(setup.campaigns[0].milestones.map(item => item.target), ["300000.00", "800000.00"]);
+    } finally { await close(); }
+  });
+}
+
 test("unavailable style entry never silently creates an empty substitute", { skip }, async () => {
   const id = "44444444-4444-4444-4444-444444444444";
   const { page, calls, close } = await openDashboard({
