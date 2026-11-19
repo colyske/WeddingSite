@@ -109,7 +109,7 @@ test("referral leadership HTTP boundaries and stale Owner CAS are explicit", asy
 test("held-only schema, signed netting and grants have no financial activation", () => {
   const policy = read("supabase/migrations/202611040001_referral_attribution_policy.sql");
   const estimates = read("supabase/migrations/202611040002_referral_held_estimates.sql");
-  const publicRate = read("supabase/migrations/202611240001_public_referral_rate.sql");
+  const publicRate = read("supabase/migrations/202611240002_public_referral_rate.sql");
   assert.match(policy, /enabled boolean not null default false/);
   assert.match(policy, /rate_basis_points integer not null default 0/);
   assert.match(policy, /p_revision is distinct from p\.revision/);
