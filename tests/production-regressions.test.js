@@ -125,7 +125,7 @@ test("public guest, RSVP, bid, e-card, verification, and editor regressions", { 
     assert.match(await page.locator("#vip-display").textContent(), /VIP seating/);
     await page.waitForFunction(() => document.querySelector("#sponsors-display")?.textContent.includes("Acme & Co"));
     assert.match(await page.locator("#sponsors-display").textContent(), /Acme & Co/);
-    assert.match(await page.locator("#sponsors-display").textContent(), /Sample advert/);
+    assert.match(await page.locator("#sponsors-placeholder").textContent(), /Sample advert/);
     assert.match(await page.locator("#ledger-body").textContent(), /Song bid[\s\S]*1,234[\s\S]*Sample Contributor/);
     assert.doesNotMatch(await page.locator("#ledger-body").textContent(), /NaN|\$/);
     assert.match(await page.locator("#venues-display").textContent(), /Garden Hall, Nairobi/);

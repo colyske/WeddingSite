@@ -249,7 +249,7 @@
         `The current platform referral rate is ${d.enabled ? (d.rate_basis_points / 100).toFixed(2) : "0.00"}% of verified live money raised. ` +
         `The configured platform percentage fee is ${(d.platform_fee_basis_points / 100).toFixed(2)}%` +
         (BigInt(d.platform_fixed_fee_minor) > 0n ? ` plus the applicable quoted fixed fee (${d.platform_fixed_fee_currency}). ` : ". ") +
-        `Facilitator commission is paid after funds are cleared. Commissions are not deducted from your net or provider amounts. ` +
+        `Referral estimates are held and unpayable through the platform. Commissions are not deducted from your net or provider amounts. ` +
         `Referral commission is calculated from eligible verified live contributions. Platform rate changes affect new contributions only. ` +
         `If accepted, attribution applies only to the first wedding this account publishes; if you create multiple drafts, the first one published is covered. You can decline it now. Terms: ${d.terms_version}.`;
     }
