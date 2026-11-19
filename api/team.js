@@ -30,6 +30,45 @@ export default async function handler(req, res) {
   const body = req.body && typeof req.body === "object" ? req.body : {};
 
   try {
+    if (action === "committee-list") {
+      if (!methodOnly(req, res, "GET")) return;
+      const weddingId = String(req.query.weddingId || "");
+      if (!UUID.test(weddingId)) return sendJson(res, 400, { error: "Invalid wedding." });
+      const records = await rpc("get_committee_records", { p_wedding_id: weddingId }, session.token);
+      return sendJson(res, 200, { records });
+    }
+
+    if (action === "committee-create") {
+      if (!methodOnly(req, res, "POST")) return;
+      const { weddingId, meetingDate, committee, notes, decision = "", owner = "", dueDate = null, category, suggestion = "" } = body;
+      const dateOk = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+      const textOk = (value, max, required = false) => typeof value === "string" && value.length <= max && (!required || value.trim().length > 0);
+      if (!UUID.test(weddingId || "") || !dateOk(meetingDate) || (dueDate && !dateOk(dueDate)) ||
+          !textOk(committee, 120, true) || !textOk(notes, 4000, true) || !textOk(decision, 2000) ||
+          !textOk(owner, 120) || !textOk(suggestion, 2000) || !["task", "program", "guest", "budget"].includes(category)) {
+        return sendJson(res, 400, { error: "Check the meeting details and try again." });
+      }
+      const id = await rpc("create_committee_record", {
+        p_wedding_id: weddingId, p_meeting_date: meetingDate, p_committee: committee, p_notes: notes,
+        p_decision: decision, p_action_owner: owner, p_due_date: dueDate || null, p_category: category, p_suggestion: suggestion
+      }, session.token);
+      return sendJson(res, 201, { id });
+    }
+
+    if (action === "committee-task" || action === "committee-review") {
+      if (!methodOnly(req, res, "POST")) return;
+      const { weddingId, recordId } = body;
+      if (!UUID.test(weddingId || "") || !UUID.test(recordId || "") ||
+          (action === "committee-task" ? typeof body.done !== "boolean" : !["approved", "returned"].includes(body.status))) {
+        return sendJson(res, 400, { error: "Invalid committee update." });
+      }
+      await rpc(action === "committee-task" ? "set_committee_task" : "review_committee_suggestion",
+        action === "committee-task"
+          ? { p_wedding_id: weddingId, p_record_id: recordId, p_done: body.done }
+          : { p_wedding_id: weddingId, p_record_id: recordId, p_status: body.status }, session.token);
+      return sendJson(res, 200, { updated: true });
+    }
+
     if (action === "manage") {
       if (!methodOnly(req, res, "GET")) return;
       const weddingId = String(req.query.weddingId || "");

@@ -21,6 +21,7 @@
     return data;
   };
   const roleName = roleLabels;
+  let canReviewCommittee = false;
   const expiryLabel = value => value ? new Date(value).toLocaleString() : "No expiry";
   function expiryFields(mode, input) {
     return { expiryMode: mode.value, ...(mode.value === "custom" ? { grantExpiresAt: new Date(input.value).toISOString() } : {}) };
@@ -37,23 +38,105 @@
 
   async function load() {
     notice("Loading wedding team…");
+    let committeeAllowed = false;
     try {
       const { team } = await api("manage", { cache: "no-store" });
       $("manage-panel").hidden = false;
+      canReviewCommittee = true;
       renderManagement(team);
-      notice("");
+      committeeAllowed = true;
     } catch (manageError) {
       try {
         const { workspace } = await api("workspace", { cache: "no-store" });
         $("helper-panel").hidden = false;
         renderWorkspace(workspace);
         $("back-link").href = "/dashboard.html";
-        notice("");
+        committeeAllowed = Array.isArray(workspace.roles) && workspace.roles.includes("coordinator");
       } catch (workspaceError) {
         notice(workspaceError.message || manageError.message || "You do not have access to this wedding team.", true);
+        return;
       }
     }
+    if (committeeAllowed) {
+      $("committee-panel").hidden = false;
+      try {
+        await loadCommittee();
+      } catch (error) {
+        $("committee-records").textContent = "Could not load committee records. Reload the page to try again.";
+        notice(error.message || "Could not load committee records.", true);
+        return;
+      }
+    }
+    notice("");
   }
+
+  async function loadCommittee() {
+    const { records } = await api("committee-list", { cache: "no-store" });
+    $("committee-records").innerHTML = records.length ? records.map(record => `
+      <article class="card">
+        <h4>${WS.esc(record.committee)} · ${WS.esc(record.meeting_date)}</h4>
+        <p><strong>${WS.esc(record.category)}</strong> · ${WS.esc(record.notes)}</p>
+        ${record.decision ? `<p><strong>Decision:</strong> ${WS.esc(record.decision)}</p>` : ""}
+        ${record.action_owner || record.due_date ? `<p><strong>Action:</strong> ${WS.esc(record.action_owner || "Unassigned")} · ${WS.esc(record.due_date || "No due date")} · ${record.task_done ? "Done" : "Open"}
+          <button type="button" class="ghost" data-task="${WS.esc(record.id)}" data-done="${record.task_done ? "false" : "true"}">${record.task_done ? "Reopen" : "Mark done"}</button></p>` : ""}
+        ${record.suggestion ? `<p><strong>Guest-facing suggestion (${WS.esc(record.review_status)}):</strong> ${WS.esc(record.suggestion)}</p>
+          ${canReviewCommittee && record.review_status === "approved" ? `<label>Approved wording to copy<textarea readonly rows="3" data-approved-wording>${WS.esc(record.suggestion)}</textarea></label>
+          <button type="button" class="ghost" data-copy-wording>Copy wording</button>
+          <a class="btn ghost" href="/wedding.html?id=${encodeURIComponent(weddingId)}">Open wedding editor</a>
+          <p class="fine">Paste into the appropriate field and save only when ready. Saving changes to a published wedding can update the guest site immediately.</p>` : ""}
+          ${canReviewCommittee && record.review_status === "pending" ? `<button type="button" class="ghost" data-review="${WS.esc(record.id)}" data-status="approved">Approve wording</button> <button type="button" class="ghost" data-review="${WS.esc(record.id)}" data-status="returned">Return for changes</button>` : ""}` : ""}
+      </article>`).join("") : "No committee records yet.";
+  }
+
+  $("committee-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector("button");
+    button.disabled = true;
+    try {
+      const values = Object.fromEntries(new FormData(form));
+      await api("committee-create", { method: "POST", body: JSON.stringify({ weddingId, ...values }) });
+      form.reset();
+      await loadCommittee();
+      notice("Private committee record saved. Suggestions are not published.");
+    } catch (error) {
+      notice(error.message || "Could not save committee record.", true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  $("committee-records").addEventListener("click", async event => {
+    const copyButton = event.target.closest("button[data-copy-wording]");
+    if (copyButton) {
+      const wording = copyButton.closest("article").querySelector("[data-approved-wording]");
+      try {
+        await navigator.clipboard.writeText(wording.value);
+        notice("Approved wording copied. Paste it into the wedding editor when ready.");
+      } catch {
+        wording.focus();
+        wording.select();
+        notice("Select and copy the approved wording, then paste it into the wedding editor.");
+      }
+      return;
+    }
+    const button = event.target.closest("button[data-task], button[data-review]");
+    if (!button) return;
+    button.disabled = true;
+    try {
+      const isReview = !!button.dataset.review;
+      await api(isReview ? "committee-review" : "committee-task", {
+        method: "POST",
+        body: JSON.stringify({ weddingId, recordId: button.dataset.review || button.dataset.task,
+          ...(isReview ? { status: button.dataset.status } : { done: button.dataset.done === "true" }) })
+      });
+      await loadCommittee();
+      notice(isReview ? "Review saved. The guest site has not changed." : "Task updated.");
+    } catch (error) {
+      notice(error.message || "Could not update committee record.", true);
+      button.disabled = false;
+    }
+  });
 
   function renderManagement(team) {
     $("pending-invites").innerHTML = team.invites?.length
