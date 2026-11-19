@@ -1,5 +1,22 @@
 # Controlled manual external payouts (default OFF)
 
+## Couple-basis facilitator calculation preview
+
+The referral page shows an informational preview based on released, verified
+live platform-wallet contribution net, using each contribution's saved referral
+rate and rounding down per contribution. It deducts contribution-specific debits
+and holds using the couple balance's existing source rules, but not wedding
+expenses or withdrawals. It does not change couple funds. Paid status, provider,
+currency and stored release time use the couple balance filters; legacy null
+release dates count as released.
+
+Historical gross-based estimates and obligations are unchanged. Differences
+need review before considering the preview as a replacement. It is not a payable
+or unpaid balance, reservation or authorization to pay; external payments may
+not be recorded. The `client-referrals-v1` terms still state a current 2% rate
+and need review if the configured rate differs. This preview does not change
+those terms or retroactively reprice contributions.
+
 This is a bounded **unactivated control plane**, not launch-ready withdrawals or an
 authorized funded rail. Migration `202611110001` does not enable any payment or payout
 provider, initiate transfers, contact an external service, copy B2C branch code, or

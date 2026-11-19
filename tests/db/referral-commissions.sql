@@ -174,6 +174,62 @@ select pg_temp.assert_true((select held_estimate_minor=1000 from public.referral
 select pg_temp.assert_true((select held_estimate_minor=2000 from public.referral_balances where contribution_id=(select id from referral_actors where kind='new-rate')),'new payment gets new rate');
 select pg_temp.assert_true((select held_estimate_minor=0 and currency='USD' from public.referral_balances where contribution_id=(select id from referral_actors where kind='test-money')),'verified matured test USD excluded');
 
+savepoint couple_basis_preview;
+update public.contributions set funds_available_at=case
+    when id=(select id from referral_actors where kind='old-pending') then now()+interval '1 day'
+    else now()-interval '1 day' end
+  where id in (select id from referral_actors where kind in ('paid','old-pending','new-rate'));
+set constraints all immediate;
+set constraints all deferred;
+select set_config('request.jwt.claim.role','authenticated',true);
+select set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='referrer'),true);
+set local role authenticated;
+select pg_temp.assert_true((select v->>'basis_minor'='182240' and v->>'estimate_minor'='2733'
+  from jsonb_array_elements(public.referral_my_summary()->'couple_basis_estimates') v
+  where v->>'reference'=(select id::text from referral_actors where kind='wedding')),
+  'preview uses released couple net and saved per-contribution rates, not held or test contributions');
+select set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='outsider'),true);
+select pg_temp.assert_true(jsonb_array_length(public.referral_my_summary()->'couple_basis_estimates')=0,
+  'preview does not reveal another facilitator''s wedding');
+reset role;
+select set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='referrer'),true);
+create temporary table preview_before as
+  select public.simple_payout_balance_raw((select id from referral_actors where kind='wedding')) as balance,
+    public.referral_my_summary()->'couple_basis_estimates' as preview,
+    public.referral_my_summary()-'couple_basis_estimates' as legacy;
+select pg_temp.assert_true((select legacy=public.referral_my_summary_legacy() from preview_before),
+  'preview preserves all historical summary fields');
+select pg_temp.assert_true(not has_function_privilege('authenticated','public.referral_my_summary_legacy()','execute')
+  and not has_function_privilege('anon','public.referral_my_summary()','execute'), 'internal legacy function and anonymous preview denied');
+insert into public.expenses(wedding_id,category,description,amount_minor,currency,status)
+  values((select id from referral_actors where kind='wedding'),'fixture','Synthetic expense',1000,'KES','approved');
+select pg_temp.assert_true((select public.simple_payout_balance_raw(
+    (select id from referral_actors where kind='wedding'))=balance-1000
+    and public.referral_my_summary()->'couple_basis_estimates'=preview from preview_before),
+  'couple expense reduces couple balance, not the facilitator calculation');
+insert into public.payment_adjustments(provider,adjustment_kind,provider_adjustment_id,contribution_id,wedding_id,
+  amount_minor,currency,status,hold_minor,refund_fee_allocation)
+  values('stripe','refund','preview-refund',(select id from referral_actors where kind='paid'),
+    (select id from referral_actors where kind='wedding'),10000,'KES','review',10000,'manual_review');
+set constraints all immediate;
+set constraints all deferred;
+select pg_temp.assert_true((select v->>'basis_minor'='172240' and v->>'estimate_minor'='2633'
+  from jsonb_array_elements(public.referral_my_summary()->'couple_basis_estimates') v
+  where v->>'reference'=(select id::text from referral_actors where kind='wedding')),
+  'preview accounts for the couple adjustment hold');
+update public.payment_adjustments set status='processed',hold_minor=0 where provider_adjustment_id='preview-refund';
+insert into public.financial_adjustment_ledger(adjustment_id,wedding_id,contribution_id,entry_type,
+  couple_net_delta_minor,currency,allocation,provider,provider_adjustment_id)
+  select id,wedding_id,contribution_id,'refund',-4000,'KES','couple','stripe','preview-refund'
+  from public.payment_adjustments where provider_adjustment_id='preview-refund';
+set constraints all immediate;
+set constraints all deferred;
+select pg_temp.assert_true((select v->>'basis_minor'='178240' and v->>'estimate_minor'='2693'
+  from jsonb_array_elements(public.referral_my_summary()->'couple_basis_estimates') v
+  where v->>'reference'=(select id::text from referral_actors where kind='wedding')),
+  'preview replaces the hold with the actual couple refund debit');
+rollback to savepoint couple_basis_preview;
+
 do $$
 declare cid uuid:=(select id from referral_actors where kind='paid'); wid uuid; aid uuid; before_count bigint;
 begin
