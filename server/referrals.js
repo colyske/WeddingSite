@@ -14,6 +14,10 @@ export default async function handler(req, res) {
       if (!CODE.test(code)) return sendJson(res, 400, { error: "Invalid referral code." });
       return sendJson(res, 200, await rpc("referral_validate_code", undefined, { p_code: code }));
     }
+    if (action === "public-rate") {
+      if (!methodOnly(req, res, "GET")) return;
+      return sendJson(res, 200, await rpc("referral_public_rate"));
+    }
     const session = await requireAuth(req, res);
     if (!session) return;
     if (action === "summary" || action === "disclosure") {

@@ -20,6 +20,12 @@ begin
   end loop;
 end $$;
 select pg_temp.assert_true((select not enabled and rate_basis_points=0 and first_effective_at is null from public.referral_policy),'default OFF');
+select pg_temp.assert_true(public.referral_public_rate()=jsonb_build_object('enabled',false,'rate_basis_points',null),
+  'public rate hides disabled configuration');
+select pg_temp.assert_true(has_function_privilege('anon','public.referral_public_rate()','execute'),
+  'anonymous rate lookup is explicitly granted');
+select pg_temp.assert_true(jsonb_object_length(public.referral_public_rate())=2,
+  'public rate lookup exposes only enabled and rate');
 select pg_temp.assert_true(public.referral_available_cap(5000,8880,2000,500,300,6000,100,400,1000)=4500,'cost/loss/commitment cap');
 select pg_temp.assert_true(public.referral_available_cap(10000,8880,2000,0,0,100000,0,0,0)=6880,'rate cannot exceed net fee reserve');
 select pg_temp.assert_true(public.referral_available_cap(10000,8880,null,0,0,100000,0,0,0)=0,'unknown cost');
@@ -105,6 +111,8 @@ begin
   perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='owner'),true);
   p:=public.referral_admin_policy(); rev:=(p->>'revision')::uuid;
   p:=public.referral_owner_policy(true,100,rev,true);
+  perform pg_temp.assert_true(public.referral_public_rate()=jsonb_build_object('enabled',true,'rate_basis_points',100),
+    'public rate lookup follows active Owner setting');
   blocked:=false;
   begin perform public.referral_owner_policy(true,200,rev,true); exception when raise_exception then blocked:=true; end;
   perform pg_temp.assert_true(blocked,'stale Owner CAS rejected');
