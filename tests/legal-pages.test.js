@@ -23,8 +23,8 @@ test("facilitator guide follows the plain-language onboarding flow and uses conf
   assert.match(html, /class="facilitator-art"/);
   assert.match(html, /role="img" aria-labelledby="facilitator-art-title/);
   assert.match(html, /No joining fees\. No targets\./);
-  assert.match(html, /Visit a wedding meeting &amp; show the demo/);
-  assert.match(html, /Ask permission &amp; send your link/);
+  assert.match(html, /Visit a wedding meeting &amp; show them the demo/);
+  assert.match(html, /Ask permission and send your link on WhatsApp/);
   assert.match(html, /Set it up on their phone/);
   assert.match(html, /Teach them how to share/);
   assert.match(html, /phone or laptop/);
@@ -42,6 +42,7 @@ test("facilitator guide follows the plain-language onboarding flow and uses conf
   assert.match(read("facilitator.js"), /policy\.rate_basis_points/);
   assert.match(read("facilitator.js"), /rate is unavailable right now/i);
   assert.doesNotMatch(html, /2%|KES 10,000|KES 40,000|KES 120,000/);
+  assert.doesNotMatch(html, /commission.{0,80}(?:M-Pesa|funds clear)/i);
   assert.doesNotMatch(html, /4-8%|92-96%|earnings are available in your dashboard|payouts are not available|in-app facilitator payout request|paid manually/i);
 });
 
