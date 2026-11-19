@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "colyske-fix-baseline-verification-failures": false
+    }
+  },
   "redirects": [
     { "source": "/inspiration.html", "destination": "/#weddings", "permanent": true }
   ],
