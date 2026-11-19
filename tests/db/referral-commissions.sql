@@ -104,6 +104,9 @@ update public.referral_accounts set code='3b79b3fbb32894bf82dbaf21d2765deb'
   where user_id=(select id from referral_actors where kind='platform-referrer');
 update referral_codes set code='3b79b3fbb32894bf82dbaf21d2765deb'
   where kind='platform-referrer';
+insert into public.referral_intents(creator_id,referrer_id,is_default,eligible)
+  values((select id from referral_actors where kind='legacy-pending-creator'),
+    (select id from referral_actors where kind='referrer'),false,false);
 set local role service_role;
 select set_config('request.jwt.claim.role','service_role',true);
 do $$
@@ -120,9 +123,6 @@ begin
   perform public.referral_register_intent((select id from referral_actors where kind='default-only-creator'),default_code,true);
   perform public.referral_register_intent((select id from referral_actors where kind='active-creator'),code,false);
   perform public.referral_register_intent((select id from referral_actors where kind='other'),code,false);
-  insert into public.referral_intents(creator_id,referrer_id,is_default,eligible)
-    values((select id from referral_actors where kind='legacy-pending-creator'),
-      (select id from referral_actors where kind='referrer'),false,false);
 end $$;
 reset role;
 
