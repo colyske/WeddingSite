@@ -52,16 +52,16 @@
     <div id="created" role="status" hidden></div>
 
     <div id="create-section" class="card">
-      <h2>Start with your wedding, not a wizard</h2>
-      <p>Choose your currency and names, then personalize your actual wedding preview. Scroll and touch a section to edit it; save to see your changes on your site. The showcase supplies reusable colours and neutral starting points, never another couple's story or guest activity. Nothing is published until your final review.</p>
-      <p><a class="btn" href="/dashboard.html?scratch=showcase#step=couple">From scratch &mdash; customize the showcase setup</a></p>
-      <p id="create-currency-note" class="fine">Unpaid drafts use destination currency defaults, not the source wedding's currency. Review source amounts explicitly in the guide only in their currently supported original currency; a different currency clears all source amounts and keeps unpriced structures.</p>
+      <h2>Start your wedding website</h2>
+      <p>Choose a currency and enter your names. If you use the sample wedding, you can add your names later. Edit your wedding details in the next step.</p>
+      <p><a class="btn" href="/dashboard.html?scratch=showcase#step=couple">Start with the sample wedding</a></p>
+      <p id="create-currency-note" class="fine">Changing your currency later can clear amounts you entered; they won't be converted.</p>
       <div id="draft-currency-choice">
         <label for="draft-currency">Wedding currency</label>
-        <select id="draft-currency"><option value="">Check current collection support first</option></select>
+        <select id="draft-currency"><option value="">Choose your wedding currency</option></select>
       </div>
       <button type="button" class="link" id="draft-currency-retry" hidden>Check currency support again</button>
-      <p><a href="/#weddings">Browse published weddings</a> and use an eligible public setup, or start with the clearly labelled showcase demonstration above.</p>
+      <p>Or <a href="/#weddings">browse weddings</a> for another starting point.</p>
       <form id="create-form" novalidate onsubmit="return false">
         <label for="couple-names">Couple names</label>
         <input id="couple-names" type="text" maxlength="120" placeholder="For example, Amina &amp; David" autocomplete="off" required aria-required="true">
@@ -69,11 +69,10 @@
         <aside id="inspiration-selection" class="notice" hidden>
           <h3>Use this setup as a starting point</h3>
           <p id="inspiration-selection-copy"></p>
-          <button type="button" id="apply-inspiration" hidden>Use this setup instead of this tab's saved answers</button>
+          <button type="button" id="apply-inspiration" hidden>Use this starting point</button>
           <button type="button" id="keep-current-answers" class="link" hidden>Keep my current answers</button>
           <div id="starter-review" hidden>
-            <p>Only a new private draft is created. Personalize the prefilled sections in the shared wedding guide after creation. Your own names, story, dates and venue details are still needed; photos and guest instructions remain optional.</p>
-            <p>Source prices stay pending for review in your private wedding guide. Personalization does not require payment collection to be ready.</p>
+            <p>Add your own wedding details in the guide and review any sample prices before using them.</p>
           </div>
         </aside>
         <fieldset id="client-referral-disclosure" hidden>
@@ -87,7 +86,7 @@
           </select>
           <p><a href="/terms.html#client-referrals">Client referral terms</a></p>
         </fieldset>
-        <button type="submit" id="create-submit">Create draft and continue setup</button>
+        <button type="submit" id="create-submit">Continue to your wedding preview</button>
       </form>
     </div>
 
