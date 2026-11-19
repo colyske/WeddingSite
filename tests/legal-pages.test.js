@@ -38,6 +38,7 @@ test("facilitator guide uses illustrative artwork and explains facilitator commi
   assert.match(html, /KES 2,000,000 in eligible contributions.*KES 40,000/s);
   assert.match(html, /12 weddings in one month.*KES 120,000/s);
   assert.match(html, /not guaranteed income or expected results/i);
+  assert.doesNotMatch(html, /being updated|check back for the full showcase/i);
   assert.match(html, /couples may decline referral attribution/i);
   assert.match(html, /Creating and editing your draft is free/i);
   assert.match(html, /publication or payment features may have fees/i);
