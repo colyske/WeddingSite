@@ -111,8 +111,6 @@ begin
   perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='owner'),true);
   p:=public.referral_admin_policy(); rev:=(p->>'revision')::uuid;
   p:=public.referral_owner_policy(true,100,rev,true);
-  perform pg_temp.assert_true(public.referral_public_rate()=jsonb_build_object('enabled',true,'rate_basis_points',100),
-    'public rate lookup follows active Owner setting');
   blocked:=false;
   begin perform public.referral_owner_policy(true,200,rev,true); exception when raise_exception then blocked:=true; end;
   perform pg_temp.assert_true(blocked,'stale Owner CAS rejected');
@@ -137,6 +135,8 @@ begin
   perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='outsider'),true);
   perform pg_temp.assert_true(jsonb_array_length(public.referral_my_summary()->'weddings')=0,'unrelated referrer sees no aggregate');
 end $$;
+select pg_temp.assert_true(public.referral_public_rate()=jsonb_build_object('enabled',true,'rate_basis_points',100),
+  'public rate lookup follows active Owner setting');
 
 -- Verified LIVE Daraja fixtures; these do not call any provider or unlock payouts.
 update public.daraja_live_approval set approved=true,shortcode='123456',
