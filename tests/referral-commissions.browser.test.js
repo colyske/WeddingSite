@@ -64,6 +64,7 @@ test("first valid client link survives sign-in and later codes cannot overwrite 
   assert.deepEqual(captured, [code]);
   assert.match(await page.textContent("#client-referral-details"), /8\.88%/);
   assert.match(await page.textContent("#client-referral-details"), /first wedding this account publishes.*first one published is covered/i);
+  assert.match(await page.textContent("#client-referral-details"), /held and unpayable through the platform/i);
   assert.equal(new URL(page.url()).search, "");
   await ctx.close();
 });

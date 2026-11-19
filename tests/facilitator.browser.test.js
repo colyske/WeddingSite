@@ -32,9 +32,9 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     assert.equal(await page.locator(".facilitator-art svg[role=img]").count(), 1);
     const text = await page.locator("main").innerText();
     assert.match(text, /2%/);
-    assert.match(text, /paid after eligible funds clear to your verified M-Pesa details/i);
+    assert.match(text, /estimates remain held and unpayable.*platform payouts are not supported/i);
     assert.match(text, /not guaranteed income or expected results/i);
-    assert.doesNotMatch(text, /4-8%|92-96%|earnings are available in your dashboard|payouts are not available|in-app facilitator payout request|paid manually/i);
+    assert.doesNotMatch(text, /4-8%|92-96%|earnings are available in your dashboard|in-app facilitator payout request|paid manually|paid after.*funds clear/i);
     await page.evaluate(() => {
       window.copiedMessages = [];
       Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
