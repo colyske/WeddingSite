@@ -18,7 +18,7 @@ for (const page of ["privacy.html", "terms.html"]) {
   });
 }
 
-test("facilitator guide uses illustrative artwork and accurately explains manual referral payments", () => {
+test("facilitator guide uses illustrative artwork and explains facilitator commission terms", () => {
   const html = read("facilitator.html");
   assert.match(html, /class="facilitator-art"/);
   assert.match(html, /role="img" aria-labelledby="facilitator-art-title/);
@@ -31,9 +31,9 @@ test("facilitator guide uses illustrative artwork and accurately explains manual
   assert.match(html, /Here's the link to set up your wedding site: \[your referral link\]\./);
   assert.match(html, /class="facilitator-step-message"/);
   assert.match(html, /current facilitator rate is 2%/i);
-  assert.match(html, /paid manually after eligible funds clear/i);
-  assert.match(html, /no in-app facilitator payout request or withdrawal/i);
-  assert.match(html, /https:\/\/wa\.me\/254724812413/);
+  assert.match(html, /paid after eligible funds clear to your verified M-Pesa details/i);
+  assert.match(html, /funded by the platform and does not reduce the couple’s net or provider amount/i);
+  assert.match(html, /href="\/terms\.html#client-referrals"/);
   assert.match(html, /KES 500,000 in eligible contributions.*KES 10,000/s);
   assert.match(html, /KES 2,000,000 in eligible contributions.*KES 40,000/s);
   assert.match(html, /12 weddings in one month.*KES 120,000/s);
@@ -41,7 +41,7 @@ test("facilitator guide uses illustrative artwork and accurately explains manual
   assert.match(html, /couples may decline referral attribution/i);
   assert.match(html, /Creating and editing your draft is free/i);
   assert.match(html, /publication or payment features may have fees/i);
-  assert.doesNotMatch(html, /4-8%|92-96%|setup is free|earnings are available in your dashboard/i);
+  assert.doesNotMatch(html, /4-8%|92-96%|setup is free|earnings are available in your dashboard|payouts are not available|in-app facilitator payout request|paid manually|WhatsApp about payment/i);
 });
 
 test("facilitator link message is prepared with the individual referral URL", () => {
