@@ -608,7 +608,10 @@
         if (!response.ok) throw new Error("Public design reuse is unavailable.");
         const panel = document.getElementById("reuse-wedding-style");
         panel.hidden = false;
-        panel.querySelector("a").href = WSSite.platformUrl(`/dashboard.html?style=${encodeURIComponent(slug)}#step=couple`);
+        const next = new URLSearchParams({ style: slug });
+        const clientRef = params.get("client_ref");
+        if (params.has("client_ref")) next.set("client_ref", clientRef);
+        panel.querySelector("a").href = WSSite.platformUrl(`/dashboard.html?${next}#step=couple`);
       }).catch(error => console.error("Public design reuse:", error));
       wedding.revenue_features = {
         giving: true, sponsors: true, featured_sponsors: true, song_requests: true, vip_seating: true,

@@ -251,15 +251,20 @@
         (BigInt(d.platform_fixed_fee_minor) > 0n ? ` plus the applicable quoted fixed fee (${d.platform_fixed_fee_currency}). ` : ". ") +
         `Facilitator commission is paid after funds are cleared. Commissions are not deducted from your net or provider amounts. ` +
         `Referral commission is calculated from eligible verified live contributions. Platform rate changes affect new contributions only. ` +
-        `Attribution is fixed when you create this wedding; you can decline it now. Terms: ${d.terms_version}.`;
+        `If accepted, attribution applies only to the first wedding this account publishes; if you create multiple drafts, the first one published is covered. You can decline it now. Terms: ${d.terms_version}.`;
     }
     referralReady = true;
     $("client-referral-dismiss").hidden = true;
   }
 
   $("client-referral-dismiss").addEventListener("click", async () => {
+    WSReferrals.consume();
+    if (!window.WS.token()) {
+      const next = "/dashboard.html" + location.search + location.hash;
+      const mode = new URLSearchParams(location.search).has("client_ref") ? "mode=register&" : "";
+      return location.replace("/signin.html?" + mode + "next=" + encodeURIComponent(next));
+    }
     WSReferrals.clear();
-    if (!window.WS.token()) return location.replace("/signin.html");
     try {
       await loadReferralDisclosure();
       if (!window.WS.token()) location.replace("/signin.html?next=" + encodeURIComponent("/dashboard.html"));
@@ -503,7 +508,8 @@
 
   if (!WS.token()) {
     const next = "/dashboard.html" + location.search + location.hash;
-    WSReferrals.prepare().then(() => location.replace(next === "/dashboard.html" ? "/signin.html" : "/signin.html?next=" + encodeURIComponent(next)))
+    const mode = new URLSearchParams(location.search).has("client_ref") ? "mode=register&" : "";
+    WSReferrals.prepare().then(() => location.replace(next === "/dashboard.html" ? "/signin.html" : "/signin.html?" + mode + "next=" + encodeURIComponent(next)))
       .catch(error => { $("client-referral-dismiss").hidden = false; setNotice(error.message, "bad"); });
   } else {
     prepareLegacyAnswerChoice();

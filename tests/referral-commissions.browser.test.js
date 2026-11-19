@@ -56,14 +56,109 @@ test("first valid client link survives sign-in and later codes cannot overwrite 
   await page.route("**/api/weddings*", route => fulfill(route, { weddings: [] }));
   await page.goto(`${base}/dashboard.html?client_ref=${code}`);
   await page.waitForURL(url => url.pathname === "/signin.html");
+  assert.equal(new URL(page.url()).searchParams.get("mode"), "register");
   assert.equal(await page.evaluate(() => sessionStorage.getItem("ws-client-referral")), code);
   await page.evaluate(() => sessionStorage.setItem("ws-session", JSON.stringify({ a: "actor-token", role: "client" })));
   await page.goto(`${base}/dashboard.html?client_ref=${"b".repeat(32)}`);
   await page.waitForSelector("#client-referral-disclosure", { state: "visible" });
   assert.deepEqual(captured, [code]);
   assert.match(await page.textContent("#client-referral-details"), /8\.88%/);
-  assert.match(await page.textContent("#client-referral-details"), /held and unpayable/i);
+  assert.match(await page.textContent("#client-referral-details"), /first wedding this account publishes.*first one published is covered/i);
   assert.equal(new URL(page.url()).search, "");
+  await ctx.close();
+});
+
+test("dismissing an invalid explicit link preserves it through registration without default fallback", { skip }, async () => {
+  const { ctx, page } = await context(false);
+  const invalidCode = "c".repeat(32);
+  await page.route("**/api/referrals?action=validate*", route => fulfill(route, { valid: false }));
+  await page.goto(`${base}/dashboard.html?client_ref=${invalidCode}`);
+  await page.waitForFunction(() => document.querySelector("#notice")?.textContent.includes("invalid or has been withdrawn"));
+  await page.locator("#client-referral-dismiss").click();
+  await page.waitForURL(url => url.pathname === "/signin.html");
+  const next = new URLSearchParams(new URL(page.url()).search).get("next");
+  assert.equal(new URL(page.url()).searchParams.get("mode"), "register");
+  assert.equal(next, `/dashboard.html?client_ref=${invalidCode}`);
+  await ctx.close();
+});
+
+test("registered default intent yields to a later explicit link and attribution stays one-off", { skip }, async () => {
+  const { ctx, page } = await context();
+  const captures = [];
+  const creations = [];
+  let hasIntent = true;
+  await page.route("**/api/referrals*", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    if (action === "validate") return fulfill(route, { valid: true });
+    if (action === "capture") {
+      const body = JSON.parse(route.request().postData());
+      captures.push(body);
+      hasIntent = true;
+      return fulfill(route, { intent_id: uuid });
+    }
+    return fulfill(route, { ...disclosure, intent_id: hasIntent ? uuid : null });
+  });
+  await page.route("**/api/weddings*", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    if (action === "create") {
+      creations.push(JSON.parse(route.request().postData()));
+      hasIntent = false;
+      return fulfill(route, { weddingId: uuid, slug: "first-facilitator-wedding" });
+    }
+    return fulfill(route, { weddings: [] });
+  });
+  await page.goto(`${base}/dashboard.html`);
+  await page.waitForSelector("#client-referral-disclosure", { state: "visible" });
+  assert.deepEqual(captures, [], "the registration-created default intent is already pending server-side");
+
+  await page.goto(`${base}/dashboard.html?client_ref=${code}`);
+  await page.waitForSelector("#client-referral-disclosure", { state: "visible" });
+  assert.deepEqual(captures, [{ code }], "the explicit facilitator code upgrades only the pending default");
+  assert.equal(await page.evaluate(() => sessionStorage.getItem("ws-client-referral")), code);
+  await fillWedding(page);
+  await page.selectOption("#client-referral-decision", "accept");
+  await page.click("#create-submit");
+  await page.waitForURL(`**/wedding.html?id=${uuid}#step=couple`);
+  assert.equal(creations[0].referral.decision, "accept");
+  assert.equal(await page.evaluate(() => sessionStorage.getItem("ws-client-referral")), null);
+
+  await page.goto(`${base}/dashboard.html`);
+  await page.waitForSelector("#client-referral-disclosure", { state: "hidden" });
+  assert.deepEqual(captures, [{ code }], "neither the facilitator nor the default is reused for a later wedding");
+  await ctx.close();
+});
+
+test("existing pending attribution is disclosed without creating a default referral", { skip }, async () => {
+  const { ctx, page } = await context();
+  const captures = [];
+  const creations = [];
+  await page.route("**/api/referrals*", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    if (action === "validate") return fulfill(route, { valid: true });
+    if (action === "capture") {
+      captures.push(JSON.parse(route.request().postData()));
+      return fulfill(route, { intent_id: uuid });
+    }
+    return fulfill(route, disclosure);
+  });
+  await page.route("**/api/weddings*", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    if (action === "create") {
+      creations.push(JSON.parse(route.request().postData()));
+      return fulfill(route, { weddingId: uuid, slug: "existing-attribution" });
+    }
+    return fulfill(route, { weddings: [] });
+  });
+  await page.goto(`${base}/dashboard.html`);
+  await page.waitForSelector("#client-referral-disclosure", { state: "visible" });
+  assert.deepEqual(captures, []);
+  await fillWedding(page);
+  await page.selectOption("#client-referral-decision", "accept");
+  await page.click("#create-submit");
+  await page.waitForURL(`**/wedding.html?id=${uuid}#step=couple`);
+  assert.equal(creations[0].referral.intentId, uuid);
+  assert.equal(creations[0].referral.decision, "accept");
+  assert.deepEqual(captures, []);
   await ctx.close();
 });
 
@@ -127,13 +222,15 @@ test("referrer opt-in, exact currency-separated aggregates and withdrawal", { sk
   await page.click("#referral-consent-form button");
   await page.waitForSelector("#referral-account", { state: "visible" });
   assert.match(await page.inputValue("#referral-link"), /client_ref=aaaaaaaa/);
-  assert.match(await page.textContent("#referral-results"), /HELD estimate KES 0\.00/);
-  assert.match(await page.textContent("#referral-results"), /ineligible \(provable owner\/client account link\)/);
-  assert.match(await page.textContent("#referral-results"), /USD 90,071,992,547,409\.93/);
-  assert.match(await page.textContent("#referral-results"), /payable USD 0\.00/);
+  assert.equal(new URL(await page.inputValue("#showcase-referral-link")).searchParams.get("client_ref"), code);
+  assert.equal(await page.isVisible("#showcase-share-wrap"), true);
+  assert.match(await page.textContent("#referral-results"), /not eligible \(account is connected to this wedding\)/);
+  assert.match(await page.textContent("#referral-results"), /KES 1,000\.00.*tracked 2% commission KES 0\.00/);
+  assert.match(await page.textContent("#referral-results"), /USD 90,071,992,547,409\.93.*tracked 2% commission USD 0\.09/);
   await page.click("#referral-withdraw");
   await page.waitForFunction(() => document.querySelector("#referral-notice").textContent.includes("withdrawn"));
   assert.equal(await page.inputValue("#referral-link"), "");
+  assert.equal(await page.isVisible("#showcase-share-wrap"), false);
   assert.equal(await page.isDisabled("#referral-copy"), true);
   await ctx.close();
 });

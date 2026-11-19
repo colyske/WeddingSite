@@ -1,7 +1,9 @@
 -- Isolated local/CI fixtures only. No provider calls; all effects roll back.
 begin;
 create temporary table referral_actors(kind text primary key,id uuid not null);
+create temporary table referral_codes(kind text primary key,code text not null);
 grant select on referral_actors to authenticated,service_role;
+grant select,insert on referral_codes to authenticated,service_role;
 create function pg_temp.assert_true(ok boolean,label text) returns void language plpgsql as $$
 begin if ok is distinct from true then raise exception 'Referral regression: %',label; end if; end $$;
 grant execute on function pg_temp.assert_true(boolean,text) to authenticated,service_role;
@@ -9,7 +11,8 @@ grant execute on function pg_temp.assert_true(boolean,text) to authenticated,ser
 do $$
 declare kind text; uid uuid;
 begin
-  foreach kind in array array['owner','superadmin','admin','creator','referrer','other','outsider'] loop
+  foreach kind in array array['owner','superadmin','admin','creator','default-creator','default-only-creator',
+      'active-creator','legacy-pending-creator','referrer','platform-referrer','other','outsider'] loop
     uid:=extensions.gen_random_uuid();
     insert into auth.users(id,email,email_confirmed_at)
       values(uid,case when kind='owner' then 'colyske@gmail.com' else kind||'@example.test' end,now());
@@ -37,6 +40,10 @@ begin
     end loop;
   end loop;
 end $$;
+select pg_temp.assert_true(not has_function_privilege('anon','public.referral_register_intent(uuid,text,boolean)','execute')
+  and not has_function_privilege('authenticated','public.referral_register_intent(uuid,text,boolean)','execute')
+  and has_function_privilege('service_role','public.referral_register_intent(uuid,text,boolean)','execute'),
+  'registration intent is server-only');
 
 set local role authenticated;
 select set_config('request.jwt.claim.role','authenticated',true);
@@ -72,14 +79,66 @@ begin
 end $$;
 reset role;
 
-create function pg_temp.create_referred(p_creator text,p_slug text,p_accept boolean) returns uuid
+set local role authenticated;
+select set_config('request.jwt.claim.role','authenticated',true);
+do $$
+declare p jsonb; blocked boolean;
+begin
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='referrer'),true);
+  blocked:=false;
+  begin
+    perform public.referral_set_consent(true,'wrong-version');
+  exception when raise_exception then blocked:=true; end;
+  perform pg_temp.assert_true(blocked,'terms version required');
+  p:=public.referral_set_consent(true,'client-referrals-v1');
+  insert into referral_codes values('referrer',p->>'code');
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='platform-referrer'),true);
+  p:=public.referral_set_consent(true,'client-referrals-v1');
+  insert into referral_codes values('platform-referrer',p->>'code');
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='other'),true);
+  p:=public.referral_set_consent(true,'client-referrals-v1');
+  insert into referral_codes values('other',p->>'code');
+end $$;
+reset role;
+update public.referral_accounts set code='3b79b3fbb32894bf82dbaf21d2765deb'
+  where user_id=(select id from referral_actors where kind='platform-referrer');
+update referral_codes set code='3b79b3fbb32894bf82dbaf21d2765deb'
+  where kind='platform-referrer';
+set local role service_role;
+select set_config('request.jwt.claim.role','service_role',true);
+do $$
+declare code text; default_code text; blocked boolean;
+begin
+  select c.code into code from referral_codes c where c.kind='referrer';
+  select c.code into default_code from referral_codes c where c.kind='platform-referrer';
+  blocked:=false;
+  begin perform public.referral_register_intent((select id from referral_actors where kind='referrer'),code,false);
+  exception when raise_exception then blocked:=true; end;
+  perform pg_temp.assert_true(blocked,'registration self referral denied');
+  perform public.referral_register_intent((select id from referral_actors where kind='creator'),code,false);
+  perform public.referral_register_intent((select id from referral_actors where kind='default-creator'),default_code,true);
+  perform public.referral_register_intent((select id from referral_actors where kind='default-only-creator'),default_code,true);
+  perform public.referral_register_intent((select id from referral_actors where kind='active-creator'),code,false);
+  perform public.referral_register_intent((select id from referral_actors where kind='other'),code,false);
+  insert into public.referral_intents(creator_id,referrer_id,is_default,eligible)
+    values((select id from referral_actors where kind='legacy-pending-creator'),
+      (select id from referral_actors where kind='referrer'),false,false);
+end $$;
+reset role;
+
+create function pg_temp.create_referred(p_creator text,p_slug text,p_accept boolean,p_default boolean default false) returns uuid
 language plpgsql as $$
 declare d jsonb; code text; wid uuid;
 begin
   perform set_config('request.jwt.claim.role','authenticated',true);
   perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind=p_creator),true);
-  select a.code into code from public.referral_accounts a join referral_actors x on x.id=a.user_id where x.kind='referrer';
-  perform public.referral_capture(code);
+  if p_default then
+    select a.code into code from public.referral_accounts a join referral_actors x on x.id=a.user_id where x.kind='platform-referrer';
+    perform public.referral_capture_default(code);
+  else
+    select a.code into code from public.referral_accounts a join referral_actors x on x.id=a.user_id where x.kind='referrer';
+    perform public.referral_capture(code);
+  end if;
   d:=public.referral_disclosure();
   wid:=public.referral_create_wedding(p_slug,'Private couple',current_date+30,'Local venue','KES',100,
     array['#244b3a'],jsonb_build_array(jsonb_build_object('name','Venue','eventDate',(current_date+30)::text,
@@ -89,18 +148,21 @@ begin
   return wid;
 end $$;
 do $$
-declare i uuid; again uuid; code text; blocked boolean; p jsonb; rev uuid; wid uuid; legacy uuid; declined uuid;
+declare i uuid; again uuid; code text; second_code text; default_code text; blocked boolean; p jsonb; rev uuid;
+  wid uuid; next_wid uuid; later_wid uuid; legacy uuid; declined uuid; default_intent uuid; d jsonb;
+  default_first uuid; default_second uuid; default_later uuid; legacy_pending uuid;
 begin
   perform set_config('request.jwt.claim.role','authenticated',true);
   perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='referrer'),true);
-  blocked:=false;
-  begin perform public.referral_set_consent(true,'wrong-version'); exception when raise_exception then blocked:=true; end;
-  perform pg_temp.assert_true(blocked,'terms version required');
   p:=public.referral_set_consent(true,'client-referrals-v1'); code:=p->>'code';
-  blocked:=false; begin perform public.referral_capture(code); exception when raise_exception then blocked:=true; end;
-  perform pg_temp.assert_true(blocked,'direct self-referral denied');
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='platform-referrer'),true);
+  p:=public.referral_set_consent(true,'client-referrals-v1');
+  default_code:=p->>'code';
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='other'),true);
+  p:=public.referral_set_consent(true,'client-referrals-v1'); second_code:=p->>'code';
   legacy:=pg_temp.create_referred('creator','legacy-referred',true);
-  perform pg_temp.assert_true((select not eligible from public.referral_attributions where wedding_id=legacy),'preactivation wedding permanently ineligible');
+  perform pg_temp.assert_true((select not eligible from public.referral_intents where creator_id=
+    (select id from referral_actors where kind='creator')),'preactivation acceptance permanently ineligible');
   insert into referral_actors values('legacy',legacy);
   perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='owner'),true);
   p:=public.referral_admin_policy(); rev:=(p->>'revision')::uuid;
@@ -108,22 +170,78 @@ begin
   blocked:=false;
   begin perform public.referral_owner_policy(true,200,rev,true); exception when raise_exception then blocked:=true; end;
   perform pg_temp.assert_true(blocked,'stale Owner CAS rejected');
-  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='creator'),true);
-  blocked:=false; begin perform public.referral_capture(repeat('0',32)); exception when raise_exception then blocked:=true; end;
-  perform pg_temp.assert_true(blocked,'invalid code does not capture');
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='outsider'),true);
+  blocked:=false; begin perform public.referral_capture(code); exception when raise_exception then blocked:=true; end;
+  perform pg_temp.assert_true(blocked,'existing account cannot capture a new facilitator link');
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='active-creator'),true);
   i:=public.referral_capture(code);
   again:=public.referral_capture(repeat('0',32));
-  perform pg_temp.assert_true(i=again,'first valid pending capture wins');
-  wid:=pg_temp.create_referred('creator','eligible-referred',true);
+  perform pg_temp.assert_true(i=again,'invalid later link preserves first valid registration intent');
+  again:=public.referral_capture(second_code);
+  perform pg_temp.assert_true(i=again and (select referrer_id=(select id from referral_actors where kind='referrer')
+    from public.referral_intents where id=i),'later explicit code preserves first explicit attribution');
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='default-creator'),true);
+  default_intent:=public.referral_capture_default(default_code);
+  perform pg_temp.assert_true((select is_default from public.referral_intents where id=default_intent),
+    'no-referrer fallback is marked as default');
+  again:=public.referral_capture(second_code);
+  perform pg_temp.assert_true(default_intent=again and (select not is_default and
+    referrer_id=(select id from referral_actors where kind='other')
+    from public.referral_intents where id=default_intent),'explicit facilitator link replaces only pending default');
+  wid:=pg_temp.create_referred('default-creator','default-upgrade-attributed',true);
+  legacy_pending:=pg_temp.create_referred('legacy-pending-creator','legacy-pending-accepted',true);
+  perform pg_temp.assert_true(not exists(select 1 from public.referral_attributions where wedding_id=wid),
+    'accepted draft is not attributed before publication');
+  wid:=pg_temp.create_referred('active-creator','active-first-draft',true);
   insert into referral_actors values('wedding',wid);
-  perform pg_temp.assert_true((select eligible from public.referral_attributions where wedding_id=wid),'new wedding eligible');
+  next_wid:=pg_temp.create_referred('active-creator','active-second-draft',true);
+  default_first:=pg_temp.create_referred('default-only-creator','default-first-draft',true,true);
+  default_second:=pg_temp.create_referred('default-only-creator','default-second-draft',true,true);
+  perform pg_temp.assert_true(not exists(select 1 from public.referral_attributions where creator_id=
+    (select id from referral_actors where kind='active-creator')),'multiple drafts remain unattributed before publication');
+  perform pg_temp.assert_true(not exists(select 1 from public.referral_attributions where creator_id=
+    (select id from referral_actors where kind='default-only-creator')),'default intent remains unattributed before publication');
+  perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='active-creator'),true);
+  d:=public.referral_disclosure();
+  perform pg_temp.assert_true(d->>'intent_id' is null,'accepted account decision is not repeated on another draft');
+  update public.weddings set first_published_at=clock_timestamp() where id=next_wid;
+  update public.weddings set first_published_at=clock_timestamp() where id=default_second;
+  update public.weddings set first_published_at=clock_timestamp() where id=default_first;
+  update public.weddings set first_published_at=clock_timestamp() where id=wid;
+  update public.weddings set first_published_at=clock_timestamp() where id=legacy;
+  update public.weddings set first_published_at=clock_timestamp() where id=(select id from public.weddings where slug='default-upgrade-attributed');
+  perform pg_temp.assert_true((select referrer_id=(select id from referral_actors where kind='referrer')
+    from public.referral_attributions where wedding_id=next_wid),'first published draft gets facilitator attribution');
+  perform pg_temp.assert_true(not exists(select 1 from public.referral_attributions where wedding_id=wid),
+    'later-published draft does not inherit attribution');
+  update referral_actors set id=next_wid where kind='wedding';
+  perform pg_temp.assert_true((select not eligible from public.referral_attributions where wedding_id=legacy),
+    'first publication retains preactivation ineligibility');
+  perform pg_temp.assert_true((select referrer_id=(select id from referral_actors where kind='other')
+    from public.referral_attributions where wedding_id=(select id from public.weddings where slug='default-upgrade-attributed')),
+    'explicit facilitator receives the accepted attribution');
+  update public.weddings set first_published_at=clock_timestamp() where id=legacy_pending;
+  perform pg_temp.assert_true((select not eligible from public.referral_attributions where wedding_id=legacy_pending),
+    'pre-migration pending intent remains permanently commission-ineligible after acceptance');
+  perform pg_temp.assert_true((select referrer_id=(select id from referral_actors where kind='platform-referrer') and eligible
+    from public.referral_attributions where wedding_id=default_second),'default referral attaches to the first published draft');
+  perform pg_temp.assert_true(not exists(select 1 from public.referral_attributions where wedding_id=default_first),
+    'default referral does not attach to a draft published later');
+  later_wid:=pg_temp.create_referred('active-creator','active-later-draft',true);
+  update public.weddings set first_published_at=clock_timestamp() where id=later_wid;
+  perform pg_temp.assert_true(not exists(select 1 from public.referral_attributions where wedding_id=later_wid),
+    'consumed facilitator attribution does not extend to later weddings or the default');
+  default_later:=pg_temp.create_referred('default-only-creator','default-later-draft',true,true);
+  update public.weddings set first_published_at=clock_timestamp() where id=default_later;
+  perform pg_temp.assert_true(not exists(select 1 from public.referral_attributions where wedding_id=default_later),
+    'consumed default attribution does not extend to later weddings');
   declined:=pg_temp.create_referred('other','declined-referral',false);
   perform pg_temp.assert_true(not exists(select 1 from public.referral_attributions where wedding_id=declined),'couple decline no attribution');
   perform pg_temp.assert_true(exists(select 1 from public.referral_intents where creator_id=
     (select id from referral_actors where kind='other') and state='declined' and consumed_at is not null
     and disclosed_revision is not null and disclosed_terms_version='client-referrals-v1'),'declined disclosure receipt retained');
   blocked:=false;
-  begin update public.referral_attributions set creator_id=(select id from referral_actors where kind='other') where wedding_id=wid;
+  begin update public.referral_attributions set creator_id=(select id from referral_actors where kind='other') where wedding_id=next_wid;
   exception when raise_exception then blocked:=true; end;
   perform pg_temp.assert_true(blocked,'attribution immutable');
   perform set_config('request.jwt.claim.sub',(select id::text from referral_actors where kind='outsider'),true);

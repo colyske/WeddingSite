@@ -17,6 +17,11 @@
       $("referral-link").value = referralLink;
       $("referral-share-message").value = referralLink ? `Here's the link to set up your wedding site: ${referralLink}. Click it, sign in, and I'll help you fill everything in.` : "";
       $("referral-share-message-wrap").hidden = !account.opted_in;
+      const showcaseLink = account.opted_in
+        ? `https://showcase-wedding.joinourwedding.site/?client_ref=${account.code}` : "";
+      $("showcase-referral-link").value = showcaseLink;
+      $("showcase-share-wrap").hidden = !account.opted_in;
+      $("showcase-referral-copy").disabled = !account.opted_in;
       $("referral-share-copy").disabled = !account.opted_in;
       $("referral-copy").disabled = !account.opted_in;
       $("referral-withdraw").disabled = !account.opted_in;
@@ -60,6 +65,10 @@
       await navigator.clipboard.writeText($("referral-share-message").value);
       notice("Setup message copied. Send it after the couple has agreed.");
     } catch { notice("Clipboard unavailable. Select and copy the setup message above."); }
+  });
+  $("showcase-referral-copy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("showcase-referral-link").value); notice("Showcase link copied."); }
+    catch { notice("The clipboard is unavailable. Select and copy the showcase link above."); }
   });
   try { await load(); } catch (error) { notice(error.message); }
 })();

@@ -81,13 +81,22 @@
 
   function showcaseCta() {
     if (!document.body.dataset.showcase || document.querySelector(".showcase-create")) return;
+    const params = new URLSearchParams(location.search);
+    const clientRef = params.get("client_ref");
+    const next = new URLSearchParams({ style: "showcase-wedding" });
+    if (params.has("client_ref")) next.set("client_ref", clientRef);
+    const signupPath = "/signin.html?mode=register&next=" +
+      encodeURIComponent(`/dashboard.html?${next}#step=couple`);
     const cta = document.createElement("a");
     cta.className = "showcase-create";
-    cta.href = WSSite.platformUrl("/signin.html?mode=register&next=" + encodeURIComponent("/dashboard.html?style=showcase-wedding#step=couple"));
+    cta.href = WSSite.platformUrl(signupPath);
     cta.setAttribute("aria-description", "Free publication eligibility is confirmed before publishing; date and account limits may apply.");
     cta.title = "Free publication eligibility is confirmed before publishing; date and account limits may apply.";
     cta.innerHTML = `<svg viewBox="0 0 36 40" aria-hidden="true">${heart(18, 30, .65)}</svg><span><strong>Create yours</strong><small>It&#8217;s free!</small></span>`;
     document.body.append(cta);
+    document.querySelectorAll('footer a[data-platform-link][href="/signin.html"]').forEach(link => {
+      link.href = WSSite.platformUrl(signupPath);
+    });
     let queued = false;
     function update() {
       queued = false;
