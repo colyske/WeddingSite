@@ -18,7 +18,7 @@ for (const page of ["privacy.html", "terms.html"]) {
   });
 }
 
-test("facilitator guide uses illustrative artwork and clear, qualified onsite instructions", () => {
+test("facilitator guide uses illustrative artwork and accurately explains manual referral payments", () => {
   const html = read("facilitator.html");
   assert.match(html, /class="facilitator-art"/);
   assert.match(html, /role="img" aria-labelledby="facilitator-art-title/);
@@ -30,13 +30,18 @@ test("facilitator guide uses illustrative artwork and clear, qualified onsite in
   assert.match(html, /I'll help you set up your wedding website on Join Our Wedding\./);
   assert.match(html, /Here's the link to set up your wedding site: \[your referral link\]\./);
   assert.match(html, /class="facilitator-step-message"/);
-  assert.match(html, /referral payouts are not available/i);
-  assert.match(html, /commission estimate is on hold/i);
-  assert.match(html, /not payable earnings/i);
-  assert.match(html, /couples can decline referral attribution/i);
-  assert.match(html, /publication and contribution fees may apply/i);
-  assert.doesNotMatch(html, /2%|KES (?:10,000|40,000|120,000)|make money|paid after funds|verified M-Pesa details/i);
-  assert.doesNotMatch(html, /4-8%|92-96%|setup is free/i);
+  assert.match(html, /current facilitator rate is 2%/i);
+  assert.match(html, /paid manually after eligible funds clear/i);
+  assert.match(html, /no in-app facilitator payout request or withdrawal/i);
+  assert.match(html, /https:\/\/wa\.me\/254724812413/);
+  assert.match(html, /KES 500,000 in eligible contributions.*KES 10,000/s);
+  assert.match(html, /KES 2,000,000 in eligible contributions.*KES 40,000/s);
+  assert.match(html, /12 weddings in one month.*KES 120,000/s);
+  assert.match(html, /not guaranteed income or expected results/i);
+  assert.match(html, /couples may decline referral attribution/i);
+  assert.match(html, /Creating and editing your draft is free/i);
+  assert.match(html, /publication or payment features may have fees/i);
+  assert.doesNotMatch(html, /4-8%|92-96%|setup is free|earnings are available in your dashboard/i);
 });
 
 test("facilitator link message is prepared with the individual referral URL", () => {

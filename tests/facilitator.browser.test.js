@@ -31,9 +31,12 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     assert.ok(await page.locator("a[href='https://showcase-wedding.joinourwedding.site/']").count() >= 2);
     assert.equal(await page.locator(".facilitator-art svg[role=img]").count(), 1);
     const text = await page.locator("main").innerText();
-    assert.match(text, /referral payouts are not available/i);
-    assert.match(text, /not payable earnings/i);
-    assert.doesNotMatch(text, /2%|make money|paid after funds|KES (?:10,000|40,000|120,000)/i);
+    assert.match(text, /2%/);
+    assert.match(text, /paid manually after eligible funds clear/i);
+    assert.match(text, /no in-app facilitator payout request or withdrawal/i);
+    assert.match(text, /not guaranteed income or expected results/i);
+    assert.doesNotMatch(text, /4-8%|92-96%|earnings are available in your dashboard/i);
+    assert.equal(await page.locator("a[href^='https://wa.me/254724812413']").count(), 2);
     await page.evaluate(() => {
       window.copiedMessages = [];
       Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
@@ -43,7 +46,8 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     await page.locator("#copy-consent").click();
     await page.locator("#copy-referral").click();
     const copied = await page.evaluate(() => window.copiedMessages);
-    assert.match(copied[0], /fees may apply/i);
+    assert.match(copied[0], /draft is free/i);
+    assert.match(copied[0], /exact quotes together/i);
     assert.match(copied[1], /\[your referral link\]/);
     assert.match(await page.locator("#copy-status").innerText(), /copied/i);
     await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
