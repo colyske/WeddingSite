@@ -24,7 +24,7 @@ select pg_temp.assert_true(public.referral_public_rate()=jsonb_build_object('ena
   'public rate hides disabled configuration');
 select pg_temp.assert_true(has_function_privilege('anon','public.referral_public_rate()','execute'),
   'anonymous rate lookup is explicitly granted');
-select pg_temp.assert_true(jsonb_object_length(public.referral_public_rate())=2,
+select pg_temp.assert_true((select count(*) from jsonb_object_keys(public.referral_public_rate()))=2,
   'public rate lookup exposes only enabled and rate');
 select pg_temp.assert_true(public.referral_available_cap(5000,8880,2000,500,300,6000,100,400,1000)=4500,'cost/loss/commitment cap');
 select pg_temp.assert_true(public.referral_available_cap(10000,8880,2000,0,0,100000,0,0,0)=6880,'rate cannot exceed net fee reserve');
