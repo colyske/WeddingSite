@@ -2,7 +2,7 @@
 begin;
 create temporary table draft_actors(kind text, id uuid);
 create temporary table draft_referral_codes(code text not null);
-grant select on draft_actors to authenticated;
+grant select on draft_actors to authenticated,service_role;
 grant select,insert on draft_referral_codes to authenticated,service_role;
 create function public.guided_test_seed_collection_capability(p_wedding_id uuid)
 returns void language plpgsql security definer set search_path = ''
