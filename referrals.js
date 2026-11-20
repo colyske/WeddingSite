@@ -17,19 +17,37 @@
       $("referral-link").value = referralLink;
       $("referral-share-message").value = referralLink ? `Here's the link to set up your wedding site: ${referralLink}. Click it, sign in, and I'll help you fill everything in.` : "";
       $("referral-share-message-wrap").hidden = !account.opted_in;
+      const showcaseLink = account.opted_in
+        ? `https://showcase-wedding.joinourwedding.site/?client_ref=${account.code}` : "";
+      $("showcase-referral-link").value = showcaseLink;
+      $("showcase-share-wrap").hidden = !account.opted_in;
+      $("showcase-referral-copy").disabled = !account.opted_in;
       $("referral-share-copy").disabled = !account.opted_in;
       $("referral-copy").disabled = !account.opted_in;
       $("referral-withdraw").disabled = !account.opted_in;
     }
-    $("referral-count").textContent = `${summary.referral_count} wedding referral(s). Commission is paid after funds are cleared.`;
+    $("referral-count").textContent = `${summary.referral_count} wedding referral(s). Estimates are held; platform payouts are not supported.`;
     $("referral-results").replaceChildren(...summary.weddings.map(row => {
       const p = document.createElement("p");
       const eligibility = row.excluded_by_account_link ? "not eligible (account is connected to this wedding)" :
         row.eligible ? "eligible for commission tracking" : "not eligible (wedding created before program activation)";
       p.textContent = `Reference ${row.reference}: ${eligibility}. ` +
-        (row.currency ? `Verified net basis ${WSReferrals.money(row.verified_basis_minor, row.currency)}; tracked 2% commission ${WSReferrals.money(row.held_estimate_minor, row.currency)}. Paid after funds are cleared.` : "No contributions recorded yet.");
+        (row.currency ? `Historical adjusted gross basis ${WSReferrals.money(row.verified_basis_minor, row.currency)}; held gross-based estimate ${WSReferrals.money(row.held_estimate_minor, row.currency)}.` : "No contributions recorded yet.");
       return p;
     }));
+    if (!Array.isArray(summary.couple_basis_estimates)) {
+      $("couple-basis-results").textContent = "Calculation preview is unavailable. Please contact support.";
+    } else {
+      $("couple-basis-results").replaceChildren(...summary.couple_basis_estimates.map(row => {
+        const p = document.createElement("p");
+        const eligibility = row.excluded_by_account_link ? "not eligible (account is connected to this wedding)" :
+          row.eligible ? "attribution recorded; eligibility requires review" : "not eligible (wedding created before program activation)";
+        p.textContent = `Reference ${row.reference}: ${eligibility}. ` +
+          `Eligible net contribution basis ${WSReferrals.money(row.basis_minor, row.currency)}; ` +
+          `saved-rate calculation ${WSReferrals.money(row.estimate_minor, row.currency)}.`;
+        return p;
+      }));
+    }
   }
   $("referral-consent-form").addEventListener("submit", async event => {
     event.preventDefault();
@@ -60,6 +78,10 @@
       await navigator.clipboard.writeText($("referral-share-message").value);
       notice("Setup message copied. Send it after the couple has agreed.");
     } catch { notice("Clipboard unavailable. Select and copy the setup message above."); }
+  });
+  $("showcase-referral-copy").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText($("showcase-referral-link").value); notice("Showcase link copied."); }
+    catch { notice("The clipboard is unavailable. Select and copy the showcase link above."); }
   });
   try { await load(); } catch (error) { notice(error.message); }
 })();

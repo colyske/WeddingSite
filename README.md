@@ -335,6 +335,20 @@ claim verification on the user's behalf.
 The older prototype notes below describe the initial static implementation, not
 the current Production deployment.
 
+### Private committee records
+
+The wedding team page includes a private committee room for the couple and
+active committee coordinators. Existing coordinator grants also provide this
+access; the couple can revoke them from the team page. Meeting notes, decisions,
+follow-ups and budget or contribution notes are shared with all coordinators
+for that wedding, not with guests or other helper roles. These notes are not
+verified financial records. Guest-facing suggestions are entered separately;
+only the couple can approve or return them. Approval records a decision but
+does not publish or edit the site: the couple can copy approved wording and open
+the wedding editor from the record. Saving edits to a published wedding can
+update the guest site immediately. This requires the committee migration to be
+deployed.
+
 WeddingSite contains two distinct experiences:
 
 1. **The WeddingSite platform** (`index.html`) is a multi-tenant planning workspace concept with Client, Admin, and SuperAdmin permission previews. It demonstrates tenant setup, committee minutes and tasks, finance controls, site content review, publication-fee gating, wedding settings, and the separate guest-site preview.

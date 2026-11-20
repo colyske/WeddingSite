@@ -6,6 +6,11 @@ import { contentError } from "../server/content-policy.js";
 const GENERIC_LINK_MESSAGE = "If that email belongs to a Join Our Wedding account, a sign-in link is on its way.";
 const isEmail = value => typeof value === "string" && value.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value);
 const SAFE_RETURN_PATHS = new Set(["/dashboard.html", "/wedding.html", "/account.html", "/admin.html", "/owner.html", "/team.html", "/team-invite.html", "/verify.html", "/referrals.html", "/b2c-recipient.html"]);
+const REFERRAL_CODE = /^[a-f0-9]{32}$/;
+const DEFAULT_REFERRAL_CODE = "3b79b3fbb32894bf82dbaf21d2765deb";
+const DEFAULT_REFERRAL_WARNING = "The JoinOurWedding referral is currently unavailable. You can still create or use your account; contact support if you expected referral attribution.";
+const REFERRAL_VALIDATION_WARNING = "The referral link could not be verified. You can still create or use your account; contact support if you expected referral attribution.";
+const REFERRAL_SAVE_WARNING = "Your account was created, but referral attribution could not be saved. You can still sign in; contact support if you expected referral attribution.";
 
 function siteOrigin(req) {
   const configured = process.env.WEDDINGSITE_PUBLIC_ORIGIN;
@@ -23,6 +28,63 @@ function safeReturnPath(value, req) {
   } catch {
     return "/dashboard.html";
   }
+}
+
+async function registrationReferral(returnTo, req) {
+  const destination = new URL(safeReturnPath(returnTo, req), siteOrigin(req));
+  if (destination.pathname !== "/dashboard.html") return { referral: null, warning: null };
+  const hasExplicitCode = destination.searchParams.has("client_ref");
+  const explicitCode = destination.searchParams.get("client_ref");
+  if (hasExplicitCode && !REFERRAL_CODE.test(explicitCode || "")) return { referral: null, warning: null };
+  const code = hasExplicitCode ? explicitCode : DEFAULT_REFERRAL_CODE;
+  let validation;
+  try {
+    validation = await supabaseRequest("/rest/v1/rpc/referral_validate_code", {
+      method: "POST", body: { p_code: code }
+    });
+  } catch (error) {
+    console.error(hasExplicitCode
+      ? "Registration referral validation failed; continuing without attribution:"
+      : "JoinOurWedding default referral validation failed; continuing without attribution:", error.message);
+    return {
+      referral: null,
+      warning: hasExplicitCode ? REFERRAL_VALIDATION_WARNING : DEFAULT_REFERRAL_WARNING
+    };
+  }
+  if (!validation?.valid) {
+    if (hasExplicitCode) return { referral: null, warning: null };
+    console.error("JoinOurWedding default referral is missing or withdrawn; continuing without attribution.");
+    return { referral: null, warning: DEFAULT_REFERRAL_WARNING };
+  }
+  return { referral: { code, isDefault: !hasExplicitCode }, warning: null };
+}
+
+async function saveRegistrationReferral(userId, referral) {
+  if (!referral) return null;
+  try {
+    await supabaseRequest("/rest/v1/rpc/referral_register_intent", {
+      service: true,
+      method: "POST",
+      body: { p_creator: userId, p_code: referral.code, p_is_default: referral.isDefault }
+    });
+    return null;
+  } catch (error) {
+    console.error(referral.isDefault
+      ? "JoinOurWedding default referral intent could not be saved; account access will continue:"
+      : "New account referral intent could not be saved; account access will continue:", error.message);
+    return referral.isDefault ? DEFAULT_REFERRAL_WARNING : REFERRAL_SAVE_WARNING;
+  }
+}
+
+function isNewGoogleAccount(user) {
+  const createdAt = Date.parse(user?.created_at || "");
+  const lastSignInAt = Date.parse(user?.last_sign_in_at || "");
+  const age = Date.now() - createdAt;
+  const signInAge = lastSignInAt - createdAt;
+  return Number.isFinite(createdAt) && Number.isFinite(lastSignInAt) &&
+    age >= 0 && age <= 10 * 60 * 1000 &&
+    signInAge >= 0 && signInAge <= 60 * 1000 &&
+    Date.now() - lastSignInAt >= 0;
 }
 
 function validOAuthOrigin(value) {
@@ -116,6 +178,13 @@ async function exchangeGoogleCode(req, res, body) {
     const { access_token: accessToken, refresh_token: refreshToken, user } = result.data;
     const role = await roleFor(user.id, accessToken);
     if (!role) return sendJson(res, 503, { error: "Your Join Our Wedding profile is not ready yet. Try again or contact support." });
+    let referralWarning = null;
+    const hasExplicitReferral = new URL(safeReturnPath(body.returnTo, req), siteOrigin(req))
+      .searchParams.has("client_ref");
+    if (isNewGoogleAccount(user) && (body.registration === true || hasExplicitReferral)) {
+      const selected = await registrationReferral(body.returnTo, req);
+      referralWarning = selected.warning || await saveRegistrationReferral(user.id, selected.referral);
+    }
     const userData = user.user_metadata || {};
     return sendJson(res, 200, {
       accessToken,
@@ -125,7 +194,8 @@ async function exchangeGoogleCode(req, res, body) {
         email: user.email,
         displayName: userData.display_name || userData.full_name || ""
       },
-      role
+      role,
+      ...(referralWarning ? { referralWarning } : {})
     });
   } catch (error) {
     console.error("Google OAuth code exchange failed", error.message);
@@ -233,7 +303,9 @@ export default async function handler(req, res) {
         return sendJson(res, 400, { error: "Passwords do not match." });
       }
       const email = body.email.trim().toLowerCase();
-      const redirectTo = `${siteOrigin(req)}/signin.html?next=${encodeURIComponent(safeReturnPath(body.returnTo, req))}`;
+      const returnTo = safeReturnPath(body.returnTo, req);
+      const selectedReferral = await registrationReferral(returnTo, req);
+      const redirectTo = `${siteOrigin(req)}/signin.html?next=${encodeURIComponent(returnTo)}`;
       const result = await authCall(`/signup?redirect_to=${encodeURIComponent(redirectTo)}`, {
         body: { email, password: body.password, data: { registration_ip: req.ip || req.headers["x-forwarded-for"] || "unknown" } }
       });
@@ -262,7 +334,13 @@ export default async function handler(req, res) {
       } catch (e) {
         console.warn("Profile creation error (non-fatal):", e.message);
       }
-      return sendJson(res, 201, { message: "Account created. Check your email to verify your address and sign in." });
+      const referralWarning = selectedReferral.warning ||
+        await saveRegistrationReferral(result.data?.user?.id, selectedReferral.referral);
+      const message = "Account created. Check your email to verify your address and sign in.";
+      return sendJson(res, 201, {
+        message: referralWarning ? `${message} ${referralWarning}` : message,
+        ...(referralWarning ? { referralWarning } : {})
+      });
     }
 
     if (action === "me") {

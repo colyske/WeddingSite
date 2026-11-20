@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "integration-committee-facilitator": false
+    }
+  },
   "redirects": [
     { "source": "/inspiration.html", "destination": "/#weddings", "permanent": true }
   ],

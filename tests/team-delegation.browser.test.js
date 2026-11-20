@@ -64,6 +64,7 @@ test("owner can create a copyable invite link without sending an email", { skip 
     const url = new URL(route.request().url());
     const action = url.searchParams.get("action");
     calls.push({ action, method: route.request().method() });
+    if (action === "committee-list") return route.fulfill({ json: { records: [] } });
     if (action === "manage") {
       return route.fulfill({ json: { team: {
         invites: createdInvite ? [createdInvite] : [],
@@ -183,4 +184,82 @@ test("usher workspace renders only the assigned seating view", { skip }, async t
   assert.equal(await page.locator("#checkin-tools").isVisible(), false);
   assert.equal(await page.locator("#rsvp-tools").isVisible(), false);
   assert.equal(await page.locator("#dj-tools").isVisible(), false);
+  assert.equal(await page.locator("#committee-panel").isVisible(), false);
+});
+
+test("committee record and review remain separate from the public wedding editor", { skip }, async t => {
+  const context = await browser.newContext();
+  t.after(() => context.close());
+  const page = await authenticatedPage(context);
+  let records = [];
+  const actions = [];
+  await page.route("**/api/team**", async route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    actions.push(action);
+    if (action === "manage") return route.fulfill({ json: { team: { invites: [], members: [] } } });
+    if (action === "committee-list") return route.fulfill({ json: { records } });
+    if (action === "committee-create") {
+      const body = route.request().postDataJSON();
+      records = [{ id: "52000000-0000-4000-8000-000000000002", meeting_date: body.meetingDate,
+        committee: body.committee, notes: body.notes, decision: body.decision, action_owner: body.owner,
+        due_date: body.dueDate, category: body.category, suggestion: body.suggestion, review_status: "pending", task_done: false }];
+      return route.fulfill({ status: 201, json: { id: records[0].id } });
+    }
+    if (action === "committee-review") {
+      records[0].review_status = route.request().postDataJSON().status;
+      return route.fulfill({ json: { updated: true } });
+    }
+    throw new Error(`Unexpected team action: ${action}`);
+  });
+  let weddingCalls = 0;
+  await page.route("**/api/weddings**", route => { weddingCalls++; return route.abort(); });
+  await page.goto(`${base}/team.html?weddingId=${weddingId}`);
+  await page.waitForFunction(() => document.querySelector("#committee-records")?.textContent.includes("No committee records"));
+  await page.fill('[name="meetingDate"]', "2026-11-19");
+  await page.fill('[name="committee"]', "Planning");
+  await page.fill('[name="notes"]', "Private minutes");
+  await page.fill('[name="suggestion"]', "Guest wording");
+  await page.click('#committee-form button[type="submit"]');
+  await page.locator('[data-review][data-status="approved"]').click();
+  await page.waitForFunction(() => document.querySelector("#committee-records")?.textContent.includes("(approved)"));
+  assert.match(await page.locator("#team-notice").textContent(), /guest site has not changed/i);
+  assert.equal(await page.locator("[data-approved-wording]").inputValue(), "Guest wording");
+  assert.equal(await page.locator("#committee-records a").getAttribute("href"), `/wedding.html?id=${weddingId}`);
+  assert.match(await page.locator("#committee-records").textContent(), /published wedding can update the guest site immediately/i);
+  await page.evaluate(() => { Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async text => { window.copiedWording = text; } } }); });
+  await page.click("[data-copy-wording]");
+  assert.equal(await page.evaluate(() => window.copiedWording), "Guest wording");
+  assert.equal(weddingCalls, 0);
+  assert.ok(actions.includes("committee-create") && actions.includes("committee-review"));
+
+  const editorRequests = [];
+  await page.unroute("**/api/weddings**");
+  await context.route("**/api/**", async route => {
+    const request = route.request();
+    const action = new URL(request.url()).searchParams.get("action");
+    editorRequests.push({ action, method: request.method() });
+    const wedding = {
+      id: weddingId, slug: "test-wedding", couple_names: "Test Couple", wedding_date: "2027-03-20", currency: "USD",
+      welcome_story: "Original welcome", time_zone: "UTC", palette: [], palette_names: [], tiers: [], registry: [],
+      published_at: "2026-01-01T00:00:00Z", payout: { method: "bank" },
+      venues: [{ id: "00000000-0000-0000-0000-000000000001", name: "Garden Hall", event_date: "2027-03-20",
+        event_time: "14:00", address: "1 Garden Road", kind: "ceremony", is_main: true }]
+    };
+    let data = {};
+    if (action === "get") data = { wedding, amountPresetMaxMinor: 100000000 };
+    if (action === "collection-capabilities") data = { currencies: [{ code: "USD", name: "US Dollar", methods: [{ name: "Card", markets: ["United States"] }] }] };
+    if (action === "payout-methods") data = { methods: [{ value: "bank", label: "Bank transfer" }] };
+    if (action === "quote") data = { quote: { fee_minor: 0, currency: "USD" } };
+    if (action === "campaigns") data = { currency: "USD", campaigns: [], summary: [], rows: [] };
+    if (action === "extras-get") data = { faq: [], travel: "" };
+    return route.fulfill({ json: data });
+  });
+  await page.getByRole("link", { name: "Open wedding editor" }).click();
+  await page.locator("#edit-section").waitFor({ state: "visible" });
+  assert.equal(new URL(page.url()).searchParams.get("id"), weddingId);
+  assert.equal(await page.locator("#welcome-story").inputValue(), "Original welcome");
+  await page.locator("#welcome-story").fill("Guest wording");
+  assert.equal(await page.locator("#welcome-story").inputValue(), "Guest wording");
+  assert.ok(editorRequests.some(request => request.action === "get" && request.method === "GET"));
+  assert.equal(editorRequests.filter(request => request.method !== "GET").length, 0, "Opening and editing must not save or publish");
 });

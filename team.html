@@ -19,6 +19,7 @@
       <h2>Invite helpers</h2>
       <p class="fine">Helpers get only the wedding task you assign. Invitations are single-use, expire after 7 days, and are bound to the email address you enter. A secure link is created for you to copy and share; it is not emailed.</p>
       <p class="fine">Helper access normally ends at midnight after the wedding date plus one full buffer day, in the wedding's time zone. If no event date is set, it ends in 30 days. Choose a custom date or explicitly choose no expiry. You can change a helper's expiry later.</p>
+      <p class="fine"><strong>Privacy:</strong> Existing and newly invited committee coordinators can read and add all private committee records, including budget and contribution notes. Revoke their access if this is not appropriate.</p>
       <form id="invite-form">
         <label for="invite-email">Who would you like to invite? (sign-in email)</label>
         <input id="invite-email" type="email" autocomplete="email" maxlength="254" required>
@@ -26,7 +27,7 @@
         <select id="invite-role" required>
           <option value="checkin">Entrance check-in — scan passes and check guests in</option>
           <option value="usher">Usher — see guest names, assigned tables and check-in status</option>
-          <option value="coordinator">Committee coordinator — see the guest roster and check-in guests</option>
+          <option value="coordinator">Committee coordinator — guest roster, check-in and private committee records</option>
           <option value="rsvp_support">RSVP support — see guest contact details and RSVP status</option>
           <option value="dj">DJ — see the paid song playlist only</option>
         </select>
@@ -50,6 +51,27 @@
       <h2>Current and expired helpers</h2>
       <div id="team-members" class="fine">Loading…</div>
       <p class="fine">Helpers cannot access payouts, payment settings, or wedding financial totals.</p>
+    </section>
+
+    <section id="committee-panel" hidden>
+      <h2>Committee room</h2>
+      <p class="fine">Private to the couple and active committee coordinators for this wedding. All coordinators can see every record, including budget and contribution notes. Do not include bank details, credentials or sensitive guest information. Financial notes are not verified payments or ledger entries.</p>
+      <p class="fine">Guest-site suggestions are separate from minutes. The couple may approve or return them; approval does not change the website. The couple must make any approved change in the wedding editor. To revise a returned suggestion, submit a new record.</p>
+      <form id="committee-form">
+        <label>Meeting date <input name="meetingDate" type="date" required></label>
+        <label>Committee <input name="committee" maxlength="120" required></label>
+        <label>Notes and discussion <textarea name="notes" maxlength="4000" rows="3" required></textarea></label>
+        <label>Decision <textarea name="decision" maxlength="2000" rows="2"></textarea></label>
+        <label>Action owner <input name="owner" maxlength="120"></label>
+        <label>Due date <input name="dueDate" type="date"></label>
+        <label>Category <select name="category"><option value="task">Task</option><option value="program">Program</option><option value="guest">Guest suggestion</option><option value="budget">Budget or contribution note</option></select></label>
+        <label>Separate guest-facing suggestion for couple review (optional)
+          <textarea name="suggestion" maxlength="2000" rows="2" placeholder="Only wording intended for guests; never private minutes"></textarea>
+        </label>
+        <button type="submit">Save private record</button>
+      </form>
+      <h3>Meeting records and follow-ups</h3>
+      <div id="committee-records" aria-live="polite">Loading…</div>
     </section>
 
     <section id="helper-panel" hidden>

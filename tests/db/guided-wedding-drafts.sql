@@ -1,7 +1,9 @@
 -- Isolated local/CI database only. Fixtures and all writes roll back.
 begin;
 create temporary table draft_actors(kind text, id uuid);
-grant select on draft_actors to authenticated;
+create temporary table draft_referral_codes(code text not null);
+grant select on draft_actors to authenticated,service_role;
+grant select,insert on draft_referral_codes to authenticated,service_role;
 create function public.guided_test_seed_collection_capability(p_wedding_id uuid)
 returns void language plpgsql security definer set search_path = ''
 as $$
@@ -29,6 +31,27 @@ begin
 end $$;
 set local role authenticated;
 select set_config('request.jwt.claim.role','authenticated',true);
+do $$
+declare consent jsonb;
+begin
+  perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='stranger'),true);
+  consent:=public.referral_set_consent(true,'client-referrals-v1');
+  insert into draft_referral_codes values(consent->>'code');
+end $$;
+reset role;
+
+set local role service_role;
+select set_config('request.jwt.claim.role','service_role',true);
+do $$
+begin
+  perform public.referral_register_intent(
+    (select id from draft_actors where kind='client'),
+    (select code from draft_referral_codes),false);
+end $$;
+reset role;
+
+set local role authenticated;
+select set_config('request.jwt.claim.role','authenticated',true);
 select set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='client'),true);
 do $$
 declare key uuid := extensions.gen_random_uuid(); result jsonb; replay jsonb; w public.weddings; vid uuid; q jsonb;
@@ -36,12 +59,10 @@ declare key uuid := extensions.gen_random_uuid(); result jsonb; replay jsonb; w 
     'weddingDate',null,'location',null,'currency','USD','maxCapacity',150,
     'palette',jsonb_build_array('#244b3a'),'paletteNames',jsonb_build_array('Forest Green'),
     'timeZone','Africa/Nairobi','venues','[]'::jsonb,'referral',null);
-  blocked boolean; missing text[]; case_id uuid; before_publish jsonb; consent jsonb; disclosure jsonb;
+  blocked boolean; missing text[]; case_id uuid; before_publish jsonb; disclosure jsonb; referral_code text;
 begin
-  perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='stranger'),true);
-  consent := public.referral_set_consent(true,'client-referrals-v1');
-  perform set_config('request.jwt.claim.sub',(select id::text from draft_actors where kind='client'),true);
-  perform public.referral_capture(consent->>'code');
+  select code into referral_code from draft_referral_codes;
+  perform public.referral_capture(referral_code);
   blocked := false;
   begin perform public.create_wedding_draft(key,payload);
   exception when raise_exception then blocked := sqlerrm like 'REFERRAL_CONFLICT:%'; end;

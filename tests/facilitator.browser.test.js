@@ -17,6 +17,8 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     } catch { res.writeHead(404).end(); }
   });
   let browser;
+  let ratePolicy = { enabled: true, rate_basis_points: 200 };
+  let rateFailure = false;
   try {
     await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
     try { browser = await chromium.launch({ channel: "msedge" }); } catch { browser = await chromium.launch(); }
@@ -24,7 +26,11 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     const errors = [];
     page.on("pageerror", error => errors.push(error.message));
     await page.route("https://**", route => route.fulfill({ body: "" }));
+    await page.route("**/api/referrals*", route => rateFailure
+      ? route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "Unavailable" }) })
+      : route.fulfill({ contentType: "application/json", body: JSON.stringify(ratePolicy) }));
     await page.goto(`http://127.0.0.1:${server.address().port}/facilitator.html`);
+    await page.locator("#facilitator-earnings").waitFor({ state: "visible" });
     assert.equal(await page.locator("h1").count(), 1);
     assert.equal(await page.locator(".facilitator-steps > li").count(), 5);
     assert.equal(await page.locator("a[href='/signin.html?next=%2Freferrals.html']").count(), 4);
@@ -32,9 +38,13 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     assert.equal(await page.locator(".facilitator-art svg[role=img]").count(), 1);
     const text = await page.locator("main").innerText();
     assert.match(text, /2%/);
-    assert.match(text, /paid after eligible funds clear to your verified M-Pesa details/i);
-    assert.match(text, /not guaranteed income or expected results/i);
-    assert.doesNotMatch(text, /4-8%|92-96%|earnings are available in your dashboard|payouts are not available|in-app facilitator payout request|paid manually/i);
+    assert.match(text, /KES 10,000/);
+    assert.match(text, /KES 40,000/);
+    assert.match(text, /KES 120,000/);
+    assert.match(text, /Money is sent directly to your M-Pesa once the wedding date passes and all funds are cleared/i);
+    assert.match(text, /register as a new user through your link, agree to the referral and publish their first wedding/i);
+    assert.match(text, /12 weddings × KES 10,000 = KES 120,000 per month!/i);
+    assert.doesNotMatch(text, /not a promise|earnings are available in your dashboard|payouts are not available|in-app facilitator payout request|\b(?:manual(?:ly)?|automatic(?:ally)?)\b/i);
     await page.evaluate(() => {
       window.copiedMessages = [];
       Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
@@ -42,11 +52,8 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
       } });
     });
     await page.locator("#copy-consent").click();
-    await page.locator("#copy-referral").click();
     const copied = await page.evaluate(() => window.copiedMessages);
-    assert.match(copied[0], /draft is free/i);
-    assert.match(copied[0], /exact quotes together/i);
-    assert.match(copied[1], /\[your referral link\]/);
+    assert.equal(copied[0], "Hi! I'd love to set up your free wedding website on Join Our Wedding. Setting it up costs nothing. When guests contribute money through the site, the platform deducts a small maintenance fee (around 4–8%), and you keep 92–96% straight to your M-Pesa. You'll see every single shilling on your dashboard. Should we set it up now? If yes, tap this link to sign in and I'll help you fill in your wedding details: [Paste Your Referral Link]");
     assert.match(await page.locator("#copy-status").innerText(), /copied/i);
     await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
       writeText: async () => { throw new Error("denied"); }
@@ -55,8 +62,17 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     assert.match(await page.locator("#copy-status").innerText(), /select and copy/i);
     await page.evaluate(() => {
       document.querySelector("#copy-status").textContent = "";
-      document.querySelector("#referral-copy-status").textContent = "";
     });
+
+    ratePolicy = { enabled: true, rate_basis_points: 100 };
+    await page.reload();
+    await page.locator("#facilitator-earnings").waitFor({ state: "visible" });
+    const updatedText = await page.locator("main").innerText();
+    assert.match(updatedText, /1%/);
+    assert.match(updatedText, /KES 5,000/);
+    assert.match(updatedText, /KES 20,000/);
+    assert.match(updatedText, /KES 60,000/);
+    assert.match(updatedText, /12 weddings × KES 5,000 = KES 60,000 per month!/i);
 
     for (const width of [320, 375, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
@@ -70,7 +86,30 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
       assert.ok(dimensions.targets.every(height => height >= 44), `small tap target at ${width}`);
       if (process.env.WEDDING_SCREENSHOTS) await page.screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `facilitator-${width}.png`), fullPage: true });
     }
+
+    ratePolicy = { enabled: false, rate_basis_points: null };
+    await page.reload();
+    await page.locator("#facilitator-rate-status").waitFor({ state: "visible" });
+    assert.equal(await page.locator("#facilitator-earnings").isVisible(), false);
+    assert.equal(await page.locator("#facilitator-reward").isVisible(), false);
+    assert.equal(await page.locator("#facilitator-example-section").isVisible(), false);
+    assert.equal(await page.locator("#facilitator-general-lead").isVisible(), true);
+    assert.equal(await page.locator("[data-referral-active]:visible").count(), 0);
+    assert.doesNotMatch(await page.locator("main").innerText(), /KES 5,000|KES 20,000|KES 60,000/);
+    ratePolicy = { enabled: true, rate_basis_points: "200" };
+    await page.reload();
+    await page.locator("#facilitator-rate-status").waitFor({ state: "visible" });
+    assert.equal(await page.locator("#facilitator-earnings").isVisible(), false);
+    assert.doesNotMatch(await page.locator("main").innerText(), /KES 5,000|KES 20,000|KES 60,000/);
+
     assert.deepEqual(errors, []);
+    ratePolicy = { enabled: true, rate_basis_points: 200 };
+    rateFailure = true;
+    await page.reload();
+    await page.locator("#facilitator-rate-status").waitFor({ state: "visible" });
+    assert.match(await page.locator("#facilitator-rate-status").innerText(), /rate is unavailable/i);
+    assert.equal(await page.locator("#facilitator-earnings").isVisible(), false);
+    assert.doesNotMatch(await page.locator("main").innerText(), /KES 10,000|KES 40,000|KES 120,000/);
     await page.locator(".facilitator-final-cta a").click();
     assert.equal(new URL(page.url()).pathname, "/signin.html");
     assert.equal(new URL(page.url()).searchParams.get("next"), "/referrals.html");

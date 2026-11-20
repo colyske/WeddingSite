@@ -43,9 +43,11 @@ async function openDashboard(handlers = {}, query = "", legacyAnswers = null) {
     sessionStorage.setItem("ws-session", JSON.stringify({ a: "test-token", r: "" }));
     if (savedAnswers) sessionStorage.setItem("ws-create-answers", JSON.stringify(savedAnswers));
   }, legacyAnswers);
-  await page.route("**/api/referrals*", route => route.fulfill({
-    status: 200, contentType: "application/json", body: JSON.stringify({ intent_id: null })
-  }));
+  await page.route("**/api/referrals*", route => {
+    const action = new URL(route.request().url()).searchParams.get("action");
+    const body = action === "validate" ? { valid: true } : { intent_id: null };
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
   await page.route("**/api/guest*", route => {
     const action = new URL(route.request().url()).searchParams.get("action");
     const handler = handlers[`guest:${action}`];
