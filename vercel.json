@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "colyske-wedding-committee-workflow": false
+    }
+  },
   "redirects": [
     { "source": "/inspiration.html", "destination": "/#weddings", "permanent": true }
   ],
