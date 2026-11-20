@@ -27,9 +27,22 @@
       const eligibility = row.excluded_by_account_link ? "not eligible (account is connected to this wedding)" :
         row.eligible ? "eligible for commission tracking" : "not eligible (wedding created before program activation)";
       p.textContent = `Reference ${row.reference}: ${eligibility}. ` +
-        (row.currency ? `Verified net basis ${WSReferrals.money(row.verified_basis_minor, row.currency)}; HELD estimate ${WSReferrals.money(row.held_estimate_minor, row.currency)}; payable ${WSReferrals.money(row.payable_minor, row.currency)} through the platform.` : "No contributions recorded yet.");
+        (row.currency ? `Historical adjusted gross basis ${WSReferrals.money(row.verified_basis_minor, row.currency)}; held gross-based estimate ${WSReferrals.money(row.held_estimate_minor, row.currency)}.` : "No contributions recorded yet.");
       return p;
     }));
+    if (!Array.isArray(summary.couple_basis_estimates)) {
+      $("couple-basis-results").textContent = "Calculation preview is unavailable. Please contact support.";
+    } else {
+      $("couple-basis-results").replaceChildren(...summary.couple_basis_estimates.map(row => {
+        const p = document.createElement("p");
+        const eligibility = row.excluded_by_account_link ? "not eligible (account is connected to this wedding)" :
+          row.eligible ? "attribution recorded; eligibility requires review" : "not eligible (wedding created before program activation)";
+        p.textContent = `Reference ${row.reference}: ${eligibility}. ` +
+          `Eligible net contribution basis ${WSReferrals.money(row.basis_minor, row.currency)}; ` +
+          `saved-rate calculation ${WSReferrals.money(row.estimate_minor, row.currency)}.`;
+        return p;
+      }));
+    }
   }
   $("referral-consent-form").addEventListener("submit", async event => {
     event.preventDefault();

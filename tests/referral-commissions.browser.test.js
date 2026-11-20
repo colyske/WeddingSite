@@ -118,8 +118,10 @@ test("referrer opt-in, exact currency-separated aggregates and withdrawal", { sk
       return fulfill(route, account);
     }
     return fulfill(route, { account, referral_count: 1, weddings: [
-      { reference: uuid, eligible: true, excluded_by_account_link: true, currency: "KES", verified_basis_minor: "100000", held_estimate_minor: "0", payable_minor: "0" },
-      { reference: uuid, eligible: true, currency: "USD", verified_basis_minor: "9007199254740993", held_estimate_minor: "9", payable_minor: "0" }
+      { reference: uuid, eligible: true, excluded_by_account_link: true, currency: "KES", verified_basis_minor: "100000", held_estimate_minor: "0" },
+      { reference: uuid, eligible: true, currency: "USD", verified_basis_minor: "9007199254740993", held_estimate_minor: "9" }
+    ], couple_basis_estimates: [
+      { reference: uuid, eligible: true, excluded_by_account_link: false, currency: "KES", basis_minor: "91120", estimate_minor: "1822" }
     ] });
   });
   await page.goto(`${base}/referrals.html`);
@@ -127,10 +129,13 @@ test("referrer opt-in, exact currency-separated aggregates and withdrawal", { sk
   await page.click("#referral-consent-form button");
   await page.waitForSelector("#referral-account", { state: "visible" });
   assert.match(await page.inputValue("#referral-link"), /client_ref=aaaaaaaa/);
-  assert.match(await page.textContent("#referral-results"), /HELD estimate KES 0\.00/);
+  assert.match(await page.textContent("#referral-results"), /held gross-based estimate KES 0\.00/);
   assert.match(await page.textContent("#referral-results"), /not eligible \(account is connected to this wedding\)/);
   assert.match(await page.textContent("#referral-results"), /USD 90,071,992,547,409\.93/);
-  assert.match(await page.textContent("#referral-results"), /HELD estimate USD 0\.09/);
+  assert.match(await page.textContent("#referral-results"), /held gross-based estimate USD 0\.09/);
+  assert.match(await page.textContent("#couple-basis-results"), /Eligible net contribution basis KES 911\.20; saved-rate calculation KES 18\.22/);
+  assert.match(await page.textContent("#couple-basis-results"), /eligibility requires review/);
+  assert.match(await page.textContent("main"), /not a verified payable or unpaid balance/i);
   await page.click("#referral-withdraw");
   await page.waitForFunction(() => document.querySelector("#referral-notice").textContent.includes("withdrawn"));
   assert.equal(await page.inputValue("#referral-link"), "");
