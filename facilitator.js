@@ -28,6 +28,7 @@
         const amount = Math.floor(Number(element.dataset.referralAmount) * policy.rate_basis_points / 10000);
         element.textContent = `KES ${new Intl.NumberFormat("en-KE").format(amount)}`;
       }
+      for (const element of document.querySelectorAll("[data-referral-active]")) element.hidden = false;
       reward.hidden = false;
       exampleSection.hidden = false;
       earnings.hidden = false;
@@ -38,6 +39,7 @@
     } catch {
       reward.hidden = true;
       exampleSection.hidden = true;
+      for (const element of document.querySelectorAll("[data-referral-active]")) element.hidden = true;
       earningLead.hidden = true;
       generalLead.hidden = false;
       rateStatus.textContent = "The current facilitator rate is unavailable right now. Please try again later.";

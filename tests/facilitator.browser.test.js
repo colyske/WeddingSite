@@ -41,10 +41,9 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     assert.match(text, /KES 10,000/);
     assert.match(text, /KES 40,000/);
     assert.match(text, /KES 120,000/);
-    assert.match(text, /commission is sent to your M-Pesa once the wedding date has passed and the funds have cleared/i);
-    assert.match(text, /eligible, verified live contributions/i);
-    assert.match(text, /register a new account through your opted-in link and agree to link their first published wedding to you/i);
-    assert.match(text, /12 new accounts and first weddings a month/i);
+    assert.match(text, /Money is sent directly to your M-Pesa once the wedding date passes and all funds are cleared/i);
+    assert.match(text, /register as a new user through your link, agree to the referral and publish their first wedding/i);
+    assert.match(text, /12 weddings × KES 10,000 = KES 120,000 per month!/i);
     assert.doesNotMatch(text, /not a promise|earnings are available in your dashboard|payouts are not available|in-app facilitator payout request|\b(?:manual(?:ly)?|automatic(?:ally)?)\b/i);
     await page.evaluate(() => {
       window.copiedMessages = [];
@@ -54,9 +53,7 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     });
     await page.locator("#copy-consent").click();
     const copied = await page.evaluate(() => window.copiedMessages);
-    assert.match(copied[0], /starting a draft is free/i);
-    assert.match(copied[0], /platform fees are shown in the payment quote/i);
-    assert.match(copied[0], /\[Paste your referral link\]/i);
+    assert.equal(copied[0], "Hi! I'd love to set up your free wedding website on Join Our Wedding. Setting it up costs nothing. When guests contribute money through the site, the platform deducts a small maintenance fee (around 4–8%), and you keep 92–96% straight to your M-Pesa. You'll see every single shilling on your dashboard. Should we set it up now? If yes, tap this link to sign in and I'll help you fill in your wedding details: [Paste Your Referral Link]");
     assert.match(await page.locator("#copy-status").innerText(), /copied/i);
     await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
       writeText: async () => { throw new Error("denied"); }
@@ -75,6 +72,7 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     assert.match(updatedText, /KES 5,000/);
     assert.match(updatedText, /KES 20,000/);
     assert.match(updatedText, /KES 60,000/);
+    assert.match(updatedText, /12 weddings × KES 5,000 = KES 60,000 per month!/i);
 
     for (const width of [320, 375, 768, 1280]) {
       await page.setViewportSize({ width, height: 900 });
@@ -96,6 +94,7 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     assert.equal(await page.locator("#facilitator-reward").isVisible(), false);
     assert.equal(await page.locator("#facilitator-example-section").isVisible(), false);
     assert.equal(await page.locator("#facilitator-general-lead").isVisible(), true);
+    assert.equal(await page.locator("[data-referral-active]:visible").count(), 0);
     assert.doesNotMatch(await page.locator("main").innerText(), /KES 5,000|KES 20,000|KES 60,000/);
     ratePolicy = { enabled: true, rate_basis_points: "200" };
     await page.reload();
