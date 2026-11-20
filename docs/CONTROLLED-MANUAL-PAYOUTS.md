@@ -13,9 +13,8 @@ release dates count as released.
 Historical gross-based estimates and obligations are unchanged. Differences
 need review before considering the preview as a replacement. It is not a payable
 or unpaid balance, reservation or authorization to pay; external payments may
-not be recorded. The `client-referrals-v1` terms still state a current 2% rate
-and need review if the configured rate differs. This preview does not change
-those terms or retroactively reprice contributions.
+not be recorded. The `client-referrals-v1` terms do not fix a current rate.
+This preview does not change those terms or retroactively reprice contributions.
 
 This is a bounded **unactivated control plane**, not launch-ready withdrawals or an
 authorized funded rail. Migration `202611110001` does not enable any payment or payout

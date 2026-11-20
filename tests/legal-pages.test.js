@@ -25,15 +25,14 @@ test("facilitator guide follows the plain-language onboarding flow and uses conf
   assert.match(html, /No joining fees\. No targets\./);
   assert.match(html, /Visit a wedding meeting &amp; show them the demo/);
   assert.match(html, /Ask permission and send your link on WhatsApp/);
-  assert.match(html, /Set it up on their phone/);
+  assert.match(html, /Set it up on THEIR phone/);
   assert.match(html, /Teach them how to share/);
   assert.match(html, /phone or laptop/);
-  assert.match(html, /I'd love to help you set up your wedding website/);
-  assert.match(html, /Starting a draft is free/);
-  assert.match(html, /eligible, verified live contributions/i);
-  assert.match(html, /register a new account through your opted-in link and agree to link their first published wedding to you/i);
-  assert.match(html, /12 new accounts and first weddings a month/i);
-  assert.match(html, /\[Paste your referral link\]/);
+  assert.match(html, /I'd love to set up your free wedding website/);
+  assert.match(html, /4–8%/);
+  assert.match(html, /92–96%/);
+  assert.match(html, /register as a new user through your link, agree to the referral and publish their first wedding/i);
+  assert.match(html, /\[Paste Your Referral Link\]/);
   assert.match(html, /class="facilitator-step-message"/);
   assert.match(html, /data-referral-rate/);
   assert.match(html, /data-referral-amount="500000"/);
@@ -41,12 +40,12 @@ test("facilitator guide follows the plain-language onboarding flow and uses conf
   assert.match(html, /data-referral-amount="6000000"/);
   assert.match(html, /id="facilitator-earnings" hidden/);
   assert.match(html, /id="facilitator-rate-status" role="status"/);
-  assert.match(html, /facilitator\.js\?v=3/);
+  assert.match(html, /facilitator\.js\?v=4/);
   assert.match(read("facilitator.js"), /\/api\/referrals\?action=public-rate/);
   assert.match(read("facilitator.js"), /policy\.rate_basis_points/);
   assert.match(read("facilitator.js"), /rate is unavailable right now/i);
   assert.doesNotMatch(html, /2%|KES 10,000|KES 40,000|KES 120,000/);
-  assert.match(html, /commission is sent to your M-Pesa once the wedding date has passed and the funds have cleared/i);
+  assert.match(html, /Money is sent directly to your M-Pesa once the wedding date passes and all funds are cleared/i);
   assert.doesNotMatch(html, /earnings are available in your dashboard|payouts are not available|in-app facilitator payout request|\b(?:manual(?:ly)?|automatic(?:ally)?)\b/i);
 });
 
@@ -78,6 +77,7 @@ test("privacy policy covers the actual data practices", () => {
 test("payment terms distinguish company costs, accepted customer fees and historical contracts", () => {
   const html = read("terms.html");
   assert.match(html, /platform sets the referral percentage for eligible verified live contributions/i);
+  assert.match(html, /register a new account through the opted-in referral link, accept the attribution disclosure and publish their first wedding/i);
   assert.doesNotMatch(html, /current facilitator rate is 2%/i);
   assert.match(html, /datetime="2026-11-04"/);
   assert.match(html, /provider transaction costs are company overhead, not a separate deduction or an unknown-fee hold/i);
