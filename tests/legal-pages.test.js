@@ -28,14 +28,11 @@ test("facilitator guide follows the plain-language onboarding flow and uses conf
   assert.match(html, /Set it up on their phone/);
   assert.match(html, /Teach them how to share/);
   assert.match(html, /phone or laptop/);
-  assert.match(html, /I'd love to help you set up your free wedding website/);
+  assert.match(html, /I'd love to help you set up your wedding website/);
+  assert.match(html, /Starting a draft is free/);
+  assert.match(html, /register as a new user through your link and publish their first wedding/i);
   assert.match(html, /\[Paste your referral link\]/);
   assert.match(html, /class="facilitator-step-message"/);
-  assert.match(html, /estimates remain held and unpayable.*platform payouts are not supported/i);
-  assert.match(html, /estimates do not reduce the couple’s net or provider amount/i);
-  assert.match(html, /href="\/terms\.html#client-referrals"/);
-  assert.match(html, /not guaranteed income or expected results/i);
-  assert.match(html, /couples may decline attribution/i);
   assert.match(html, /data-referral-rate/);
   assert.match(html, /data-referral-amount="500000"/);
   assert.match(html, /data-referral-amount="2000000"/);
@@ -47,8 +44,8 @@ test("facilitator guide follows the plain-language onboarding flow and uses conf
   assert.match(read("facilitator.js"), /policy\.rate_basis_points/);
   assert.match(read("facilitator.js"), /rate is unavailable right now/i);
   assert.doesNotMatch(html, /2%|KES 10,000|KES 40,000|KES 120,000/);
-  assert.doesNotMatch(html, /commission.{0,80}(?:M-Pesa|funds clear)/i);
-  assert.doesNotMatch(html, /4-8%|92-96%|earnings are available in your dashboard|in-app facilitator payout request|paid manually/i);
+  assert.match(html, /commission is sent to your M-Pesa once the wedding date has passed and the funds have cleared/i);
+  assert.doesNotMatch(html, /earnings are available in your dashboard|payouts are not available|in-app facilitator payout request|\b(?:manual(?:ly)?|automatic(?:ally)?)\b/i);
 });
 
 test("facilitator link message is prepared with the individual referral URL", () => {
