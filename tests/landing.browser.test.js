@@ -79,7 +79,9 @@ test("landing page is responsive, themed per wedding, accessible and honest", as
     assert.ok(links.includes("/terms.html"));
     await page.waitForSelector("footer a[href*='privacy']");
     const text = await page.locator("body").innerText();
-    assert.doesNotMatch(text, /\d+(\.\d+)?\s?%|18 months|free allowance/i, "no exact fee figures in landing copy");
+    const feeCopy = text.replace(/2% referral estimates on eligible contributions; estimates are held and unpayable through the platform/i, "referral estimates");
+    assert.doesNotMatch(feeCopy, /\d+(\.\d+)?\s?%|18 months|free allowance/i, "no exact fee figures in landing copy");
+    assert.match(await page.locator("#facilitator-invite-title").locator("..").innerText(), /2% referral estimates.*held and unpayable/i);
     assert.match(text, /fees apply/i);
     assert.match(await page.locator("#hero-title").innerText(), /budget/i, "hero leads with fundraising");
     assert.ok((await page.locator(".lp-fab h3").allTextContents()).slice(0, 4).every(t => /fundrais|gift|song|sponsor/i.test(t)), "money features lead");

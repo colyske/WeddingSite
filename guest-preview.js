@@ -122,12 +122,12 @@
     if (!address) {
       address = document.createElement("p");
       address.className = "preview-address";
-      address.hidden = !data.site.wedding.couple_names?.trim();
       const url = document.createElement("span");
-      url.textContent = `https://${data.site.wedding.slug}.joinourwedding.site`;
       address.append(url);
       welcome.querySelector('[data-edit-kind="date"]').after(address);
     }
+    address.hidden = !data.site.wedding.couple_names?.trim();
+    address.querySelector("span").textContent = `https://${data.site.wedding.slug}.joinourwedding.site`;
     addEditor(welcome, "Edit wedding address", "couple", "address");
     if (!document.getElementById("private-preview-note")) {
       const sampleNote = document.createElement("p");
@@ -166,6 +166,7 @@
   document.addEventListener("ws:preview-ready", () => { ready = true; refreshEditors(); });
   document.addEventListener("ws:extras-ready", refreshEditors);
   document.addEventListener("click", event => {
+      if (event.target.closest(".list-pagination button[data-page-step]")) return;
       const explicit = event.target.closest("[data-edit-step]");
       const section = explicit ? document.getElementById(explicit.dataset.editSectionId) : event.target.closest("[data-edit-section]");
       if (section) {

@@ -126,7 +126,12 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       assert.match(await frame.locator("#campaigns").innerText(), /1,400,000/);
       assert.match(await frame.locator("#campaigns").innerText(), /KES\s*0/);
       assert.match(await frame.locator("#story").innerText(), /borrowed watering can/);
-      assert.equal(await frame.locator("#prewedding-display .venue-card").count(), 5);
+      assert.equal(await frame.locator("#prewedding-display .venue-card").count(), 4);
+      assert.match(await frame.locator("#prewedding-display-pagination").innerText(), /1–4 of 5/);
+      await frame.locator('#prewedding-display-pagination [data-page-step="1"]').click();
+      assert.equal(await frame.locator("#prewedding-display .venue-card").count(), 1);
+      assert.match(await frame.locator("#prewedding-display-pagination").innerText(), /5–5 of 5/);
+      await frame.locator('#prewedding-display-pagination [data-page-step="-1"]').click();
       assert.match(await frame.locator("#venues").innerText(), /Sample venue: Azure/);
       assert.equal(await frame.locator(".lookbook-art").count(), 4);
       assert.match(await frame.locator("#registry").innerText(), /slow Sunday breakfasts/);
@@ -166,11 +171,10 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       assert.equal(await frame.locator("body").evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "contextual controls do not create mobile/desktop overflow");
       assert.equal(await frame.locator("#nav-couple").evaluate(element => element.getBoundingClientRect().width > 100), true, "contextual music control does not squeeze the mobile couple names");
       const flow = await frame.locator("#wedding-content > section").evaluateAll(sections => sections.map(section => section.id));
-      for (const [before, after] of [["prewedding", "info-section"], ["info-section", "rsvp"], ["rsvp", "ecard"],
-        ["ecard", "campaigns"], ["campaigns", "registry"], ["registry", "bids"], ["bids", "ledger"],
-        ["ledger", "sponsors"], ["sponsors", "sponsor-tiers"], ["sponsor-tiers", "vip-section"], ["seating", "guestbook"], ["guestbook", "share-section"]]) {
-        assert.ok(flow.indexOf(before) < flow.indexOf(after), `${before} precedes ${after} in DOM and tab order`);
-      }
+      const expectedFlow = ["welcome", "campaigns", "registry", "bids", "ledger", "story", "details",
+        "venues", "info-section", "prewedding", "sponsors", "sponsor-tiers", "rsvp", "vip-section",
+        "ecard", "seating", "guestbook", "share-section"];
+      assert.deepEqual(flow.filter(id => expectedFlow.includes(id)), expectedFlow, "sections follow the public DOM and tab order");
       assert.equal(flow[flow.indexOf("sponsors") + 1], "sponsor-tiers", "Stand with us immediately follows Our sponsors");
       await frame.getByRole("button", { name: "Currency: KES", exact: true }).click();
       assert.equal(await page.locator('[data-guide-step="money"]').isVisible(), true);
@@ -202,7 +206,7 @@ test("interactive desktop/mobile renderer edits, saves, isolates guest activity 
       await page.locator("#welcome-story").fill("Our own true story, ready for our guests.");
       await page.keyboard.press("Escape");
       assert.equal(await page.locator(".interactive-dialog").evaluate(element => element.open), true);
-      assert.match(await page.locator("[data-close-warning]").innerText(), /Unsaved/);
+      assert.match(await page.locator("[data-close-warning]").innerText(), /Save your changes or choose Cancel changes to discard them/);
       await page.locator("[data-close-editor]").focus();
       await page.keyboard.press("Shift+Tab");
       assert.equal(await page.evaluate(() => Boolean(document.activeElement.closest(".interactive-dialog"))), true, "native modal traps focus");
