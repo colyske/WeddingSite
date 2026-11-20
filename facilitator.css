@@ -73,7 +73,7 @@
 .facilitator-terms-card h3 { margin: 0 0 .45rem; color: var(--fac-green); font-family: var(--sans); font-size: 1.05rem; font-weight: 700; letter-spacing: 0; }
 .facilitator-role-card p { margin: 0; color: var(--fac-muted); font-size: .92rem; line-height: 1.65; }
 .facilitator-note { margin-top: 1rem; padding: 1rem 1.2rem; background: #f0eee5; border-left: 3px solid var(--fac-gold-soft); color: #3d463e; font-size: .88rem; line-height: 1.65; }
-.facilitator-feature-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+.facilitator-feature-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
 .facilitator-feature-grid article { padding: 1.4rem; border: 1px solid var(--fac-line); background: var(--fac-paper); }
 .facilitator-feature-grid span { display: grid; width: 2.4rem; height: 2.4rem; place-items: center; margin-bottom: 1.1rem; border-radius: 50%; background: #e8efdf; color: var(--fac-green); font-weight: 700; font-size: .78rem; }
 .facilitator-feature-grid h3 { margin: 0 0 .45rem; color: var(--fac-green); font: 700 1rem var(--sans); }

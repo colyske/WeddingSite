@@ -41,7 +41,9 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     assert.match(text, /KES 10,000/);
     assert.match(text, /KES 40,000/);
     assert.match(text, /KES 120,000/);
-    assert.doesNotMatch(text, /4-8%|92-96%|not a promise|eligible contributions|commission.{0,80}(?:M-Pesa|funds clear)|earnings are available in your dashboard|payouts are not available|in-app facilitator payout request|paid manually/i);
+    assert.match(text, /commission is sent to your M-Pesa once the wedding date has passed and the funds have cleared/i);
+    assert.match(text, /register as a new user through your link and publish their first wedding/i);
+    assert.doesNotMatch(text, /not a promise|eligible contributions|earnings are available in your dashboard|payouts are not available|in-app facilitator payout request|\b(?:manual(?:ly)?|automatic(?:ally)?)\b/i);
     await page.evaluate(() => {
       window.copiedMessages = [];
       Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
@@ -50,7 +52,8 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     });
     await page.locator("#copy-consent").click();
     const copied = await page.evaluate(() => window.copiedMessages);
-    assert.match(copied[0], /setup is free/i);
+    assert.match(copied[0], /starting a draft is free/i);
+    assert.match(copied[0], /platform fees are shown in the payment quote/i);
     assert.match(copied[0], /\[Paste your referral link\]/i);
     assert.match(await page.locator("#copy-status").innerText(), /copied/i);
     await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
@@ -70,6 +73,20 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     assert.match(updatedText, /KES 5,000/);
     assert.match(updatedText, /KES 20,000/);
     assert.match(updatedText, /KES 60,000/);
+
+    for (const width of [320, 375, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const dimensions = await page.evaluate(() => ({
+        viewport: document.documentElement.clientWidth,
+        content: document.documentElement.scrollWidth,
+        targets: [...document.querySelectorAll(".facilitator-actions .facilitator-button, .facilitator-copy-button")]
+          .map(el => el.getBoundingClientRect().height)
+      }));
+      assert.ok(dimensions.content <= dimensions.viewport, `horizontal overflow at ${width}`);
+      assert.ok(dimensions.targets.every(height => height >= 44), `small tap target at ${width}`);
+      if (process.env.WEDDING_SCREENSHOTS) await page.screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `facilitator-${width}.png`), fullPage: true });
+    }
+
     ratePolicy = { enabled: false, rate_basis_points: null };
     await page.reload();
     await page.locator("#facilitator-rate-status").waitFor({ state: "visible" });
@@ -84,18 +101,6 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     assert.equal(await page.locator("#facilitator-earnings").isVisible(), false);
     assert.doesNotMatch(await page.locator("main").innerText(), /KES 5,000|KES 20,000|KES 60,000/);
 
-    for (const width of [320, 375, 768, 1280]) {
-      await page.setViewportSize({ width, height: 900 });
-      const dimensions = await page.evaluate(() => ({
-        viewport: document.documentElement.clientWidth,
-        content: document.documentElement.scrollWidth,
-        targets: [...document.querySelectorAll(".facilitator-actions .facilitator-button, .facilitator-copy-button")]
-          .map(el => el.getBoundingClientRect().height)
-      }));
-      assert.ok(dimensions.content <= dimensions.viewport, `horizontal overflow at ${width}`);
-      assert.ok(dimensions.targets.every(height => height >= 44), `small tap target at ${width}`);
-      if (process.env.WEDDING_SCREENSHOTS) await page.screenshot({ path: join(process.env.WEDDING_SCREENSHOTS, `facilitator-${width}.png`), fullPage: true });
-    }
     assert.deepEqual(errors, []);
     ratePolicy = { enabled: true, rate_basis_points: 200 };
     rateFailure = true;
