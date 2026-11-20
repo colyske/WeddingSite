@@ -37,7 +37,7 @@
       try {
         const response = await fetch("/api/auth?action=google-exchange", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, codeVerifier: flow.verifier })
+          body: JSON.stringify({ code, codeVerifier: flow.verifier, returnTo: flow.returnTo, registration: flow.registration })
         });
         const data = await response.json();
         if (!response.ok || !data.accessToken || !data.refreshToken || !data.user?.id || !data.role) {
@@ -169,10 +169,11 @@
         const flow = {
           state, verifier,
           returnTo: safeReturnDestination(query.get("next")),
+          registration: !$("register-form").hidden,
           createdAt: Date.now()
         };
         sessionStorage.setItem(googleFlowKey, JSON.stringify(flow));
-        const response = await post("google-start", { state, codeChallenge });
+        const response = await post("google-start", { state, codeChallenge, returnTo: flow.returnTo });
         const data = await response.json();
         if (!response.ok || !data.authorizationUrl) throw new Error(data.error || "Google sign-in could not be started.");
         const authorization = new URL(data.authorizationUrl);

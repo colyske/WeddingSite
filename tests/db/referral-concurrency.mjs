@@ -29,20 +29,22 @@ try {
     select public.referral_set_consent(true,'client-referrals-v1');
     commit;`);
   const codes = (await sql(`select code from public.referral_accounts where user_id in ('${first}','${second}') order by user_id;`)).split("\n");
-  const capture = code => sql(`begin;
+  const register = code => sql(`begin;
     set local statement_timeout='20s';
-    set local role authenticated;
-    select set_config('request.jwt.claim.role','authenticated',true);
+    set local role service_role;
+    select set_config('request.jwt.claim.role','service_role',true);
     select set_config('request.jwt.claim.sub','${actor}',true);
-    select public.referral_capture('${code}');
+    select public.referral_register_intent('${actor}','${code}',false);
     select pg_sleep(0.3);
     commit;`);
-  const results = await Promise.all(codes.map(capture));
+  const results = await Promise.all(codes.map(register));
   const ids = results.map(output => output.split("\n").find(line => /^[a-f0-9-]{36}$/.test(line) && line !== actor));
   assert.ok(ids[0]);
   assert.equal(ids[0], ids[1], "Concurrent different codes must resolve to one first-valid intent");
-  assert.equal(await sql(`select count(*) from public.referral_intents where creator_id='${actor}' and state='pending';`), "1");
-  console.log("Concurrent first-valid intent capture passed; no duplicate attribution slot.");
+  assert.equal(await sql(`select count(*) from public.referral_intents where creator_id='${actor}';`), "1");
+  assert.ok(codes.includes(await sql(`select code from public.referral_accounts where user_id=(
+    select referrer_id from public.referral_intents where creator_id='${actor}');`)));
+  console.log("Concurrent first-valid registration intent passed; no duplicate attribution slot.");
 } finally {
   // These fixtures are the only committed rows; clean exact IDs in the isolated DB.
   await sql(`begin;

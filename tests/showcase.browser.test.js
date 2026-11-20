@@ -32,7 +32,8 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", req => assert.equal(req.method(), "GET", "Showcase review never submits payments, emails or forms"));
     const base = `http://127.0.0.1:${server.address().port}`;
-    await page.goto(`${base}/guest.html?slug=showcase-wedding`, { waitUntil: "domcontentloaded" });
+    const clientRef = "a".repeat(32);
+    await page.goto(`${base}/guest.html?slug=showcase-wedding&client_ref=${clientRef}`, { waitUntil: "domcontentloaded" });
     await page.locator("#leaderboard-body tr").first().waitFor();
     await page.locator("#ledger-body tr").first().waitFor();
     await page.locator(".field-row").first().waitFor();
@@ -102,14 +103,18 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     const onboarding = new URL(await page.locator(".showcase-create").getAttribute("href"), base);
     assert.equal(onboarding.pathname, "/signin.html");
     assert.equal(onboarding.searchParams.get("mode"), "register");
-    assert.equal(onboarding.searchParams.get("next"), "/dashboard.html?style=showcase-wedding#step=couple");
+    assert.equal(onboarding.searchParams.get("next"),
+      `/dashboard.html?style=showcase-wedding&client_ref=${clientRef}#step=couple`);
     assert.equal(await page.locator(".showcase-create strong").innerText(), "Create yours");
     assert.equal(await page.locator(".showcase-create small").innerText(), "It’s free!");
     assert.equal(await page.locator(".showcase-create small").evaluate(el => getComputedStyle(el).color), "rgb(224, 190, 123)");
     assert.match(await page.locator(".showcase-create").getAttribute("aria-description"), /eligibility.*before publishing/);
     assert.equal(await page.locator("#prewedding > h2").innerText(), "Pre-wedding activities");
     await page.locator("#reuse-wedding-style a").waitFor();
-    assert.equal(await page.locator("#reuse-wedding-style a").getAttribute("href"), "/dashboard.html?style=showcase-wedding#step=couple");
+    assert.equal(await page.locator("#reuse-wedding-style a").getAttribute("href"),
+      `/dashboard.html?style=showcase-wedding&client_ref=${clientRef}#step=couple`);
+    const footerSignup = new URL(await page.locator('footer a[data-platform-link][href*="signin.html"]').getAttribute("href"), base);
+    assert.equal(new URL(footerSignup.searchParams.get("next"), base).searchParams.get("client_ref"), clientRef);
     assert.ok(await page.locator("#pay-submit").isDisabled());
     const contrast = await page.evaluate(() => {
       function luminance(rgb) {
@@ -292,6 +297,54 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
       return el.validationMessage;
     });
     assert.match(message, /designated contact fields/);
+  } finally {
+    await browser?.close();
+    server.close();
+  }
+});
+
+test("showcase facilitator referral reaches signup, style reuse and footer links", async () => {
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url, "http://localhost");
+    req.query = Object.fromEntries(url.searchParams);
+    req.body = {};
+    res.status = code => { res.statusCode = code; return res; };
+    try {
+      if (url.pathname === "/api/guest") return await guest(req, res);
+      if (url.pathname === "/api/checkout") return await checkout(req, res);
+      const path = url.pathname === "/" ? "/index.html" : url.pathname;
+      const data = await readFile(new URL(`..${path}`, import.meta.url));
+      res.writeHead(200, { "Content-Type": ({ ".html": "text/html", ".js": "text/javascript", ".css": "text/css" })[extname(path)] || "application/octet-stream" }).end(data);
+    } catch { res.writeHead(404).end(); }
+  });
+  let browser;
+  try {
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    try { browser = await chromium.launch({ channel: "msedge" }); } catch { browser = await chromium.launch(); }
+    const page = await browser.newPage();
+    await page.route("https://**", route => route.fulfill({ body: "" }));
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const clientRef = "a".repeat(32);
+    await page.goto(`${base}/guest.html?slug=showcase-wedding&client_ref=${clientRef}`, { waitUntil: "domcontentloaded" });
+    await page.locator("#leaderboard-body tr").first().waitFor();
+    const onboarding = new URL(await page.locator(".showcase-create").getAttribute("href"), base);
+    assert.equal(onboarding.searchParams.get("mode"), "register");
+    assert.equal(onboarding.searchParams.get("next"),
+      `/dashboard.html?style=showcase-wedding&client_ref=${clientRef}#step=couple`);
+    await page.locator("#reuse-wedding-style a").waitFor();
+    assert.equal(await page.locator("#reuse-wedding-style a").getAttribute("href"),
+      `/dashboard.html?style=showcase-wedding&client_ref=${clientRef}#step=couple`);
+    const footerSignup = new URL(await page.locator('footer a[data-platform-link][href*="signin.html"]').getAttribute("href"), base);
+    assert.equal(new URL(footerSignup.searchParams.get("next"), base).searchParams.get("client_ref"), clientRef);
+
+    const invalidCode = "not-a-valid-code";
+    await page.goto(`${base}/guest.html?slug=showcase-wedding&client_ref=${invalidCode}`, { waitUntil: "domcontentloaded" });
+    const invalidOnboarding = new URL(await page.locator(".showcase-create").getAttribute("href"), base);
+    assert.equal(new URL(invalidOnboarding.searchParams.get("next"), base).searchParams.get("client_ref"), invalidCode);
+    await page.locator("#reuse-wedding-style a").waitFor();
+    assert.equal(new URLSearchParams(new URL(await page.locator("#reuse-wedding-style a").getAttribute("href"), base).search).get("client_ref"), invalidCode);
+    const invalidFooterSignup = new URL(await page.locator('footer a[data-platform-link][href*="signin.html"]').getAttribute("href"), base);
+    assert.equal(new URL(invalidFooterSignup.searchParams.get("next"), base).searchParams.get("client_ref"), invalidCode);
   } finally {
     await browser?.close();
     server.close();

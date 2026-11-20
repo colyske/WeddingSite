@@ -3,6 +3,7 @@ import { requireAuth } from "./auth-middleware.js";
 import { referralError } from "./referral-errors.js";
 
 const CODE = /^[a-f0-9]{32}$/;
+const DEFAULT_REFERRAL_CODE = "3b79b3fbb32894bf82dbaf21d2765deb";
 const rpc = (name, token, body = {}) => supabaseRequest(`/rest/v1/rpc/${name}`, { token, method: "POST", body });
 
 export default async function handler(req, res) {
@@ -32,7 +33,14 @@ export default async function handler(req, res) {
     if (!body || Array.isArray(body) || typeof body !== "object") return sendJson(res, 400, { error: "Invalid referral request." });
     if (action === "capture") {
       if (!CODE.test(body.code || "")) return sendJson(res, 400, { error: "Invalid referral code." });
-      const intentId = await rpc("referral_capture", session.token, { p_code: body.code });
+      if (body.isDefault !== undefined && typeof body.isDefault !== "boolean") {
+        return sendJson(res, 400, { error: "Invalid referral request." });
+      }
+      if (body.isDefault === true && body.code !== DEFAULT_REFERRAL_CODE) {
+        return sendJson(res, 400, { error: "Invalid default referral code." });
+      }
+      const intentId = await rpc(body.isDefault ? "referral_capture_default" : "referral_capture",
+        session.token, { p_code: body.code });
       return sendJson(res, 200, { intent_id: intentId });
     }
     if (typeof body.optedIn !== "boolean" || body.termsVersion !== "client-referrals-v1") {
