@@ -30,7 +30,9 @@ test("facilitator guide follows the plain-language onboarding flow and uses conf
   assert.match(html, /phone or laptop/);
   assert.match(html, /I'd love to help you set up your wedding website/);
   assert.match(html, /Starting a draft is free/);
-  assert.match(html, /register as a new user through your link and publish their first wedding/i);
+  assert.match(html, /eligible, verified live contributions/i);
+  assert.match(html, /register a new account through your opted-in link and agree to link their first published wedding to you/i);
+  assert.match(html, /12 new accounts and first weddings a month/i);
   assert.match(html, /\[Paste your referral link\]/);
   assert.match(html, /class="facilitator-step-message"/);
   assert.match(html, /data-referral-rate/);
@@ -75,6 +77,8 @@ test("privacy policy covers the actual data practices", () => {
 
 test("payment terms distinguish company costs, accepted customer fees and historical contracts", () => {
   const html = read("terms.html");
+  assert.match(html, /platform sets the referral percentage for eligible verified live contributions/i);
+  assert.doesNotMatch(html, /current facilitator rate is 2%/i);
   assert.match(html, /datetime="2026-11-04"/);
   assert.match(html, /provider transaction costs are company overhead, not a separate deduction or an unknown-fee hold/i);
   assert.match(html, /Unknown actual provider costs remain unknown/);

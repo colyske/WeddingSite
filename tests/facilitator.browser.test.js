@@ -42,8 +42,10 @@ test("facilitator guide is responsive and its links and copy buttons work", asyn
     assert.match(text, /KES 40,000/);
     assert.match(text, /KES 120,000/);
     assert.match(text, /commission is sent to your M-Pesa once the wedding date has passed and the funds have cleared/i);
-    assert.match(text, /register as a new user through your link and publish their first wedding/i);
-    assert.doesNotMatch(text, /not a promise|eligible contributions|earnings are available in your dashboard|payouts are not available|in-app facilitator payout request|\b(?:manual(?:ly)?|automatic(?:ally)?)\b/i);
+    assert.match(text, /eligible, verified live contributions/i);
+    assert.match(text, /register a new account through your opted-in link and agree to link their first published wedding to you/i);
+    assert.match(text, /12 new accounts and first weddings a month/i);
+    assert.doesNotMatch(text, /not a promise|earnings are available in your dashboard|payouts are not available|in-app facilitator payout request|\b(?:manual(?:ly)?|automatic(?:ally)?)\b/i);
     await page.evaluate(() => {
       window.copiedMessages = [];
       Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
