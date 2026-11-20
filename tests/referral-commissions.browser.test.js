@@ -130,7 +130,7 @@ test("referrer opt-in, exact currency-separated aggregates and withdrawal", { sk
   assert.match(await page.textContent("#referral-results"), /HELD estimate KES 0\.00/);
   assert.match(await page.textContent("#referral-results"), /not eligible \(account is connected to this wedding\)/);
   assert.match(await page.textContent("#referral-results"), /USD 90,071,992,547,409\.93/);
-  assert.match(await page.textContent("#referral-results"), /payable USD 0\.00/);
+  assert.match(await page.textContent("#referral-results"), /HELD estimate USD 0\.09/);
   await page.click("#referral-withdraw");
   await page.waitForFunction(() => document.querySelector("#referral-notice").textContent.includes("withdrawn"));
   assert.equal(await page.inputValue("#referral-link"), "");

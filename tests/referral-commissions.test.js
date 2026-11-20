@@ -24,6 +24,7 @@ test("referral HTTP calls use actor JWT only, validate consent, and never invoke
     if (path === "/auth/v1/user") return Response.json({ id: uuid });
     assert.match(path, /^\/rest\/v1\/rpc\/referral_/);
     calls.push({ path, options });
+    if (path.endsWith("referral_public_rate")) return Response.json({ enabled: true, rate_basis_points: 200 });
     return Response.json({ valid: true });
   };
   const invoke = async (action, method, body, authenticated = true) => {
@@ -34,6 +35,12 @@ test("referral HTTP calls use actor JWT only, validate consent, and never invoke
   try {
     assert.equal((await invoke("validate", "GET", null, false)).statusCode, 200);
     assert.equal(calls.at(-1).options.headers.Authorization, "Bearer anon-fixture");
+    const publicRate = await invoke("public-rate", "GET", null, false);
+    assert.equal(publicRate.statusCode, 200);
+    assert.deepEqual(publicRate.data, { enabled: true, rate_basis_points: 200 });
+    assert.equal(calls.at(-1).options.headers.Authorization, "Bearer anon-fixture");
+    assert.equal(calls.at(-1).options.method, "POST");
+    assert.deepEqual(JSON.parse(calls.at(-1).options.body), {});
     assert.equal((await invoke("summary", "GET", null, false)).statusCode, 401);
     for (const action of ["summary", "disclosure"]) {
       assert.equal((await invoke(action, "GET")).statusCode, 200);
@@ -102,6 +109,7 @@ test("referral leadership HTTP boundaries and stale Owner CAS are explicit", asy
 test("held-only schema, signed netting and grants have no financial activation", () => {
   const policy = read("supabase/migrations/202611040001_referral_attribution_policy.sql");
   const estimates = read("supabase/migrations/202611040002_referral_held_estimates.sql");
+  const publicRate = read("supabase/migrations/202611240002_public_referral_rate.sql");
   assert.match(policy, /enabled boolean not null default false/);
   assert.match(policy, /rate_basis_points integer not null default 0/);
   assert.match(policy, /p_revision is distinct from p\.revision/);
@@ -112,6 +120,10 @@ test("held-only schema, signed netting and grants have no financial activation",
   assert.match(estimates, /target-coalesce\(b\.held_estimate_minor,0\)/);
   assert.match(estimates, /'payable_minor','0'/);
   assert.match(estimates, /deferrable initially deferred/);
+  assert.match(publicRate, /jsonb_build_object\([\s\S]*'enabled'[\s\S]*'rate_basis_points'/);
+  assert.match(publicRate, /revoke all on function public\.referral_public_rate\(\) from public, anon, authenticated, service_role/);
+  assert.match(publicRate, /grant execute on function public\.referral_public_rate\(\) to anon, authenticated/);
+  assert.doesNotMatch(publicRate, /referral_policy_history|referral_accounts|payable_minor|platform_fee|commission_balance/gi);
   assert.doesNotMatch(policy + estimates, /(?:update|insert into|alter table) public\.(?:payout|wedding_team|paystack)/i);
   assert.doesNotMatch(read("server/referrals.js"), /payment-adapters|paystack|checkout|service:\s*true/);
   assert.deepEqual(referralError(new Error("Self referral")), [403, "You cannot refer your own wedding or a linked client account."]);

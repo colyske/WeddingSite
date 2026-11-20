@@ -53,6 +53,7 @@
 .facilitator-button-outline { border-color: var(--fac-green); background: transparent; color: var(--fac-green) !important; }
 .facilitator-button-outline:hover { background: #fff; }
 .facilitator-caption { margin: .65rem 0 0; color: var(--fac-muted); font-size: .8rem; line-height: 1.55; }
+.facilitator-rate-status { margin: .7rem 0 0; color: var(--fac-muted); font-size: .82rem; line-height: 1.5; }
 .facilitator-art { width: min(100%, 500px); margin: 0 auto; padding: .75rem; background: radial-gradient(circle at 55% 44%, #fffdf8 0, #f5f0e4 72%); border: 1px solid rgba(44, 49, 41, .1); box-shadow: 0 22px 58px rgba(32, 58, 49, .12); }
 .facilitator-art svg { display: block; width: 100%; height: auto; }
 .facilitator-art figcaption { padding: .55rem .55rem .35rem; color: var(--fac-muted); font-size: .75rem; line-height: 1.5; text-align: center; }
