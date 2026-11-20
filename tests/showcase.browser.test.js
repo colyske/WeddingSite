@@ -41,7 +41,7 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     assert.match(await page.locator("#prewedding-display-pagination").innerText(), /1–4 of 5/);
     assert.equal(await page.locator("#sponsor-enquiry-link").count(), 0);
     assert.equal(await page.locator(".sponsor-ad .sponsor-socials a").count(), 2);
-    assert.match(await page.locator(".sponsor-ad").innerText(), /studio@example\.com/);
+    assert.match(await page.locator(".sponsor-ad").first().innerText(), /studio@example\.com/);
     assert.equal(await page.locator("#campaigns-display [data-preset], #leaderboard-body [data-amount]").count(), 0);
     assert.equal(await page.locator("#song-request-presets").count(), 0);
     assert.equal(await page.locator("#demo-contribution-amount").count(), 0, "the public wedding site has no organizer demo controls");
@@ -73,7 +73,7 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     assert.equal(await page.locator(".fund-bar [data-source]").count(), 6);
     assert.equal(await page.locator(".celebration-fund svg").count(), 0, "fallback ships no unused cake geometry");
     const segments = await page.locator(".fund-bar [data-source]").evaluateAll(items =>
-      items.map(item => ({ key: item.dataset.source, width: parseFloat(item.style.width), color: item.style.backgroundColor })));
+      items.map(item => ({ key: item.dataset.source, width: parseFloat(item.getAttribute("style").match(/width:([^%]+)%/)[1]), color: item.style.backgroundColor })));
     assert.ok(Math.abs(segments.reduce((sum, item) => sum + item.width, 0) - 100) < 1e-10);
     assert.equal(segments.at(-1).key, "remaining");
     assert.equal(segments.at(-1).width, 18);

@@ -62,7 +62,7 @@ test("first valid client link survives sign-in and later codes cannot overwrite 
   await page.waitForSelector("#client-referral-disclosure", { state: "visible" });
   assert.deepEqual(captured, [code]);
   assert.match(await page.textContent("#client-referral-details"), /8\.88%/);
-  assert.match(await page.textContent("#client-referral-details"), /held and unpayable/i);
+  assert.match(await page.textContent("#client-referral-details"), /referral estimates do not reduce your net or provider amounts/i);
   assert.equal(new URL(page.url()).search, "");
   await ctx.close();
 });
@@ -118,8 +118,8 @@ test("referrer opt-in, exact currency-separated aggregates and withdrawal", { sk
       return fulfill(route, account);
     }
     return fulfill(route, { account, referral_count: 1, weddings: [
-      { reference: uuid, eligible: true, excluded_by_account_link: true, currency: "KES", verified_basis_minor: "100000", held_estimate_minor: "0" },
-      { reference: uuid, eligible: true, currency: "USD", verified_basis_minor: "9007199254740993", held_estimate_minor: "9" }
+      { reference: uuid, eligible: true, excluded_by_account_link: true, currency: "KES", verified_basis_minor: "100000", held_estimate_minor: "0", payable_minor: "0" },
+      { reference: uuid, eligible: true, currency: "USD", verified_basis_minor: "9007199254740993", held_estimate_minor: "9", payable_minor: "0" }
     ] });
   });
   await page.goto(`${base}/referrals.html`);
@@ -127,10 +127,10 @@ test("referrer opt-in, exact currency-separated aggregates and withdrawal", { sk
   await page.click("#referral-consent-form button");
   await page.waitForSelector("#referral-account", { state: "visible" });
   assert.match(await page.inputValue("#referral-link"), /client_ref=aaaaaaaa/);
-  assert.match(await page.textContent("#referral-results"), /HELD estimate KES 0\.00/);
-  assert.match(await page.textContent("#referral-results"), /ineligible \(provable owner\/client account link\)/);
+  assert.match(await page.textContent("#referral-results"), /commission estimate KES 0\.00/);
+  assert.match(await page.textContent("#referral-results"), /not eligible \(account is connected to this wedding\)/);
   assert.match(await page.textContent("#referral-results"), /USD 90,071,992,547,409\.93/);
-  assert.match(await page.textContent("#referral-results"), /payable USD 0\.00/);
+  assert.match(await page.textContent("#referral-results"), /commission estimate USD 0\.09/);
   await page.click("#referral-withdraw");
   await page.waitForFunction(() => document.querySelector("#referral-notice").textContent.includes("withdrawn"));
   assert.equal(await page.inputValue("#referral-link"), "");
