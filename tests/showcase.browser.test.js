@@ -106,7 +106,7 @@ test("showcase is complete, read-only and compact at 320/375/768/1280px", async 
     assert.equal(onboarding.searchParams.get("next"),
       `/dashboard.html?style=showcase-wedding&client_ref=${clientRef}#step=couple`);
     assert.equal(await page.locator(".showcase-create strong").innerText(), "Create yours");
-    assert.equal(await page.locator(".showcase-create small").innerText(), "It’s free!");
+    assert.equal(await page.locator(".showcase-create small").innerText(), "It’s simple & free!");
     assert.equal(await page.locator(".showcase-create small").evaluate(el => getComputedStyle(el).color), "rgb(224, 190, 123)");
     assert.match(await page.locator(".showcase-create").getAttribute("aria-description"), /eligibility.*before publishing/);
     assert.equal(await page.locator("#prewedding > h2").innerText(), "Pre-wedding activities");
