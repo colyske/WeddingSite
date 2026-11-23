@@ -92,7 +92,7 @@
     cta.href = WSSite.platformUrl(signupPath);
     cta.setAttribute("aria-description", "Free publication eligibility is confirmed before publishing; date and account limits may apply.");
     cta.title = "Free publication eligibility is confirmed before publishing; date and account limits may apply.";
-    cta.innerHTML = `<svg viewBox="0 0 36 40" aria-hidden="true">${heart(18, 30, .65)}</svg><span><strong>Create yours</strong><small>It&#8217;s free!</small></span>`;
+    cta.innerHTML = `<svg viewBox="0 0 36 40" aria-hidden="true">${heart(18, 30, .65)}</svg><span><strong>Create yours</strong><small>Simple and free!</small></span>`;
     document.body.append(cta);
     document.querySelectorAll('footer a[data-platform-link][href="/signin.html"]').forEach(link => {
       link.href = WSSite.platformUrl(signupPath);
