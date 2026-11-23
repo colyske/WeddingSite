@@ -235,7 +235,7 @@
 
     <!-- Wedding details -->
     <section id="details" class="card" hidden>
-      <h2>Wedding Theme &mdash; Dress like the joy of the day</h2>
+      <h2>Wedding Theme &mdash; Dress like the theme of the day</h2>
       <p id="wedding-location" class="fine"></p>
       <p class="fine palette-label">Wedding theme &middot; colour palette &amp; lookbook</p>
       <div class="swatches" id="palette-preview"></div>
@@ -261,7 +261,7 @@
     <!-- Fundraising campaigns -->
     <section id="campaigns" class="card" hidden>
       <h2>A gift for our next chapter</h2>
-      <p class="fine">Your presence is the greatest gift. If you would like to help with our next chapter, choose a fundraiser below. No gift is ever expected.</p>
+      <p class="fine">Your presence is the greatest gift. If you would like to help with our next chapter, choose a fundraiser below.</p>
       <div id="campaigns-display"></div>
       <div id="campaigns-display-pagination"></div>
     </section>
@@ -302,7 +302,7 @@
         <div id="party-wrap" hidden>
           <label for="party-names">Names of the people coming with you</label>
           <textarea id="party-names" maxlength="400" rows="2" placeholder="e.g. Jane Wanjiku, Peter Otieno"></textarea>
-          <p class="fine">Group RSVP: one form covers your whole party. Shared only with the couple.</p>
+          <p class="fine">Group RSVP: one form covers your whole group. Shared only with the couple.</p>
         </div>
 
         <label for="dietary-preference">Dietary preference</label>
@@ -404,7 +404,7 @@
     <!-- Sponsorship tiers -->
     <section id="sponsor-tiers" class="card" hidden>
       <h2>Sponsorship Levels</h2>
-      <p class="fine">Packages include the benefits listed. Sponsors are ordered by verified paid amount, so larger contributions appear higher; package level does not set list order.</p>
+      <p class="fine">Sponsors are arranged by verified paid amount - the larger the contributions, the higher they appear.</p>
       <div id="tiers-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;"></div>
       <div id="tiers-display-pagination"></div>
     </section>
@@ -468,13 +468,13 @@
       <p class="fine" id="pay-mode-note" hidden></p>
       <p id="pay-summary"></p>
       <label for="pay-provider">Payment method *</label><select id="pay-provider" required></select>
-      <label for="pay-name">Your name / organization *</label><input id="pay-name" maxlength="100" autocomplete="name">
+      <label for="pay-name">Your name or organization *</label><input id="pay-name" maxlength="100" autocomplete="name">
       <label for="pay-email">Email (needed for some payment options)</label><input id="pay-email" type="email" maxlength="200" autocomplete="email">
       <label for="pay-amount">Amount (<span id="pay-currency"></span>) *</label><input id="pay-amount" type="number" min="1" step="0.01" required>
       <div id="pay-daraja-fields" hidden>
-        <label for="pay-mpesa-phone">Safaricom M-Pesa phone number *</label>
+        <label for="pay-mpesa-phone">Your M-Pesa number *</label>
         <input id="pay-mpesa-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="18">
-        <p class="fine" id="pay-daraja-note">Sandbox test: use only a Safaricom test number; a real phone can still be charged. The action stays pending until payment is confirmed.</p>
+        <p class="fine" id="pay-daraja-note">Action stays pending until payment is confirmed.</p>
       </div>
       <div id="pay-sponsor-fields" hidden>
         <label for="pay-phone">Public contact phone (optional)</label><input id="pay-phone" type="tel" maxlength="30">
@@ -839,7 +839,7 @@
             <h3>${esc(c.name)}</h3>
             ${c.purpose && c.purpose !== c.name ? `<p>${esc(c.purpose)}</p>` : ""}
             ${sourceProgress || givingProgress(c.name, c.raised_minor, c.goal_minor, campaignCurrency)}
-            ${wedding.is_past ? "" : `<div class="camp-give"><button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-label="${esc(c.name)}">Choose an amount to contribute</button>${sourceProgress ? '<p class="fine">Only if you wish. Every contribution is appreciated.</p>' : ""}</div>`}
+            ${wedding.is_past ? "" : `<div class="camp-give"><button type="button" class="buy-btn" data-buy="fund" data-ref="${esc(c.id)}" data-label="${esc(c.name)}">Choose an amount to contribute</button>${sourceProgress ? '<p class="fine">Every contribution is appreciated.</p>' : ""}</div>`}
             ${milestones.length ? `<h4 class="camp-ms-heading">Milestones within ${esc(c.name)}</h4><ul class="camp-ms" id="campaign-milestones-${esc(c.id)}"></ul><div id="campaign-milestones-${esc(c.id)}-pagination"></div>` : ""}
           </article>`;
         }, 3, "Fundraising campaigns", visibleCampaigns => visibleCampaigns.forEach(c => {
@@ -1312,7 +1312,7 @@ const payIntent = WSPaymentIntent.create({ name: slug });
     $("song-request-error").hidden = true;
     showPaymentDialog({
       action: "song_bid", title: "Request a new song", exact: false, amountMinor,
-      summary: `Your request for “${songTitle}” by ${artist} appears only after verified payment and supports the wedding fund, not the DJ.`,
+      summary: `Your request for “${songTitle}” by ${artist} appears only after verified payment and supports the wedding fund.`,
       data: { songTitle, artist }
     });
   });
@@ -1322,7 +1322,7 @@ const payIntent = WSPaymentIntent.create({ name: slug });
       showPaymentDialog({
         action: "song_bid", title: "Bid on this song", exact: false,
         amountMinor: 0, minAmountMinor: 100,
-        summary: `This paid bid adds to “${bidBtn.dataset.title}” and supports the wedding fund, not the DJ.`,
+        summary: `This paid bid adds to “${bidBtn.dataset.title}” and supports the wedding fund.`,
         data: { songTitle: bidBtn.dataset.title, artist: bidBtn.dataset.artist }
       });
       return;
@@ -1364,7 +1364,7 @@ const payIntent = WSPaymentIntent.create({ name: slug });
     $("pay-submit").textContent = WSPaymentIntent.payLabel(provider, payMode);
     $("pay-submit").classList.toggle("pay-mpesa", isDaraja);
     $("pay-mode-note").textContent = payMode !== "live" ? "Test payment: no real money is collected." :
-      provider ? "Real payment: money will be collected." : "";
+      provider ? "With Thanks!" : "";
     $("pay-mode-note").hidden = !$("pay-mode-note").textContent;
     $("pay-daraja-note").textContent = WSPaymentIntent.darajaNote(payMode);
     $("pay-daraja-note").hidden = !$("pay-daraja-note").textContent;
@@ -1673,19 +1673,19 @@ const payIntent = WSPaymentIntent.create({ name: slug });
 (function () {
   const MAP = {
     story: ["A little about us", "Our <em>story.</em>"],
-    details: ["Wedding theme", "Dress like the <em>joy of the day.</em>"],
-    venues: ["The celebration", "A day made <em>of moments.</em>"],
+    details: ["Wedding theme", "Dress like the <em>theme of the day.</em>"],
+    venues: ["The celebration", "A day made <em>of beautiful moments.</em>"],
     prewedding: ["Before the wedding", "Pre-wedding activities"],
-    campaigns: ["A gift for our next chapter", "Celebrate us, <em>if you wish.</em>"],
-    registry: ["The registry", "Gifts <em>with meaning.</em>"],
+    campaigns: ["A gift for our next chapter", "Celebrate us, <em>with generousity.</em>"],
+    registry: ["The registry", "Gifts <em>straight from your heart.</em>"],
     rsvp: ["We hope you\u2019ll be there", "Will you <em>attend?</em>"],
     seating: ["Seating", "Find <em>your seat.</em>"],
-    ecard: ["Your digital invitation", "A little card <em>with a big welcome.</em>"],
-    bids: ["The soundtrack", "Help choose <em>the playlist.</em>"],
-    "sponsor-tiers": ["Sponsorship", "Stand with <em>us.</em>"],
-    "vip-section": ["VIP seating", "Sit a little <em>closer.</em>"],
-    sponsors: ["With gratitude", "Our <em>sponsors.</em>"],
-    ledger: ["With thanks", "Our generous <em>guests.</em>"]
+    ecard: ["Your digital invitation", "A QR card <em>for a special guest!</em>"],
+    bids: ["The soundtrack", "Decide the songs <em>for the wedding day.</em>"],
+    "sponsor-tiers": ["Sponsorship", "Be our <em>recognized sponsor!</em>"],
+    "vip-section": ["VIP seating", "Sit a little <em>closer to us.</em>"],
+    sponsors: ["We celebrate", "Our valued<em>sponsors.</em>"],
+    ledger: ["We celebrate", "Our generous <em>guests.</em>"]
   };
   function run() {
     let n = 0;
