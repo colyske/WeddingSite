@@ -199,7 +199,6 @@
   <script src="/site-urls.js"></script>
   <script src="/auth-client.js"></script>
   <script src="/theme-colors.js"></script>
-  <script src="/facilitator.js?v=4"></script>
   <script>
     const $ = id => document.getElementById(id);
     const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -214,6 +213,28 @@
       const headerCta = document.querySelector(".site-header a.btn.primary");
       if (headerCta) headerCta.textContent = "Your dashboard";
     }
+
+    (async () => {
+      const activeEls = document.querySelectorAll("[data-referral-active]");
+      const rateEls = document.querySelectorAll("[data-referral-rate]");
+      const formatRate = basisPoints => `${(basisPoints / 100).toFixed(2).replace(/\.?0+$/, "")}%`;
+      try {
+        const res = await fetch("/api/referrals?action=public-rate", {
+          headers: { Accept: "application/json" }
+        });
+        if (!res.ok) throw new Error("Rate request failed.");
+        const policy = await res.json();
+        if (policy?.enabled !== true || !Number.isInteger(policy.rate_basis_points)
+          || policy.rate_basis_points < 1 || policy.rate_basis_points > 10000) {
+          throw new Error("Rate is unavailable.");
+        }
+        const rateText = formatRate(policy.rate_basis_points);
+        for (const el of rateEls) el.textContent = rateText;
+        for (const el of activeEls) el.hidden = false;
+      } catch {
+        for (const el of activeEls) el.hidden = true;
+      }
+    })();
 
     const contrast = (a, b) => window.WSTheme ? WSTheme.contrast(a, b) : 1;
     function cardTheme(w) {
