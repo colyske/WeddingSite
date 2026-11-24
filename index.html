@@ -8,96 +8,6 @@
   <title>Join Our Wedding — The most fun way to make your dream wedding come true</title>
   <link rel="stylesheet" href="/app-shell.css"><link rel="stylesheet" href="/theme.css"><link rel="stylesheet" href="/editorial.css"><link rel="stylesheet" href="/landing.css"><script src="/ornaments.js" defer></script>
   <script>document.documentElement.classList.add("lp-js");</script>
-  <style>
-    .reel-modal[hidden] { display: none; }
-    .reel-modal {
-      position: fixed;
-      inset: 0;
-      z-index: 9999;
-      background: rgba(20, 35, 29, 0.82);
-      backdrop-filter: blur(4px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
-    }
-    .reel-modal-card {
-      background: #fbf8f2;
-      color: #203a31;
-      border: 1px solid #d8c39a;
-      border-radius: 18px;
-      width: 100%;
-      max-width: 400px;
-      overflow: hidden;
-      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
-      animation: reelPop 0.2s ease-out;
-    }
-    @keyframes reelPop {
-      from { opacity: 0; transform: scale(0.96) translateY(8px); }
-      to { opacity: 1; transform: scale(1) translateY(0); }
-    }
-    .reel-modal-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 18px;
-      border-bottom: 1px solid #e6dcc3;
-      background: #fffdf8;
-    }
-    .reel-modal-head h3 {
-      margin: 0;
-      font-size: 1rem;
-      font-weight: 700;
-      color: #203a31;
-    }
-    .reel-modal-close {
-      background: #f3eee1;
-      border: 1px solid #d8c39a;
-      color: #203a31;
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      font-size: 1.2rem;
-      line-height: 1;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .reel-modal-close:hover {
-      background: #203a31;
-      color: #fbf8f2;
-    }
-    .reel-frame-wrap {
-      position: relative;
-      width: 100%;
-      aspect-ratio: 9 / 16;
-      max-height: 70vh;
-      background: #14231d;
-    }
-    .reel-frame-wrap iframe {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      border: 0;
-    }
-    .reel-modal-foot {
-      padding: 12px 18px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 0.85rem;
-      background: #fffdf8;
-      border-top: 1px solid #e6dcc3;
-    }
-    .reel-modal-foot a {
-      color: #203a31;
-      font-weight: 600;
-      text-decoration: underline;
-    }
-  </style>
 </head>
 <body class="landing">
   <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -192,7 +102,7 @@
         <div class="lp-inner">
           <div class="lp-head lp-reveal"><p class="eyebrow">How it works</p><h2 id="how-title">From committee worry to <em>celebration</em> in 4 easy steps</h2><p>Imagine a wedding link like <strong>wanja-weds-kimani.joinourwedding.site</strong>—guests tap it, see every detail, and chip in effortlessly.</p></div>
           <ol class="lp-steps">
-            <li class="lp-step lp-reveal"><span class="lp-icon"><svg aria-hidden="true"><use href="#i-user"/></svg></span><h3>1. Sign in</h3><p>Jump in with Google or email. Your page stays private while you set it up. <a href="https://web.facebook.com/share/v/19nDTXtxKu/" data-open-reel>▶ Watch setup reel</a></p></li>
+            <li class="lp-step lp-reveal"><span class="lp-icon"><svg aria-hidden="true"><use href="#i-user"/></svg></span><h3>1. Sign in</h3><p>Jump in with Google or email. Your page stays private while you set it up. <a href="https://web.facebook.com/share/v/19nDTXtxKu/" target="_blank" rel="noopener noreferrer">Watch the setup reel &rarr;</a></p></li>
             <li class="lp-step lp-reveal"><span class="lp-icon"><svg aria-hidden="true"><use href="#i-edit"/></svg></span><h3>2. Add your wedding details</h3><p>Put in your names, dates, venues (church, mosque, temple, garden, reception), dress colours, and full schedule.</p></li>
             <li class="lp-step lp-reveal"><span class="lp-icon"><svg aria-hidden="true"><use href="#i-target"/></svg></span><h3>3. Turn on fundraising &amp; extras</h3><p>Pick your budget goals, gift items, song bidding, sponsor slots, or VIP seats—only use what fits your wedding.</p></li>
             <li class="lp-step lp-reveal"><span class="lp-icon"><svg aria-hidden="true"><use href="#i-share"/></svg></span><h3>4. Share &amp; watch it grow</h3><p>Publish and drop your link in family, committee, and community WhatsApp groups. Watch your progress bar climb!</p></li>
@@ -215,6 +125,19 @@
         </div>
       </section>
 
+      <section class="lp-section" aria-labelledby="styles-title">
+        <div class="lp-inner">
+          <div class="lp-head lp-reveal"><p class="eyebrow">Match your wedding theme</p><h2 id="styles-title">Pick colours that feel <em>like you</em></h2><p>Choose up to four colours for your wedding look—buttons, headings, and accents style your page automatically.</p></div>
+          <div class="lp-styles">
+            <div class="lp-style lp-reveal"><div class="lp-style-top" style="background:linear-gradient(135deg,#244b3a,#4d6250);color:#e1cf9f"><svg aria-hidden="true"><use href="#m-leaves"/></svg></div><div class="lp-style-body"><h3>Forest &amp; gold</h3><div class="lp-swatches" aria-hidden="true"><i style="background:#244b3a"></i><i style="background:#be9b52"></i><i style="background:#a9b5a2"></i><i style="background:#f6f1e4"></i></div></div></div>
+            <div class="lp-style lp-reveal"><div class="lp-style-top" style="background:linear-gradient(135deg,#e8c4b8,#f6e7df);color:#7a4f45"><svg aria-hidden="true"><use href="#m-rings"/></svg></div><div class="lp-style-body"><h3>Blush &amp; sage</h3><div class="lp-swatches" aria-hidden="true"><i style="background:#e8c4b8"></i><i style="background:#8fa38a"></i><i style="background:#7a4f45"></i><i style="background:#fbf6f1"></i></div></div></div>
+            <div class="lp-style lp-reveal"><div class="lp-style-top" style="background:linear-gradient(135deg,#1d2440,#39406b);color:#e4cf9b"><svg aria-hidden="true"><use href="#m-stars"/></svg></div><div class="lp-style-body"><h3>Midnight &amp; champagne</h3><div class="lp-swatches" aria-hidden="true"><i style="background:#1d2440"></i><i style="background:#e4cf9b"></i><i style="background:#8b8fb0"></i><i style="background:#f7f3ea"></i></div></div></div>
+            <div class="lp-style lp-reveal"><div class="lp-style-top" style="background:linear-gradient(135deg,#a4512f,#d98c5f);color:#fbeee2"><svg aria-hidden="true"><use href="#m-arch"/></svg></div><div class="lp-style-body"><h3>Terracotta &amp; cream</h3><div class="lp-swatches" aria-hidden="true"><i style="background:#a4512f"></i><i style="background:#d98c5f"></i><i style="background:#5e6b45"></i><i style="background:#fbeee2"></i></div></div></div>
+          </div>
+          <p class="lp-after">Use any of these ideas or pick your own custom colours.</p>
+        </div>
+      </section>
+
       <section class="lp-section" aria-labelledby="showcase-title" style="padding-top:0;border-top:0">
         <div class="lp-inner">
           <div class="showcase-pin lp-reveal">
@@ -222,7 +145,7 @@
             <p>Take a quick look at sample couple Amara &amp; Kito to see pre-wedding events, song requests, sponsor spots, gifts, and how guests experience the site—or watch the setup reel to see how a page is built.</p>
             <p class="fine">That is how fancy your wedding website will look like. You will love it!</p></div>
             <a class="btn primary" href="https://showcase-wedding.joinourwedding.site/">Open sample wedding</a>
-            <a class="btn secondary" href="https://web.facebook.com/share/v/19nDTXtxKu/" data-open-reel>▶ Watch setup reel</a>
+            <a class="btn secondary" href="https://web.facebook.com/share/v/19nDTXtxKu/" target="_blank" rel="noopener noreferrer">▶ Watch setup video</a>
           </div>
         </div>
       </section>
@@ -254,7 +177,7 @@
             <details><summary>How do guests pay, and when does it count?</summary><p>Guests can pay using supported methods for your currency (such as M-Pesa for Kenyan shillings and Credit/ Debit Cards where enabled). A contribution counts as soon as the payment is confirmed.</p></details>
             <details><summary>How do we get our money?</summary><p>Once funds clear, you just request a payout from your dashboard to the couple's payout details after quick verification, and the funds are sent to you ASAP. We do not hold the money, it is yours.</p></details>
             <details><summary>Do guests need to download an app or create an account?</summary><p>No! Guests just tap your link, view the schedule, RSVP, check their seat or QR entry pass, and contribute. It is in English and Swahili.</p></details>
-            <details><summary>Can we test it before sharing with guests?</summary><p>Yes. Check out the <a href="https://showcase-wedding.joinourwedding.site/">sample wedding</a> or <a href="https://web.facebook.com/share/v/19nDTXtxKu/" data-open-reel>watch the setup reel</a> first, and build your own page in private draft mode until you are ready to publish.</p></details>
+            <details><summary>Can we test it before sharing with guests?</summary><p>Yes. Check out the <a href="https://showcase-wedding.joinourwedding.site/">sample wedding</a> or <a href="https://web.facebook.com/share/v/19nDTXtxKu/" target="_blank" rel="noopener noreferrer">watch the setup reel</a> first, and build your own page in private draft mode until you are ready to publish.</p></details>
           </div>
         </div>
       </section>
@@ -286,23 +209,6 @@
     </main>
   </div>
 
-  <!-- Setup Reel Modal -->
-  <div class="reel-modal" id="reel-modal" role="dialog" aria-modal="true" aria-labelledby="reel-modal-title" hidden>
-    <div class="reel-modal-card">
-      <div class="reel-modal-head">
-        <h3 id="reel-modal-title">How to create your wedding page</h3>
-        <button type="button" class="reel-modal-close" id="reel-modal-close" aria-label="Close video">&times;</button>
-      </div>
-      <div class="reel-frame-wrap">
-        <iframe id="reel-iframe" title="Join Our Wedding setup reel" allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share" allowfullscreen></iframe>
-      </div>
-      <div class="reel-modal-foot">
-        <span>Video not loading?</span>
-        <a href="https://web.facebook.com/share/v/19nDTXtxKu/" target="_blank" rel="noopener noreferrer">Open on Facebook &nearr;</a>
-      </div>
-    </div>
-  </div>
-
   <script src="/site-urls.js"></script>
   <script src="/auth-client.js"></script>
   <script src="/theme-colors.js"></script>
@@ -320,34 +226,6 @@
       const headerCta = document.querySelector(".site-header a.btn.primary");
       if (headerCta) headerCta.textContent = "Your dashboard";
     }
-
-    // Setup Reel Modal logic
-    (() => {
-      const modal = $("reel-modal");
-      const iframe = $("reel-iframe");
-      const closeBtn = $("reel-modal-close");
-      const reelUrl = "https://web.facebook.com/share/v/19nDTXtxKu/";
-      const embedSrc = `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(reelUrl)}&show_text=false&autoplay=true`;
-
-      const openModal = (e) => {
-        if (e) e.preventDefault();
-        iframe.src = embedSrc;
-        modal.hidden = false;
-        document.body.style.overflow = "hidden";
-        closeBtn.focus();
-      };
-
-      const closeModal = () => {
-        modal.hidden = true;
-        iframe.src = "";
-        document.body.style.overflow = "";
-      };
-
-      document.querySelectorAll("[data-open-reel]").forEach(el => el.addEventListener("click", openModal));
-      closeBtn.addEventListener("click", closeModal);
-      modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
-      document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !modal.hidden) closeModal(); });
-    })();
 
     (async () => {
       const activeEls = document.querySelectorAll("[data-referral-active]");
